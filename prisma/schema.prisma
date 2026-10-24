@@ -94,7 +94,10 @@ model Licitacao {
   orgaoCnpj             String
   uf                    String          @db.VarChar(2)
   municipio             String?
+  esfera                String?
+  poder                 String?
   modalidade            String
+  portalDisputa         String?
   miniResumo            String
   resumo                String          @db.Text
   valorEstimado         Float
@@ -105,6 +108,8 @@ model Licitacao {
   parecerIA             ParecerIA       @default(AVALIAR)
   justificativaIA       String?         @db.Text
   tipoSistemaCodigo     String?
+  atestadosExigidos     Json?
+  motivoRecusa          String?         @db.Text
   quantidadeLotes       Int             @default(1)
   loteUnico             Boolean         @default(true)
   precoPorLote          Boolean         @default(false)
@@ -121,6 +126,20 @@ model Licitacao {
   @@index([dataAbertura])
   @@index([status])
   @@index([idPncp])
+  @@index([tipoSistemaCodigo])
+}
+
+model TipoSistema {
+  id        String   @id @default(cuid())
+  codigo    String   @unique
+  nome      String
+  ordem     Int
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ordem])
+  @@index([ativo])
 }
 
 model AuditLog {

@@ -4,3 +4,6 @@ export * from "./rbac.schema";
 export * from "./audit.schema";
 export * from "./auth.schema";
 export * from "./licitacao.schema";
+export * from "./tipos-sistema.schema";
+export * from "./ingestao.schema";
+export * from "./oportunidades.schema";

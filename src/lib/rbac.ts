@@ -14,7 +14,9 @@ export type RbacAction =
   | "upload"
   | "generate_declaration"
   | "impugnar"
-  | "export";
+  | "export"
+  | "licitacao:decide"
+  | "licitacao:create";
 
 export type RbacResource =
   | "dashboard"
@@ -41,12 +43,15 @@ export interface RbacUser {
 }
 
 /**
- * Matriz contratual de permissões por perfil (PRD §2.3):
+ * Matriz contratual de permissões por perfil (PRD §2.3 / sprint-1-spec §2.3):
  * - DIRETORIA: Acesso irrestrito a todas as 11 telas, deliberações GO/No-GO,
  *   aprovação de preços, descarte, gestão da equipe e auditoria total.
  * - ANALISTA_COMERCIAL: Gestão operacional das licitações aceitas, upload de editais,
- *   montagem de propostas, emissão de declarações e impugnações.
+ *   montagem de propostas, emissão de declarações e impugnações. Na Sprint 1,
+ *   passa a deliberar (`licitacao:decide`) e cadastrar manualmente
+ *   (`licitacao:create`) na Central de Oportunidades.
  * - OPERADOR: Acompanhamento de calendário, consulta de certidões e download de acervos.
+ *   Sem permissão de deliberação nem de cadastro manual (HTTP 403).
  */
 export const ROLE_PERMISSIONS_CONTRACT: Readonly<
   Record<Role, readonly RbacAction[]>
@@ -66,6 +71,8 @@ export const ROLE_PERMISSIONS_CONTRACT: Readonly<
     "generate_declaration",
     "impugnar",
     "export",
+    "licitacao:decide",
+    "licitacao:create",
   ],
   ANALISTA_COMERCIAL: [
     "view",
@@ -76,6 +83,8 @@ export const ROLE_PERMISSIONS_CONTRACT: Readonly<
     "generate_declaration",
     "impugnar",
     "export",
+    "licitacao:decide",
+    "licitacao:create",
   ],
   OPERADOR: ["view", "read", "export"],
 } as const;

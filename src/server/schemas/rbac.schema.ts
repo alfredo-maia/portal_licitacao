@@ -21,6 +21,8 @@ export const rbacActionSchema = z.enum([
   "generate_declaration",
   "impugnar",
   "export",
+  "licitacao:decide",
+  "licitacao:create",
 ]);
 
 export const rbacResourceSchema = z.enum([

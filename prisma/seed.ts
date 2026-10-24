@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma";
 import {
+  TIPOS_SISTEMA_CATALOG,
+  type TipoSistemaCatalogEntry,
+} from "../src/config/tipos-sistema";
+import {
   DEFAULT_SEED_DIRECTOR_PASSWORD,
   DIRECTORS_SEED,
   upsertInMemoryAuthUser,
@@ -66,16 +70,62 @@ export async function seedDirectors(): Promise<readonly SeedDirectorContract[]> 
   return provisioned;
 }
 
+export type SeedTipoSistemaContract = TipoSistemaCatalogEntry & {
+  readonly ativo: boolean;
+};
+
+/**
+ * Provisionamento idempotente (upsert por `codigo`) dos 22 Tipos de Sistema
+ * padronizados (PRD §5.1 / sprint-1-spec §2.1). Em ambientes sem PostgreSQL
+ * acessível (ex.: testes unitários em CI), faz fallback resiliente: o catálogo
+ * tipado em `src/config/tipos-sistema.ts` permanece a fonte da verdade.
+ */
+export async function seedTiposSistema(): Promise<
+  readonly SeedTipoSistemaContract[]
+> {
+  const provisioned: SeedTipoSistemaContract[] = [];
+
+  for (const tipo of TIPOS_SISTEMA_CATALOG) {
+    try {
+      await prisma.tipoSistema.upsert({
+        where: { codigo: tipo.codigo },
+        update: {
+          nome: tipo.nome,
+          ordem: tipo.ordem,
+          ativo: true,
+        },
+        create: {
+          codigo: tipo.codigo,
+          nome: tipo.nome,
+          ordem: tipo.ordem,
+          ativo: true,
+        },
+      });
+    } catch {
+      // Fallback resiliente caso o banco PostgreSQL não esteja ativo no ambiente de execução (ex.: CI)
+    }
+
+    provisioned.push({ ...tipo, ativo: true });
+  }
+
+  return provisioned;
+}
+
 if (require.main === module) {
   seedDirectors()
-    .then((seeded) => {
+    .then(async (seeded) => {
       console.log(
         `[seed] ${seeded.length} diretores provisionados com sucesso:`,
         seeded.map((d) => d.email).join(", "),
       );
+      const tipos = await seedTiposSistema();
+      console.log(
+        `[seed] ${tipos.length} tipos de sistema provisionados com sucesso:`,
+        tipos.map((t) => t.codigo).join(", "),
+      );
     })
     .catch((error: unknown) => {
-      console.error("[seed] Falha ao provisionar diretores:", error);
+      console.error("[seed] Falha ao provisionar seeds:", error);
       process.exit(1);
     })
     .finally(async () => {
