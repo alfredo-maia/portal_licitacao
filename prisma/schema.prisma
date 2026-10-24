@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  DIRETORIA
+  ANALISTA_COMERCIAL
+  OPERADOR
+}
+
+enum LicitacaoStatus {
+  PENDENTE
+  ACEITA
+  RECUSADA
+  ANALISE_TECNICA
+  ANALISE_FINANCEIRA
+  REVISAO_PROPOSTA
+  ENVIADA
+  EM_DISPUTA
+  AGUARDANDO_RESULTADO
+  CONTEMPLADA
+  IMPUGNADA
+  NAO_CONTEMPLADA_PRECO
+  NAO_CONTEMPLADA_DOCUMENTACAO
+  NAO_CONTEMPLADA_DESISTENCIA
+  REVOGADA_ANULADA
+}
+
+enum ParecerIA {
+  GO
+  AVALIAR
+  NO_GO
+}
+
+model User {
+  id                    String      @id @default(cuid())
+  name                  String
+  email                 String      @unique
+  passwordHash          String
+  role                  Role        @default(OPERADOR)
+  ativo                 Boolean     @default(true)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  accounts              Account[]
+  sessions              Session[]
+  auditLogs             AuditLog[]
+  licitacoesResponsavel Licitacao[] @relation("LicitacaoResponsavel")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Licitacao {
+  id                    String          @id @default(cuid())
+  idPncp                String          @unique
+  numeroEdital          String
+  orgaoNome             String
+  orgaoCnpj             String
+  uf                    String          @db.VarChar(2)
+  municipio             String?
+  modalidade            String
+  miniResumo            String
+  resumo                String          @db.Text
+  valorEstimado         Float
+  dataAbertura          DateTime
+  dataPublicacaoPncp    DateTime?
+  dataUltimaAtualizacao DateTime?
+  status                LicitacaoStatus @default(PENDENTE)
+  parecerIA             ParecerIA       @default(AVALIAR)
+  justificativaIA       String?         @db.Text
+  tipoSistemaCodigo     String?
+  quantidadeLotes       Int             @default(1)
+  loteUnico             Boolean         @default(true)
+  precoPorLote          Boolean         @default(false)
+  isPresencial          Boolean         @default(false)
+  distanciaGoianiaKm    Int?
+  linkPncp              String?
+  linkSistemaOrigem     String?
+  hashCritico           String?
+  responsavelId         String?
+  responsavel           User?           @relation("LicitacaoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@index([dataAbertura])
+  @@index([status])
+  @@index([idPncp])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  ocorridoEm   DateTime @default(now())
+  usuarioId    String?
+  usuarioNome  String?
+  ip           String?
+  acao         String
+  entidadeTipo String
+  entidadeId   String
+  antes        Json?
+  depois       Json?
+  usuario      User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidadeTipo, entidadeId])
+  @@index([ocorridoEm])
+  @@map("audit_log")
+}

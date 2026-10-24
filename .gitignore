@@ -1,7 +1,27 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Environment variables
 .env
 .env.*
+!.env.example
+
+# Testing & Coverage
+coverage/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# TypeScript & Logs
+*.tsbuildinfo
+next-env.d.ts
 *.log
-dist/
-build/
 .DS_Store
