@@ -5,9 +5,10 @@
   "description": "Plataforma corporativa de inteligência e gestão em licitações públicas de TI (Lei 14.133/2021)",
   "scripts": {
     "dev": "next dev -p 3010",
+    "postinstall": "prisma generate",
     "build": "prisma generate && next build",
     "start": "next start -p 3010",
-    "lint": "tsc --noEmit",
+    "lint": "prisma generate && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

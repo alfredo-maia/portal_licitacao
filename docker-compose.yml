@@ -17,5 +17,26 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portal-licitacao-app
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://pncp:pncp_secret_2026@db:5432/portal_licitacao?schema=public
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3010}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-pncp-dev-secret-2026}
+      SEED_DIRECTOR_PASSWORD: ${SEED_DIRECTOR_PASSWORD:-Pncp@2026!Diretoria}
+    volumes:
+      - portal_licitacao_uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   portal_licitacao_pgdata:
+  portal_licitacao_uploads:
