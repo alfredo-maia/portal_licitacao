@@ -1,0 +1,36 @@
+@use "@carbon/react";
+@import "@ibm/plex/css/ibm-plex.min.css";
+
+:root {
+  --cds-font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --cds-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: var(--cds-font-sans);
+  background-color: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+.pncp-mono {
+  font-family: var(--cds-font-mono);
+}
+
+.pncp-shell-content {
+  margin-top: 3rem;
+  min-height: calc(100vh - 3rem);
+  padding: 2rem;
+  background-color: var(--cds-background);
+  color: var(--cds-text-primary);
+  transition: margin-left 0.15s ease;
+}
+
+@media (min-width: 66rem) {
+  .pncp-shell-content--expanded {
+    margin-left: 16rem;
+  }
+}

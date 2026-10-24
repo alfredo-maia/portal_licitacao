@@ -7,6 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
+  experimental: {
+    optimizePackageImports: ["@carbon/react", "@carbon/icons-react"],
+  },
   sassOptions: {
     quietDeps: true,
     silenceDeprecations: ["legacy-js-api", "import", "global-builtin"],
