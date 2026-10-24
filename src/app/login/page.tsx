@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import {
   Button,
   Column,
   Form,
   Grid,
+  InlineNotification,
   PasswordInput,
   Stack,
   Tag,
@@ -15,11 +18,34 @@ import {
 import { APP_CONFIG } from "@/config/brand";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const response = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (response?.error) {
+        setErrorMessage("Credenciais inválidas. Verifique seu e-mail e senha.");
+      } else {
+        router.push("/dashboard");
+      }
+    } catch {
+      setErrorMessage("Falha ao comunicar com o servidor de autenticação.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -48,6 +74,16 @@ export default function LoginPage() {
               </p>
             </div>
 
+            {errorMessage ? (
+              <InlineNotification
+                kind="error"
+                title="Erro de Autenticação:"
+                subtitle={errorMessage}
+                lowContrast
+                hideCloseButton
+              />
+            ) : null}
+
             <Form onSubmit={handleSubmit}>
               <Stack gap={5}>
                 <TextInput
@@ -72,9 +108,10 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   data-testid="login-submit"
+                  disabled={isSubmitting}
                   style={{ width: "100%", maxWidth: "none" }}
                 >
-                  Entrar no Sistema
+                  {isSubmitting ? "Autenticando..." : "Entrar no Sistema"}
                 </Button>
               </Stack>
             </Form>
