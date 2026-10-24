@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect project type
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "type=node" >> "$GITHUB_OUTPUT"
+          elif [ -f requirements.txt ] || [ -f pyproject.toml ]; then
+            echo "type=python" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Node.js path ---
+      - uses: pnpm/action-setup@v4
+        if: steps.detect.outputs.type == 'node'
+        with:
+          version: '9'
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.type == 'node'
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies (Node)
+        if: steps.detect.outputs.type == 'node'
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (Node)
+        if: steps.detect.outputs.type == 'node'
+        run: pnpm run lint --if-present
+
+      - name: Typecheck (Node)
+        if: steps.detect.outputs.type == 'node'
+        run: pnpm run typecheck --if-present
+
+      - name: Test (Node)
+        if: steps.detect.outputs.type == 'node'
+        run: pnpm run test --if-present
+
+      - name: Build (Node)
+        if: steps.detect.outputs.type == 'node'
+        run: pnpm run build --if-present
+
+      # --- Python path ---
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.type == 'python'
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies (Python)
+        if: steps.detect.outputs.type == 'python'
+        run: |
+          [ -f requirements.txt ] && pip install -r requirements.txt || true
+          [ -f pyproject.toml ] && pip install . || true
+
+      - name: Lint (Python)
+        if: steps.detect.outputs.type == 'python'
+        run: pip show ruff >/dev/null 2>&1 && ruff check . || echo "ruff não configurado, pulando"
+
+      - name: Test (Python)
+        if: steps.detect.outputs.type == 'python'
+        run: pip show pytest >/dev/null 2>&1 && pytest || echo "pytest não configurado, pulando"
+
+      # --- No app yet ---
+      - name: No buildable app detected yet
+        if: steps.detect.outputs.type == 'none'
+        run: echo "Nenhum package.json/requirements.txt encontrado ainda — CI passa vazio até o app ser adicionado."

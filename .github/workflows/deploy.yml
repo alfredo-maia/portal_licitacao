@@ -1,0 +1,46 @@
+name: CD (Produção)
+
+# Só dispara DEPOIS que o workflow "CI" terminar — e só segue em frente se
+# o CI tiver passado (conclusion == success). Isso garante que o deploy
+# nunca roda em paralelo com o CI nem acontece se o CI falhar.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VPS (only if CI passed)
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy to VPS using SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 2000
+          script: |
+            set -e
+            echo "Iniciando Deploy do portal_licitacao via GitHub Actions..."
+            cd /home/hermes/apps/portal_licitacao
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            if [ -f docker-compose.yml ] || [ -f docker-compose.prod.yml ]; then
+              echo "docker-compose detectado, subindo stack..."
+              COMPOSE_FILE="docker-compose.yml"
+              [ -f docker-compose.prod.yml ] && COMPOSE_FILE="docker-compose.prod.yml"
+              docker compose -p portal_licitacao -f "$COMPOSE_FILE" up -d --build
+            else
+              echo "Nenhum docker-compose encontrado ainda — apenas código atualizado via git reset. Nada para subir."
+            fi
+
+            echo "Deploy concluído com sucesso!"
