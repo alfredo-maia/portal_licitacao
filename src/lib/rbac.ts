@@ -81,15 +81,27 @@ export const ROLE_PERMISSIONS_CONTRACT: Readonly<
 } as const;
 
 /**
- * Contrato de autorização RBAC unificado.
- * A implementação definitiva (GREEN) pertence à Etapa 3A (AV-28 - Backend).
+ * Contrato de autorização RBAC unificado (PRD §2.3 / sprint-0-spec §2.5).
+ * Verifica se o usuário autenticado e ativo possui permissão para executar `action` sobre `resource`.
  */
 export function can(
-  _user: RbacUser | null | undefined,
-  _action: RbacAction | string,
-  _resource?: RbacResource | string,
+  user: RbacUser | null | undefined,
+  action: RbacAction | string,
+  resource?: RbacResource | string,
 ): boolean {
-  // Stub contratual para a Fase RED do TDD (Etapa 2 - QA).
-  // Será implementado na Etapa 3A (AV-28) pelo Desenvolvedor Backend.
-  return false;
+  if (!user || user.ativo === false) {
+    return false;
+  }
+
+  if (resource !== undefined && resource.trim().length === 0) {
+    return false;
+  }
+
+  const role = user.role as Role;
+  const allowedActions = ROLE_PERMISSIONS_CONTRACT[role];
+  if (!allowedActions) {
+    return false;
+  }
+
+  return allowedActions.includes(action as RbacAction);
 }
