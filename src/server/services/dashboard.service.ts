@@ -46,9 +46,19 @@ export async function getDashboardData(
   try {
     licitacoes = await prisma.licitacao.findMany();
     historico = await prisma.licitacaoStatusHistorico.findMany();
-  } catch {
-    licitacoes = listInMemoryLicitacoes();
-    historico = listInMemoryStatusHistorico();
+  } catch (err) {
+    console.error("[getDashboardData] Erro ao buscar no banco:", err);
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      licitacoes = await prisma.licitacao.findMany();
+      historico = await prisma.licitacaoStatusHistorico.findMany();
+    } catch {
+      licitacoes = listInMemoryLicitacoes();
+      historico = listInMemoryStatusHistorico();
+    }
   }
 
   // 1. Linha 1 — Cards Mensais

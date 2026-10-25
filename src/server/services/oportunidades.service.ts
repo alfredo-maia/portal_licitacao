@@ -283,8 +283,23 @@ export async function listOportunidades(
     for (const record of dbRecords) {
       mergedByIdPncp.set(record.idPncp, record);
     }
-  } catch {
-    // PostgreSQL indisponível: resposta servida pelo fallback em memória
+  } catch (err: unknown) {
+    console.error("[listOportunidades] Erro ao buscar no banco:", err);
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      const retryRecords = await prisma.licitacao.findMany({
+        where: buildPrismaWhere(filters),
+        orderBy: { dataAbertura: "asc" },
+      });
+      for (const record of retryRecords) {
+        mergedByIdPncp.set(record.idPncp, record);
+      }
+    } catch (healErr) {
+      console.warn("[listOportunidades] Auto-healing falhou:", healErr);
+    }
   }
 
   return [...mergedByIdPncp.values()].sort(compareByDataAberturaAsc);

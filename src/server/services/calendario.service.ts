@@ -61,13 +61,41 @@ export async function getCalendarioData(
       },
       orderBy: { dataAbertura: "asc" },
     });
-  } catch {
-    licitacoes = listInMemoryLicitacoes().filter(
-      (l) => {
-        const d = l.dataEncerramentoProposta ?? l.dataAbertura;
-        return d >= inicioUtc && d < fimUtc;
-      },
-    );
+  } catch (err) {
+    console.error("[getCalendarioMensal] Erro ao buscar no banco:", err);
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      licitacoes = await prisma.licitacao.findMany({
+        where: {
+          OR: [
+            {
+              dataEncerramentoProposta: {
+                gte: inicioUtc,
+                lt: fimUtc,
+              },
+            },
+            {
+              dataEncerramentoProposta: null,
+              dataAbertura: {
+                gte: inicioUtc,
+                lt: fimUtc,
+              },
+            },
+          ],
+        },
+        orderBy: { dataAbertura: "asc" },
+      });
+    } catch {
+      licitacoes = listInMemoryLicitacoes().filter(
+        (l) => {
+          const d = l.dataEncerramentoProposta ?? l.dataAbertura;
+          return d >= inicioUtc && d < fimUtc;
+        },
+      );
+    }
   }
 
   // Filtra fora status que não poluem o calendário (PENDENTE e RECUSADA)

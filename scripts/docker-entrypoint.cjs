@@ -300,6 +300,23 @@ async function bootstrapDatabase() {
       });
     }
 
+    // Prazos: Prazo Fatal de Envio de Proposta (Lei 14.133/2021)
+    console.log("[entrypoint] Verificando colunas de Prazo Fatal de Envio de Proposta...");
+    const ddlPrazos = [
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_dataEncerramentoProposta_idx" ON "Licitacao"("dataEncerramentoProposta");`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_dataEncerramentoProposta_idx" ON "licitacao"("dataEncerramentoProposta");`,
+      `UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`,
+      `UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`,
+    ];
+
+    for (const stmt of ddlPrazos) {
+      await prisma.$executeRawUnsafe(stmt).catch((err) => {
+        console.warn("[entrypoint] Aviso DDL Prazos:", err.message);
+      });
+    }
+
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     const passwordHash = await bcrypt.hash(rawPassword, 10);

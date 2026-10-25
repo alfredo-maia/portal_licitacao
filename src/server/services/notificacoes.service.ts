@@ -313,8 +313,19 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
     licitacoes = await prisma.licitacao.findMany({
       include: { atribuidos: true },
     });
-  } catch {
-    licitacoes = listInMemoryLicitacoes();
+  } catch (err) {
+    console.error("[executarJobDiarioNotificacoes] Erro ao buscar no banco:", err);
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      licitacoes = await prisma.licitacao.findMany({
+        include: { atribuidos: true },
+      });
+    } catch {
+      licitacoes = listInMemoryLicitacoes();
+    }
   }
 
   for (const lic of licitacoes) {
