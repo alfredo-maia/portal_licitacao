@@ -29,7 +29,7 @@ import {
   Modal,
   Pagination,
 } from "@carbon/react";
-import { CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
+import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
@@ -506,17 +506,17 @@ function OportunidadesContent() {
                       {headers.map((header) => {
                         let headerStyle: React.CSSProperties = {};
                         if (header.key === "dataAbertura") {
-                          headerStyle = { width: "130px", whiteSpace: "nowrap" };
-                        } else if (header.key === "orgaoUF") {
-                          headerStyle = { width: "180px" };
-                        } else if (header.key === "miniResumo") {
-                          headerStyle = { minWidth: "380px" };
-                        } else if (header.key === "valorEstimado") {
-                          headerStyle = { width: "140px", whiteSpace: "nowrap" };
-                        } else if (header.key === "parecerIA") {
                           headerStyle = { width: "125px", whiteSpace: "nowrap" };
+                        } else if (header.key === "orgaoUF") {
+                          headerStyle = { width: "170px" };
+                        } else if (header.key === "miniResumo") {
+                          headerStyle = { minWidth: "450px" };
+                        } else if (header.key === "valorEstimado") {
+                          headerStyle = { width: "135px", whiteSpace: "nowrap" };
+                        } else if (header.key === "parecerIA") {
+                          headerStyle = { width: "120px", whiteSpace: "nowrap" };
                         } else if (header.key === "acoes") {
-                          headerStyle = { width: "115px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "85px", whiteSpace: "nowrap", textAlign: "center" };
                         }
                         return (
                           <TableHeader
@@ -543,9 +543,9 @@ function OportunidadesContent() {
                             key={cell.id}
                             style={
                               cell.info.header === "miniResumo"
-                                ? { minWidth: "380px" }
+                                ? { minWidth: "450px" }
                                 : cell.info.header === "acoes"
-                                ? { width: "115px" }
+                                ? { width: "85px", textAlign: "center" }
                                 : undefined
                             }
                           >
@@ -587,7 +587,7 @@ function OportunidadesContent() {
                                 {cell.value}
                               </Tag>
                             ) : cell.info.header === "miniResumo" ? (
-                              <div style={{ minWidth: "360px", maxWidth: "600px", wordBreak: "break-word", lineHeight: 1.4 }}>
+                              <div style={{ minWidth: "420px", maxWidth: "750px", wordBreak: "break-word", lineHeight: 1.4 }}>
                                 <span style={{ fontWeight: 500 }}>{cell.value}</span>
                                 {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
                                   <Tag type="gray" style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}>
@@ -603,70 +603,80 @@ function OportunidadesContent() {
                               <div
                                 style={{
                                   display: "flex",
-                                  flexDirection: "column",
-                                  gap: "0.3rem",
-                                  alignItems: "flex-start",
+                                  gap: "0.4rem",
+                                  alignItems: "center",
                                   justifyContent: "center",
-                                  width: "110px",
                                 }}
                               >
                                 <button
                                   type="button"
                                   data-testid={`btn-aceitar-${row.id}`}
+                                  title="Participar"
+                                  aria-label="Participar"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleAceitarClick(row.id);
                                   }}
                                   style={{
-                                    background: "none",
-                                    border: "none",
-                                    padding: 0,
-                                    margin: 0,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: "30px",
+                                    height: "30px",
+                                    borderRadius: "4px",
+                                    border: "1px solid rgba(36, 161, 72, 0.3)",
+                                    background: "rgba(36, 161, 72, 0.08)",
                                     color: "#24a148",
-                                    fontWeight: 600,
-                                    fontSize: "0.875rem",
                                     cursor: "pointer",
-                                    textAlign: "left",
-                                    lineHeight: 1.25,
-                                    display: "inline-block",
+                                    transition: "all 0.15s ease",
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.currentTarget.style.textDecoration = "underline";
+                                    e.currentTarget.style.background = "#24a148";
+                                    e.currentTarget.style.color = "#ffffff";
+                                    e.currentTarget.style.borderColor = "#24a148";
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.textDecoration = "none";
+                                    e.currentTarget.style.background = "rgba(36, 161, 72, 0.08)";
+                                    e.currentTarget.style.color = "#24a148";
+                                    e.currentTarget.style.borderColor = "rgba(36, 161, 72, 0.3)";
                                   }}
                                 >
-                                  Participar
+                                  <Checkmark size={18} />
                                 </button>
                                 <button
                                   type="button"
                                   data-testid={`btn-recusar-${row.id}`}
+                                  title="Não Participar"
+                                  aria-label="Não Participar"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleRecusarClick(row.id);
                                   }}
                                   style={{
-                                    background: "none",
-                                    border: "none",
-                                    padding: 0,
-                                    margin: 0,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: "30px",
+                                    height: "30px",
+                                    borderRadius: "4px",
+                                    border: "1px solid rgba(218, 30, 40, 0.3)",
+                                    background: "rgba(218, 30, 40, 0.08)",
                                     color: "#da1e28",
-                                    fontWeight: 600,
-                                    fontSize: "0.875rem",
                                     cursor: "pointer",
-                                    textAlign: "left",
-                                    lineHeight: 1.25,
-                                    display: "inline-block",
+                                    transition: "all 0.15s ease",
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.currentTarget.style.textDecoration = "underline";
+                                    e.currentTarget.style.background = "#da1e28";
+                                    e.currentTarget.style.color = "#ffffff";
+                                    e.currentTarget.style.borderColor = "#da1e28";
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.textDecoration = "none";
+                                    e.currentTarget.style.background = "rgba(218, 30, 40, 0.08)";
+                                    e.currentTarget.style.color = "#da1e28";
+                                    e.currentTarget.style.borderColor = "rgba(218, 30, 40, 0.3)";
                                   }}
                                 >
-                                  Não Participar
+                                  <Close size={18} />
                                 </button>
                               </div>
                             ) : (
