@@ -3,7 +3,7 @@ import { obterTemplatesDeclaracoes } from "@/server/services/declaracoes.service
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(_req?: Request) {
   try {
     const templates = obterTemplatesDeclaracoes();
     return NextResponse.json({ ok: true, templates });

@@ -303,6 +303,10 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
     .filter((u) => u.role === "DIRETORIA" || u.role === "ANALISTA_COMERCIAL")
     .map((u) => u.id);
 
+  const diretoriaIds = allUsers
+    .filter((u) => u.role === "DIRETORIA")
+    .map((u) => u.id);
+
   // Busca licitações
   let licitacoes: any[] = [];
   try {
