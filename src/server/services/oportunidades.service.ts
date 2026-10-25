@@ -362,12 +362,14 @@ export async function atualizarKanbanStatus(
       data: {
         status: input.status,
         ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
+        ...(input.valorArrematado !== undefined ? { valorArrematado: input.valorArrematado } : {}),
       },
     });
   } catch {
     atualizado = updateInMemoryLicitacao(id, {
       status: input.status,
       ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
+      ...(input.valorArrematado !== undefined ? { valorArrematado: input.valorArrematado } : {}),
     });
   }
 

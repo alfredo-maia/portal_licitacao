@@ -16,6 +16,7 @@ export const kanbanStatusUpdateSchema = z
   .object({
     status: licitacaoStatusSchema,
     motivoPerda: z.string().trim().max(1000).optional(),
+    valorArrematado: z.number().nonnegative().optional(),
   })
   .refine(
     (data) => {

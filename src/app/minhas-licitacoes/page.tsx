@@ -317,6 +317,12 @@ export default function MinhasLicitacoesPage() {
   const [itemParaPerda, setItemParaPerda] = React.useState<LicitacaoItem | null>(null);
   const [targetPerdaStatus, setTargetPerdaStatus] = React.useState<string>("NAO_CONTEMPLADA_PRECO");
   const [motivoPerdaInput, setMotivoPerdaInput] = React.useState<string>("");
+
+  // Modal de Contemplada / Valor Arrematado (PRD §4.3 & ADR 0004)
+  const [modalContempladaOpen, setModalContempladaOpen] = React.useState(false);
+  const [itemParaContemplada, setItemParaContemplada] = React.useState<LicitacaoItem | null>(null);
+  const [valorArrematadoInput, setValorArrematadoInput] = React.useState<string>("");
+
   const [salvandoStatus, setSalvandoStatus] = React.useState(false);
   const [feedbackMsg, setFeedbackMsg] = React.useState<string | null>(null);
 
@@ -365,6 +371,14 @@ export default function MinhasLicitacoesPage() {
     const newStatus = String(over.id);
     if (item.status === newStatus) return;
 
+    // Se o status de destino for CONTEMPLADA, solicita valor arrematado (ADR 0004 §2.5)
+    if (newStatus === "CONTEMPLADA") {
+      setItemParaContemplada(item);
+      setValorArrematadoInput(item.valorEstimado ? String(item.valorEstimado) : "");
+      setModalContempladaOpen(true);
+      return;
+    }
+
     // Se o status de destino for de perda, exige modal de justificativa
     if (STATUS_PERDA.includes(newStatus)) {
       setItemParaPerda(item);
@@ -395,6 +409,44 @@ export default function MinhasLicitacoesPage() {
     } catch (err) {
       setLicitacoes(prevLicitacoes);
       alert(err instanceof Error ? err.message : "Erro ao atualizar status");
+    }
+  };
+
+  const confirmarContemplada = async () => {
+    if (!itemParaContemplada) return;
+
+    const valorNum = valorArrematadoInput ? parseFloat(valorArrematadoInput.replace(/\./g, "").replace(",", ".")) : undefined;
+
+    setSalvandoStatus(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${itemParaContemplada.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "CONTEMPLADA",
+          ...(valorNum !== undefined && !isNaN(valorNum) ? { valorArrematado: valorNum } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Erro ao homologar como contemplada");
+      }
+
+      setLicitacoes((prev) =>
+        prev.map((l) =>
+          l.id === itemParaContemplada.id
+            ? { ...l, status: "CONTEMPLADA" }
+            : l,
+        ),
+      );
+      setModalContempladaOpen(false);
+      setItemParaContemplada(null);
+      setFeedbackMsg("Certame homologado como CONTEMPLADA com sucesso! 🏆");
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao homologar como contemplada");
+    } finally {
+      setSalvandoStatus(false);
     }
   };
 
@@ -623,6 +675,46 @@ export default function MinhasLicitacoesPage() {
           onChange={(e) => setMotivoPerdaInput(e.target.value)}
           invalid={modalPerdaOpen && !motivoPerdaInput.trim()}
           invalidText="A justificativa é obrigatória para este desfecho."
+        />
+      </Modal>
+
+      {/* Modal de Homologação / Contemplada com Valor Arrematado (ADR 0004 §2.5) */}
+      <Modal
+        open={modalContempladaOpen}
+        modalHeading="Homologar Vitória no Certame (Contemplada 🏆)"
+        primaryButtonText={salvandoStatus ? "Registrando..." : "Confirmar Vitória"}
+        secondaryButtonText="Cancelar"
+        onRequestClose={() => {
+          if (!salvandoStatus) {
+            setModalContempladaOpen(false);
+            setItemParaContemplada(null);
+          }
+        }}
+        onRequestSubmit={confirmarContemplada}
+        primaryButtonDisabled={salvandoStatus}
+        data-testid="modal-contemplada"
+      >
+        <p style={{ marginBottom: "1rem", fontSize: "0.875rem" }}>
+          Parabéns pela vitória! Confirme a homologação da oportunidade{" "}
+          <strong>{itemParaContemplada?.numeroEdital || itemParaContemplada?.id}</strong>{" "}
+          ({itemParaContemplada?.orgaoNome}).
+        </p>
+
+        <div style={{ marginBottom: "1rem", backgroundColor: "var(--cds-layer-01)", padding: "0.75rem", borderRadius: "4px" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>Valor Estimado do Edital</div>
+          <div style={{ fontSize: "1rem", fontWeight: 600 }}>
+            {formatarMoeda(itemParaContemplada?.valorEstimado || 0)}
+          </div>
+        </div>
+
+        <TextInput
+          id="input-valor-arrematado"
+          data-testid="input-valor-arrematado"
+          labelText="Valor Final Arrematado / Homologado (R$)"
+          helperText="Informe o valor final arrematado em lances ou mantenha o valor estimado."
+          placeholder="Ex: 1450000.00"
+          value={valorArrematadoInput}
+          onChange={(e) => setValorArrematadoInput(e.target.value)}
         />
       </Modal>
     </ModulePageShell>

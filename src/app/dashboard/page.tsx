@@ -574,7 +574,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "14rem", overflowY: "auto" }}>
-                    {dados.indicadores.criticas72h.map((critica) => (
+                    {(dados.indicadores?.criticas72h || []).map((critica) => (
                       <div
                         key={critica.id}
                         data-testid={`critica-row-${critica.id}`}
@@ -630,7 +630,7 @@ export default function DashboardPage() {
                 </div>
 
                 <Grid fullWidth style={{ padding: 0 }}>
-                  {dados.topTipos.map((tipo) => (
+                  {(dados.topTipos || []).map((tipo) => (
                     <Column key={tipo.tipoSistemaCodigo} lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
                       <ClickableTile
                         href={`/oportunidades?tipoSistema=${tipo.tipoSistemaCodigo}`}
