@@ -85,8 +85,12 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   if (filters.uf) {
     and.push({ uf: filters.uf });
   }
-  if (filters.status) {
-    and.push({ status: filters.status });
+  if (filters.status && filters.status !== "TODOS" && (filters.status as string) !== "TODAS") {
+    and.push({ status: filters.status as any });
+  } else if (!filters.status) {
+    // Por padrão na Central de Oportunidades, apenas certames PENDENTES são exibidos.
+    // Certames aceitos vão para Minhas Licitações e Calendário; certames recusados são arquivados.
+    and.push({ status: "PENDENTE" });
   }
   if (filters.parecerIA) {
     and.push({ parecerIA: filters.parecerIA });
@@ -157,8 +161,14 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
   if (filters.uf && record.uf !== filters.uf) {
     return false;
   }
-  if (filters.status && record.status !== filters.status) {
-    return false;
+  if (filters.status && filters.status !== "TODOS" && (filters.status as string) !== "TODAS") {
+    if (record.status !== filters.status) {
+      return false;
+    }
+  } else if (!filters.status) {
+    if (record.status !== "PENDENTE") {
+      return false;
+    }
   }
   if (filters.parecerIA && record.parecerIA !== filters.parecerIA) {
     return false;

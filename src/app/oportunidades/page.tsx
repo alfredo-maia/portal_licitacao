@@ -461,17 +461,27 @@ function OportunidadesContent() {
             id="filter-status"
             data-testid="filter-status"
             titleText="Status"
-            label="Selecione um status"
+            label="Pendente (Padrão)"
             items={[
-              { id: "", text: "Todos" },
-              { id: "PENDENTE", text: "Pendente" },
+              { id: "", text: "Pendente (Padrão)" },
               { id: "ACEITA", text: "Aceita" },
-              { id: "RECUSADA", text: "Recusada" },
+              { id: "RECUSADA", text: "Recusada (Arquivada)" },
+              { id: "TODOS", text: "Todas" },
             ]}
             itemToString={(item) => (item ? item.text : "")}
-            selectedItem={filtroStatus ? { id: filtroStatus, text: filtroStatus } : null}
+            selectedItem={
+              filtroStatus === "TODOS"
+                ? { id: "TODOS", text: "Todas" }
+                : filtroStatus === "RECUSADA"
+                ? { id: "RECUSADA", text: "Recusada (Arquivada)" }
+                : filtroStatus === "ACEITA"
+                ? { id: "ACEITA", text: "Aceita" }
+                : filtroStatus === "PENDENTE"
+                ? { id: "PENDENTE", text: "Pendente (Padrão)" }
+                : null
+            }
             onChange={({ selectedItem }) => handleFilterChange("status", selectedItem?.id || "")}
-            style={{ minWidth: "150px" }}
+            style={{ minWidth: "170px" }}
           />
           <Dropdown
             id="filter-parecer-ia"

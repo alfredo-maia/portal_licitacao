@@ -42,7 +42,7 @@ export const oportunidadesFilterSchema = z.object({
   faixaValor: faixaValorSchema.optional(),
   valorMin: z.coerce.number().nonnegative().optional(),
   valorMax: z.coerce.number().nonnegative().optional(),
-  status: licitacaoStatusSchema.optional(),
+  status: z.union([licitacaoStatusSchema, z.literal("TODOS"), z.literal("TODAS")]).optional(),
   parecerIA: parecerIAFilterSchema.optional(),
   periodo: z.enum(["mes", "todos"]).optional(),
   busca: z.string().trim().min(1).optional(),

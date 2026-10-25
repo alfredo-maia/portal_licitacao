@@ -195,8 +195,11 @@ export default function CalendarioPage() {
                 <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
                   Legenda:
                 </span>
+                <Tag size="sm" type="purple">
+                  Prazo Fatal (Envio de Proposta)
+                </Tag>
                 <Tag size="sm" type="blue">
-                  Sessão Ativa
+                  Certame Ativo
                 </Tag>
                 <Tag size="sm" type="cool-gray" style={{ opacity: 0.6 }}>
                   Não Prosseguida (40%)
