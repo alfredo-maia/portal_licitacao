@@ -428,3 +428,27 @@ model Impugnacao {
   @@map("impugnacao")
 }
 
+// Sprint 6 — Configurações Corporativas (PRD §4.11 / Anexo 4)
+model ConfiguracaoEmpresa {
+  id                 String   @id @default("default")
+  razaoSocial        String   @default("APONTA TECNOLOGIA E SERVICOS LTDA")
+  cnpj               String   @default("12.345.678/0001-90")
+  inscricaoEstadual  String?
+  cnae               String?
+  endereco           String   @default("Av. República do Líbano, 1200, Setor Oeste")
+  cidade             String   @default("Goiânia")
+  uf                 String   @default("GO")
+  cep                String   @default("74115-030")
+  representanteNome  String   @default("Vítor Henrique de Souza")
+  representanteCpf   String   @default("123.456.789-00")
+  representanteRg    String?
+  representanteCargo String   @default("Sócio-Administrador")
+  bancoNome          String?  @default("Banco do Brasil")
+  agencia            String?  @default("1234-5")
+  contaCorrente      String?  @default("98765-4")
+  chavePix           String?  @default("12.345.678/0001-90")
+  atualizadoEm       DateTime @default(now()) @updatedAt
+
+  @@map("configuracao_empresa")
+}
+

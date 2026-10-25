@@ -19,3 +19,5 @@ export * from "./portal.schema";
 export * from "./documento.schema";
 export * from "./declaracao.schema";
 export * from "./impugnacao.schema";
+export * from "./configuracao.schema";
+export * from "./audit-viewer.schema";
