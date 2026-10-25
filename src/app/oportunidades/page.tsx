@@ -27,6 +27,7 @@ import {
   Dropdown,
   TextInput,
   Modal,
+  Pagination,
 } from "@carbon/react";
 import { CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
@@ -61,9 +62,14 @@ export default function OportunidadesPage() {
 
 function OportunidadesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [oportunidades, setOportunidades] = React.useState<Oportunidade[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [total, setTotal] = React.useState(0);
+
+  const page = Number(searchParams.get("page")) || 1;
+  const pageSize = Number(searchParams.get("pageSize")) || 10;
 
   const headers = [
     { key: "dataAbertura", header: "Data de Abertura" },
@@ -117,8 +123,6 @@ function OportunidadesContent() {
     }
   };
 
-  const searchParams = useSearchParams();
-
   const fetchOportunidades = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -129,7 +133,7 @@ function OportunidadesContent() {
         throw new Error("Erro ao carregar oportunidades");
       }
       const data = await response.json();
-      const mappedOportunidades = data.oportunidades.map((dto: any) => ({
+      const mappedOportunidades = (data.oportunidades || []).map((dto: any) => ({
         ...dto,
         orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
         resumoObjeto: dto.resumo,
@@ -137,6 +141,7 @@ function OportunidadesContent() {
         dataAbertura: new Date(dto.dataAbertura).toLocaleDateString("pt-BR"),
       }));
       setOportunidades(mappedOportunidades);
+      setTotal(data.total ?? mappedOportunidades.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Um erro desconhecido ocorreu.");
     } finally {
@@ -165,6 +170,7 @@ function OportunidadesContent() {
     } else {
       currentParams.delete(filterName);
     }
+    currentParams.set("page", "1");
     router.push(`/oportunidades?${currentParams.toString()}`);
   };
 
@@ -400,7 +406,8 @@ function OportunidadesContent() {
         {error && <p style={{ color: "red" }}>Erro: {error}</p>}
 
         {!loading && !error && (
-          <DataTable
+          <>
+            <DataTable
             rows={oportunidades}
             headers={headers}
             data-testid="oportunidades-datatable"
@@ -564,6 +571,24 @@ function OportunidadesContent() {
               </TableContainer>
             )}
           />
+          <Pagination
+            backwardText="Página anterior"
+            forwardText="Próxima página"
+            itemsPerPageText="Itens por página:"
+            page={page}
+            pageNumberText="Número da página"
+            pageSize={pageSize}
+            pageSizes={[10, 25, 50]}
+            totalItems={total}
+            onChange={({ page: newPage, pageSize: newPageSize }) => {
+              const currentParams = new URLSearchParams(searchParams.toString());
+              currentParams.set("page", String(newPage));
+              currentParams.set("pageSize", String(newPageSize));
+              router.push(`/oportunidades?${currentParams.toString()}`);
+            }}
+            data-testid="oportunidades-pagination"
+          />
+        </>
         )}
        </Tile>
 

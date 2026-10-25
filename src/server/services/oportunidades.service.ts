@@ -793,3 +793,32 @@ export async function criarOportunidadeManual(
 
   return criado;
 }
+
+export async function atualizarLicitacao(
+  id: string,
+  patch: Partial<LicitacaoRecord>,
+  user?: RbacUser,
+  actorContext?: OportunidadesActorContext,
+): Promise<any> {
+  const antes = await getOportunidadeById(id);
+  await persistDeliberacao(id, patch);
+
+  await recordAuditLog({
+    acao: "LICITACAO_UPDATE",
+    entidadeTipo: "LICITACAO",
+    entidadeId: id,
+    antes: {
+      tipoSistemaCodigo: antes.tipoSistemaCodigo,
+      isPresencial: antes.isPresencial,
+    },
+    depois: {
+      tipoSistemaCodigo: patch.tipoSistemaCodigo ?? antes.tipoSistemaCodigo,
+      isPresencial: patch.isPresencial ?? antes.isPresencial,
+    },
+    usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
+    usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
+    ip: actorContext?.ip ?? null,
+  });
+
+  return getOportunidadeById(id);
+}
