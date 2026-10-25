@@ -1,0 +1,28 @@
+import { getServerSession } from "next-auth/next";
+import { NextResponse } from "next/server";
+import { authOptions } from "@/server/auth";
+import { getDashboardData } from "@/server/services/dashboard.service";
+
+export async function GET(request: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const mesParam = searchParams.get("mes");
+  const anoParam = searchParams.get("ano");
+
+  try {
+    const data = await getDashboardData({
+      mes: mesParam ? parseInt(mesParam, 10) : undefined,
+      ano: anoParam ? parseInt(anoParam, 10) : undefined,
+    });
+    return NextResponse.json(data, { status: 200 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { ok: false, error: "INVALID_QUERY", message: error?.message },
+      { status: 400 },
+    );
+  }
+}

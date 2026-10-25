@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { can, type RbacUser } from "@/lib/rbac";
 import { recordAuditLog } from "@/server/audit";
+import { recordStatusHistorico } from "./status-historico.service";
 import {
   type DecisaoOportunidadeInput,
   type OportunidadesFilterInput,
@@ -381,6 +382,14 @@ export async function atualizarKanbanStatus(
     ip: actorContext?.ip ?? null,
   });
 
+  await recordStatusHistorico({
+    licitacaoId: id,
+    statusAnterior: oportunidade.status,
+    statusNovo: input.status,
+    motivo: input.motivoPerda ?? null,
+    usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
+  });
+
   return atualizado;
 }
 
@@ -713,6 +722,14 @@ export async function deliberarOportunidade(
     usuarioId: input.user?.id ?? null,
     usuarioNome: input.user?.name ?? null,
     ip: input.actorContext?.ip ?? null,
+  });
+
+  await recordStatusHistorico({
+    licitacaoId: existente.id,
+    statusAnterior,
+    statusNovo: novoStatus,
+    motivo: motivoRecusa,
+    usuarioId: input.user?.id ?? null,
   });
 
   return atualizado;

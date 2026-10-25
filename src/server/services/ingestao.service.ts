@@ -14,6 +14,8 @@ import {
   type NovaLicitacaoData,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
+import { criarNotificacao } from "./notificacoes.service";
+import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
 
 export { computeHashCritico } from "./hash-critico";
 export type { HashCriticoInput } from "./hash-critico";
@@ -212,6 +214,21 @@ export async function ingestLicitacoesV2(
       usuarioNome: actorContext?.usuarioNome ?? null,
       ip: actorContext?.ip ?? null,
     });
+
+    const destN2 = [existente.responsavelId, "seed_vitor", "seed_alfredo"].filter(Boolean) as string[];
+    await criarNotificacao({
+      tipo: "N2_LICITACAO_ATUALIZADA",
+      titulo: `Edital Atualizado no PNCP: ${registro.numeroEdital}`,
+      descricao: `O certame ${registro.numeroEdital} sofreu retificação de campos críticos no PNCP.`,
+      linkDestino: `/oportunidades/${registro.id}`,
+      licitacaoId: registro.id,
+      chaveIdempotencia: montarChaveIdempotencia({
+        tipo: "N2_LICITACAO_ATUALIZADA",
+        entidadeId: registro.id,
+        janela: novoHash,
+      }),
+      destinatarioIds: destN2,
+    }).catch(() => undefined);
   }
 
   await recordAuditLog({
@@ -232,6 +249,19 @@ export async function ingestLicitacoesV2(
     usuarioNome: actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
   });
+
+  await criarNotificacao({
+    tipo: "N1_COLETA_CONCLUIDA",
+    titulo: `Coleta PNCP Concluída (${parsed.licitacoes.length} certames)`,
+    descricao: `Esteira autônoma processou ${parsed.licitacoes.length} certame(s) com sucesso (${criados} novos, ${atualizados} atualizados, ${inalterados} inalterados).`,
+    linkDestino: `/oportunidades`,
+    chaveIdempotencia: montarChaveIdempotencia({
+      tipo: "N1_COLETA_CONCLUIDA",
+      entidadeId: `lote_${parsed.executadoEm}`,
+      janela: parsed.executadoEm,
+    }),
+    destinatarioIds: ["seed_vitor", "seed_alfredo"],
+  }).catch(() => undefined);
 
   return {
     ok: true,
