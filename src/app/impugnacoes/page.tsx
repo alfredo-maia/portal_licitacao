@@ -42,7 +42,7 @@ import {
   type ImpugnacaoItem,
   type ImpugnacaoStatus,
 } from "@/server/schemas/impugnacao.schema";
-import { gerarMinutaJuridica } from "@/server/services/impugnacoes.service";
+import { gerarMinutaJuridica } from "@/lib/minuta-juridica";
 
 const MOTIVOS_SUGERIDOS = [
   {
