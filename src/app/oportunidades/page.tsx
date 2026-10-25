@@ -225,26 +225,119 @@ function OportunidadesContent() {
 
   const handleSalvarManual = async () => {
     try {
+      if (!manualNumeroEdital.trim()) {
+        alert("Informe o número do edital.");
+        return;
+      }
+      if (!manualOrgaoNome.trim()) {
+        alert("Informe o nome do órgão.");
+        return;
+      }
+      if (!manualOrgaoCnpj.trim() || manualOrgaoCnpj.trim().length < 11) {
+        alert("Informe um CNPJ válido com pelo menos 11 dígitos.");
+        return;
+      }
+      if (!manualUf.trim() || manualUf.trim().length !== 2) {
+        alert("Informe a UF com 2 letras (ex: GO, SP).");
+        return;
+      }
+      if (!manualTipoSistema) {
+        alert("Selecione o tipo de sistema.");
+        return;
+      }
+
+      // 1. Sanitizar valor estimado
+      let valorLimpo = manualValorEstimado.replace(/[^\d,\.]/g, '').trim();
+      if (valorLimpo.includes(',') && valorLimpo.includes('.')) {
+        valorLimpo = valorLimpo.replace(/\./g, '').replace(',', '.');
+      } else if (valorLimpo.includes(',')) {
+        valorLimpo = valorLimpo.replace(',', '.');
+      }
+      const valorNum = parseFloat(valorLimpo);
+      if (isNaN(valorNum) || valorNum < 0) {
+        alert("Informe um valor estimado válido.");
+        return;
+      }
+
+      // 2. Sanitizar data limite
+      let dataIso: string;
+      if (manualDataAbertura.includes('/')) {
+        const parts = manualDataAbertura.trim().split(' ');
+        const dateParts = parts[0].split('/');
+        const dia = parseInt(dateParts[0], 10);
+        const mes = parseInt(dateParts[1], 10) - 1;
+        const ano = parseInt(dateParts[2], 10);
+        let hora = 9;
+        let min = 0;
+        if (parts[1]) {
+          const timeParts = parts[1].split(':');
+          hora = parseInt(timeParts[0], 10) || 0;
+          min = parseInt(timeParts[1], 10) || 0;
+        }
+        const d = new Date(ano, mes, dia, hora, min);
+        if (isNaN(d.getTime())) {
+          alert("Data inválida. Use o formato DD/MM/AAAA.");
+          return;
+        }
+        dataIso = d.toISOString();
+      } else if (manualDataAbertura.trim()) {
+        const d = new Date(manualDataAbertura.trim());
+        if (isNaN(d.getTime())) {
+          alert("Data inválida. Use o formato DD/MM/AAAA.");
+          return;
+        }
+        dataIso = d.toISOString();
+      } else {
+        const d = new Date(Date.now() + 15 * 24 * 3600 * 1000);
+        dataIso = d.toISOString();
+      }
+
+      // 3. Mini-resumo: entre 2 e 5 palavras
+      let miniResumoTratado = manualMiniResumo.trim();
+      if (!miniResumoTratado) {
+        miniResumoTratado = "Licitação do Órgão";
+      } else {
+        const words = miniResumoTratado.split(/\s+/).filter(Boolean);
+        if (words.length < 2) {
+          miniResumoTratado = `${miniResumoTratado} certame`;
+        } else if (words.length > 5) {
+          miniResumoTratado = words.slice(0, 4).join(' ');
+        }
+      }
+
+      const resumoFinal =
+        manualResumoObjeto.trim() ||
+        manualMiniResumo.trim() ||
+        `Contratação de soluções de tecnologia e serviços correlatos para o órgão ${manualOrgaoNome}.`;
+
       const response = await fetch("/api/oportunidades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          numeroEdital: manualNumeroEdital,
-          orgaoNome: manualOrgaoNome,
-          orgaoCnpj: manualOrgaoCnpj,
-          uf: manualUf,
-          valorEstimado: parseFloat(manualValorEstimado),
-          dataAbertura: new Date(manualDataAbertura.split('/').reverse().join('-')).toISOString(), // Formato ISO para o backend
-          dataEncerramentoProposta: new Date(manualDataAbertura.split('/').reverse().join('-')).toISOString(),
-          miniResumo: manualMiniResumo,
-          resumo: manualResumoObjeto,
+          numeroEdital: manualNumeroEdital.trim(),
+          orgaoNome: manualOrgaoNome.trim(),
+          orgaoCnpj: manualOrgaoCnpj.trim(),
+          uf: manualUf.trim().toUpperCase(),
+          valorEstimado: valorNum,
+          dataAbertura: dataIso,
+          dataEncerramentoProposta: dataIso,
+          miniResumo: miniResumoTratado,
+          resumo: resumoFinal,
           tipoSistemaCodigo: manualTipoSistema,
         }),
       });
+
       if (!response.ok) {
-        throw new Error("Erro ao adicionar oportunidade manualmente");
+        const errData = await response.json().catch(() => null);
+        const msg =
+          errData?.issues?.[0]?.message ||
+          errData?.message ||
+          errData?.error ||
+          "Erro ao adicionar oportunidade manualmente.";
+        throw new Error(msg);
       }
-      fetchOportunidades();
+
+      await fetchOportunidades();
       setShowManualModal(false);
       setManualNumeroEdital("");
       setManualOrgaoNome("");
@@ -255,9 +348,10 @@ function OportunidadesContent() {
       setManualMiniResumo("");
       setManualResumoObjeto("");
       setManualTipoSistema("");
+      alert("Oportunidade adicionada com sucesso!");
     } catch (err) {
       console.error("Erro ao salvar oportunidade manual:", err);
-      alert("Erro ao salvar oportunidade manual. Tente novamente.");
+      alert(err instanceof Error ? err.message : "Erro ao salvar oportunidade manual. Tente novamente.");
     }
   };
 

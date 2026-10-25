@@ -368,6 +368,30 @@ export async function getOportunidadeById(
       return found;
     }
   } catch (err) {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      const retryFound = await prisma.licitacao.findFirst({
+        where: {
+          OR: [{ id }, { idPncp: id }],
+        },
+        include: {
+          responsavel: { select: { id: true, name: true, email: true, role: true } },
+          atribuidos: {
+            include: {
+              usuario: { select: { id: true, name: true, email: true, role: true } },
+            },
+          },
+          repositoriosSimilares: { orderBy: { criadoEm: "desc" } },
+          arquivos: { orderBy: { criadoEm: "desc" } },
+          analisesIA: { orderBy: { criadoEm: "desc" } },
+        },
+      });
+      if (retryFound) {
+        return retryFound;
+      }
+    } catch {}
+
     // Se a consulta completa falhar por ausência de tabelas relacionais ou erro de junção,
     // realiza a busca direta da licitação básica no PostgreSQL sem as relações opcionais.
     try {
@@ -730,8 +754,17 @@ async function persistDeliberacao(
       where: { id },
       data: patch as Prisma.LicitacaoUncheckedUpdateInput,
     });
-  } catch {
-    // PostgreSQL indisponível ou registro fora do banco: fallback em memória
+  } catch (err) {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      return await prisma.licitacao.update({
+        where: { id },
+        data: patch as Prisma.LicitacaoUncheckedUpdateInput,
+      });
+    } catch {
+      // PostgreSQL indisponível ou registro fora do banco: fallback em memória
+    }
   }
   const updated = updateInMemoryLicitacao(id, patch);
   if (!updated) {
@@ -880,9 +913,17 @@ export async function criarOportunidadeManual(
     criado = await prisma.licitacao.create({
       data: data as Prisma.LicitacaoUncheckedCreateInput,
     });
-  } catch {
-    // PostgreSQL indisponível: fallback resiliente em memória (CI/testes)
-    criado = insertInMemoryLicitacao(data);
+  } catch (err) {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      criado = await prisma.licitacao.create({
+        data: data as Prisma.LicitacaoUncheckedCreateInput,
+      });
+    } catch {
+      // PostgreSQL indisponível: fallback resiliente em memória (CI/testes)
+      criado = insertInMemoryLicitacao(data);
+    }
   }
 
   await recordAuditLog({
