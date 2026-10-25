@@ -25,6 +25,7 @@ import {
   Template,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { maskCnpj, maskCpf } from "@/lib/masks";
 import {
   DECLARACAO_METADATA,
   DECLARACAO_TIPOS,
@@ -85,6 +86,30 @@ export default function DeclaracoesPage() {
       .then((data) => {
         if (data.ok && Array.isArray(data.oportunidades)) {
           setOportunidades(data.oportunidades);
+        }
+      })
+      .catch(() => {});
+
+    // Carrega dados societários oficiais de Configurações > Empresa (Item 11.1)
+    fetch("/api/configuracoes/empresa")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && data.empresa) {
+          const emp = data.empresa;
+          if (emp.razaoSocial) setEmpresaRazaoSocial(emp.razaoSocial);
+          if (emp.cnpj) setEmpresaCnpj(maskCnpj(emp.cnpj));
+          if (emp.endereco) {
+            const endCompleto = [emp.endereco, emp.cidade, emp.uf, emp.cep ? `CEP ${emp.cep}` : null]
+              .filter(Boolean)
+              .join(", ");
+            setEmpresaEndereco(endCompleto);
+          }
+          if (emp.representanteNome) setRepresentanteNome(emp.representanteNome);
+          if (emp.representanteCpf) setRepresentanteCpf(maskCpf(emp.representanteCpf));
+          if (emp.representanteRg) setRepresentanteRg(emp.representanteRg);
+          if (emp.representanteCargo) setRepresentanteCargo(emp.representanteCargo);
+          if (emp.cidade) setCidade(emp.cidade);
+          if (emp.uf) setUf(emp.uf);
         }
       })
       .catch(() => {});
@@ -193,7 +218,7 @@ export default function DeclaracoesPage() {
   };
 
   return (
-    <ModulePageShell routePath="/declaracoes">
+    <ModulePageShell routePath="/declaracoes" subtitle="Gerador de modelos oficiais.">
       <style>{`
         @media print {
           /* Oculta toda a interface do portal durante a impressão */
@@ -406,7 +431,7 @@ export default function DeclaracoesPage() {
                   id="input-empresa-cnpj"
                   labelText="CNPJ"
                   value={empresaCnpj}
-                  onChange={(e) => setEmpresaCnpj(e.target.value)}
+                  onChange={(e) => setEmpresaCnpj(maskCnpj(e.target.value))}
                 />
               </Column>
               <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
@@ -445,7 +470,7 @@ export default function DeclaracoesPage() {
                   id="input-representante-cpf"
                   labelText="CPF"
                   value={representanteCpf}
-                  onChange={(e) => setRepresentanteCpf(e.target.value)}
+                  onChange={(e) => setRepresentanteCpf(maskCpf(e.target.value))}
                 />
               </Column>
               <Column lg={8} md={4} sm={4} style={{ marginTop: "0.75rem" }}>

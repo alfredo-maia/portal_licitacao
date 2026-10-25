@@ -327,6 +327,29 @@ export async function atualizarDocumento(
 ): Promise<DocumentoItem | null> {
   const validado = documentoAtualizarInputSchema.parse(data);
 
+  // Se a atualização envolve novo arquivo ou datas de vigência, salvar como nova versão e manter anterior como histórico
+  if (
+    validado.dataVencimento !== undefined ||
+    validado.dataEmissao !== undefined ||
+    validado.arquivoNome !== undefined ||
+    validado.arquivoUrl !== undefined
+  ) {
+    const novaVersao = await criarNovaVersao(
+      id,
+      {
+        nome: validado.nome,
+        dataEmissao: validado.dataEmissao,
+        dataVencimento: validado.dataVencimento,
+        arquivoUrl: validado.arquivoUrl,
+        arquivoNome: validado.arquivoNome,
+        arquivoTamanho: validado.arquivoTamanho,
+        mimeType: validado.mimeType,
+      },
+      usuarioId,
+    );
+    if (novaVersao) return novaVersao;
+  }
+
   try {
     const doc = await prisma.documento.update({
       where: { id },

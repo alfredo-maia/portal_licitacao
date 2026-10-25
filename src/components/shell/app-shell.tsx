@@ -3,6 +3,7 @@
 import React, { useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Button,
   Header,
   HeaderGlobalAction,
   HeaderGlobalBar,
@@ -19,6 +20,7 @@ import {
   Bot,
   Calendar,
   Certificate,
+  Close,
   Dashboard,
   Document,
   Earth,
@@ -105,6 +107,28 @@ export function AppShell({ children }: { children: ReactNode }) {
           expanded={isSideNavExpanded}
           isFixedNav
         >
+          {/* Top header do menu lateral com botão X alinhado à direita (Sprint 7) */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              padding: "0.25rem 0.5rem",
+              borderBottom: "1px solid var(--cds-border-subtle)",
+            }}
+          >
+            <Button
+              kind="ghost"
+              size="sm"
+              hasIconOnly
+              renderIcon={Close}
+              iconDescription="Recolher menu lateral"
+              onClick={() => setIsSideNavExpanded(false)}
+              id="btn-close-navbar-right"
+              aria-label="Fechar menu lateral"
+            />
+          </div>
+
           <SideNavItems>
             {APP_ROUTES.map((route) => {
               const IconComponent = ROUTE_ICONS[route.id] ?? Document;
@@ -136,6 +160,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           </SideNavItems>
         </SideNav>
       </Header>
+
+      {/* Backdrop opaco desativando o fundo quando a navbar estiver expandida em telas responsivas (Sprint 7) */}
+      {isSideNavExpanded && (
+        <div
+          className="pncp-sidenav-backdrop"
+          onClick={() => setIsSideNavExpanded(false)}
+          aria-hidden="true"
+          data-testid="sidenav-backdrop"
+        />
+      )}
 
       <main
         id="main-content"

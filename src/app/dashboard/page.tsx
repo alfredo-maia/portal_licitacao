@@ -162,10 +162,7 @@ export default function DashboardPage() {
   }, [mesSelecionado, anoSelecionado]);
 
   return (
-    <ModulePageShell
-      routePath="/dashboard"
-      subtitle="Painel executivo de indicadores, taxa de conversão e inteligência de mercado sob a Lei nº 14.133/2021."
-    >
+    <ModulePageShell routePath="/dashboard">
       <Grid fullWidth>
         {/* Seletor de Período Temporal */}
         <Column lg={16} md={8} sm={4} style={{ marginBottom: "1.5rem" }}>

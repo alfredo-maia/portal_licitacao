@@ -25,8 +25,10 @@ import {
   DocumentUnknown,
   Download,
   Renew,
+  Search,
   TrashCan,
   Upgrade,
+  Upload,
   WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
@@ -270,7 +272,7 @@ export default function DocumentacaoPage() {
   return (
     <ModulePageShell
       routePath="/documentacao"
-      subtitle="Acervo corporativo de certidões, balanços e atestados técnicos com controle de vencimento estrito (≤ 30 dias) e versionamento."
+      subtitle="Acervo corporativo de certidões, balanços e atestados técnicos."
     >
       <Grid fullWidth>
         {/* Painel Superior de Resumo e Ações */}
@@ -297,8 +299,25 @@ export default function DocumentacaoPage() {
                   setBusca(e.target.value);
                   setPage(1);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    carregarDocumentos();
+                  }
+                }}
                 style={{ minWidth: "16rem", maxWidth: "24rem" }}
               />
+
+              <Button
+                kind="primary"
+                size="sm"
+                renderIcon={Search}
+                onClick={() => {
+                  setPage(1);
+                  carregarDocumentos();
+                }}
+              >
+                Buscar
+              </Button>
 
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Tag size="sm" type="cool-gray" className="pncp-mono">
@@ -415,8 +434,8 @@ export default function DocumentacaoPage() {
                           <Tag type="blue" size="sm" className="pncp-mono">
                             {getCategoriaLabel(doc.categoria)}
                           </Tag>
-                          <Tag type="cool-gray" size="sm" className="pncp-mono">
-                            v{doc.versao}
+                          <Tag type={doc.versao > 1 ? "magenta" : "cool-gray"} size="sm" className="pncp-mono">
+                            v{doc.versao}{doc.versao > 1 ? " (Histórico mantido)" : ""}
                           </Tag>
                           {doc.semValidade ? (
                             <Tag type="teal" size="sm">
@@ -524,7 +543,7 @@ export default function DocumentacaoPage() {
                           renderIcon={Upgrade}
                           onClick={() => abrirModalNovaVersao(doc)}
                         >
-                          + Nova Versão
+                          Atualizar (Nova Versão)
                         </Button>
                         <Button
                           kind="danger--ghost"
@@ -651,13 +670,66 @@ export default function DocumentacaoPage() {
             </Column>
 
             <Column lg={16} md={8} sm={4}>
-              <TextInput
-                id="doc-arquivo"
-                labelText="Nome do Arquivo Anexado"
-                placeholder="cnd_federal_2026.pdf"
-                value={arquivoNome}
-                onChange={(e) => setArquivoNome(e.target.value)}
-              />
+              <div style={{ marginTop: "0.5rem" }}>
+                <label
+                  htmlFor="doc-file-upload"
+                  style={{
+                    display: "block",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    marginBottom: "0.5rem",
+                    color: "var(--cds-text-secondary, #525252)",
+                  }}
+                >
+                  Arquivo do Documento (PDF, DOCX ou Imagem)
+                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    padding: "0.75rem",
+                    border: "1px dashed var(--cds-border-subtle, #8d8d8d)",
+                    borderRadius: "4px",
+                    backgroundColor: "var(--cds-layer-01, #f4f4f4)",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <label
+                    htmlFor="doc-file-upload"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem 1rem",
+                      backgroundColor: "var(--cds-layer-accent-01, #0f62fe)",
+                      color: "#ffffff",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Upload size={16} />
+                    Selecionar arquivo
+                  </label>
+                  <input
+                    id="doc-file-upload"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setArquivoNome(file.name);
+                      }
+                    }}
+                  />
+                  <span style={{ fontSize: "0.875rem", color: arquivoNome ? "var(--cds-text-primary, #161616)" : "var(--cds-text-secondary, #6f6f6f)" }}>
+                    {arquivoNome ? `Selecionado: ${arquivoNome}` : "Nenhum arquivo selecionado"}
+                  </span>
+                </div>
+              </div>
             </Column>
           </Grid>
         </Form>
@@ -720,13 +792,66 @@ export default function DocumentacaoPage() {
               />
             </Column>
             <Column lg={16} md={8} sm={4}>
-              <TextInput
-                id="versao-arquivo"
-                labelText="Nome do Novo Arquivo"
-                placeholder="cnd_renovada.pdf"
-                value={versaoArquivoNome}
-                onChange={(e) => setVersaoArquivoNome(e.target.value)}
-              />
+              <div style={{ marginTop: "0.5rem" }}>
+                <label
+                  htmlFor="versao-file-upload"
+                  style={{
+                    display: "block",
+                    fontSize: "0.75rem",
+                    fontWeight: 500,
+                    marginBottom: "0.5rem",
+                    color: "var(--cds-text-secondary, #525252)",
+                  }}
+                >
+                  Novo Arquivo Atualizado
+                </label>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    padding: "0.75rem",
+                    border: "1px dashed var(--cds-border-subtle, #8d8d8d)",
+                    borderRadius: "4px",
+                    backgroundColor: "var(--cds-layer-01, #f4f4f4)",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <label
+                    htmlFor="versao-file-upload"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem 1rem",
+                      backgroundColor: "var(--cds-layer-accent-01, #0f62fe)",
+                      color: "#ffffff",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Upload size={16} />
+                    Selecionar arquivo
+                  </label>
+                  <input
+                    id="versao-file-upload"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setVersaoArquivoNome(file.name);
+                      }
+                    }}
+                  />
+                  <span style={{ fontSize: "0.875rem", color: versaoArquivoNome ? "var(--cds-text-primary, #161616)" : "var(--cds-text-secondary, #6f6f6f)" }}>
+                    {versaoArquivoNome ? `Selecionado: ${versaoArquivoNome}` : "Nenhum arquivo selecionado"}
+                  </span>
+                </div>
+              </div>
             </Column>
           </Grid>
         </Form>

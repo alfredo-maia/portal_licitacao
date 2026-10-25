@@ -17,7 +17,7 @@ import {
   TextArea,
   Modal,
   InlineNotification,
-  Checkbox,
+  FilterableMultiSelect,
   InlineLoading,
 } from "@carbon/react";
 import {
@@ -86,6 +86,7 @@ interface OportunidadeDetalhe {
   dataAbertura: string;
   miniResumo: string;
   resumo: string;
+  objeto?: string | null;
   tipoSistemaCodigo: string;
   parecerIA: "GO" | "AVALIAR" | "NO_GO";
   justificativaIA?: string | null;
@@ -514,7 +515,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               Voltar para Central de Oportunidades
             </Button>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0, lineHeight: 1.2 }}>
-              {oportunidade.numeroEdital} — {oportunidade.orgaoNome} ({oportunidade.uf})
+              {oportunidade.orgaoNome} — {oportunidade.objeto || oportunidade.miniResumo || oportunidade.numeroEdital}
             </h1>
             <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
               CNPJ: {oportunidade.orgaoCnpj} • ID PNCP: {oportunidade.idPncp}
@@ -545,8 +546,9 @@ Realize uma análise profunda estruturada em 4 dimensões:
               renderIcon={CheckmarkOutline}
               onClick={() => handleDecisao("GO")}
               data-testid="btn-dossie-aceitar"
+              style={{ backgroundColor: "#24a148", color: "#ffffff" }}
             >
-              Aceitar (GO)
+              Participar
             </Button>
             <Button
               kind="danger"
@@ -554,8 +556,9 @@ Realize uma análise profunda estruturada em 4 dimensões:
               renderIcon={CloseOutline}
               onClick={() => setShowRecusarModal(true)}
               data-testid="btn-dossie-recusar"
+              style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
             >
-              Recusar (No-GO)
+              Não Participar
             </Button>
             <Button
               kind="tertiary"
@@ -563,7 +566,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               renderIcon={Bot}
               onClick={() => setModalIAOpen(true)}
               data-testid="btn-open-verificar-participacao"
-              style={{ backgroundColor: "var(--cds-button-tertiary)" }}
+              style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
             >
               🤖 Verificar Status de Participação
             </Button>
@@ -617,29 +620,19 @@ Realize uma análise profunda estruturada em 4 dimensões:
           </div>
 
           <div style={{ minWidth: "320px", flex: 2 }}>
-            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)", display: "block", marginBottom: "0.5rem" }}>
-              Membros Atribuídos da Equipe
-            </span>
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-              {usuarios.map((u) => {
-                const checked = atribuidoIds.includes(u.id);
-                return (
-                  <Checkbox
-                    key={u.id}
-                    id={`check-atribuido-${u.id}`}
-                    labelText={u.name}
-                    checked={checked}
-                    onChange={(_, { checked }) => {
-                      if (checked) {
-                        setAtribuidoIds((prev) => [...prev, u.id]);
-                      } else {
-                        setAtribuidoIds((prev) => prev.filter((item) => item !== u.id));
-                      }
-                    }}
-                  />
-                );
-              })}
-            </div>
+            <FilterableMultiSelect
+              id="multiselect-membros-equipe"
+              titleText="Membros Atribuídos da Equipe"
+              placeholder="Selecione os membros..."
+              items={usuarios.map((u) => ({ id: u.id, text: `${u.name} (${u.role})` }))}
+              itemToString={(item) => (item ? item.text : "")}
+              initialSelectedItems={usuarios
+                .filter((u) => atribuidoIds.includes(u.id))
+                .map((u) => ({ id: u.id, text: `${u.name} (${u.role})` }))}
+              onChange={({ selectedItems }) => {
+                setAtribuidoIds((selectedItems || []).map((item) => item.id));
+              }}
+            />
           </div>
 
           <Button
@@ -770,7 +763,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               {/* Edição do Tipo de Sistema (PRD §4.3 & 22 Tipos) */}
               <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1.5rem" }}>
                 <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-                  Classificação do Tipo de Sistema (Catálogo Canônico - 22 Tipos)
+                  Classificação do Tipo de Sistema
                 </h4>
                 <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
                   A esteira de IA sugere o tipo inicial na triagem, mas a equipe comercial pode reclassificar a qualquer momento.
@@ -780,7 +773,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                     <Select
                       id="select-tipo-sistema-dossie"
                       data-testid="select-tipo-sistema-dossie"
-                      labelText="Tipo de Sistema Canônico"
+                      labelText="Tipo de Sistema"
                       value={tipoSelecionado}
                       onChange={(e) => setTipoSelecionado(e.target.value)}
                     >
@@ -818,16 +811,42 @@ Realize uma análise profunda estruturada em 4 dimensões:
               {/* Upload Drag-and-drop / Seletor */}
               <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap", padding: "1rem", border: "1px dashed var(--cds-border-subtle)", borderRadius: "4px" }}>
                 <div style={{ flex: 1, minWidth: "260px" }}>
-                  <TextInput
-                    type="file"
-                    id="input-file-edital"
-                    data-testid="input-file-edital"
-                    labelText="Selecione um arquivo para upload (PDF, DOCX, ZIP, XLSX)"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) setUploadFile(f);
-                    }}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label htmlFor="input-file-edital" style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                      Selecione um arquivo para upload (PDF, DOCX, ZIP, XLSX)
+                    </label>
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                      <label
+                        htmlFor="input-file-edital"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "0.5rem 1rem",
+                          backgroundColor: "var(--cds-layer-02)",
+                          border: "1px solid var(--cds-border-subtle)",
+                          borderRadius: "2px",
+                          cursor: "pointer",
+                          fontSize: "0.875rem",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Escolher Arquivo
+                      </label>
+                      <input
+                        type="file"
+                        id="input-file-edital"
+                        data-testid="input-file-edital"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) setUploadFile(f);
+                        }}
+                      />
+                      <span style={{ fontSize: "0.875rem", color: uploadFile ? "var(--cds-text-primary)" : "var(--cds-text-secondary)" }}>
+                        {uploadFile ? uploadFile.name : "Nenhum arquivo selecionado"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <Button
                   kind="primary"

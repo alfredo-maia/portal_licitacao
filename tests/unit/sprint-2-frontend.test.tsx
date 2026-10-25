@@ -58,7 +58,7 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
 
     render(<MinhasLicitacoesPage />);
 
-    expect(screen.getByText(/Minhas Licitações — Funil Kanban Interativo/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Minhas Licitações")[0]).toBeInTheDocument();
     expect(screen.getByTestId("toggle-arquivadas")).toBeInTheDocument();
 
     await waitFor(() => {
@@ -69,8 +69,8 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
       expect(screen.getByTestId("kanban-column-IMPUGNADA")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Portal de Saúde Municipal")).toBeInTheDocument();
-    expect(screen.getByText("Sistema de Gestão Escolar")).toBeInTheDocument();
+    expect(screen.getByText(/Portal de Saúde Municipal/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sistema de Gestão Escolar/i)).toBeInTheDocument();
   });
 
   it("deve renderizar o Dossiê com cabeçalho, equipe de execução e 4 abas Carbon", async () => {
@@ -139,6 +139,6 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
     });
 
     expect(screen.getByTestId("btn-open-verificar-participacao")).toBeInTheDocument();
-    expect(screen.getByText(/045\/2026 — Tribunal de Justiça de GO/i)).toBeInTheDocument();
+    expect(screen.getByText(/Tribunal de Justiça de GO — Fábrica de Software Sob Medida/i)).toBeInTheDocument();
   });
 });

@@ -92,13 +92,27 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   }
 
   const valorCondition: Prisma.FloatFilter = {};
-  if (filters.faixaValor === "ATE_500K") {
+  if (filters.faixaValor === "ATE_100K") {
+    valorCondition.lte = 100000;
+  } else if (filters.faixaValor === "100K_A_200K") {
+    valorCondition.gt = 100000;
+    valorCondition.lte = 200000;
+  } else if (filters.faixaValor === "200K_A_500K") {
+    valorCondition.gt = 200000;
+    valorCondition.lte = 500000;
+  } else if (filters.faixaValor === "500K_A_1M") {
+    valorCondition.gt = 500000;
+    valorCondition.lte = 1000000;
+  } else if (filters.faixaValor === "1M_A_2M") {
+    valorCondition.gt = 1000000;
+    valorCondition.lte = 2000000;
+  } else if (filters.faixaValor === "ACIMA_2M") {
+    valorCondition.gt = 2000000;
+  } else if (filters.faixaValor === "ATE_500K") {
     valorCondition.lte = LIMITE_ATE_500K;
   } else if (filters.faixaValor === "500K_A_2M") {
     valorCondition.gt = LIMITE_ATE_500K;
     valorCondition.lte = LIMITE_2M;
-  } else if (filters.faixaValor === "ACIMA_2M") {
-    valorCondition.gt = LIMITE_2M;
   }
   if (filters.valorMin !== undefined) {
     valorCondition.gte = filters.valorMin;
@@ -149,6 +163,36 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
     return false;
   }
 
+  if (filters.faixaValor === "ATE_100K" && record.valorEstimado > 100000) {
+    return false;
+  }
+  if (
+    filters.faixaValor === "100K_A_200K" &&
+    (record.valorEstimado <= 100000 || record.valorEstimado > 200000)
+  ) {
+    return false;
+  }
+  if (
+    filters.faixaValor === "200K_A_500K" &&
+    (record.valorEstimado <= 200000 || record.valorEstimado > 500000)
+  ) {
+    return false;
+  }
+  if (
+    filters.faixaValor === "500K_A_1M" &&
+    (record.valorEstimado <= 500000 || record.valorEstimado > 1000000)
+  ) {
+    return false;
+  }
+  if (
+    filters.faixaValor === "1M_A_2M" &&
+    (record.valorEstimado <= 1000000 || record.valorEstimado > 2000000)
+  ) {
+    return false;
+  }
+  if (filters.faixaValor === "ACIMA_2M" && record.valorEstimado <= 2000000) {
+    return false;
+  }
   if (filters.faixaValor === "ATE_500K" && record.valorEstimado > LIMITE_ATE_500K) {
     return false;
   }
@@ -156,9 +200,6 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
     filters.faixaValor === "500K_A_2M" &&
     (record.valorEstimado <= LIMITE_ATE_500K || record.valorEstimado > LIMITE_2M)
   ) {
-    return false;
-  }
-  if (filters.faixaValor === "ACIMA_2M" && record.valorEstimado <= LIMITE_2M) {
     return false;
   }
   if (filters.valorMin !== undefined && record.valorEstimado < filters.valorMin) {
@@ -180,7 +221,15 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
 
   if (filters.busca) {
     const busca = filters.busca.toLowerCase();
-    const alvo = [record.orgaoNome, record.miniResumo, record.resumo, record.numeroEdital]
+    const alvo = [
+      record.orgaoNome,
+      record.miniResumo,
+      record.resumo,
+      record.numeroEdital,
+      (record as any).objeto,
+      (record as any).objetoPrincipal,
+    ]
+      .filter(Boolean)
       .join("\n")
       .toLowerCase();
     if (!alvo.includes(busca)) {

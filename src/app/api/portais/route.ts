@@ -41,18 +41,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  // Apenas Diretoria e Analista Comercial cadastram portais
-  if (user.role === "OPERADOR") {
-    return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
-  }
-
   try {
     const body = await request.json();
     const portal = await criarPortal(body, user.id);
     return NextResponse.json({ ok: true, portal }, { status: 201 });
   } catch (error: any) {
+    const errorMsg = error?.errors?.[0]?.message || error?.message || "Erro de validação ao salvar portal.";
     return NextResponse.json(
-      { ok: false, error: "VALIDATION_ERROR", message: error?.message },
+      { ok: false, error: "VALIDATION_ERROR", message: errorMsg },
       { status: 400 },
     );
   }

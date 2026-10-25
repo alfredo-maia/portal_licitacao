@@ -34,10 +34,6 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  if (user.role === "OPERADOR") {
-    return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
-  }
-
   const { id } = await params;
   try {
     const body = await request.json();
@@ -47,8 +43,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
     return NextResponse.json({ ok: true, portal }, { status: 200 });
   } catch (error: any) {
+    const errorMsg = error?.errors?.[0]?.message || error?.message || "Erro de validação ao atualizar portal.";
     return NextResponse.json(
-      { ok: false, error: "VALIDATION_ERROR", message: error?.message },
+      { ok: false, error: "VALIDATION_ERROR", message: errorMsg },
       { status: 400 },
     );
   }

@@ -29,9 +29,10 @@ import {
   Modal,
   Pagination,
 } from "@carbon/react";
-import { CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download } from "@carbon/icons-react";
+import { CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
+import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
 
 interface Oportunidade {
   id: string;
@@ -75,7 +76,6 @@ function OportunidadesContent() {
     { key: "dataAbertura", header: "Data de Abertura" },
     { key: "orgaoUF", header: "Órgão e UF" },
     { key: "miniResumo", header: "Mini-resumo" },
-    { key: "resumoObjeto", header: "Resumo do Objeto" },
     { key: "valorEstimado", header: "Valor Estimado" },
     { key: "parecerIA", header: "Parecer da IA" },
     { key: "acoes", header: "Ações Rápidas" },
@@ -289,26 +289,22 @@ function OportunidadesContent() {
           }}
         >
           <h2 style={{ margin: 0, fontSize: "1.125rem" }}>
-            Central de Triagem e Deliberação (GO / No-GO)
+            Central de Triagem e Deliberação (Participar / Não Participar)
           </h2>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <Tag type="green" renderIcon={CheckmarkOutline}>
-              GO - Recomendado
+              Participar - Recomendado
             </Tag>
             <Tag type="warm-gray" renderIcon={WarningAlt}>
               AVALIAR DIRETORIA
             </Tag>
             <Tag type="red" renderIcon={CloseOutline}>
-              NO-GO
+              Não Participar
             </Tag>
           </div>
         </div>
-        <p style={{ margin: 0, color: "var(--cds-text-secondary)" }}>
-          Tabela de alta densidade ordenada por data de abertura do certame para
-          decisão estratégica da Diretoria e Analistas Comerciais.
-        </p>
 
-        <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
           <Dropdown
             id="filter-tipo-sistema"
             data-testid="filter-tipo-sistema"
@@ -347,16 +343,18 @@ function OportunidadesContent() {
             data-testid="filter-faixa-valor"
             titleText="Faixa de Valor"
             label="Selecione uma faixa"
-            items={[
-              { id: "", text: "Todos" },
-              { id: "ATE_500K", text: "Até R$ 500 mil" },
-              { id: "500K_A_2M", text: "R$ 500 mil a R$ 2 mi" },
-              { id: "ACIMA_2M", text: "Acima de R$ 2 mi" },
-            ]}
+            items={FAIXAS_VALOR_SPRINT7.map((f) => ({ id: f.id, text: f.label }))}
             itemToString={(item) => (item ? item.text : "")}
-            selectedItem={filtroFaixaValor ? { id: filtroFaixaValor, text: filtroFaixaValor } : null}
+            selectedItem={
+              filtroFaixaValor
+                ? {
+                    id: filtroFaixaValor,
+                    text: FAIXAS_VALOR_SPRINT7.find((f) => f.id === filtroFaixaValor)?.label || "",
+                  }
+                : null
+            }
             onChange={({ selectedItem }) => handleFilterChange("faixaValor", selectedItem?.id || "")}
-            style={{ minWidth: "150px" }}
+            style={{ minWidth: "220px" }}
           />
           <Dropdown
             id="filter-status"
@@ -381,25 +379,52 @@ function OportunidadesContent() {
             label="Selecione um parecer"
             items={[
               { id: "", text: "Todos" },
-              { id: "GO", text: "GO" },
+              { id: "GO", text: "Participar" },
               { id: "AVALIAR", text: "AVALIAR" },
-              { id: "NO_GO", text: "NO_GO" },
+              { id: "NO_GO", text: "Não Participar" },
             ]}
             itemToString={(item) => (item ? item.text : "")}
-            selectedItem={filtroParecerIA ? { id: filtroParecerIA, text: filtroParecerIA } : null}
+            selectedItem={
+              filtroParecerIA
+                ? {
+                    id: filtroParecerIA,
+                    text:
+                      filtroParecerIA === "GO"
+                        ? "Participar"
+                        : filtroParecerIA === "NO_GO"
+                        ? "Não Participar"
+                        : filtroParecerIA,
+                  }
+                : null
+            }
             onChange={({ selectedItem }) => handleFilterChange("parecerIA", selectedItem?.id || "")}
-            style={{ minWidth: "150px" }}
+            style={{ minWidth: "160px" }}
           />
-          <TextInput
-            id="filter-busca"
-            data-testid="filter-busca"
-            labelText="Busca"
-            placeholder="Buscar por palavra-chave"
-            value={filtroBusca}
-            onChange={(e) => setFiltroBusca(e.target.value)}
-            onBlur={(e) => handleFilterChange("busca", e.target.value)}
-            style={{ minWidth: "250px" }}
-          />
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
+            <TextInput
+              id="filter-busca"
+              data-testid="filter-busca"
+              labelText="Busca por palavra-chave"
+              placeholder="Digite o termo e clique em buscar..."
+              value={filtroBusca}
+              onChange={(e) => setFiltroBusca(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleFilterChange("busca", filtroBusca);
+                }
+              }}
+              style={{ minWidth: "240px" }}
+            />
+            <Button
+              kind="secondary"
+              size="md"
+              renderIcon={Search}
+              id="btn-executar-busca-oportunidades"
+              onClick={() => handleFilterChange("busca", filtroBusca)}
+            >
+              Buscar
+            </Button>
+          </div>
         </div>
 
         {loading && <p>Carregando oportunidades...</p>}
@@ -441,6 +466,8 @@ function OportunidadesContent() {
                     <TableToolbarSearch
                       id="search-oportunidades"
                       persistent
+                      labelText="Filtrar tabela..."
+                      placeholder="Filtrar tabela..."
                       onChange={onInputChange}
                     />
                     <TableToolbarMenu>
@@ -454,11 +481,21 @@ function OportunidadesContent() {
                         <TrashCan size={16} />
                       </TableToolbarAction>
                     </TableToolbarMenu>
-                    <Button onClick={() => setShowManualModal(true)} kind="primary" data-testid="btn-open-manual-modal">
-                      + Adicionar Licitação Manualmente
+                    <Button
+                      onClick={() => setShowManualModal(true)}
+                      kind="primary"
+                      data-testid="btn-open-manual-modal"
+                      style={{ maxWidth: "230px", whiteSpace: "nowrap" }}
+                    >
+                      + Adicionar Manualmente
                     </Button>
-                    <Button onClick={() => setShowImportModal(true)} kind="secondary" data-testid="btn-open-import-modal">
-                      Importar Relatório (JSON)
+                    <Button
+                      onClick={() => setShowImportModal(true)}
+                      kind="ghost"
+                      size="sm"
+                      data-testid="btn-open-import-modal"
+                    >
+                      Importar JSON
                     </Button>
                   </TableToolbarContent>
                 </TableToolbar>
@@ -535,30 +572,32 @@ function OportunidadesContent() {
                                 {String(cell.value).substring(0, 100)}...
                               </span>
                             ) : cell.info.header === "acoes" ? (
-                              <>
+                              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
                                 <Button
                                   size="sm"
-                                  kind="ghost"
+                                  kind="primary"
+                                  style={{ backgroundColor: "#24a148", color: "#ffffff" }}
                                   data-testid={`btn-aceitar-${row.id}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleAceitarClick(row.id);
                                   }}
                                 >
-                                  Aceitar
+                                  Participar
                                 </Button>
                                 <Button
                                   size="sm"
-                                  kind="ghost"
+                                  kind="danger"
+                                  style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
                                   data-testid={`btn-recusar-${row.id}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleRecusarClick(row.id);
                                   }}
                                 >
-                                  Recusar
+                                  Não Participar
                                 </Button>
-                              </>
+                              </div>
                             ) : (
                               cell.value
                             )}

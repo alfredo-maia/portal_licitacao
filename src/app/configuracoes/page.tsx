@@ -32,6 +32,8 @@ import {
   View,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { getVisibleConfigTabs } from "@/lib/rbac";
+import { maskCnpj, maskCpf } from "@/lib/masks";
 import type {
   ConfiguracaoEmpresa,
   UsuarioEquipeItem,
@@ -40,8 +42,39 @@ import type {
 import type { AuditViewerItem } from "@/server/schemas/audit-viewer.schema";
 
 export default function ConfiguracoesPage() {
+  const [userRole, setUserRole] = useState<string>("DIRETORIA");
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((res) => res.json())
+      .then((session) => {
+        if (session?.user?.role) {
+          setUserRole(session.user.role);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const visibleTabIds = getVisibleConfigTabs(userRole);
+
+  const TAB_DEFINITIONS = [
+    { id: 0, label: "Meu Perfil", icon: User },
+    { id: 1, label: "Dados da Empresa Licitante", icon: Enterprise },
+    { id: 2, label: "Gestão da Equipe & RBAC", icon: Group },
+    { id: 3, label: "Trilha de Auditoria (Logs)", icon: Security },
+  ];
+
+  const availableTabs = TAB_DEFINITIONS.filter((t) => visibleTabIds.includes(t.id));
+
   const [abaSelecionada, setAbaSelecionada] = useState(0);
   const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
+
+  // Garante que o usuário permaneça em aba autorizada para seu papel
+  useEffect(() => {
+    if (!visibleTabIds.includes(abaSelecionada)) {
+      setAbaSelecionada(visibleTabIds[0] ?? 0);
+    }
+  }, [visibleTabIds, abaSelecionada]);
 
   // 1. Perfil do Usuário
   const [temaAtual, setTemaAtual] = useState<string>("white");
@@ -278,13 +311,20 @@ export default function ConfiguracoesPage() {
         )}
       </div>
 
-      {/* Tabs Principais */}
-      <Tabs selectedIndex={abaSelecionada} onChange={({ selectedIndex }) => setAbaSelecionada(selectedIndex)}>
+      {/* Tabs Principais com controle de visibilidade RBAC (Item 11.2) */}
+      <Tabs
+        selectedIndex={Math.max(0, availableTabs.findIndex((t) => t.id === abaSelecionada))}
+        onChange={({ selectedIndex }) => {
+          const target = availableTabs[selectedIndex];
+          if (target) setAbaSelecionada(target.id);
+        }}
+      >
         <TabList aria-label="Abas de Configurações" contained>
-          <Tab renderIcon={User} onClick={() => setAbaSelecionada(0)}>Meu Perfil</Tab>
-          <Tab renderIcon={Enterprise} onClick={() => setAbaSelecionada(1)}>Dados da Empresa Licitante</Tab>
-          <Tab renderIcon={Group} onClick={() => setAbaSelecionada(2)}>Gestão da Equipe & RBAC</Tab>
-          <Tab renderIcon={Security} onClick={() => setAbaSelecionada(3)}>Trilha de Auditoria (Logs)</Tab>
+          {availableTabs.map((tab) => (
+            <Tab key={tab.id} renderIcon={tab.icon} onClick={() => setAbaSelecionada(tab.id)}>
+              {tab.label}
+            </Tab>
+          ))}
         </TabList>
       </Tabs>
 
@@ -392,7 +432,7 @@ export default function ConfiguracoesPage() {
                     id="empresa-cnpj"
                     labelText="CNPJ *"
                     value={empresa.cnpj}
-                    onChange={(e) => setEmpresa({ ...empresa, cnpj: e.target.value })}
+                    onChange={(e) => setEmpresa({ ...empresa, cnpj: maskCnpj(e.target.value) })}
                   />
                 </Column>
                 <Column lg={4} md={2} sm={4}>
@@ -468,7 +508,7 @@ export default function ConfiguracoesPage() {
                     id="empresa-rep-cpf"
                     labelText="CPF *"
                     value={empresa.representanteCpf}
-                    onChange={(e) => setEmpresa({ ...empresa, representanteCpf: e.target.value })}
+                    onChange={(e) => setEmpresa({ ...empresa, representanteCpf: maskCpf(e.target.value) })}
                   />
                 </Column>
                 <Column lg={3} md={2} sm={4}>
@@ -607,20 +647,23 @@ export default function ConfiguracoesPage() {
                         </div>
                       </div>
 
-                      <Button
-                        kind="ghost"
-                        size="sm"
-                        renderIcon={Edit}
-                        onClick={() => {
-                          setMembroSelecionado(membro);
-                          setEditRole(membro.role);
-                          setEditAtivo(membro.ativo);
-                          setModalEditarMembro(true);
-                        }}
-                        id={`btn-editar-${membro.id}`}
-                      >
-                        Alterar Permissões
-                      </Button>
+                      {/* Apenas Diretoria pode alterar cargo ou desativar colaborador (Item 11.3) */}
+                      {userRole === "DIRETORIA" && (
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          renderIcon={Edit}
+                          onClick={() => {
+                            setMembroSelecionado(membro);
+                            setEditRole(membro.role);
+                            setEditAtivo(membro.ativo);
+                            setModalEditarMembro(true);
+                          }}
+                          id={`btn-editar-${membro.id}`}
+                        >
+                          Alterar Permissões
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -637,7 +680,7 @@ export default function ConfiguracoesPage() {
                     Trilha Imutável de Auditoria Corporativa (`audit_log`)
                   </h2>
                   <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                    Rastreamento de todas as deliberações GO/No-GO, mutações no Kanban, declarações e documentos (Art. 7º Lei 14.133).
+                    Rastreamento de todas as deliberações de Participação ("Participar / Não Participar"), mutações no Kanban, declarações e documentos (Art. 7º Lei 14.133).
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>

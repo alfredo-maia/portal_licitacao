@@ -49,10 +49,13 @@ interface LicitacaoItem {
   motivoPerda?: string | null;
   responsavel?: { id: string; name: string } | null;
   atribuidos?: Array<{ usuario: { id: string; name: string } }>;
+  isPresencial?: boolean;
+  distanciaGoianiaKm?: number | null;
+  objeto?: string | null;
 }
 
 const COLUNAS_ATIVAS = [
-  { id: "ACEITA", label: "Aceita (GO)", tagType: "blue" as const },
+  { id: "ACEITA", label: "Participar (Aceita)", tagType: "blue" as const },
   { id: "ANALISE_TECNICA", label: "Análise Técnica", tagType: "cyan" as const },
   { id: "ANALISE_FINANCEIRA", label: "Análise Financeira", tagType: "teal" as const },
   { id: "REVISAO_PROPOSTA", label: "Revisão da Proposta", tagType: "purple" as const },
@@ -123,32 +126,32 @@ function KanbanCardContent({
       }}
       data-testid={`kanban-card-${lic.id}`}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.5rem" }}>
-        <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", fontWeight: 600 }}>
-          {lic.orgaoNome} — {lic.uf}
-        </span>
-        {lic.tipoSistemaCodigo && (
-          <Tag size="sm" type="cool-gray" style={{ margin: 0 }}>
-            {lic.tipoSistemaCodigo}
-          </Tag>
-        )}
-      </div>
-
+      {/* 1. Nome do Órgão — Objeto da licitação */}
       <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", lineHeight: 1.3 }}>
         <Link
           href={`/oportunidades/${lic.id}`}
           style={{ color: "var(--cds-text-primary)", textDecoration: "none" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {lic.miniResumo || lic.numeroEdital}
+          {lic.orgaoNome} — {lic.objeto || lic.miniResumo || lic.resumo || lic.numeroEdital}
         </Link>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
+      {/* 2. Tipo de Sistema */}
+      {lic.tipoSistemaCodigo && (
+        <div style={{ marginBottom: "0.5rem" }}>
+          <Tag size="sm" type="cool-gray" style={{ margin: 0 }}>
+            {lic.tipoSistemaCodigo}
+          </Tag>
+        </div>
+      )}
+
+      {/* 3. Valor */}
+      <div style={{ marginBottom: "0.5rem" }}>
         <span
           style={{
             fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
-            fontSize: "0.875rem",
+            fontSize: "0.9375rem",
             fontWeight: 600,
             color: "var(--cds-text-primary)",
           }}
@@ -158,36 +161,29 @@ function KanbanCardContent({
         </span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
-        {urgente ? (
-          <Tag size="sm" type="red" renderIcon={WarningAlt}>
-            Abertura &lt; 72h ({dataFormatada})
-          </Tag>
-        ) : (
-          <Tag size="sm" type="cool-gray" renderIcon={Events}>
-            {dataFormatada}
-          </Tag>
-        )}
+      {/* 4. Nome Responsável Coordenador */}
+      {lic.responsavel && (
+        <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "0.5rem" }}>
+          Coordenador: <strong style={{ color: "var(--cds-text-primary)" }}>{lic.responsavel.name}</strong>
+        </div>
+      )}
 
-        {lic.responsavel && (
-          <Tag size="sm" type="blue" title={`Responsável: ${lic.responsavel.name}`}>
-            👤 {lic.responsavel.name.split(" ")[0]}
-          </Tag>
-        )}
-        {lic.atribuidos && lic.atribuidos.length > 0 && (
-          <Tag size="sm" type="teal" title={`Equipe com ${lic.atribuidos.length} membros`}>
-            +{lic.atribuidos.length} equipe
+      {/* 5. Data e hora de abertura da sessão */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <Tag size="sm" type={urgente ? "red" : "cool-gray"} renderIcon={urgente ? WarningAlt : Events}>
+          Abertura: {dataFormatada}
+        </Tag>
+
+        {/* 6. Se for presencial, Informar o numero de distancia em KM de Goiania. Ex: 344 KM */}
+        {lic.isPresencial && (
+          <Tag size="sm" type="blue">
+            {lic.distanciaGoianiaKm ? `${lic.distanciaGoianiaKm} KM` : "Presencial"}
           </Tag>
         )}
       </div>
 
-      {lic.motivoPerda && (
-        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.5rem", fontStyle: "italic" }}>
-          Motivo: {lic.motivoPerda}
-        </div>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.5rem" }}>
+      {/* 7. Botão Abrir Projeto */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.5rem", marginTop: "0.5rem" }}>
         <Link
           href={`/oportunidades/${lic.id}`}
           style={{
@@ -205,7 +201,7 @@ function KanbanCardContent({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          Abrir Dossiê Completo <Launch size={14} />
+          Abrir Projeto <Launch size={14} />
         </Link>
         {onMarcarPerda && !STATUS_PERDA.includes(lic.status) && (
           <Button
@@ -522,11 +518,8 @@ export default function MinhasLicitacoesPage() {
         >
           <div>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
-              Minhas Licitações — Funil Kanban Interativo
+              Minhas Licitações
             </h1>
-            <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-              Gestão operacional das oportunidades aceitas com drag-and-drop nativo e auditoria estrita.
-            </p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>

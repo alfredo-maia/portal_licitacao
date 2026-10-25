@@ -32,7 +32,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     name: "Oportunidades",
     title: "Oportunidades",
     description:
-      "Tabela densa ordenada por abertura para decisão GO / No-GO e cadastro manual.",
+      "Tabela ordenada por abertura para decisão de participação e cadastro manual.",
   },
   {
     order: 3,
@@ -43,7 +43,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     name: "Minhas Licitações",
     title: "Minhas Licitações",
     description:
-      "Kanban interativo (estilo Trello) com funil de certames aceitos.",
+      "Funil operacional das oportunidades em andamento.",
   },
   {
     order: 4,
@@ -65,7 +65,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     name: "Portais de Licitações",
     title: "Portais de Licitações",
     description:
-      "Gestão de credenciais (sem senhas), anuidades e alertas de renovação.",
+      "Gestão de credenciais, anuidades e alertas de renovação.",
   },
   {
     order: 6,
@@ -87,7 +87,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     name: "Declarações",
     title: "Declarações",
     description:
-      "Gerador dos 8 modelos oficiais (Anexo 5) com preview A4 em tempo real e PDF.",
+      "Gerador de modelos oficiais.",
   },
   {
     order: 8,

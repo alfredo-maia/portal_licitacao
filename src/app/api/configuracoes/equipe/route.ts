@@ -37,16 +37,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const actor = session?.user
+      ? { id: (session.user as any).id, role: (session.user as any).role || "DIRETORIA" }
+      : undefined;
+
     const usuario = await criarMembroEquipe(
       parseResult.data,
       (session?.user as any)?.id,
+      actor,
     );
 
     return NextResponse.json({ ok: true, usuario }, { status: 201 });
   } catch (error: any) {
+    const isPermissionError = error.message?.includes("não pode") || error.message?.includes("não possui permissão");
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao criar membro da equipe" },
-      { status: 500 },
+      { status: isPermissionError ? 403 : 500 },
     );
   }
 }

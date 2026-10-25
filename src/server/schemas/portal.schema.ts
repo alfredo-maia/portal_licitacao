@@ -31,15 +31,32 @@ export type PortalPeriodicidade = z.infer<typeof portalPeriodicidadeSchema>;
 
 export const portalCriarInputSchema = z.object({
   nome: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres").max(100),
-  url: z.string().trim().url("URL do portal deve ser válida"),
+  url: z.preprocess((val) => {
+    if (typeof val !== "string") return val;
+    const trimmed = val.trim();
+    if (!trimmed) return trimmed;
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return trimmed;
+  }, z.string().trim().url("URL do portal deve ser válida")),
   status: portalStatusSchema.default("NAO_CADASTRADO"),
   login: z.string().trim().max(100).nullable().optional(),
-  email: z.string().trim().email("E-mail inválido").nullable().optional().or(z.literal("")),
-  cnpj: z.string().trim().max(20).nullable().optional(),
+  email: z.preprocess((val) => {
+    if (typeof val === "string" && !val.trim()) return null;
+    return val;
+  }, z.string().trim().email("E-mail inválido").nullable().optional()),
+  cnpj: z.string().trim().max(30).nullable().optional(),
   usuario: z.string().trim().max(100).nullable().optional(),
-  valorAssinatura: z.number().nonnegative().nullable().optional(),
+  valorAssinatura: z.preprocess((val) => {
+    if (val === "" || val === null || val === undefined) return null;
+    return typeof val === "string" ? parseFloat(val) : val;
+  }, z.number().nonnegative().nullable().optional()),
   periodicidade: portalPeriodicidadeSchema.default("ANUAL"),
-  dataVencimento: z.coerce.date().nullable().optional(),
+  dataVencimento: z.preprocess((val) => {
+    if (!val || val === "") return null;
+    return new Date(val as any);
+  }, z.date().nullable().optional()),
   aceitaRobo: z.boolean().default(false),
   exigeCertificadoDigital: z.boolean().default(false),
   suporteContato: z.string().trim().max(255).nullable().optional(),

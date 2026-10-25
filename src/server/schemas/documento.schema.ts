@@ -56,6 +56,10 @@ export const documentoAtualizarInputSchema = z.object({
   semValidade: z.boolean().optional(),
   dataEmissao: z.coerce.date().nullable().optional(),
   dataVencimento: z.coerce.date().nullable().optional(),
+  arquivoUrl: z.string().nullable().optional(),
+  arquivoNome: z.string().nullable().optional(),
+  arquivoTamanho: z.number().int().nonnegative().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
   status: documentoStatusSchema.optional(),
 });
 

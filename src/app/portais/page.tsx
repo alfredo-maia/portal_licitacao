@@ -29,6 +29,7 @@ import {
   WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { maskCnpj } from "@/lib/masks";
 
 interface PortalItem {
   id: string;
@@ -183,9 +184,14 @@ export default function PortaisPage() {
     setSalvando(true);
     setFormErro(null);
 
+    let urlNormalizada = url.trim();
+    if (urlNormalizada && !/^https?:\/\//i.test(urlNormalizada)) {
+      urlNormalizada = `https://${urlNormalizada}`;
+    }
+
     const payload = {
       nome: nome.trim(),
-      url: url.trim(),
+      url: urlNormalizada,
       status,
       login: login.trim() || null,
       email: email.trim() || null,
@@ -214,7 +220,7 @@ export default function PortaisPage() {
         await carregarPortais();
       } else {
         const err = await res.json();
-        setFormErro(err.message || "Erro ao salvar portal.");
+        setFormErro(err.message || err.error || "Erro ao salvar portal.");
       }
     } catch {
       setFormErro("Erro de conexão ao salvar portal.");
@@ -261,7 +267,7 @@ export default function PortaisPage() {
   return (
     <ModulePageShell
       routePath="/portais"
-      subtitle="Catálogo de plataformas de disputa, credenciamentos corporativos e controle preventivo de anuidades (sem senhas salvas)."
+      subtitle="Catálogo de plataformas de disputa, credenciamentos corporativos e controle preventivo de anuidades."
     >
       <Grid fullWidth>
         {/* Barra de Ações e Filtros */}
@@ -644,7 +650,7 @@ export default function PortaisPage() {
                 labelText="CNPJ Vinculado"
                 placeholder="00.000.000/0001-00"
                 value={cnpj}
-                onChange={(e) => setCnpj(e.target.value)}
+                onChange={(e) => setCnpj(maskCnpj(e.target.value))}
               />
             </Column>
 

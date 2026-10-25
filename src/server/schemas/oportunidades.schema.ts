@@ -8,8 +8,16 @@ import { tipoSistemaCodigoSchema } from "./tipos-sistema.schema";
  * (PRD §4.4 / sprint-1-spec §2.3).
  */
 
-/** Faixas de valor estimado para o filtro operacional (sprint-1-spec §2.3). */
-export const faixaValorSchema = z.enum(["ATE_500K", "500K_A_2M", "ACIMA_2M"]);
+export const faixaValorSchema = z.enum([
+  "ATE_100K",
+  "100K_A_200K",
+  "200K_A_500K",
+  "500K_A_1M",
+  "1M_A_2M",
+  "ACIMA_2M",
+  "ATE_500K",
+  "500K_A_2M",
+]);
 
 /**
  * Parecer da IA aceito nos filtros. A grafia legada `"NO-GO"` é normalizada

@@ -20,6 +20,7 @@ import {
   updateInMemoryUsuario,
 } from "./licitacoes-store";
 import bcrypt from "bcryptjs";
+import { canManageTeamMember } from "@/lib/rbac";
 
 export async function obterConfiguracaoEmpresa(): Promise<ConfiguracaoEmpresa> {
   try {
@@ -119,8 +120,21 @@ export async function listarEquipe(): Promise<UsuarioEquipeListResponse> {
 export async function criarMembroEquipe(
   data: UsuarioEquipeCriarInput,
   usuarioId?: string | null,
+  actor?: { id: string; role: string },
 ): Promise<UsuarioEquipeItem> {
   const validado = usuarioEquipeCriarInputSchema.parse(data);
+
+  if (actor) {
+    const perm = canManageTeamMember({
+      actor,
+      action: "create",
+      newRole: validado.role,
+    });
+    if (!perm.allowed) {
+      throw new Error(perm.reason || "Ação não permitida pelas regras de governança.");
+    }
+  }
+
   const passwordHash = await bcrypt.hash(validado.password, 10);
   const prismaRole = validado.role === "OPERADOR_TECNICO" ? "OPERADOR" : validado.role;
 
@@ -176,8 +190,36 @@ export async function atualizarMembroEquipe(
   id: string,
   data: UsuarioEquipeAtualizarInput,
   usuarioId?: string | null,
+  actor?: { id: string; role: string },
 ): Promise<UsuarioEquipeItem | null> {
   const validado = usuarioEquipeAtualizarInputSchema.parse(data);
+
+  if (actor) {
+    let existingUser: any;
+    try {
+      existingUser = await prisma.user.findUnique({ where: { id } });
+    } catch {
+      existingUser = getInMemoryUsuario(id);
+    }
+
+    if (existingUser) {
+      const perm = canManageTeamMember({
+        actor,
+        targetUser: {
+          id: existingUser.id,
+          role: existingUser.role === "OPERADOR" ? "OPERADOR_TECNICO" : existingUser.role,
+          ativo: existingUser.ativo,
+        },
+        action: validado.role ? "update_role" : "toggle_ativo",
+        newRole: validado.role,
+        newAtivo: validado.ativo,
+      });
+      if (!perm.allowed) {
+        throw new Error(perm.reason || "Ação não permitida pelas regras de governança.");
+      }
+    }
+  }
+
   let passwordHash: string | undefined;
   if (validado.password) {
     passwordHash = await bcrypt.hash(validado.password, 10);
