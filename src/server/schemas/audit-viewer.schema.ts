@@ -11,7 +11,7 @@ export const auditViewerQuerySchema = z.object({
   dataInicio: z.string().trim().optional(),
   dataFim: z.string().trim().optional(),
   page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(100).default(15),
+  pageSize: z.coerce.number().int().positive().max(1000).default(15),
 });
 
 export const auditViewerItemSchema = z.object({

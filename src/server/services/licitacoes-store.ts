@@ -471,6 +471,133 @@ export function deleteInMemoryImpugnacao(id: string): boolean {
   return impugnacoesStore.delete(id);
 }
 
+/* =========================================================================
+   Configurações Corporativas e Equipe em Memória (Sprint 6)
+========================================================================= */
+
+let configuracaoEmpresaStore: any = {
+  id: "default",
+  razaoSocial: "APONTA TECNOLOGIA E SERVICOS LTDA",
+  cnpj: "12.345.678/0001-90",
+  inscricaoEstadual: "10.123.456-7",
+  cnae: "62.01-5-01 - Desenvolvimento de programas de computador sob encomenda",
+  endereco: "Av. República do Líbano, 1200, Setor Oeste",
+  cidade: "Goiânia",
+  uf: "GO",
+  cep: "74115-030",
+  representanteNome: "Vítor Henrique de Souza",
+  representanteCpf: "123.456.789-00",
+  representanteRg: "5432109-SSP/GO",
+  representanteCargo: "Sócio-Administrador",
+  bancoNome: "Banco do Brasil",
+  agencia: "1234-5",
+  contaCorrente: "98765-4",
+  chavePix: "12.345.678/0001-90",
+  atualizadoEm: new Date(),
+};
+
+let usuariosStore: Map<string, any> = new Map([
+  [
+    "usr_dir_1",
+    {
+      id: "usr_dir_1",
+      name: "Vítor Henrique",
+      email: "vitorhenrique018@gmail.com",
+      role: "DIRETORIA",
+      ativo: true,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  ],
+  [
+    "usr_dir_2",
+    {
+      id: "usr_dir_2",
+      name: "Alfredo Maia",
+      email: "alfredosouza100@gmail.com",
+      role: "DIRETORIA",
+      ativo: true,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  ],
+  [
+    "usr_com_1",
+    {
+      id: "usr_com_1",
+      name: "Mariana Souza",
+      email: "mariana.comercial@aponta.cloud",
+      role: "ANALISTA_COMERCIAL",
+      ativo: true,
+      createdAt: new Date("2026-02-15T00:00:00.000Z"),
+      updatedAt: new Date("2026-02-15T00:00:00.000Z"),
+    },
+  ],
+  [
+    "usr_tec_1",
+    {
+      id: "usr_tec_1",
+      name: "Lucas Ribeiro",
+      email: "lucas.tecnico@aponta.cloud",
+      role: "OPERADOR_TECNICO",
+      ativo: true,
+      createdAt: new Date("2026-03-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
+    },
+  ],
+]);
+
+export function getInMemoryConfiguracaoEmpresa(): any {
+  return { ...configuracaoEmpresaStore };
+}
+
+export function updateInMemoryConfiguracaoEmpresa(patch: any): any {
+  configuracaoEmpresaStore = {
+    ...configuracaoEmpresaStore,
+    ...patch,
+    id: "default",
+    atualizadoEm: new Date(),
+  };
+  return { ...configuracaoEmpresaStore };
+}
+
+export function listInMemoryUsuarios(): any[] {
+  return Array.from(usuariosStore.values());
+}
+
+export function getInMemoryUsuario(id: string): any | null {
+  return usuariosStore.get(id) || null;
+}
+
+export function insertInMemoryUsuario(data: any): any {
+  const id = data.id || `usr_${randomUUID()}`;
+  const now = new Date();
+  const record = {
+    id,
+    name: data.name,
+    email: data.email,
+    role: data.role || "ANALISTA_COMERCIAL",
+    ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  usuariosStore.set(id, record);
+  return record;
+}
+
+export function updateInMemoryUsuario(id: string, patch: any): any | null {
+  const existing = usuariosStore.get(id);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...patch,
+    id: existing.id,
+    updatedAt: new Date(),
+  };
+  usuariosStore.set(id, updated);
+  return updated;
+}
+
 /** Restaura todos os stores ao estado seed inicial (uso exclusivo de testes). */
 export function resetInMemoryLicitacoes(): void {
   storeById = null;
