@@ -5,15 +5,13 @@ import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import {
   criarOportunidadeManual,
-  listOportunidades,
+  listOportunidadesPaginadas,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 
 /**
- * `GET /api/oportunidades` (sprint-1-spec §2.3): listagem ordenada por
- * `dataAbertura ASC` com os filtros operacionais recebidos via query params
- * (`tipoSistema`, `uf`, `faixaValor`, `status`, `parecerIA`, `periodo`,
- * `busca`, `valorMin`, `valorMax`).
+ * `GET /api/oportunidades` (sprint-2-spec §2.2): listagem paginada ordenada por
+ * `dataAbertura ASC` com filtros e paginação (`page`, `pageSize`).
  */
 export async function GET(request: Request) {
   const params = Object.fromEntries(
@@ -21,9 +19,16 @@ export async function GET(request: Request) {
   );
 
   try {
-    const oportunidades = await listOportunidades(params);
+    const result = await listOportunidadesPaginadas(params);
     return NextResponse.json(
-      { ok: true, total: oportunidades.length, oportunidades },
+      {
+        ok: true,
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+        totalPages: result.totalPages,
+        oportunidades: result.oportunidades,
+      },
       { status: 200 },
     );
   } catch (error) {
