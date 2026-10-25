@@ -29,6 +29,7 @@ import {
 } from "@/server/schemas/analise-ia.schema";
 import { computeHashCritico } from "./hash-critico";
 import {
+  clearInMemoryLicitacoes,
   getInMemoryLicitacaoById,
   insertInMemoryLicitacao,
   type LicitacaoRecord,
@@ -913,3 +914,28 @@ export async function atualizarLicitacao(
 
   return getOportunidadeById(id);
 }
+
+/**
+ * Remove todas as oportunidades testes do banco de dados e limpa a store em memória.
+ */
+export async function limparTodasOportunidadesTestes(): Promise<{ count: number }> {
+  let count = 0;
+  try {
+    const deleted = await prisma.$transaction([
+      prisma.licitacaoAtribuido.deleteMany(),
+      prisma.arquivo.deleteMany(),
+      prisma.repositorioSimilar.deleteMany(),
+      prisma.analiseStatusParticipacao.deleteMany(),
+      prisma.licitacaoStatusHistorico.deleteMany(),
+      prisma.impugnacao.deleteMany({ where: { licitacaoId: { not: null } } }),
+      prisma.notificacao.deleteMany({ where: { licitacaoId: { not: null } } }),
+      prisma.licitacao.deleteMany(),
+    ]);
+    count = deleted[7]?.count ?? 0;
+  } catch (error) {
+    console.warn("[limparTodasOportunidadesTestes] Erro ao deletar no Prisma, limpando store em memória:", error);
+  }
+  clearInMemoryLicitacoes();
+  return { count };
+}
+

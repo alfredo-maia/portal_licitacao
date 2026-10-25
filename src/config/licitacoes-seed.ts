@@ -44,6 +44,10 @@ const DIA_EM_MS = 24 * 60 * 60 * 1000;
 export function buildLicitacoesSeed(
   agora: Date = new Date(),
 ): readonly LicitacaoSeedItem[] {
+  if (process.env.DISABLE_SEED_LICITACOES === "true" || process.env.NODE_ENV === "production") {
+    return [];
+  }
+
   const base = agora.getTime();
 
   return [

@@ -610,3 +610,11 @@ export function resetInMemoryLicitacoes(): void {
   documentosStore.clear();
   impugnacoesStore.clear();
 }
+
+/** Limpa completamente todas as licitações em memória (sem recriar seeds). */
+export function clearInMemoryLicitacoes(): void {
+  storeById = new Map();
+  storeIdByIdPncp = new Map();
+  statusHistoricoStore = [];
+}
+
