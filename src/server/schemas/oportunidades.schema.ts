@@ -38,8 +38,8 @@ export const oportunidadesFilterSchema = z.object({
   parecerIA: parecerIAFilterSchema.optional(),
   periodo: z.enum(["mes", "todos"]).optional(),
   busca: z.string().trim().min(1).optional(),
-  page: z.coerce.number().int().positive().default(1).optional(),
-  pageSize: z.coerce.number().int().positive().max(100).default(10).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(10),
 });
 
 /**

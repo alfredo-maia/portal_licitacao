@@ -4,6 +4,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    deps: {
+      inline: [/@carbon/, /temporal-polyfill/],
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,
@@ -14,6 +19,11 @@ export default defineConfig({
       "tests/unit/**/*.{test,spec}.{ts,tsx}",
     ],
     exclude: ["node_modules", ".next", "e2e", "tests/e2e"],
+    server: {
+      deps: {
+        inline: [/@carbon/, /temporal-polyfill/],
+      },
+    },
   },
   resolve: {
     alias: {
