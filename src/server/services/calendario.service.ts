@@ -43,16 +43,30 @@ export async function getCalendarioData(
   try {
     licitacoes = await prisma.licitacao.findMany({
       where: {
-        dataAbertura: {
-          gte: inicioUtc,
-          lt: fimUtc,
-        },
+        OR: [
+          {
+            dataEncerramentoProposta: {
+              gte: inicioUtc,
+              lt: fimUtc,
+            },
+          },
+          {
+            dataEncerramentoProposta: null,
+            dataAbertura: {
+              gte: inicioUtc,
+              lt: fimUtc,
+            },
+          },
+        ],
       },
       orderBy: { dataAbertura: "asc" },
     });
   } catch {
     licitacoes = listInMemoryLicitacoes().filter(
-      (l) => l.dataAbertura >= inicioUtc && l.dataAbertura < fimUtc,
+      (l) => {
+        const d = l.dataEncerramentoProposta ?? l.dataAbertura;
+        return d >= inicioUtc && d < fimUtc;
+      },
     );
   }
 
@@ -63,9 +77,10 @@ export async function getCalendarioData(
         !(STATUS_FORA_DO_CALENDARIO as readonly string[]).includes(l.status),
     )
     .map((l) => {
-      // Extrai o dia exato no fuso de Brasília
+      // Extrai o dia exato no fuso de Brasília baseado na data limite de proposta
+      const dataPrazo = l.dataEncerramentoProposta ? new Date(l.dataEncerramentoProposta) : new Date(l.dataAbertura);
       const dia = parseInt(
-        new Date(l.dataAbertura).toLocaleDateString("en-US", {
+        dataPrazo.toLocaleDateString("en-US", {
           day: "numeric",
           timeZone: OPERACAO_TIMEZONE,
         }),
@@ -81,6 +96,7 @@ export async function getCalendarioData(
         numeroEdital: l.numeroEdital,
         orgaoNome: l.orgaoNome,
         dataAbertura: l.dataAbertura,
+        dataEncerramentoProposta: l.dataEncerramentoProposta ?? l.dataAbertura,
         dia,
         status: l.status,
         opaco,

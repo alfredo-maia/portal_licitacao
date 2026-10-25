@@ -32,6 +32,7 @@ export const licitacaoBaseSchema = z.object({
   resumo: z.string().min(1),
   valorEstimado: z.number().nonnegative(),
   dataAbertura: z.coerce.date(),
+  dataEncerramentoProposta: z.coerce.date().optional().nullable(),
   status: licitacaoStatusSchema.default("PENDENTE"),
   parecerIA: parecerIASchema.default("AVALIAR"),
 });

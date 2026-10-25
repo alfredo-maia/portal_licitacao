@@ -84,6 +84,7 @@ export const criarLicitacaoManualSchema = z.object({
   modalidade: z.string().min(1).default("Pregão Eletrônico"),
   valorEstimado: z.number().nonnegative(),
   dataAbertura: z.coerce.date(),
+  dataEncerramentoProposta: z.coerce.date().optional(),
   miniResumo: z
     .string()
     .min(1)

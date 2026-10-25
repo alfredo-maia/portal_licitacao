@@ -22,6 +22,7 @@ export const calendarioChipSchema = z.object({
   numeroEdital: z.string().min(1),
   orgaoNome: z.string().min(1),
   dataAbertura: z.coerce.date(),
+  dataEncerramentoProposta: z.coerce.date().optional(),
   /** Dia do mês (1–31) já resolvido em America/Sao_Paulo. */
   dia: z.number().int().min(1).max(31),
   status: licitacaoStatusSchema,

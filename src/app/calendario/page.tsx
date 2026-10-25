@@ -27,6 +27,7 @@ interface CalendarioChip {
   numeroEdital: string;
   orgaoNome: string;
   dataAbertura: string;
+  dataEncerramentoProposta?: string;
   dia: number;
   status: string;
   opaco: boolean;
@@ -361,7 +362,8 @@ export default function CalendarioPage() {
 
                     {/* Chips do Dia */}
                     {chipsDoDia.map((chip) => {
-                      const hora = new Date(chip.dataAbertura).toLocaleTimeString("pt-BR", {
+                      const rawDate = chip.dataEncerramentoProposta || chip.dataAbertura;
+                      const hora = new Date(rawDate).toLocaleTimeString("pt-BR", {
                         hour: "2-digit",
                         minute: "2-digit",
                       });
@@ -371,7 +373,7 @@ export default function CalendarioPage() {
                           key={chip.id}
                           data-testid="calendario-chip"
                           onClick={() => router.push(chip.linkDestino)}
-                          title={`${chip.numeroEdital} - ${chip.orgaoNome} (${chip.status})`}
+                          title={`Limite de Proposta: ${hora} — ${chip.numeroEdital} - ${chip.orgaoNome} (${chip.status})`}
                           style={{
                             padding: "0.375rem 0.5rem",
                             borderRadius: "3px",

@@ -245,7 +245,9 @@ function compareByDataAberturaAsc(
   a: LicitacaoRecord,
   b: LicitacaoRecord,
 ): number {
-  const diff = a.dataAbertura.getTime() - b.dataAbertura.getTime();
+  const dateA = a.dataEncerramentoProposta ? new Date(a.dataEncerramentoProposta).getTime() : a.dataAbertura.getTime();
+  const dateB = b.dataEncerramentoProposta ? new Date(b.dataEncerramentoProposta).getTime() : b.dataAbertura.getTime();
+  const diff = dateA - dateB;
   if (diff !== 0) {
     return diff;
   }
@@ -814,6 +816,7 @@ export async function criarOportunidadeManual(
     input.pncpId ?? `MANUAL-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const hashCritico = computeHashCritico({
     dataAbertura: input.dataAbertura,
+    dataEncerramentoProposta: input.dataEncerramentoProposta ?? input.dataAbertura,
     valorEstimado: input.valorEstimado,
     resumo: input.resumo,
     modalidade: input.modalidade,
@@ -836,6 +839,7 @@ export async function criarOportunidadeManual(
     resumo: input.resumo,
     valorEstimado: input.valorEstimado,
     dataAbertura: input.dataAbertura,
+    dataEncerramentoProposta: input.dataEncerramentoProposta ?? input.dataAbertura,
     dataPublicacaoPncp: null,
     dataUltimaAtualizacao: null,
     status: "PENDENTE",

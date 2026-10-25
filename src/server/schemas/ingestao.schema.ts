@@ -81,6 +81,19 @@ const normalizeItemPreprocess = (raw: unknown) => {
   if (!copy.dataPublicacaoPncp && copy.dataPublicacao) {
     copy.dataPublicacaoPncp = copy.dataPublicacao;
   }
+  if (!copy.dataEncerramentoProposta) {
+    copy.dataEncerramentoProposta =
+      copy.dataEncerramento ||
+      copy.dataFimProposta ||
+      copy.dataHoraFimRecebimentoPropostas ||
+      copy.dataLimiteEnvio ||
+      copy.dataLimiteProposta ||
+      copy.dataAbertura ||
+      null;
+  }
+  if (!copy.dataAbertura && copy.dataEncerramentoProposta) {
+    copy.dataAbertura = copy.dataEncerramentoProposta;
+  }
 
   // 7. Tipo de Sistema Sugerido
   if (!copy.tipoSistemaSugerido) {
@@ -129,6 +142,7 @@ export const ingestaoLicitacaoItemSchema = z.preprocess(
     valorEstimado: z.number().nonnegative(),
     dataPublicacaoPncp: z.coerce.date().optional(),
     dataAbertura: z.coerce.date(),
+    dataEncerramentoProposta: z.coerce.date().optional(),
     dataUltimaAtualizacao: z.coerce.date().optional(),
     isPresencial: z.boolean().default(false),
     distanciaGoianiaKm: z.number().nullable().optional(),

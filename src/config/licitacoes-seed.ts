@@ -26,6 +26,7 @@ export interface LicitacaoSeedItem {
   resumo: string;
   valorEstimado: number;
   dataAbertura: Date;
+  dataEncerramentoProposta?: Date | null;
   dataPublicacaoPncp: Date;
   status: "PENDENTE";
   parecerIA: "GO" | "AVALIAR" | "NO_GO";

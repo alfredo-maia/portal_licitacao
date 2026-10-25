@@ -156,6 +156,7 @@ model Licitacao {
   resumo                String                      @db.Text
   valorEstimado         Float
   dataAbertura          DateTime
+  dataEncerramentoProposta DateTime?
   dataPublicacaoPncp    DateTime?
   dataUltimaAtualizacao DateTime?
   status                LicitacaoStatus             @default(PENDENTE)

@@ -55,6 +55,7 @@ function mapItemToLicitacaoData(
     resumo: item.resumo,
     valorEstimado: item.valorEstimado,
     dataAbertura: item.dataAbertura,
+    dataEncerramentoProposta: item.dataEncerramentoProposta ?? item.dataAbertura,
     dataPublicacaoPncp: item.dataPublicacaoPncp ?? null,
     dataUltimaAtualizacao: item.dataUltimaAtualizacao ?? null,
     status: "PENDENTE" as LicitacaoStatus,
@@ -141,6 +142,7 @@ export async function ingestLicitacoesV2(
   for (const item of parsed.licitacoes) {
     const novoHash = computeHashCritico({
       dataAbertura: item.dataAbertura,
+      dataEncerramentoProposta: item.dataEncerramentoProposta,
       valorEstimado: item.valorEstimado,
       resumo: item.resumo,
       modalidade: item.modalidade,
@@ -183,9 +185,12 @@ export async function ingestLicitacoesV2(
     // Preserva a deliberação da equipe (qualquer status ≠ PENDENTE).
     const preservarStatus = existente.status !== "PENDENTE";
     const { status: _status, ...dadosSemStatus } = dados;
-    const patch: Partial<NovaLicitacaoData> = preservarStatus
-      ? dadosSemStatus
-      : dados;
+    const patch: Partial<NovaLicitacaoData> = {
+      ...(preservarStatus ? dadosSemStatus : dados),
+      // Preserva a data de abertura original do certame e atualiza a data de encerramento de envio de proposta
+      dataAbertura: existente.dataAbertura,
+      dataEncerramentoProposta: dados.dataEncerramentoProposta ?? dados.dataAbertura,
+    };
 
     const atualizado = await updateLicitacao(existente.id, patch);
     const registro = atualizado ?? { ...existente, ...patch };
@@ -199,13 +204,15 @@ export async function ingestLicitacoesV2(
       antes: {
         hashCritico: existente.hashCritico,
         dataAbertura: existente.dataAbertura.toISOString(),
+        dataEncerramentoProposta: existente.dataEncerramentoProposta ? existente.dataEncerramentoProposta.toISOString() : null,
         valorEstimado: existente.valorEstimado,
         resumo: existente.resumo,
         status: existente.status,
       },
       depois: {
         hashCritico: novoHash,
-        dataAbertura: dados.dataAbertura.toISOString(),
+        dataAbertura: existente.dataAbertura.toISOString(),
+        dataEncerramentoProposta: patch.dataEncerramentoProposta ? patch.dataEncerramentoProposta.toISOString() : null,
         valorEstimado: dados.valorEstimado,
         resumo: dados.resumo,
         status: registro.status,

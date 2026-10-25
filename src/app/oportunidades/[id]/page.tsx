@@ -84,6 +84,7 @@ interface OportunidadeDetalhe {
   modalidade: string;
   valorEstimado: number;
   dataAbertura: string;
+  dataEncerramentoProposta?: string | null;
   miniResumo: string;
   resumo: string;
   objeto?: string | null;
@@ -689,10 +690,10 @@ Realize uma análise profunda estruturada em 4 dimensões:
 
                 <div>
                   <h4 style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
-                    Data e Hora de Abertura
+                    Data Limite para Envio da Proposta
                   </h4>
-                  <div style={{ fontSize: "1.125rem", fontWeight: 600, fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)" }}>
-                    {new Date(oportunidade.dataAbertura).toLocaleDateString("pt-BR", {
+                  <div style={{ fontSize: "1.125rem", fontWeight: 600, color: "var(--cds-text-primary)", fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)" }}>
+                    {new Date(oportunidade.dataEncerramentoProposta || oportunidade.dataAbertura).toLocaleDateString("pt-BR", {
                       day: "2-digit",
                       month: "2-digit",
                       year: "numeric",
@@ -700,6 +701,11 @@ Realize uma análise profunda estruturada em 4 dimensões:
                       minute: "2-digit",
                     })}
                   </div>
+                  {oportunidade.dataEncerramentoProposta && oportunidade.dataAbertura && new Date(oportunidade.dataEncerramentoProposta).getTime() !== new Date(oportunidade.dataAbertura).getTime() && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Sessão de Abertura: {new Date(oportunidade.dataAbertura).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
                 </div>
 
                 <div>

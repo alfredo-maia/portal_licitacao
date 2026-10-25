@@ -170,7 +170,7 @@ describe("AV-36 — ingestLicitacoesV2 (POST /api/ingestao, PRD §8)", () => {
     });
   });
 
-  it("deve atualizar dataAbertura imediatamente quando o PNCP retifica a data", async () => {
+  it("deve atualizar dataEncerramentoProposta e preservar dataAbertura quando o PNCP retifica a data", async () => {
     const item = buildIngestaoItem({ dataAbertura: "2026-12-01T09:00:00.000Z" });
     await ingestLicitacoesV2(buildIngestaoPayload([item]) as never);
 
@@ -185,6 +185,9 @@ describe("AV-36 — ingestLicitacoesV2 (POST /api/ingestao, PRD §8)", () => {
 
     expect(resultado.atualizados).toBe(1);
     expect(resultado.registros[0].dataAbertura.toISOString()).toBe(
+      "2026-12-01T09:00:00.000Z",
+    );
+    expect(resultado.registros[0].dataEncerramentoProposta?.toISOString()).toBe(
       "2026-12-15T14:00:00.000Z",
     );
   });

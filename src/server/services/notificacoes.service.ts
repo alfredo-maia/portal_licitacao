@@ -318,8 +318,8 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
   }
 
   for (const lic of licitacoes) {
-    const abertura = new Date(lic.dataAbertura);
-    const diffMs = abertura.getTime() - agora.getTime();
+    const prazoLimite = lic.dataEncerramentoProposta ? new Date(lic.dataEncerramentoProposta) : new Date(lic.dataAbertura);
+    const diffMs = prazoLimite.getTime() - agora.getTime();
     const diffDias = Math.floor(diffMs / (24 * 3600 * 1000));
     const diffHoras = diffMs / (3600 * 1000);
 
@@ -336,7 +336,7 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         ? destinatariosEnvolvidos
         : diretoriaEComercialIds;
 
-    // N3 — Abertura Amanhã (D+1) em certame ativo
+    // N3 — Prazo Limite Amanhã (D+1) em certame ativo
     if (
       (STATUS_PIPELINE_ATIVO as readonly string[]).includes(lic.status) &&
       diffDias === 1
@@ -347,10 +347,11 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         janela: dataBrtStr,
       });
 
+      const horaStr = prazoLimite.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
       const res = await criarNotificacao({
         tipo: "N3_ABERTURA_AMANHA",
-        titulo: `Abertura Amanhã: ${lic.numeroEdital}`,
-        descricao: `A licitação ${lic.numeroEdital} (${lic.orgaoNome}) tem sessão marcada para amanhã.`,
+        titulo: `Prazo Limite Amanhã (${horaStr}): ${lic.numeroEdital}`,
+        descricao: `A licitação ${lic.numeroEdital} (${lic.orgaoNome}) tem prazo fatal para envio da proposta amanhã às ${horaStr}.`,
         linkDestino: `/oportunidades/${lic.id}`,
         licitacaoId: lic.id,
         chaveIdempotencia: chave,

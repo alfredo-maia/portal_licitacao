@@ -162,28 +162,30 @@ export async function getDashboardData(
   const noGoPercentual =
     totalAnalisadas > 0 ? Math.round((totalNoGo / totalAnalisadas) * 1000) / 10 : null;
 
-  // Críticas < 72h
+  // Críticas < 72h (contagem regressiva baseada no encerramento do prazo de proposta)
   const limite72h = new Date(agora.getTime() + 72 * 3600 * 1000);
   const criticas = licitacoes
     .filter((l) => {
-      const dataAb = new Date(l.dataAbertura);
+      const dataPrazo = l.dataEncerramentoProposta ? new Date(l.dataEncerramentoProposta) : new Date(l.dataAbertura);
       return (
-        dataAb >= agora &&
-        dataAb <= limite72h &&
+        dataPrazo >= agora &&
+        dataPrazo <= limite72h &&
         (l.status === "PENDENTE" ||
           (STATUS_PIPELINE_ATIVO as readonly string[]).includes(l.status))
       );
     })
     .map((l) => {
+      const dataPrazo = l.dataEncerramentoProposta ? new Date(l.dataEncerramentoProposta) : new Date(l.dataAbertura);
       const diffSegundos = Math.max(
         0,
-        Math.floor((new Date(l.dataAbertura).getTime() - agora.getTime()) / 1000),
+        Math.floor((dataPrazo.getTime() - agora.getTime()) / 1000),
       );
       return {
         id: l.id,
         numeroEdital: l.numeroEdital,
         orgaoNome: l.orgaoNome,
         dataAbertura: l.dataAbertura,
+        dataEncerramentoProposta: l.dataEncerramentoProposta ?? l.dataAbertura,
         segundosRestantes: diffSegundos,
         status: l.status,
       };

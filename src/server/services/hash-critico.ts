@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
  */
 export interface HashCriticoInput {
   dataAbertura: Date | string;
+  dataEncerramentoProposta?: Date | string | null;
   valorEstimado: number;
   resumo: string;
   modalidade: string;
@@ -21,13 +22,13 @@ function toIsoUtc(value: Date | string): string {
 
 /**
  * Gera um hash SHA-256 hex determinístico a partir dos campos críticos:
- * `dataAbertura` (ISO UTC), `valorEstimado` (número normalizado com 2 casas),
+ * `dataAbertura` / `dataEncerramentoProposta` (ISO UTC), `valorEstimado` (número normalizado com 2 casas),
  * `resumo`, `modalidade`, `numeroEdital` e `orgaoCnpj` (todos trimmed).
  * Campos não críticos (ex.: `miniResumo`, links) nunca alteram o hash.
  */
 export function computeHashCritico(input: HashCriticoInput): string {
   const canonical = [
-    toIsoUtc(input.dataAbertura),
+    toIsoUtc(input.dataEncerramentoProposta ?? input.dataAbertura),
     Number(input.valorEstimado).toFixed(2),
     input.resumo.trim(),
     input.modalidade.trim(),

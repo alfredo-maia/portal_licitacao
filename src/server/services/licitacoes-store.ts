@@ -74,6 +74,7 @@ function seedToRecord(seed: LicitacaoSeedItem): LicitacaoRecord {
     resumo: seed.resumo,
     valorEstimado: seed.valorEstimado,
     dataAbertura: seed.dataAbertura,
+    dataEncerramentoProposta: seed.dataEncerramentoProposta ?? seed.dataAbertura,
     dataPublicacaoPncp: seed.dataPublicacaoPncp,
     dataUltimaAtualizacao: seed.dataPublicacaoPncp,
     status: seed.status,

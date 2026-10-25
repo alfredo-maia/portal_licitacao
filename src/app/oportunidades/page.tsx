@@ -73,7 +73,7 @@ function OportunidadesContent() {
   const pageSize = Number(searchParams.get("pageSize")) || 10;
 
   const headers = [
-    { key: "dataAbertura", header: "Data de Abertura" },
+    { key: "dataAbertura", header: "Data Limite (Proposta)" },
     { key: "orgaoUF", header: "Órgão e UF" },
     { key: "miniResumo", header: "Mini-resumo" },
     { key: "valorEstimado", header: "Valor Estimado" },
@@ -133,13 +133,17 @@ function OportunidadesContent() {
         throw new Error("Erro ao carregar oportunidades");
       }
       const data = await response.json();
-      const mappedOportunidades = (data.oportunidades || []).map((dto: any) => ({
-        ...dto,
-        orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
-        resumoObjeto: dto.resumo,
-        acoes: "",
-        dataAbertura: new Date(dto.dataAbertura).toLocaleDateString("pt-BR"),
-      }));
+      const mappedOportunidades = (data.oportunidades || []).map((dto: any) => {
+        const rawDate = dto.dataEncerramentoProposta || dto.dataAbertura;
+        const d = new Date(rawDate);
+        return {
+          ...dto,
+          orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
+          resumoObjeto: dto.resumo,
+          acoes: "",
+          dataAbertura: !isNaN(d.getTime()) ? d.toLocaleDateString("pt-BR") : "",
+        };
+      });
       setOportunidades(mappedOportunidades);
       setTotal(data.total ?? mappedOportunidades.length);
     } catch (err: unknown) {
@@ -231,6 +235,7 @@ function OportunidadesContent() {
           uf: manualUf,
           valorEstimado: parseFloat(manualValorEstimado),
           dataAbertura: new Date(manualDataAbertura.split('/').reverse().join('-')).toISOString(), // Formato ISO para o backend
+          dataEncerramentoProposta: new Date(manualDataAbertura.split('/').reverse().join('-')).toISOString(),
           miniResumo: manualMiniResumo,
           resumo: manualResumoObjeto,
           tipoSistemaCodigo: manualTipoSistema,
@@ -739,7 +744,7 @@ function OportunidadesContent() {
          <TextInput id="input-manual-cnpj" data-testid="input-manual-cnpj" labelText="CNPJ do Órgão" placeholder="Ex: 00.000.000/0000-00" value={manualOrgaoCnpj} onChange={(e) => setManualOrgaoCnpj(e.target.value)} style={{ marginBottom: "1rem" }} />
          <TextInput id="input-manual-uf" data-testid="input-manual-uf" labelText="UF" placeholder="Ex: SP" value={manualUf} onChange={(e) => setManualUf(e.target.value)} style={{ marginBottom: "1rem" }} />
          <TextInput id="input-manual-valor" data-testid="input-manual-valor" labelText="Valor Estimado" placeholder="Ex: 1500000.00" value={manualValorEstimado} onChange={(e) => setManualValorEstimado(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-abertura" data-testid="input-manual-abertura" labelText="Data de Abertura" placeholder="DD/MM/AAAA" value={manualDataAbertura} onChange={(e) => setManualDataAbertura(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-abertura" data-testid="input-manual-abertura" labelText="Data Limite para Envio da Proposta" placeholder="DD/MM/AAAA" value={manualDataAbertura} onChange={(e) => setManualDataAbertura(e.target.value)} style={{ marginBottom: "1rem" }} />
          <TextInput id="input-manual-mini-resumo" data-testid="input-manual-mini-resumo" labelText="Mini-resumo" placeholder="Ex: Aquisição de equipamentos" value={manualMiniResumo} onChange={(e) => setManualMiniResumo(e.target.value)} style={{ marginBottom: "1rem" }} />
          <TextInput id="input-manual-resumo" data-testid="input-manual-resumo" labelText="Resumo do Objeto" placeholder="Ex: Aquisição de equipamentos de informática para secretarias..." value={manualResumoObjeto} onChange={(e) => setManualResumoObjeto(e.target.value)} style={{ marginBottom: "1rem" }} />
          <Dropdown
