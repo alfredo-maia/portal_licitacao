@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   let isSessionAuthorized = false;
   if (!isKeyAuthorized) {
     const session = await getServerSession(authOptions);
-    isSessionAuthorized = session?.user?.role === "DIRETORIA";
+    isSessionAuthorized = (session?.user as any)?.role === "DIRETORIA";
   }
 
   if (!isKeyAuthorized && !isSessionAuthorized) {
