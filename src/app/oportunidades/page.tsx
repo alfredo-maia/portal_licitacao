@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Tag,
   Tile,
   DataTable,
   TableContainer,
   Table,
+  TextArea,
   TableHead,
   TableRow,
   TableHeader,
@@ -29,9 +30,32 @@ import {
 } from "@carbon/react";
 import { CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
+
+interface Oportunidade {
+  id: string;
+  dataAbertura: string;
+  orgaoUF: string;
+  miniResumo: string;
+  resumoObjeto: string;
+  valorEstimado: number;
+  parecerIA: string;
+  acoes: string;
+  tipoSistemaCodigo?: string;
+  numeroEdital?: string;
+  orgaoNome?: string;
+  orgaoCnpj?: string;
+  uf?: string;
+  status?: string;
+  tipoSistema?: string;
+}
+
 
 export default function OportunidadesPage() {
   const router = useRouter();
+  const [oportunidades, setOportunidades] = React.useState<Oportunidade[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const headers = [
     { key: "dataAbertura", header: "Data de Abertura" },
@@ -43,58 +67,198 @@ export default function OportunidadesPage() {
     { key: "acoes", header: "Ações Rápidas" },
   ];
 
-  const rows = [
-    {
-      id: "1",
-      dataAbertura: "25/10/2026",
-      orgaoUF: "Prefeitura de SP - SP",
-      miniResumo: "Aquisição de equipamentos de informática",
-      resumoObjeto:
-        "Aquisição de equipamentos de informática para diversas secretarias municipais, incluindo desktops, notebooks, impressoras e softwares.",
-      valorEstimado: 1500000.00,
-      parecerIA: "GO",
-      acoes: "",
-    },
-    {
-      id: "2",
-      dataAbertura: "26/10/2026",
-      orgaoUF: "Governo do Estado da Bahia - BA",
-      miniResumo: "Serviços de consultoria em gestão de projetos",
-      resumoObjeto:
-        "Contratação de empresa especializada para prestação de serviços de consultoria e assessoria técnica em gestão e planejamento de projetos.",
-      valorEstimado: 800000.00,
-      parecerIA: "AVALIAR",
-      acoes: "",
-    },
-    {
-      id: "3",
-      dataAbertura: "27/10/2026",
-      orgaoUF: "Ministério da Saúde - DF",
-      miniResumo: "Fornecimento de medicamentos",
-      resumoObjeto:
-        "Registro de preços para eventual aquisição de medicamentos para atendimento das necessidades da rede pública de saúde.",
-      valorEstimado: 5000000.00,
-      parecerIA: "NO-GO",
-      acoes: "",
-    },
-  ];
-
   const [showManualModal, setShowManualModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
   const [recusaMotivo, setRecusaMotivo] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
+  const [filtroTipoSistema, setFiltroTipoSistema] = React.useState('');
+  const [filtroUf, setFiltroUf] = React.useState('');
+  const [filtroFaixaValor, setFiltroFaixaValor] = React.useState('');
+  const [filtroStatus, setFiltroStatus] = React.useState('');
+  const [filtroParecerIA, setFiltroParecerIA] = React.useState('');
+  const [filtroBusca, setFiltroBusca] = React.useState('');
+
+  const [manualNumeroEdital, setManualNumeroEdital] = React.useState("");
+  const [manualOrgaoNome, setManualOrgaoNome] = React.useState("");
+  const [manualOrgaoCnpj, setManualOrgaoCnpj] = React.useState("");
+  const [manualUf, setManualUf] = React.useState("");
+  const [manualValorEstimado, setManualValorEstimado] = React.useState("");
+  const [manualDataAbertura, setManualDataAbertura] = React.useState("");
+  const [manualMiniResumo, setManualMiniResumo] = React.useState("");
+  const [manualResumoObjeto, setManualResumoObjeto] = React.useState("");
+  const [manualTipoSistema, setManualTipoSistema] = React.useState("");
+
+  const [importJsonContent, setImportJsonContent] = React.useState("");
+
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          JSON.parse(content); // Valida se é um JSON válido
+          setImportJsonContent(content);
+        } catch (error) {
+          alert("Erro: O arquivo não é um JSON válido.");
+          setImportJsonContent("");
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const searchParams = useSearchParams();
+
+  const fetchOportunidades = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams(searchParams.toString()).toString();
+      const response = await fetch(`/api/oportunidades?${query}`);
+      if (!response.ok) {
+        throw new Error("Erro ao carregar oportunidades");
+      }
+      const data = await response.json();
+      const mappedOportunidades = data.oportunidades.map((dto: any) => ({
+        ...dto,
+        orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
+        resumoObjeto: dto.resumo,
+        acoes: "",
+        dataAbertura: new Date(dto.dataAbertura).toLocaleDateString("pt-BR"),
+      }));
+      setOportunidades(mappedOportunidades);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Um erro desconhecido ocorreu.");
+    } finally {
+      setLoading(false);
+    }
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    fetchOportunidades();
+  }, [fetchOportunidades]);
+
+  // Inicializa os filtros com base na URL
+  React.useEffect(() => {
+    setFiltroTipoSistema(searchParams.get("tipoSistema") || "");
+    setFiltroUf(searchParams.get("uf") || "");
+    setFiltroFaixaValor(searchParams.get("faixaValor") || "");
+    setFiltroStatus(searchParams.get("status") || "");
+    setFiltroParecerIA(searchParams.get("parecerIA") || "");
+    setFiltroBusca(searchParams.get("busca") || "");
+  }, [searchParams]);
+
+  const handleFilterChange = (filterName: string, value: string) => {
+    const currentParams = new URLSearchParams(searchParams.toString());
+    if (value) {
+      currentParams.set(filterName, value);
+    } else {
+      currentParams.delete(filterName);
+    }
+    router.push(`/oportunidades?${currentParams.toString()}`);
+  };
 
   const handleRecusarClick = (id: string) => {
     setSelectedOpportunityId(id);
     setShowRecusarModal(true);
   };
 
-  const handleConfirmRecusa = () => {
-    console.log(`Recusar oportunidade ${selectedOpportunityId} com motivo: ${recusaMotivo}`);
-    setShowRecusarModal(false);
-    setRecusaMotivo("");
-    setSelectedOpportunityId(null);
+  const handleAceitarClick = async (id: string) => {
+    try {
+      const response = await fetch(`/api/oportunidades/${id}/decisao`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisao: "GO" }),
+      });
+      if (!response.ok) {
+        throw new Error("Erro ao aceitar oportunidade");
+      }
+      fetchOportunidades();
+    } catch (err) {
+      console.error("Erro ao aceitar oportunidade:", err);
+      alert("Erro ao aceitar oportunidade. Tente novamente.");
+    }
+  };
+
+  const handleConfirmRecusa = async () => {
+    if (!selectedOpportunityId) return;
+    try {
+      const response = await fetch(`/api/oportunidades/${selectedOpportunityId}/decisao`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisao: "NO_GO", motivoRecusa: recusaMotivo }),
+      });
+      if (!response.ok) {
+        throw new Error("Erro ao recusar oportunidade");
+      }
+      fetchOportunidades();
+      setShowRecusarModal(false);
+      setRecusaMotivo("");
+      setSelectedOpportunityId(null);
+    } catch (err) {
+      console.error("Erro ao recusar oportunidade:", err);
+      alert("Erro ao recusar oportunidade. Tente novamente.");
+    }
+  };
+
+  const handleSalvarManual = async () => {
+    try {
+      const response = await fetch("/api/oportunidades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          numeroEdital: manualNumeroEdital,
+          orgaoNome: manualOrgaoNome,
+          orgaoCnpj: manualOrgaoCnpj,
+          uf: manualUf,
+          valorEstimado: parseFloat(manualValorEstimado),
+          dataAbertura: new Date(manualDataAbertura.split('/').reverse().join('-')).toISOString(), // Formato ISO para o backend
+          miniResumo: manualMiniResumo,
+          resumo: manualResumoObjeto,
+          tipoSistemaCodigo: manualTipoSistema,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Erro ao adicionar oportunidade manualmente");
+      }
+      fetchOportunidades();
+      setShowManualModal(false);
+      setManualNumeroEdital("");
+      setManualOrgaoNome("");
+      setManualOrgaoCnpj("");
+      setManualUf("");
+      setManualValorEstimado("");
+      setManualDataAbertura("");
+      setManualMiniResumo("");
+      setManualResumoObjeto("");
+      setManualTipoSistema("");
+    } catch (err) {
+      console.error("Erro ao salvar oportunidade manual:", err);
+      alert("Erro ao salvar oportunidade manual. Tente novamente.");
+    }
+  };
+
+  const handleImportarJson = async () => {
+    try {
+      const response = await fetch("/api/ingestao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: importJsonContent,
+      });
+      if (!response.ok) {
+        throw new Error("Erro ao importar relatório JSON");
+      }
+      const data = await response.json();
+      alert(`Importação concluída:\nCriados: ${data.criados}\nAtualizados: ${data.atualizados}\nInalterados: ${data.inalterados}`);
+      fetchOportunidades();
+      setShowImportModal(false);
+      setImportJsonContent(""); // Limpa o campo após a importação
+    } catch (err) {
+      console.error("Erro ao importar JSON:", err);
+      alert("Erro ao importar JSON. Verifique o formato e tente novamente.");
+    }
   };
 
   return (
@@ -133,281 +297,377 @@ export default function OportunidadesPage() {
         <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap" }}>
           <Dropdown
             id="filter-tipo-sistema"
+            data-testid="filter-tipo-sistema"
             titleText="Tipo de Sistema"
             label="Selecione um tipo"
             items={[
-              { id: "pregao", text: "Pregão" },
-              { id: "concorrencia", text: "Concorrência" },
+              { id: "", text: "Todos" },
+              ...TIPOS_SISTEMA_CATALOG.map((tipo) => ({ id: tipo.codigo, text: tipo.nome })),
             ]}
             itemToString={(item) => (item ? item.text : "")}
+            selectedItem={filtroTipoSistema ? { id: filtroTipoSistema, text: TIPOS_SISTEMA_CATALOG.find(t => t.codigo === filtroTipoSistema)?.nome || "" } : null}
+            onChange={({ selectedItem }) => handleFilterChange("tipoSistema", selectedItem?.id || "")}
             style={{ minWidth: "200px" }}
           />
           <Dropdown
             id="filter-uf"
+            data-testid="filter-uf"
             titleText="UF"
             label="Selecione um estado"
             items={[
+              { id: "", text: "Todas" },
               { id: "SP", text: "São Paulo" },
               { id: "RJ", text: "Rio de Janeiro" },
+              { id: "MG", text: "Minas Gerais" },
+              { id: "BA", text: "Bahia" },
+              { id: "DF", text: "Distrito Federal" },
+              { id: "GO", text: "Goiás" },
             ]}
             itemToString={(item) => (item ? item.text : "")}
+            selectedItem={filtroUf ? { id: filtroUf, text: filtroUf } : null}
+            onChange={({ selectedItem }) => handleFilterChange("uf", selectedItem?.id || "")}
             style={{ minWidth: "150px" }}
           />
-          <TextInput
+          <Dropdown
             id="filter-faixa-valor"
-            labelText="Faixa de Valor"
-            placeholder="Ex: 1000-5000"
+            data-testid="filter-faixa-valor"
+            titleText="Faixa de Valor"
+            label="Selecione uma faixa"
+            items={[
+              { id: "", text: "Todos" },
+              { id: "ATE_500K", text: "Até R$ 500 mil" },
+              { id: "500K_A_2M", text: "R$ 500 mil a R$ 2 mi" },
+              { id: "ACIMA_2M", text: "Acima de R$ 2 mi" },
+            ]}
+            itemToString={(item) => (item ? item.text : "")}
+            selectedItem={filtroFaixaValor ? { id: filtroFaixaValor, text: filtroFaixaValor } : null}
+            onChange={({ selectedItem }) => handleFilterChange("faixaValor", selectedItem?.id || "")}
             style={{ minWidth: "150px" }}
           />
           <Dropdown
             id="filter-status"
+            data-testid="filter-status"
             titleText="Status"
             label="Selecione um status"
             items={[
+              { id: "", text: "Todos" },
               { id: "PENDENTE", text: "Pendente" },
+              { id: "ACEITA", text: "Aceita" },
               { id: "RECUSADA", text: "Recusada" },
             ]}
             itemToString={(item) => (item ? item.text : "")}
+            selectedItem={filtroStatus ? { id: filtroStatus, text: filtroStatus } : null}
+            onChange={({ selectedItem }) => handleFilterChange("status", selectedItem?.id || "")}
             style={{ minWidth: "150px" }}
           />
           <Dropdown
             id="filter-parecer-ia"
+            data-testid="filter-parecer-ia"
             titleText="Parecer da IA"
             label="Selecione um parecer"
             items={[
+              { id: "", text: "Todos" },
               { id: "GO", text: "GO" },
               { id: "AVALIAR", text: "AVALIAR" },
-              { id: "NO-GO", text: "NO-GO" },
+              { id: "NO_GO", text: "NO_GO" },
             ]}
             itemToString={(item) => (item ? item.text : "")}
+            selectedItem={filtroParecerIA ? { id: filtroParecerIA, text: filtroParecerIA } : null}
+            onChange={({ selectedItem }) => handleFilterChange("parecerIA", selectedItem?.id || "")}
             style={{ minWidth: "150px" }}
           />
           <TextInput
             id="filter-busca"
+            data-testid="filter-busca"
             labelText="Busca"
             placeholder="Buscar por palavra-chave"
+            value={filtroBusca}
+            onChange={(e) => setFiltroBusca(e.target.value)}
+            onBlur={(e) => handleFilterChange("busca", e.target.value)}
             style={{ minWidth: "250px" }}
           />
         </div>
 
-        <DataTable
-          rows={rows}
-          headers={headers}
-          data-testid="oportunidades-datatable"
-          render={({
-            rows,
-            headers,
-            getHeaderProps,
-            getRowProps,
-            getBatchActionProps,
-            onInputChange,
-            selectedRows,
-            getSelectionProps,
-          }) => (
-            <TableContainer>
-              <TableToolbar>
-                <TableBatchActions {...getBatchActionProps()}>
-                  <TableBatchAction
-                    tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
-                    onClick={() => {}}
-                  >
-                    Excluir
-                  </TableBatchAction>
-                  <TableBatchAction
-                    tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
-                    onClick={() => {}}
-                  >
-                    Marcar como lido
-                  </TableBatchAction>
-                </TableBatchActions>
-                <TableToolbarContent>
-                  <TableToolbarSearch
-                    id="search-oportunidades"
-                    persistent
-                    onChange={onInputChange}
-                  />
-                  <TableToolbarMenu>
-                    <TableToolbarAction onClick={() => alert("Download")}>
-                      <Download size={16} />
-                    </TableToolbarAction>
-                    <TableToolbarAction onClick={() => alert("Editar")}>
-                      <Edit size={16} />
-                    </TableToolbarAction>
-                    <TableToolbarAction onClick={() => alert("Deletar")}>
-                      <TrashCan size={16} />
-                    </TableToolbarAction>
-                  </TableToolbarMenu>
-                  <Button onClick={() => setShowManualModal(true)} kind="primary" data-testid="btn-open-manual-modal">
-                    + Adicionar Licitação Manualmente
-                  </Button>
-                  <Button onClick={() => setShowImportModal(true)} kind="secondary" data-testid="btn-open-import-modal">
-                    Importar Relatório (JSON)
-                  </Button>
-                </TableToolbarContent>
-              </TableToolbar>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableSelectAll {...getSelectionProps()} />
-                    {headers.map((header) => (
-                      <TableHeader {...getHeaderProps({ header })}>
-                        {header.header}
-                      </TableHeader>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow
-                      {...getRowProps({ row })}
-                      data-testid={`oportunidade-row-${row.id}`}
-                      onClick={() => router.push(`/oportunidades/${row.id}`)}
+        {loading && <p>Carregando oportunidades...</p>}
+        {error && <p style={{ color: "red" }}>Erro: {error}</p>}
+
+        {!loading && !error && (
+          <DataTable
+            rows={oportunidades}
+            headers={headers}
+            data-testid="oportunidades-datatable"
+            render={({
+              rows,
+              headers,
+              getHeaderProps,
+              getRowProps,
+              getBatchActionProps,
+              onInputChange,
+              selectedRows,
+              getSelectionProps,
+            }) => (
+              <TableContainer>
+                <TableToolbar>
+                  <TableBatchActions {...getBatchActionProps()}>
+                    <TableBatchAction
+                      tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
+                      onClick={() => {}}
                     >
-                      <TableSelectRow {...getSelectionProps({ row })} />
-                      {row.cells.map((cell) => (
-                        <TableCell key={cell.id}>
-                          {cell.info.header === "valorEstimado" ? (
-                            <span
-                              style={{ fontFamily: "'IBM Plex Mono', monospace" }}
-                              data-testid="valor-estimado-cell"
-                            >
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(cell.value)}
-                            </span>
-                          ) : cell.info.header === "parecerIA" ? (
-                            <Tag
-                              type={
-                                cell.value === "GO"
-                                  ? "green"
-                                  : cell.value === "AVALIAR"
-                                  ? "warm-gray"
-                                  : "red"
-                              }
-                              renderIcon={
-                                cell.value === "GO"
-                                  ? CheckmarkOutline
-                                  : cell.value === "AVALIAR"
-                                  ? WarningAlt
-                                  : CloseOutline
-                              }
-                            >
-                              {cell.value}
-                            </Tag>
-                          ) : cell.info.header === "acoes" ? (
-                            <>
-                              <Button
-                                size="sm"
-                                kind="ghost"
-                                data-testid={`btn-aceitar-${row.id}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  alert(`Aceitar ${row.id}`);
-                                }}
-                              >
-                                Aceitar
-                              </Button>
-                              <Button
-                                size="sm"
-                                kind="ghost"
-                                data-testid={`btn-recusar-${row.id}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRecusarClick(row.id);
-                                }}
-                              >
-                                Recusar
-                              </Button>
-                            </>
-                          ) : (
-                            cell.value
-                          )}
-                        </TableCell>
+                      Excluir
+                    </TableBatchAction>
+                    <TableBatchAction
+                      tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
+                      onClick={() => {}}
+                    >
+                      Marcar como lido
+                    </TableBatchAction>
+                  </TableBatchActions>
+                  <TableToolbarContent>
+                    <TableToolbarSearch
+                      id="search-oportunidades"
+                      persistent
+                      onChange={onInputChange}
+                    />
+                    <TableToolbarMenu>
+                      <TableToolbarAction onClick={() => alert("Download")}>
+                        <Download size={16} />
+                      </TableToolbarAction>
+                      <TableToolbarAction onClick={() => alert("Editar")}>
+                        <Edit size={16} />
+                      </TableToolbarAction>
+                      <TableToolbarAction onClick={() => alert("Deletar")}>
+                        <TrashCan size={16} />
+                      </TableToolbarAction>
+                    </TableToolbarMenu>
+                    <Button onClick={() => setShowManualModal(true)} kind="primary" data-testid="btn-open-manual-modal">
+                      + Adicionar Licitação Manualmente
+                    </Button>
+                    <Button onClick={() => setShowImportModal(true)} kind="secondary" data-testid="btn-open-import-modal">
+                      Importar Relatório (JSON)
+                    </Button>
+                  </TableToolbarContent>
+                </TableToolbar>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableSelectAll {...getSelectionProps()} />
+                      {headers.map((header) => (
+                        <TableHeader {...getHeaderProps({ header })}>
+                          {header.header}
+                        </TableHeader>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        />
-      </Tile>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow
+                        {...getRowProps({ row })}
+                        data-testid={`oportunidade-row-${row.id}`}
+                        onClick={() => router.push(`/oportunidades/${row.id}`)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <TableSelectRow {...getSelectionProps({ row })} />
+                        {row.cells.map((cell) => (
+                          <TableCell key={cell.id}>
+                            {cell.info.header === "dataAbertura" ? (
+                              <span
+                                style={{
+                                  fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
+                                }}
+                              >
+                                {cell.value}
+                              </span>
+                            ) : cell.info.header === "valorEstimado" ? (
+                              <span
+                                style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                                data-testid="valor-estimado-cell"
+                              >
+                                {new Intl.NumberFormat("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                }).format(cell.value)}
+                              </span>
+                            ) : cell.info.header === "parecerIA" ? (
+                              <Tag
+                                type={
+                                  cell.value === "GO"
+                                    ? "green"
+                                    : cell.value === "AVALIAR"
+                                    ? "warm-gray"
+                                    : "red"
+                                }
+                                renderIcon={
+                                  cell.value === "GO"
+                                    ? CheckmarkOutline
+                                    : cell.value === "AVALIAR"
+                                    ? WarningAlt
+                                    : CloseOutline
+                                }
+                              >
+                                {cell.value}
+                              </Tag>
+                            ) : cell.info.header === "miniResumo" ? (
+                              <>
+                                {cell.value}
+                                {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
+                                  <Tag type="gray" style={{ marginLeft: "0.5rem" }}>
+                                    {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo}
+                                  </Tag>
+                                )}
+                              </>
+                            ) : cell.info.header === "resumoObjeto" ? (
+                              <span title={String(cell.value)}>
+                                {String(cell.value).substring(0, 100)}...
+                              </span>
+                            ) : cell.info.header === "acoes" ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  kind="ghost"
+                                  data-testid={`btn-aceitar-${row.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAceitarClick(row.id);
+                                  }}
+                                >
+                                  Aceitar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  kind="ghost"
+                                  data-testid={`btn-recusar-${row.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRecusarClick(row.id);
+                                  }}
+                                >
+                                  Recusar
+                                </Button>
+                              </>
+                            ) : (
+                              cell.value
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          />
+        )}
+       </Tile>
 
-      {/* Modal Adicionar Licitação Manualmente */}
-      <Modal
-        open={showManualModal}
-        onRequestClose={() => setShowManualModal(false)}
-        modalHeading="+ Adicionar Licitação Manualmente"
-        primaryButtonText="Adicionar"
-        secondaryButtonText="Cancelar"
-        data-testid="modal-adicionar-manual"
-      >
-        <p style={{ marginBottom: "1rem" }}>
-          Preencha os campos abaixo para adicionar uma nova licitação manualmente.
-        </p>
-        <TextInput id="manual-data-abertura" labelText="Data de Abertura" placeholder="DD/MM/AAAA" style={{ marginBottom: "1rem" }} />
-        <TextInput id="manual-orgao-uf" labelText="Órgão e UF" placeholder="Ex: Prefeitura de SP - SP" style={{ marginBottom: "1rem" }} />
-        <TextInput id="manual-mini-resumo" labelText="Mini-resumo" placeholder="Ex: Aquisição de equipamentos" style={{ marginBottom: "1rem" }} />
-        <TextInput id="manual-resumo-objeto" labelText="Resumo do Objeto" placeholder="Ex: Aquisição de equipamentos de informática para secretarias..." style={{ marginBottom: "1rem" }} />
-        <TextInput id="manual-valor-estimado" labelText="Valor Estimado" placeholder="Ex: 1500000.00" style={{ marginBottom: "1rem" }} />
-      </Modal>
+       {/* Modal Adicionar Licitação Manualmente */}
+       <Modal
+         open={showManualModal}
+         onRequestClose={() => setShowManualModal(false)}
+         modalHeading="+ Adicionar Licitação Manualmente"
+         passiveModal
+         data-testid="modal-adicionar-manual"
+       >
+         <p style={{ marginBottom: "1rem" }}>
+           Preencha os campos abaixo para adicionar uma nova licitação manualmente.
+         </p>
+         <TextInput id="input-manual-edital" data-testid="input-manual-edital" labelText="Número do Edital" placeholder="Ex: 001/2026" value={manualNumeroEdital} onChange={(e) => setManualNumeroEdital(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-orgao" data-testid="input-manual-orgao" labelText="Órgão" placeholder="Ex: Prefeitura de São Paulo" value={manualOrgaoNome} onChange={(e) => setManualOrgaoNome(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-cnpj" data-testid="input-manual-cnpj" labelText="CNPJ do Órgão" placeholder="Ex: 00.000.000/0000-00" value={manualOrgaoCnpj} onChange={(e) => setManualOrgaoCnpj(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-uf" data-testid="input-manual-uf" labelText="UF" placeholder="Ex: SP" value={manualUf} onChange={(e) => setManualUf(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-valor" data-testid="input-manual-valor" labelText="Valor Estimado" placeholder="Ex: 1500000.00" value={manualValorEstimado} onChange={(e) => setManualValorEstimado(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-abertura" data-testid="input-manual-abertura" labelText="Data de Abertura" placeholder="DD/MM/AAAA" value={manualDataAbertura} onChange={(e) => setManualDataAbertura(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-mini-resumo" data-testid="input-manual-mini-resumo" labelText="Mini-resumo" placeholder="Ex: Aquisição de equipamentos" value={manualMiniResumo} onChange={(e) => setManualMiniResumo(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput id="input-manual-resumo" data-testid="input-manual-resumo" labelText="Resumo do Objeto" placeholder="Ex: Aquisição de equipamentos de informática para secretarias..." value={manualResumoObjeto} onChange={(e) => setManualResumoObjeto(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <Dropdown
+           id="input-manual-tipo-sistema"
+           data-testid="input-manual-tipo-sistema"
+           titleText="Tipo de Sistema"
+           label="Selecione um tipo"
+           items={TIPOS_SISTEMA_CATALOG.map((tipo) => ({ id: tipo.codigo, text: tipo.nome }))}
+           itemToString={(item) => (item ? item.text : "")}
+           selectedItem={manualTipoSistema ? { id: manualTipoSistema, text: TIPOS_SISTEMA_CATALOG.find(t => t.codigo === manualTipoSistema)?.nome || "" } : null}
+           onChange={({ selectedItem }) => setManualTipoSistema(selectedItem?.id || "")}
+           style={{ marginBottom: "1rem" }}
+         />
+         <div className="cds--modal-footer">
+           <Button kind="secondary" onClick={() => setShowManualModal(false)}>
+             Cancelar
+           </Button>
+           <Button kind="primary" onClick={handleSalvarManual} data-testid="btn-salvar-manual">
+             Adicionar
+           </Button>
+         </div>
+       </Modal>
 
-      {/* Modal Importar Relatório (JSON) */}
-      <Modal
-        open={showImportModal}
-        onRequestClose={() => setShowImportModal(false)}
-        modalHeading="Importar Relatório (JSON)"
-        primaryButtonText="Importar"
-        secondaryButtonText="Cancelar"
-        data-testid="modal-importar-json"
-        // TODO: Conectar com POST /api/ingestao
-      >
-        <p style={{ marginBottom: "1rem" }}>
-          Cole o conteúdo JSON do relatório de licitações para importação.
-        </p>
-        <TextInput
-          id="import-json-content"
-          labelText="Conteúdo JSON"
-          placeholder="[{ \"id\": \"...\", \"dataAbertura\": \"...\" }]"
-          multiline
-          rows={10}
-          style={{ marginBottom: "1rem" }}
-        />
-      </Modal>
+       {/* Modal Importar Relatório (JSON) */}
+       <Modal
+         open={showImportModal}
+         onRequestClose={() => setShowImportModal(false)}
+         modalHeading="Importar Relatório (JSON)"
+         passiveModal
+         data-testid="modal-importar-json"
+       >
+         <p style={{ marginBottom: "1rem" }}>
+           Cole o conteúdo JSON do relatório de licitações ou faça upload de um arquivo.
+         </p>
+         <TextInput
+           type="file"
+           id="input-file-json"
+           data-testid="input-file-json"
+           labelText="Carregar arquivo JSON"
+           accept=".json"
+           onChange={handleFileImport}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextArea
+           id="import-json-content"
+           data-testid="textarea-import-json"
+           labelText="Ou cole o conteúdo JSON aqui"
+           placeholder={'[{ "id": "...", "dataAbertura": "..." }]'}
+           rows={10}
+           value={importJsonContent}
+           onChange={(e) => setImportJsonContent(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+         />
+         <div className="cds--modal-footer">
+           <Button kind="secondary" onClick={() => setShowImportModal(false)}>
+             Cancelar
+           </Button>
+           <Button kind="primary" onClick={handleImportarJson} data-testid="btn-confirmar-importacao">
+             Importar
+           </Button>
+         </div>
+       </Modal>
 
-      {/* Modal Recusar Licitação */}
-      <Modal
-        open={showRecusarModal}
-        onRequestClose={() => setShowRecusarModal(false)}
-        modalHeading={`Recusar Oportunidade ${selectedOpportunityId}`}
-        primaryButtonText="Confirmar Recusa"
-        secondaryButtonText="Cancelar"
-        data-testid="modal-recusar-licitacao"
-        onRequestSubmit={handleConfirmRecusa}
-        danger
-      >
-        <p style={{ marginBottom: "1rem" }}>
-          Por favor, forneça um motivo para a recusa da oportunidade.
-        </p>
-        <TextInput
-          id="input-motivo-recusa"
-          labelText="Motivo da Recusa"
-          placeholder="Ex: Não se encaixa no perfil da empresa"
-          value={recusaMotivo}
-          onChange={(e) => setRecusaMotivo(e.target.value)}
-          style={{ marginBottom: "1rem" }}
-          data-testid="input-motivo-recusa"
-        />
-        <Button
-          onClick={handleConfirmRecusa}
-          kind="danger"
-          data-testid="btn-confirmar-recusa"
-          disabled={!recusaMotivo.trim()}
-        >
-          Confirmar Recusa
-        </Button>
-      </Modal>
-    </ModulePageShell>
-  );
-}
+       {/* Modal Recusar Licitação */}
+       <Modal
+         open={showRecusarModal}
+         onRequestClose={() => setShowRecusarModal(false)}
+         modalHeading={`Recusar Oportunidade ${selectedOpportunityId}`}
+         passiveModal
+         data-testid="modal-recusar-licitacao"
+       >
+         <p style={{ marginBottom: "1rem" }}>
+           Por favor, forneça um motivo para a recusa da oportunidade.
+         </p>
+         <TextInput
+           id="input-motivo-recusa"
+           labelText="Motivo da Recusa"
+           placeholder="Ex: Não se encaixa no perfil da empresa"
+           value={recusaMotivo}
+           onChange={(e) => setRecusaMotivo(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+           data-testid="input-motivo-recusa"
+         />
+         <div className="cds--modal-footer">
+           <Button kind="secondary" onClick={() => setShowRecusarModal(false)}>
+             Cancelar
+           </Button>
+           <Button kind="danger" onClick={handleConfirmRecusa} data-testid="btn-confirmar-recusa">
+             Confirmar Recusa
+           </Button>
+         </div>
+       </Modal>
+     </ModulePageShell>
+   );
+ }
