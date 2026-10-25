@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
 import { getResumoNotificacoes } from "@/server/services/notificacoes.service";
 
-export async function GET() {
+export async function GET(_request?: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user as { id?: string } | undefined;
   if (!user?.id) {

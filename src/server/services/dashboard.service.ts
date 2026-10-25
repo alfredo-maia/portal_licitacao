@@ -205,7 +205,7 @@ export async function getDashboardData(
     .map(([codigo, total], idx) => ({
       posicao: idx + 1,
       tipoSistemaCodigo: codigo as any,
-      nome: getTipoSistemaNome(codigo),
+      nome: getTipoSistemaNome(codigo as any),
       total,
     }));
 

@@ -31,6 +31,7 @@ import {
   UserAvatar,
   type CarbonIconType,
 } from "@carbon/icons-react";
+import { NotificationsBell } from "./notifications-bell";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
 import { useAppTheme } from "@/providers/theme-provider";
@@ -76,45 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </HeaderName>
 
         <HeaderGlobalBar>
-          <HeaderGlobalAction
-            aria-label="Notificações (3 não lidas)"
-            data-testid="notifications-bell"
-            onClick={() => router.push("/notificacoes")}
-          >
-            <span
-              style={{
-                position: "relative",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Notification size={20} />
-              <span
-                data-testid="notifications-badge"
-                className="pncp-mono"
-                style={{
-                  position: "absolute",
-                  top: "-6px",
-                  right: "-8px",
-                  backgroundColor: "#da1e28",
-                  color: "#ffffff",
-                  borderRadius: "9999px",
-                  fontSize: "0.625rem",
-                  fontWeight: 600,
-                  minWidth: "1rem",
-                  height: "1rem",
-                  padding: "0 0.25rem",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  lineHeight: 1,
-                }}
-              >
-                3
-              </span>
-            </span>
-          </HeaderGlobalAction>
+          <NotificationsBell />
 
           <HeaderGlobalAction
             aria-label={

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
 import { marcarTodasLidas } from "@/server/services/notificacoes.service";
 
-export async function POST() {
+export async function POST(_request?: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user as { id?: string } | undefined;
   if (!user?.id) {

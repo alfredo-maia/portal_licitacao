@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import {
@@ -94,7 +95,7 @@ export async function criarNotificacao(
 
 export async function listNotificacoes(
   usuarioId: string,
-  rawQuery?: NotificacoesListQuery,
+  rawQuery?: z.input<typeof notificacoesListQuerySchema>,
 ): Promise<NotificacoesListResponse> {
   const query = notificacoesListQuerySchema.parse(rawQuery ?? {});
 
