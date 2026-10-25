@@ -92,9 +92,28 @@ const normalizeItemPreprocess = (raw: unknown) => {
     copy.parecerGoNoGo = copy.parecer || "AVALIAR";
   }
 
-  // 9. Links vazios se undefined
-  if (copy.linkPncp === undefined) copy.linkPncp = "";
-  if (copy.linkSistemaOrigem === undefined) copy.linkSistemaOrigem = "";
+  // 9. Links: normalização e auto-prefixação com https://
+  if (copy.linkSistemaOrigem && typeof copy.linkSistemaOrigem === "string") {
+    const trimmed = copy.linkSistemaOrigem.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      copy.linkSistemaOrigem = `https://${trimmed}`;
+    } else {
+      copy.linkSistemaOrigem = trimmed;
+    }
+  } else {
+    copy.linkSistemaOrigem = "";
+  }
+
+  if (copy.linkPncp && typeof copy.linkPncp === "string") {
+    const trimmed = copy.linkPncp.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      copy.linkPncp = `https://${trimmed}`;
+    } else {
+      copy.linkPncp = trimmed;
+    }
+  } else {
+    copy.linkPncp = "";
+  }
 
   return copy;
 };
@@ -127,8 +146,8 @@ export const ingestaoLicitacaoItemSchema = z.preprocess(
     parecerGoNoGo: parecerGoNoGoIngestaoSchema,
     justificativaTecnica: z.string().optional(),
     atestadosExigidos: z.array(z.string()).default([]),
-    linkPncp: z.string().url().optional().or(z.literal("")),
-    linkSistemaOrigem: z.string().url().optional().or(z.literal("")),
+    linkPncp: z.string().optional().default(""),
+    linkSistemaOrigem: z.string().optional().default(""),
   }),
 );
 

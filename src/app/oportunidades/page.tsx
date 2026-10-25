@@ -503,11 +503,30 @@ function OportunidadesContent() {
                   <TableHead>
                     <TableRow>
                       <TableSelectAll {...getSelectionProps()} />
-                      {headers.map((header) => (
-                        <TableHeader {...getHeaderProps({ header })}>
-                          {header.header}
-                        </TableHeader>
-                      ))}
+                      {headers.map((header) => {
+                        let headerStyle: React.CSSProperties = {};
+                        if (header.key === "dataAbertura") {
+                          headerStyle = { width: "130px", whiteSpace: "nowrap" };
+                        } else if (header.key === "orgaoUF") {
+                          headerStyle = { width: "180px" };
+                        } else if (header.key === "miniResumo") {
+                          headerStyle = { minWidth: "380px" };
+                        } else if (header.key === "valorEstimado") {
+                          headerStyle = { width: "140px", whiteSpace: "nowrap" };
+                        } else if (header.key === "parecerIA") {
+                          headerStyle = { width: "125px", whiteSpace: "nowrap" };
+                        } else if (header.key === "acoes") {
+                          headerStyle = { width: "115px", whiteSpace: "nowrap" };
+                        }
+                        return (
+                          <TableHeader
+                            {...getHeaderProps({ header })}
+                            style={headerStyle}
+                          >
+                            {header.header}
+                          </TableHeader>
+                        );
+                      })}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -520,7 +539,16 @@ function OportunidadesContent() {
                       >
                         <TableSelectRow {...getSelectionProps({ row })} />
                         {row.cells.map((cell) => (
-                          <TableCell key={cell.id}>
+                          <TableCell
+                            key={cell.id}
+                            style={
+                              cell.info.header === "miniResumo"
+                                ? { minWidth: "380px" }
+                                : cell.info.header === "acoes"
+                                ? { width: "115px" }
+                                : undefined
+                            }
+                          >
                             {cell.info.header === "dataAbertura" ? (
                               <span
                                 style={{
@@ -559,44 +587,87 @@ function OportunidadesContent() {
                                 {cell.value}
                               </Tag>
                             ) : cell.info.header === "miniResumo" ? (
-                              <>
-                                {cell.value}
+                              <div style={{ minWidth: "360px", maxWidth: "600px", wordBreak: "break-word", lineHeight: 1.4 }}>
+                                <span style={{ fontWeight: 500 }}>{cell.value}</span>
                                 {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
-                                  <Tag type="gray" style={{ marginLeft: "0.5rem" }}>
+                                  <Tag type="gray" style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}>
                                     {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo}
                                   </Tag>
                                 )}
-                              </>
+                              </div>
                             ) : cell.info.header === "resumoObjeto" ? (
                               <span title={String(cell.value)}>
                                 {String(cell.value).substring(0, 100)}...
                               </span>
                             ) : cell.info.header === "acoes" ? (
-                              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
-                                <Button
-                                  size="sm"
-                                  kind="primary"
-                                  style={{ backgroundColor: "#24a148", color: "#ffffff" }}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "0.3rem",
+                                  alignItems: "flex-start",
+                                  justifyContent: "center",
+                                  width: "110px",
+                                }}
+                              >
+                                <button
+                                  type="button"
                                   data-testid={`btn-aceitar-${row.id}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleAceitarClick(row.id);
                                   }}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    padding: 0,
+                                    margin: 0,
+                                    color: "#24a148",
+                                    fontWeight: 600,
+                                    fontSize: "0.875rem",
+                                    cursor: "pointer",
+                                    textAlign: "left",
+                                    lineHeight: 1.25,
+                                    display: "inline-block",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.textDecoration = "underline";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.textDecoration = "none";
+                                  }}
                                 >
                                   Participar
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  kind="danger"
-                                  style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
+                                </button>
+                                <button
+                                  type="button"
                                   data-testid={`btn-recusar-${row.id}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleRecusarClick(row.id);
                                   }}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    padding: 0,
+                                    margin: 0,
+                                    color: "#da1e28",
+                                    fontWeight: 600,
+                                    fontSize: "0.875rem",
+                                    cursor: "pointer",
+                                    textAlign: "left",
+                                    lineHeight: 1.25,
+                                    display: "inline-block",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.textDecoration = "underline";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.textDecoration = "none";
+                                  }}
                                 >
                                   Não Participar
-                                </Button>
+                                </button>
                               </div>
                             ) : (
                               cell.value
