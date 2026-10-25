@@ -37,20 +37,39 @@ enum ParecerIA {
   NO_GO
 }
 
+enum NotificacaoTipo {
+  N1_COLETA_CONCLUIDA
+  N2_LICITACAO_ATUALIZADA
+  N3_ABERTURA_AMANHA
+  N4_PRESENCIAL_PROXIMA
+  N5_PENDENTE_CRITICA
+  N6_VENCIMENTO_PORTAL
+  N7_VENCIMENTO_DOCUMENTO
+  N8_PRAZO_IMPUGNACAO
+}
+
+enum NotificacaoSeveridade {
+  INFO
+  ATENCAO
+  CRITICA
+}
+
 model User {
-  id                    String      @id @default(cuid())
+  id                    String                     @id @default(cuid())
   name                  String
-  email                 String      @unique
+  email                 String                     @unique
   passwordHash          String
-  role                  Role        @default(OPERADOR)
-  ativo                 Boolean     @default(true)
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  role                  Role                       @default(OPERADOR)
+  ativo                 Boolean                    @default(true)
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
   accounts              Account[]
   sessions              Session[]
   auditLogs             AuditLog[]
-  licitacoesResponsavel Licitacao[]          @relation("LicitacaoResponsavel")
+  licitacoesResponsavel Licitacao[]                @relation("LicitacaoResponsavel")
   licitacoesAtribuido   LicitacaoAtribuido[]
+  notificacoesRecebidas NotificacaoDestinatario[]
+  statusAlterados       LicitacaoStatusHistorico[]
 
   @@index([email])
   @@index([role])
@@ -88,43 +107,46 @@ model Session {
 }
 
 model Licitacao {
-  id                    String          @id @default(cuid())
-  idPncp                String          @unique
+  id                    String                      @id @default(cuid())
+  idPncp                String                      @unique
   numeroEdital          String
   orgaoNome             String
   orgaoCnpj             String
-  uf                    String          @db.VarChar(2)
+  uf                    String                      @db.VarChar(2)
   municipio             String?
   esfera                String?
   poder                 String?
   modalidade            String
   portalDisputa         String?
   miniResumo            String
-  resumo                String          @db.Text
+  resumo                String                      @db.Text
   valorEstimado         Float
   dataAbertura          DateTime
   dataPublicacaoPncp    DateTime?
   dataUltimaAtualizacao DateTime?
-  status                LicitacaoStatus @default(PENDENTE)
-  parecerIA             ParecerIA       @default(AVALIAR)
-  justificativaIA       String?         @db.Text
+  status                LicitacaoStatus             @default(PENDENTE)
+  parecerIA             ParecerIA                   @default(AVALIAR)
+  justificativaIA       String?                     @db.Text
   tipoSistemaCodigo     String?
   atestadosExigidos     Json?
-  motivoRecusa          String?         @db.Text
-  quantidadeLotes       Int             @default(1)
-  loteUnico             Boolean         @default(true)
-  precoPorLote          Boolean         @default(false)
-  isPresencial          Boolean         @default(false)
+  motivoRecusa          String?                     @db.Text
+  quantidadeLotes       Int                         @default(1)
+  loteUnico             Boolean                     @default(true)
+  precoPorLote          Boolean                     @default(false)
+  isPresencial          Boolean                     @default(false)
   distanciaGoianiaKm    Int?
   linkPncp              String?
   linkSistemaOrigem     String?
   hashCritico           String?
+  valorArrematado       Float?
   responsavelId         String?
   responsavel           User?                       @relation("LicitacaoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
   atribuidos            LicitacaoAtribuido[]
   arquivos              Arquivo[]
   repositoriosSimilares RepositorioSimilar[]
   analisesIA            AnaliseStatusParticipacao[]
+  historicoStatus       LicitacaoStatusHistorico[]
+  notificacoes          Notificacao[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 
@@ -132,6 +154,7 @@ model Licitacao {
   @@index([status])
   @@index([idPncp])
   @@index([tipoSistemaCodigo])
+  @@index([createdAt])
 }
 
 model TipoSistema {
@@ -166,13 +189,13 @@ model AuditLog {
 }
 
 model LicitacaoAtribuido {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   licitacaoId String
   usuarioId   String
-  criadoEm    DateTime  @default(now())
+  criadoEm    DateTime @default(now())
 
-  licitacao   Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
-  usuario     User      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  usuario   User      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@unique([licitacaoId, usuarioId])
   @@index([licitacaoId])
@@ -181,48 +204,100 @@ model LicitacaoAtribuido {
 }
 
 model Arquivo {
-  id          String     @id @default(cuid())
+  id          String   @id @default(cuid())
   licitacaoId String?
   nome        String
   tamanho     Int
   mimeType    String
   caminho     String
-  criadoEm    DateTime   @default(now())
+  criadoEm    DateTime @default(now())
 
-  licitacao   Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  licitacao Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
   @@map("arquivo")
 }
 
 model RepositorioSimilar {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   licitacaoId String
   nome        String
   url         String
-  criadoEm    DateTime  @default(now())
+  criadoEm    DateTime @default(now())
 
-  licitacao   Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
   @@map("repositorio_similar")
 }
 
 model AnaliseStatusParticipacao {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   licitacaoId    String
-  scriptPrompt   String    @db.Text
-  relatorioTexto String    @db.Text
+  scriptPrompt   String   @db.Text
+  relatorioTexto String   @db.Text
   impedimentos   Json?
   viabilidade    Json?
   custos         Json?
   precoSugerido  Json?
   executadoPorId String?
-  criadoEm       DateTime  @default(now())
+  criadoEm       DateTime @default(now())
 
-  licitacao      Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
   @@map("analise_status_participacao")
 }
 
+model LicitacaoStatusHistorico {
+  id             String           @id @default(cuid())
+  licitacaoId    String
+  statusAnterior LicitacaoStatus?
+  statusNovo     LicitacaoStatus
+  motivo         String?          @db.Text
+  usuarioId      String?
+  ocorridoEm     DateTime         @default(now())
+
+  licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  usuario   User?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([licitacaoId, ocorridoEm])
+  @@index([statusNovo, ocorridoEm])
+  @@map("licitacao_status_historico")
+}
+
+model Notificacao {
+  id                String                @id @default(cuid())
+  tipo              NotificacaoTipo
+  titulo            String
+  descricao         String                @db.Text
+  severidade        NotificacaoSeveridade @default(INFO)
+  linkDestino       String?
+  licitacaoId       String?
+  chaveIdempotencia String                @unique
+  criadaEm          DateTime              @default(now())
+
+  licitacao     Licitacao?                @relation(fields: [licitacaoId], references: [id], onDelete: SetNull)
+  destinatarios NotificacaoDestinatario[]
+
+  @@index([criadaEm])
+  @@index([tipo])
+  @@index([licitacaoId])
+  @@map("notificacao")
+}
+
+model NotificacaoDestinatario {
+  id            String    @id @default(cuid())
+  notificacaoId String
+  usuarioId     String
+  lidaEm        DateTime?
+  criadoEm      DateTime  @default(now())
+
+  notificacao Notificacao @relation(fields: [notificacaoId], references: [id], onDelete: Cascade)
+  usuario     User        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([notificacaoId, usuarioId])
+  @@index([usuarioId, lidaEm])
+  @@index([notificacaoId])
+  @@map("notificacao_destinatario")
+}

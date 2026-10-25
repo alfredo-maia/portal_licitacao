@@ -59,6 +59,7 @@ function seedToRecord(seed: LicitacaoSeedItem): LicitacaoRecord {
     linkPncp: seed.linkPncp,
     linkSistemaOrigem: null,
     hashCritico: computeHashCritico(seed),
+    valorArrematado: null,
     responsavelId: null,
     createdAt: agora,
     updatedAt: agora,

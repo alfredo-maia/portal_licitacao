@@ -69,6 +69,7 @@ function mapItemToLicitacaoData(
     linkPncp: item.linkPncp || null,
     linkSistemaOrigem: item.linkSistemaOrigem || null,
     hashCritico,
+    valorArrematado: null,
     responsavelId: null,
   };
 }

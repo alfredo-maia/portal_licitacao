@@ -783,6 +783,7 @@ export async function criarOportunidadeManual(
     linkPncp: null,
     linkSistemaOrigem: null,
     hashCritico,
+    valorArrematado: null,
     responsavelId: null,
   };
 
