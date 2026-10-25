@@ -17,3 +17,5 @@ export * from "./calendario.schema";
 export * from "./notificacao.schema";
 export * from "./portal.schema";
 export * from "./documento.schema";
+export * from "./declaracao.schema";
+export * from "./impugnacao.schema";

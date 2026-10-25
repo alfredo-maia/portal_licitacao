@@ -103,6 +103,7 @@ model User {
   notificacoesRecebidas NotificacaoDestinatario[]
   statusAlterados       LicitacaoStatusHistorico[]
   documentosCriados     Documento[]
+  impugnacoesCriadas    Impugnacao[]
 
   @@index([email])
   @@index([role])
@@ -180,6 +181,7 @@ model Licitacao {
   analisesIA            AnaliseStatusParticipacao[]
   historicoStatus       LicitacaoStatusHistorico[]
   notificacoes          Notificacao[]
+  impugnacoes           Impugnacao[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 
@@ -388,3 +390,41 @@ model Documento {
   @@index([documentoPaiId])
   @@map("documento")
 }
+
+// Sprint 5 — Impugnações e Esclarecimentos (PRD §4.9 / Art. 164 Lei 14.133/2021)
+enum ImpugnacaoStatus {
+  RASCUNHO
+  PROTOCOLADA
+  ACATADA
+  INDEFERIDA
+}
+
+model Impugnacao {
+  id                 String           @id @default(cuid())
+  licitacaoId        String?
+  numeroEdital       String
+  orgaoNome          String
+  objeto             String?          @db.Text
+  status             ImpugnacaoStatus @default(RASCUNHO)
+  motivoLegal        String
+  dataAberturaSessao DateTime
+  prazoFatal         DateTime
+  fundamentacao      String           @db.Text
+  pedidos            String           @db.Text
+  numeroProtocolo    String?
+  dataProtocolo      DateTime?
+  dataResposta       DateTime?
+  decisaoJulgamento  String?          @db.Text
+  criadoPorId        String?
+  criadoEm           DateTime         @default(now())
+  atualizadoEm       DateTime         @updatedAt
+
+  licitacao Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: SetNull)
+  criadoPor User?      @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([prazoFatal])
+  @@index([licitacaoId])
+  @@map("impugnacao")
+}
+
