@@ -49,7 +49,8 @@ model User {
   accounts              Account[]
   sessions              Session[]
   auditLogs             AuditLog[]
-  licitacoesResponsavel Licitacao[] @relation("LicitacaoResponsavel")
+  licitacoesResponsavel Licitacao[]          @relation("LicitacaoResponsavel")
+  licitacoesAtribuido   LicitacaoAtribuido[]
 
   @@index([email])
   @@index([role])
@@ -119,9 +120,13 @@ model Licitacao {
   linkSistemaOrigem     String?
   hashCritico           String?
   responsavelId         String?
-  responsavel           User?           @relation("LicitacaoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  responsavel           User?                       @relation("LicitacaoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+  atribuidos            LicitacaoAtribuido[]
+  arquivos              Arquivo[]
+  repositoriosSimilares RepositorioSimilar[]
+  analisesIA            AnaliseStatusParticipacao[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
 
   @@index([dataAbertura])
   @@index([status])
@@ -159,3 +164,65 @@ model AuditLog {
   @@index([ocorridoEm])
   @@map("audit_log")
 }
+
+model LicitacaoAtribuido {
+  id          String    @id @default(cuid())
+  licitacaoId String
+  usuarioId   String
+  criadoEm    DateTime  @default(now())
+
+  licitacao   Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  usuario     User      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([licitacaoId, usuarioId])
+  @@index([licitacaoId])
+  @@index([usuarioId])
+  @@map("licitacao_atribuido")
+}
+
+model Arquivo {
+  id          String     @id @default(cuid())
+  licitacaoId String?
+  nome        String
+  tamanho     Int
+  mimeType    String
+  caminho     String
+  criadoEm    DateTime   @default(now())
+
+  licitacao   Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+
+  @@index([licitacaoId])
+  @@map("arquivo")
+}
+
+model RepositorioSimilar {
+  id          String    @id @default(cuid())
+  licitacaoId String
+  nome        String
+  url         String
+  criadoEm    DateTime  @default(now())
+
+  licitacao   Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+
+  @@index([licitacaoId])
+  @@map("repositorio_similar")
+}
+
+model AnaliseStatusParticipacao {
+  id             String    @id @default(cuid())
+  licitacaoId    String
+  scriptPrompt   String    @db.Text
+  relatorioTexto String    @db.Text
+  impedimentos   Json?
+  viabilidade    Json?
+  custos         Json?
+  precoSugerido  Json?
+  executadoPorId String?
+  criadoEm       DateTime  @default(now())
+
+  licitacao      Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+
+  @@index([licitacaoId])
+  @@map("analise_status_participacao")
+}
+

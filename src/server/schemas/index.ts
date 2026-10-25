@@ -7,3 +7,7 @@ export * from "./licitacao.schema";
 export * from "./tipos-sistema.schema";
 export * from "./ingestao.schema";
 export * from "./oportunidades.schema";
+export * from "./kanban.schema";
+export * from "./equipe.schema";
+export * from "./repositorio.schema";
+export * from "./analise-ia.schema";
