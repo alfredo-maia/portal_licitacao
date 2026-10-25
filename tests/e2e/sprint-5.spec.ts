@@ -40,7 +40,7 @@ test.describe("Sprint 5 — E2E Declarações Oficiais A4 & Gestão de Impugnaç
     // Altera o modelo de declaração no Select
     await page.locator("#select-tipo-declaracao").selectOption("NAO_EMPREGA_MENOR");
     await expect(page.getByText("Fundamento Legal:")).toBeVisible();
-    await expect(page.getByText("Art. 7º, XXXIII da CF/88 e Art. 68, VI da Lei nº 14.133/2021")).toBeVisible();
+    await expect(page.getByText("Art. 7º, XXXIII da CF/88 e Art. 68, VI da Lei nº 14.133/2021").first()).toBeVisible();
   });
 
   test("deve exibir o módulo de Impugnações (/impugnacoes), KPIs de risco e modal com jurisprudência TCU", async ({
