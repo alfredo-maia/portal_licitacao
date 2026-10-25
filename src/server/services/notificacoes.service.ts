@@ -21,6 +21,8 @@ import {
   insertInMemoryNotificacao,
   listInMemoryLicitacoes,
   listInMemoryNotificacoesUsuario,
+  listInMemoryPortais,
+  listInMemoryDocumentos,
   marcarInMemoryNotificacaoLida,
   marcarTodasInMemoryNotificacoesLidas,
 } from "./licitacoes-store";
@@ -402,7 +404,85 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: diretoriaEComercialIds,
       });
 
-      if (res.criada) contagens.N5_PENDENTE_CRITICA++;
+    }
+  }
+
+  const todosUsuariosIds = allUsers.map((u) => u.id);
+
+  // Varredura N6 — Vencimento de Portais (PRD §4.5, §6.2)
+  let portais: any[] = [];
+  try {
+    portais = await prisma.portal.findMany({
+      where: { dataVencimento: { not: null } },
+    });
+  } catch {
+    portais = listInMemoryPortais().filter((p) => Boolean(p.dataVencimento));
+  }
+
+  for (const portal of portais) {
+    const dataVenc = new Date(portal.dataVencimento);
+    const diffDias = Math.ceil((dataVenc.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24));
+    const janelasN6 = NOTIFICACAO_MATRIZ.N6_VENCIMENTO_PORTAL.antecedenciaDias;
+
+    if (janelasN6 && (janelasN6 as readonly number[]).includes(diffDias)) {
+      const chave = montarChaveIdempotencia({
+        tipo: "N6_VENCIMENTO_PORTAL",
+        entidadeId: portal.id,
+        janela: `${dataBrtStr}_D${diffDias}`,
+      });
+
+      const res = await criarNotificacao({
+        tipo: "N6_VENCIMENTO_PORTAL",
+        titulo: `Renovação de Portal: ${portal.nome} vence em ${diffDias} dias`,
+        descricao: `A assinatura da plataforma de compras ${portal.nome} expira em ${diffDias} dia(s). Regularize a anuidade para evitar suspensão de lances.`,
+        linkDestino: `/portais/${portal.id}`,
+        chaveIdempotencia: chave,
+        destinatarioIds: diretoriaEComercialIds,
+      });
+
+      if (res.criada) contagens.N6_VENCIMENTO_PORTAL++;
+      else ignoradas++;
+    }
+  }
+
+  // Varredura N7 — Vencimento de Documentos (PRD §4.6, §6.2)
+  let documentos: any[] = [];
+  try {
+    documentos = await prisma.documento.findMany({
+      where: {
+        status: "ATIVO",
+        semValidade: false,
+        dataVencimento: { not: null },
+      },
+    });
+  } catch {
+    documentos = listInMemoryDocumentos().filter(
+      (d) => d.status === "ATIVO" && !d.semValidade && Boolean(d.dataVencimento),
+    );
+  }
+
+  for (const doc of documentos) {
+    const dataVenc = new Date(doc.dataVencimento);
+    const diffDias = Math.ceil((dataVenc.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24));
+    const janelasN7 = NOTIFICACAO_MATRIZ.N7_VENCIMENTO_DOCUMENTO.antecedenciaDias;
+
+    if (janelasN7 && (janelasN7 as readonly number[]).includes(diffDias)) {
+      const chave = montarChaveIdempotencia({
+        tipo: "N7_VENCIMENTO_DOCUMENTO",
+        entidadeId: doc.id,
+        janela: `${dataBrtStr}_D${diffDias}`,
+      });
+
+      const res = await criarNotificacao({
+        tipo: "N7_VENCIMENTO_DOCUMENTO",
+        titulo: `Documento Vencendo: ${doc.nome} expira em ${diffDias} dias`,
+        descricao: `O documento de habilitação ${doc.nome} (${doc.categoria}) expira em ${diffDias} dia(s). Providencie a renovação/emissão para manter a empresa habilitada.`,
+        linkDestino: `/documentacao`,
+        chaveIdempotencia: chave,
+        destinatarioIds: todosUsuariosIds,
+      });
+
+      if (res.criada) contagens.N7_VENCIMENTO_DOCUMENTO++;
       else ignoradas++;
     }
   }

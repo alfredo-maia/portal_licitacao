@@ -15,6 +15,8 @@ import {
   type LicitacaoRecord,
 } from "./licitacoes-store";
 
+import { buscarDocumentosVencendoNoMes } from "./documentos.service";
+
 export async function getCalendarioData(
   rawQuery?: CalendarioQuery,
 ): Promise<CalendarioResponse> {
@@ -87,11 +89,13 @@ export async function getCalendarioData(
     })
     .sort((a, b) => a.dia - b.dia);
 
+  const alertasDocumentais = await buscarDocumentosVencendoNoMes(ano, mes);
+
   return {
     ok: true,
     mes,
     ano,
     chips,
-    alertasDocumentais: [], // Reservado para a Sprint 4 (Documentos da Empresa)
+    alertasDocumentais,
   };
 }

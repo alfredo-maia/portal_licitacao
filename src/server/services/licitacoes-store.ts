@@ -317,6 +317,105 @@ export function marcarTodasInMemoryNotificacoesLidas(usuarioId: string): number 
   return count;
 }
 
+let portaisStore: Map<string, any> = new Map();
+let documentosStore: Map<string, any> = new Map();
+
+export function insertInMemoryPortal(data: any): any {
+  const id = data.id || `portal_${randomUUID()}`;
+  const now = new Date();
+  const portal = {
+    ...data,
+    id,
+    login: data.login ?? null,
+    email: data.email ?? null,
+    cnpj: data.cnpj ?? null,
+    usuario: data.usuario ?? null,
+    valorAssinatura: data.valorAssinatura ?? null,
+    dataVencimento: data.dataVencimento ? new Date(data.dataVencimento) : null,
+    suporteContato: data.suporteContato ?? null,
+    observacoes: data.observacoes ?? null,
+    criadoEm: data.criadoEm || now,
+    atualizadoEm: now,
+  };
+  portaisStore.set(id, portal);
+  return portal;
+}
+
+export function updateInMemoryPortal(id: string, data: any): any | null {
+  const existing = portaisStore.get(id);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...data,
+    dataVencimento: data.dataVencimento !== undefined ? (data.dataVencimento ? new Date(data.dataVencimento) : null) : existing.dataVencimento,
+    atualizadoEm: new Date(),
+  };
+  portaisStore.set(id, updated);
+  return updated;
+}
+
+export function getInMemoryPortal(id: string): any | null {
+  return portaisStore.get(id) || null;
+}
+
+export function listInMemoryPortais(): any[] {
+  return Array.from(portaisStore.values());
+}
+
+export function deleteInMemoryPortal(id: string): boolean {
+  return portaisStore.delete(id);
+}
+
+export function insertInMemoryDocumento(data: any): any {
+  const id = data.id || `doc_${randomUUID()}`;
+  const now = new Date();
+  const doc = {
+    ...data,
+    id,
+    tipo: data.tipo ?? null,
+    orgaoEmissor: data.orgaoEmissor ?? null,
+    semValidade: Boolean(data.semValidade),
+    dataEmissao: data.dataEmissao ? new Date(data.dataEmissao) : null,
+    dataVencimento: data.dataVencimento ? new Date(data.dataVencimento) : null,
+    arquivoUrl: data.arquivoUrl ?? null,
+    arquivoNome: data.arquivoNome ?? null,
+    arquivoTamanho: data.arquivoTamanho ?? null,
+    mimeType: data.mimeType ?? null,
+    versao: data.versao || 1,
+    documentoPaiId: data.documentoPaiId ?? null,
+    status: data.status || "ATIVO",
+    criadoPorId: data.criadoPorId ?? null,
+    criadoEm: data.criadoEm || now,
+    atualizadoEm: now,
+  };
+  documentosStore.set(id, doc);
+  return doc;
+}
+
+export function updateInMemoryDocumento(id: string, data: any): any | null {
+  const existing = documentosStore.get(id);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...data,
+    atualizadoEm: new Date(),
+  };
+  documentosStore.set(id, updated);
+  return updated;
+}
+
+export function getInMemoryDocumento(id: string): any | null {
+  return documentosStore.get(id) || null;
+}
+
+export function listInMemoryDocumentos(): any[] {
+  return Array.from(documentosStore.values());
+}
+
+export function deleteInMemoryDocumento(id: string): boolean {
+  return documentosStore.delete(id);
+}
+
 /** Restaura todos os stores ao estado seed inicial (uso exclusivo de testes). */
 export function resetInMemoryLicitacoes(): void {
   storeById = null;
@@ -325,4 +424,6 @@ export function resetInMemoryLicitacoes(): void {
   notificacoesStore.clear();
   notificacaoPorChaveStore.clear();
   destinatariosStore.clear();
+  portaisStore.clear();
+  documentosStore.clear();
 }
