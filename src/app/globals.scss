@@ -50,3 +50,21 @@ body {
     display: none;
   }
 }
+
+.pncp-opportunities-table {
+  width: 100% !important;
+  table-layout: auto !important;
+}
+
+@media (min-width: 66rem) {
+  .cds--data-table-container {
+    overflow-x: hidden !important;
+  }
+}
+
+@media (max-width: 65.99rem) {
+  .cds--data-table-container {
+    overflow-x: auto !important;
+  }
+}
+

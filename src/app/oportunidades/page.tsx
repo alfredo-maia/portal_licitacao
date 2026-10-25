@@ -446,7 +446,7 @@ function OportunidadesContent() {
               selectedRows,
               getSelectionProps,
             }) => (
-              <TableContainer>
+                <TableContainer style={{ overflowX: "auto", maxWidth: "100%" }}>
                 <TableToolbar>
                   <TableBatchActions {...getBatchActionProps()}>
                     <TableBatchAction
@@ -499,24 +499,24 @@ function OportunidadesContent() {
                     </Button>
                   </TableToolbarContent>
                 </TableToolbar>
-                <Table>
+                <Table className="pncp-opportunities-table">
                   <TableHead>
                     <TableRow>
                       <TableSelectAll {...getSelectionProps()} />
                       {headers.map((header) => {
                         let headerStyle: React.CSSProperties = {};
                         if (header.key === "dataAbertura") {
-                          headerStyle = { width: "125px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "115px", whiteSpace: "nowrap" };
                         } else if (header.key === "orgaoUF") {
-                          headerStyle = { width: "170px" };
+                          headerStyle = { width: "18%" };
                         } else if (header.key === "miniResumo") {
-                          headerStyle = { minWidth: "450px" };
+                          headerStyle = { width: "42%" };
                         } else if (header.key === "valorEstimado") {
-                          headerStyle = { width: "135px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "130px", whiteSpace: "nowrap" };
                         } else if (header.key === "parecerIA") {
-                          headerStyle = { width: "120px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "110px", whiteSpace: "nowrap" };
                         } else if (header.key === "acoes") {
-                          headerStyle = { width: "85px", whiteSpace: "nowrap", textAlign: "center" };
+                          headerStyle = { width: "80px", whiteSpace: "nowrap", textAlign: "center" };
                         }
                         return (
                           <TableHeader
@@ -542,10 +542,18 @@ function OportunidadesContent() {
                           <TableCell
                             key={cell.id}
                             style={
-                              cell.info.header === "miniResumo"
-                                ? { minWidth: "450px" }
+                              cell.info.header === "dataAbertura"
+                                ? { whiteSpace: "nowrap" }
+                                : cell.info.header === "orgaoUF"
+                                ? { wordBreak: "break-word" }
+                                : cell.info.header === "miniResumo"
+                                ? { wordBreak: "break-word" }
+                                : cell.info.header === "valorEstimado"
+                                ? { whiteSpace: "nowrap" }
+                                : cell.info.header === "parecerIA"
+                                ? { whiteSpace: "nowrap" }
                                 : cell.info.header === "acoes"
-                                ? { width: "85px", textAlign: "center" }
+                                ? { width: "80px", textAlign: "center", padding: "0 0.25rem" }
                                 : undefined
                             }
                           >
@@ -587,7 +595,7 @@ function OportunidadesContent() {
                                 {cell.value}
                               </Tag>
                             ) : cell.info.header === "miniResumo" ? (
-                              <div style={{ minWidth: "420px", maxWidth: "750px", wordBreak: "break-word", lineHeight: 1.4 }}>
+                              <div style={{ wordBreak: "break-word", lineHeight: 1.4 }}>
                                 <span style={{ fontWeight: 500 }}>{cell.value}</span>
                                 {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
                                   <Tag type="gray" style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}>
