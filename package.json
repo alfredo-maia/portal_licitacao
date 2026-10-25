@@ -16,7 +16,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate && node -e \"try { const fs=require('fs'); const cp=require('child_process'); const out=cp.execSync('find node_modules -name package.json 2>/dev/null | grep temporal-polyfill').toString().split('\\n').filter(Boolean); for(const p of out){ const pkg=JSON.parse(fs.readFileSync(p,'utf-8')); pkg.type='commonjs'; if(pkg.exports && pkg.exports['./global']) pkg.exports['./global']={types:'./global.d.ts',require:'./global.js',default:'./global.js'}; fs.writeFileSync(p,JSON.stringify(pkg,null,2)); } } catch(e){}\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

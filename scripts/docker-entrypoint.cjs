@@ -53,6 +53,59 @@ async function bootstrapDatabase() {
       }
     }
 
+    // Garante que todas as colunas e tabelas da Sprint 2 existam no PostgreSQL
+    console.log("[entrypoint] Verificando tabelas da Sprint 2 (Kanban, Equipe, Arquivos, Repositórios, IA)...");
+    const ddlSprint2 = [
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "responsavelId" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_responsavelId_idx" ON "licitacao"("responsavelId");`,
+      `CREATE TABLE IF NOT EXISTS "licitacao_atribuido" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "licitacaoId" TEXT NOT NULL,
+        "usuarioId" TEXT NOT NULL,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "licitacao_atribuido_licitacaoId_usuarioId_key" ON "licitacao_atribuido"("licitacaoId", "usuarioId");`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_atribuido_licitacaoId_idx" ON "licitacao_atribuido"("licitacaoId");`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_atribuido_usuarioId_idx" ON "licitacao_atribuido"("usuarioId");`,
+      `CREATE TABLE IF NOT EXISTS "arquivo" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "licitacaoId" TEXT,
+        "nome" TEXT NOT NULL,
+        "tamanho" INTEGER NOT NULL,
+        "mimeType" TEXT NOT NULL,
+        "caminho" TEXT NOT NULL,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "arquivo_licitacaoId_idx" ON "arquivo"("licitacaoId");`,
+      `CREATE TABLE IF NOT EXISTS "repositorio_similar" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "licitacaoId" TEXT NOT NULL,
+        "nome" TEXT NOT NULL,
+        "url" TEXT NOT NULL,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "repositorio_similar_licitacaoId_idx" ON "repositorio_similar"("licitacaoId");`,
+      `CREATE TABLE IF NOT EXISTS "analise_status_participacao" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "licitacaoId" TEXT NOT NULL,
+        "scriptPrompt" TEXT NOT NULL,
+        "relatorioTexto" TEXT NOT NULL,
+        "impedimentos" JSONB,
+        "viabilidade" JSONB,
+        "custos" JSONB,
+        "precoSugerido" JSONB,
+        "executadoPorId" TEXT,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "analise_status_participacao_licitacaoId_idx" ON "analise_status_participacao"("licitacaoId");`,
+    ];
+
+    for (const stmt of ddlSprint2) {
+      await prisma.$executeRawUnsafe(stmt).catch((err) => {
+        console.warn("[entrypoint] Aviso DDL Sprint 2:", err.message);
+      });
+    }
+
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     const passwordHash = await bcrypt.hash(rawPassword, 10);

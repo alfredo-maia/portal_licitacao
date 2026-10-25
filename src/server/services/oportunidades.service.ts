@@ -280,8 +280,10 @@ export async function getOportunidadeById(
   id: string,
 ): Promise<any> {
   try {
-    const found = await prisma.licitacao.findUnique({
-      where: { id },
+    const found = await prisma.licitacao.findFirst({
+      where: {
+        OR: [{ id }, { idPncp: id }],
+      },
       include: {
         responsavel: { select: { id: true, name: true, email: true, role: true } },
         atribuidos: {
@@ -297,8 +299,28 @@ export async function getOportunidadeById(
     if (found) {
       return found;
     }
-  } catch {
-    // PostgreSQL indisponível: tenta o fallback em memória
+  } catch (err) {
+    // Se a consulta completa falhar por ausência de tabelas relacionais ou erro de junção,
+    // realiza a busca direta da licitação básica no PostgreSQL sem as relações opcionais.
+    try {
+      const basic = await prisma.licitacao.findFirst({
+        where: {
+          OR: [{ id }, { idPncp: id }],
+        },
+      });
+      if (basic) {
+        return {
+          ...basic,
+          responsavel: null,
+          atribuidos: [],
+          repositoriosSimilares: [],
+          arquivos: [],
+          analisesIA: [],
+        };
+      }
+    } catch {
+      // PostgreSQL indisponível: fallback em memória
+    }
   }
 
   const inMemory = getInMemoryLicitacaoById(id);

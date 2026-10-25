@@ -135,7 +135,13 @@ function KanbanCardContent({
       </div>
 
       <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", lineHeight: 1.3 }}>
-        {lic.miniResumo || lic.numeroEdital}
+        <Link
+          href={`/oportunidades/${lic.id}`}
+          style={{ color: "var(--cds-text-primary)", textDecoration: "none" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {lic.miniResumo || lic.numeroEdital}
+        </Link>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
@@ -184,9 +190,22 @@ function KanbanCardContent({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.5rem" }}>
         <Link
           href={`/oportunidades/${lic.id}`}
-          style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.25rem", color: "var(--cds-link-primary)", textDecoration: "none" }}
+          style={{
+            fontSize: "0.8125rem",
+            fontWeight: 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--cds-link-primary)",
+            textDecoration: "none",
+            padding: "0.25rem 0.5rem",
+            backgroundColor: "var(--cds-layer-01)",
+            borderRadius: "3px",
+            border: "1px solid var(--cds-border-subtle)",
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
-          Dossiê <Launch size={12} />
+          Abrir Dossiê Completo <Launch size={14} />
         </Link>
         {onMarcarPerda && !STATUS_PERDA.includes(lic.status) && (
           <Button

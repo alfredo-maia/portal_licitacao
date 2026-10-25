@@ -87,8 +87,12 @@ export function listInMemoryLicitacoes(): LicitacaoRecord[] {
 }
 
 export function getInMemoryLicitacaoById(id: string): LicitacaoRecord | null {
-  const { byId } = ensureStore();
-  return byId.get(id) ?? null;
+  const { byId, idByIdPncp } = ensureStore();
+  const direct = byId.get(id);
+  if (direct) return direct;
+  const byPncpId = idByIdPncp.get(id);
+  if (byPncpId) return byId.get(byPncpId) ?? null;
+  return null;
 }
 
 export function getInMemoryLicitacaoByIdPncp(
