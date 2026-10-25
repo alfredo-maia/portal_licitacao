@@ -346,7 +346,10 @@ export default function OportunidadesDetalhePage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisao, motivoRecusa: motivo }),
       });
-      if (!res.ok) throw new Error("Erro ao registrar deliberação.");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.message || errJson?.error || "Erro ao registrar deliberação.");
+      }
       showNotification("success", `Licitação deliberada como ${decisao}!`);
       setShowRecusarModal(false);
       setRecusaMotivo("");

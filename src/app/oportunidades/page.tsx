@@ -187,12 +187,13 @@ function OportunidadesContent() {
         body: JSON.stringify({ decisao: "GO" }),
       });
       if (!response.ok) {
-        throw new Error("Erro ao aceitar oportunidade");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || errorData?.error || "Erro ao aceitar oportunidade");
       }
-      fetchOportunidades();
+      await fetchOportunidades();
     } catch (err) {
       console.error("Erro ao aceitar oportunidade:", err);
-      alert("Erro ao aceitar oportunidade. Tente novamente.");
+      alert(err instanceof Error ? err.message : "Erro ao aceitar oportunidade. Tente novamente.");
     }
   };
 
@@ -205,15 +206,16 @@ function OportunidadesContent() {
         body: JSON.stringify({ decisao: "NO_GO", motivoRecusa: recusaMotivo }),
       });
       if (!response.ok) {
-        throw new Error("Erro ao recusar oportunidade");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || errorData?.error || "Erro ao recusar oportunidade");
       }
-      fetchOportunidades();
+      await fetchOportunidades();
       setShowRecusarModal(false);
       setRecusaMotivo("");
       setSelectedOpportunityId(null);
     } catch (err) {
       console.error("Erro ao recusar oportunidade:", err);
-      alert("Erro ao recusar oportunidade. Tente novamente.");
+      alert(err instanceof Error ? err.message : "Erro ao recusar oportunidade. Tente novamente.");
     }
   };
 
@@ -609,6 +611,7 @@ function OportunidadesContent() {
                               </span>
                             ) : cell.info.header === "acoes" ? (
                               <div
+                                onClick={(e) => e.stopPropagation()}
                                 style={{
                                   display: "flex",
                                   gap: "0.4rem",
@@ -803,9 +806,19 @@ function OportunidadesContent() {
        {/* Modal Recusar Licitação */}
        <Modal
          open={showRecusarModal}
-         onRequestClose={() => setShowRecusarModal(false)}
-         modalHeading={`Recusar Oportunidade ${selectedOpportunityId}`}
-         passiveModal
+         onRequestClose={() => {
+           setShowRecusarModal(false);
+           setRecusaMotivo("");
+         }}
+         modalHeading="Recusar Oportunidade"
+         primaryButtonText="Confirmar Recusa"
+         secondaryButtonText="Cancelar"
+         danger
+         onRequestSubmit={handleConfirmRecusa}
+         onSecondarySubmit={() => {
+           setShowRecusarModal(false);
+           setRecusaMotivo("");
+         }}
          data-testid="modal-recusar-licitacao"
        >
          <p style={{ marginBottom: "1rem" }}>
@@ -820,14 +833,6 @@ function OportunidadesContent() {
            style={{ marginBottom: "1rem" }}
            data-testid="input-motivo-recusa"
          />
-         <div className="cds--modal-footer">
-           <Button kind="secondary" onClick={() => setShowRecusarModal(false)}>
-             Cancelar
-           </Button>
-           <Button kind="danger" onClick={handleConfirmRecusa} data-testid="btn-confirmar-recusa">
-             Confirmar Recusa
-           </Button>
-         </div>
        </Modal>
      </ModulePageShell>
    );
