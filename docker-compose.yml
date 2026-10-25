@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: pncp_secret_2026
       POSTGRES_DB: portal_licitacao
     ports:
-      - "15434:5432"
+      - "127.0.0.1:15434:5432"
     volumes:
       - portal_licitacao_pgdata:/var/lib/postgresql/data
     healthcheck:
