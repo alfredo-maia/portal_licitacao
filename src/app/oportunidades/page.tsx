@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Tag,
@@ -52,6 +52,14 @@ interface Oportunidade {
 
 
 export default function OportunidadesPage() {
+  return (
+    <Suspense fallback={<div>Carregando oportunidades...</div>}>
+      <OportunidadesContent />
+    </Suspense>
+  );
+}
+
+function OportunidadesContent() {
   const router = useRouter();
   const [oportunidades, setOportunidades] = React.useState<Oportunidade[]>([]);
   const [loading, setLoading] = React.useState(true);
