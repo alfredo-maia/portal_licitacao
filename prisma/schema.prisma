@@ -54,6 +54,38 @@ enum NotificacaoSeveridade {
   CRITICA
 }
 
+enum PortalStatus {
+  NAO_CADASTRADO
+  PRE_CADASTRO
+  AGUARDANDO_APROVACAO
+  CADASTRADO
+  REJEITADO
+  VENCIDO
+  SUSPENSO
+}
+
+enum PortalPeriodicidade {
+  MENSAL
+  TRIMESTRAL
+  SEMESTRAL
+  ANUAL
+  GRATUITO
+}
+
+enum DocumentoCategoria {
+  JURIDICA
+  FISCAL_TRABALHISTA
+  QUALIFICACAO_TECNICA
+  QUALIFICACAO_ECONOMICA
+  OUTROS
+}
+
+enum DocumentoStatus {
+  ATIVO
+  ARQUIVADO
+  SUBSTITUIDO
+}
+
 model User {
   id                    String                     @id @default(cuid())
   name                  String
@@ -70,6 +102,7 @@ model User {
   licitacoesAtribuido   LicitacaoAtribuido[]
   notificacoesRecebidas NotificacaoDestinatario[]
   statusAlterados       LicitacaoStatusHistorico[]
+  documentosCriados     Documento[]
 
   @@index([email])
   @@index([role])
@@ -300,4 +333,58 @@ model NotificacaoDestinatario {
   @@index([usuarioId, lidaEm])
   @@index([notificacaoId])
   @@map("notificacao_destinatario")
+}
+
+model Portal {
+  id                      String              @id @default(cuid())
+  nome                    String
+  url                     String
+  status                  PortalStatus        @default(NAO_CADASTRADO)
+  login                   String?
+  email                   String?
+  cnpj                    String?
+  usuario                 String?
+  valorAssinatura         Float?
+  periodicidade           PortalPeriodicidade @default(ANUAL)
+  dataVencimento          DateTime?
+  aceitaRobo              Boolean             @default(false)
+  exigeCertificadoDigital Boolean             @default(false)
+  suporteContato          String?
+  observacoes             String?             @db.Text
+  criadoEm                DateTime            @default(now())
+  atualizadoEm            DateTime            @updatedAt
+
+  @@index([status])
+  @@index([dataVencimento])
+  @@map("portal")
+}
+
+model Documento {
+  id             String             @id @default(cuid())
+  nome           String
+  categoria      DocumentoCategoria
+  tipo           String?
+  orgaoEmissor   String?
+  semValidade    Boolean            @default(false)
+  dataEmissao    DateTime?
+  dataVencimento DateTime?
+  arquivoUrl     String?
+  arquivoNome    String?
+  arquivoTamanho Int?
+  mimeType       String?
+  versao         Int                @default(1)
+  documentoPaiId String?
+  status         DocumentoStatus    @default(ATIVO)
+  criadoPorId    String?
+  criadoEm       DateTime           @default(now())
+  atualizadoEm   DateTime           @updatedAt
+
+  documentoPai       Documento?  @relation("HistoricoVersoes", fields: [documentoPaiId], references: [id], onDelete: SetNull)
+  versoesAnteriores  Documento[] @relation("HistoricoVersoes")
+  criadoPor          User?       @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([categoria, status])
+  @@index([dataVencimento])
+  @@index([documentoPaiId])
+  @@map("documento")
 }

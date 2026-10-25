@@ -15,3 +15,5 @@ export * from "./status-grupos.schema";
 export * from "./dashboard.schema";
 export * from "./calendario.schema";
 export * from "./notificacao.schema";
+export * from "./portal.schema";
+export * from "./documento.schema";
