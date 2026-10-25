@@ -319,6 +319,7 @@ export function marcarTodasInMemoryNotificacoesLidas(usuarioId: string): number 
 
 let portaisStore: Map<string, any> = new Map();
 let documentosStore: Map<string, any> = new Map();
+let impugnacoesStore: Map<string, any> = new Map();
 
 export function insertInMemoryPortal(data: any): any {
   const id = data.id || `portal_${randomUUID()}`;
@@ -416,6 +417,60 @@ export function deleteInMemoryDocumento(id: string): boolean {
   return documentosStore.delete(id);
 }
 
+export function insertInMemoryImpugnacao(data: any): any {
+  const id = data.id || `imp_${randomUUID()}`;
+  const now = new Date();
+  const record = {
+    ...data,
+    id,
+    licitacaoId: data.licitacaoId ?? null,
+    numeroEdital: data.numeroEdital,
+    orgaoNome: data.orgaoNome,
+    objeto: data.objeto ?? null,
+    status: data.status || "RASCUNHO",
+    motivoLegal: data.motivoLegal,
+    dataAberturaSessao: data.dataAberturaSessao instanceof Date ? data.dataAberturaSessao : new Date(data.dataAberturaSessao),
+    prazoFatal: data.prazoFatal instanceof Date ? data.prazoFatal : new Date(data.prazoFatal),
+    fundamentacao: data.fundamentacao,
+    pedidos: data.pedidos,
+    numeroProtocolo: data.numeroProtocolo ?? null,
+    dataProtocolo: data.dataProtocolo ? (data.dataProtocolo instanceof Date ? data.dataProtocolo : new Date(data.dataProtocolo)) : null,
+    dataResposta: data.dataResposta ? (data.dataResposta instanceof Date ? data.dataResposta : new Date(data.dataResposta)) : null,
+    decisaoJulgamento: data.decisaoJulgamento ?? null,
+    criadoPorId: data.criadoPorId ?? null,
+    criadoEm: data.criadoEm || now,
+    atualizadoEm: now,
+  };
+  impugnacoesStore.set(id, record);
+  return record;
+}
+
+export function updateInMemoryImpugnacao(id: string, data: any): any | null {
+  const existing = impugnacoesStore.get(id);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...data,
+    dataProtocolo: data.dataProtocolo !== undefined ? (data.dataProtocolo ? new Date(data.dataProtocolo) : null) : existing.dataProtocolo,
+    dataResposta: data.dataResposta !== undefined ? (data.dataResposta ? new Date(data.dataResposta) : null) : existing.dataResposta,
+    atualizadoEm: new Date(),
+  };
+  impugnacoesStore.set(id, updated);
+  return updated;
+}
+
+export function getInMemoryImpugnacao(id: string): any | null {
+  return impugnacoesStore.get(id) || null;
+}
+
+export function listInMemoryImpugnacoes(): any[] {
+  return Array.from(impugnacoesStore.values());
+}
+
+export function deleteInMemoryImpugnacao(id: string): boolean {
+  return impugnacoesStore.delete(id);
+}
+
 /** Restaura todos os stores ao estado seed inicial (uso exclusivo de testes). */
 export function resetInMemoryLicitacoes(): void {
   storeById = null;
@@ -426,4 +481,5 @@ export function resetInMemoryLicitacoes(): void {
   destinatariosStore.clear();
   portaisStore.clear();
   documentosStore.clear();
+  impugnacoesStore.clear();
 }

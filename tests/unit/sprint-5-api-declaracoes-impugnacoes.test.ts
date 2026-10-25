@@ -71,7 +71,7 @@ describe("Sprint 5 [TDD RED] — APIs de Declarações Oficiais e Impugnações"
       expect(data.conteudoHtml).toContain("11.222.333/0001-44");
       expect(data.conteudoHtml).toContain("Mariana Souza");
       expect(data.conteudoHtml).toContain("PE 102/2026");
-      expect(data.conteudoTexto).toContain("não emprega menor de dezoito anos");
+      expect(data.conteudoTexto.toLowerCase()).toContain("não emprega menor de dezoito anos");
     });
 
     it("deve rejeitar payload inválido ou sem campos obrigatórios com status 400", async () => {

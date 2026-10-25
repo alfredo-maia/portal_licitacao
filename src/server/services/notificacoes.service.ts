@@ -23,6 +23,7 @@ import {
   listInMemoryNotificacoesUsuario,
   listInMemoryPortais,
   listInMemoryDocumentos,
+  listInMemoryImpugnacoes,
   marcarInMemoryNotificacaoLida,
   marcarTodasInMemoryNotificacoesLidas,
 } from "./licitacoes-store";
@@ -483,6 +484,49 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
       });
 
       if (res.criada) contagens.N7_VENCIMENTO_DOCUMENTO++;
+      else ignoradas++;
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+     N8: Prazo Fatal de Impugnação Vencendo (Art. 164 Lei 14.133)
+  ------------------------------------------------------------------------- */
+  let impugnacoesRascunho: any[] = [];
+  try {
+    impugnacoesRascunho = await prisma.impugnacao.findMany({
+      where: {
+        status: "RASCUNHO",
+        prazoFatal: { gte: agora },
+      },
+    });
+  } catch {
+    impugnacoesRascunho = listInMemoryImpugnacoes().filter(
+      (i) => i.status === "RASCUNHO" && new Date(i.prazoFatal).getTime() >= agora.getTime(),
+    );
+  }
+
+  for (const imp of impugnacoesRascunho) {
+    const prazoDate = new Date(imp.prazoFatal);
+    const diffDias = Math.ceil((prazoDate.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24));
+    const janelasN8 = NOTIFICACAO_MATRIZ.N8_PRAZO_IMPUGNACAO.antecedenciaDias;
+
+    if (janelasN8 && (janelasN8 as readonly number[]).includes(diffDias)) {
+      const chave = montarChaveIdempotencia({
+        tipo: "N8_PRAZO_IMPUGNACAO",
+        entidadeId: imp.id,
+        janela: `${dataBrtStr}_D${diffDias}`,
+      });
+
+      const res = await criarNotificacao({
+        tipo: "N8_PRAZO_IMPUGNACAO",
+        titulo: `Prazo Fatal de Impugnação: ${imp.numeroEdital} expira em ${diffDias} dia(s)`,
+        descricao: `O prazo fatal para protocolo de impugnação do edital ${imp.numeroEdital} (${imp.orgaoNome}) expira em ${diffDias} dia(s) (Art. 164 Lei 14.133/2021). Motivo: ${imp.motivoLegal}.`,
+        linkDestino: `/impugnacoes`,
+        chaveIdempotencia: chave,
+        destinatarioIds: diretoriaIds,
+      });
+
+      if (res.criada) contagens.N8_PRAZO_IMPUGNACAO++;
       else ignoradas++;
     }
   }
