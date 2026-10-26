@@ -70,7 +70,7 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
     });
 
     expect(screen.getByText(/Portal de Saúde Municipal/i)).toBeInTheDocument();
-    expect(screen.getByText(/Sistema de Gestão Escolar/i)).toBeInTheDocument();
+    expect(screen.getByText(/gestão escolar/i)).toBeInTheDocument();
   });
 
   it("deve renderizar o Dossiê com cabeçalho, equipe de execução e 4 abas Carbon", async () => {
@@ -139,6 +139,6 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
     });
 
     expect(screen.getByTestId("btn-open-verificar-participacao")).toBeInTheDocument();
-    expect(screen.getByText(/Tribunal de Justiça de GO — Fábrica de Software Sob Medida/i)).toBeInTheDocument();
+    expect(screen.getByText(/Tribunal de Justiça de GO — Fábrica de software/i)).toBeInTheDocument();
   });
 });

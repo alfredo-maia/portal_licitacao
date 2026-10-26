@@ -187,11 +187,12 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
 
       // Chip normal
       expect(chips[0]).toHaveStyle({ opacity: "1" });
-      expect(chips[0]).toHaveTextContent("010/2026");
+      expect(chips[0]).toHaveTextContent("Tribunal de Contas");
+      expect(chips[0]).toHaveTextContent("ACEITA");
 
       // Chip opaco a 40% (perda/desistência/anulada)
       expect(chips[1]).toHaveStyle({ opacity: "0.4" });
-      expect(chips[1]).toHaveTextContent("020/2026");
+      expect(chips[1]).toHaveTextContent("Câmara Municipal");
 
       // Clique no chip redireciona para detalhes
       fireEvent.click(chips[0]);
