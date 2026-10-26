@@ -34,6 +34,7 @@ import {
 import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
+import { ESTADOS_BRASIL } from "@/config/estados";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
@@ -455,18 +456,23 @@ function OportunidadesContent() {
             titleText="UF"
             label="Selecione um estado"
             items={[
-              { id: "", text: "Todas" },
-              { id: "SP", text: "São Paulo" },
-              { id: "RJ", text: "Rio de Janeiro" },
-              { id: "MG", text: "Minas Gerais" },
-              { id: "BA", text: "Bahia" },
-              { id: "DF", text: "Distrito Federal" },
-              { id: "GO", text: "Goiás" },
+              { id: "", text: "Todas as UFs" },
+              ...ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.nome} (${e.sigla})` })),
             ]}
             itemToString={(item) => (item ? item.text : "")}
-            selectedItem={filtroUf ? { id: filtroUf, text: filtroUf } : null}
+            selectedItem={
+              filtroUf
+                ? {
+                    id: filtroUf,
+                    text:
+                      ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)
+                        ? `${ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)?.nome} (${filtroUf})`
+                        : filtroUf,
+                  }
+                : null
+            }
             onChange={({ selectedItem }) => handleFilterChange("uf", selectedItem?.id || "")}
-            style={{ minWidth: "150px" }}
+            style={{ minWidth: "180px" }}
           />
           <Dropdown
             id="filter-faixa-valor"
