@@ -38,6 +38,7 @@ import {
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
+import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
 const MOTIVOS_RECUSA_GENERICOS = [
   "Não se encaixa no perfil ou core business da empresa",
@@ -588,7 +589,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               Voltar para Central de Oportunidades
             </Button>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0, lineHeight: 1.2 }}>
-              {oportunidade.orgaoNome} — {oportunidade.objeto || oportunidade.miniResumo || oportunidade.numeroEdital}
+              {oportunidade.orgaoNome} — {sintetizarMiniResumo(oportunidade.miniResumo || oportunidade.objeto || oportunidade.resumo, oportunidade.tipoSistemaCodigo)}
             </h1>
             <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
               CNPJ: {oportunidade.orgaoCnpj} • ID PNCP: {oportunidade.idPncp}

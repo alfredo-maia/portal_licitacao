@@ -34,6 +34,7 @@ import {
   CheckmarkOutline,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
 interface LicitacaoItem {
   id: string;
@@ -44,6 +45,7 @@ interface LicitacaoItem {
   resumo: string;
   valorEstimado: number;
   dataAbertura: string;
+  dataEncerramentoProposta?: string | null;
   status: string;
   tipoSistemaCodigo?: string;
   motivoPerda?: string | null;
@@ -107,8 +109,9 @@ function KanbanCardContent({
   onMarcarPerda?: (lic: LicitacaoItem) => void;
   isDragOverlay?: boolean;
 }) {
-  const urgente = isAberturaUrgente(lic.dataAbertura);
-  const dataFormatada = new Date(lic.dataAbertura).toLocaleDateString("pt-BR", {
+  const dataPrazo = lic.dataEncerramentoProposta || lic.dataAbertura;
+  const urgente = isAberturaUrgente(dataPrazo);
+  const dataFormatada = new Date(dataPrazo).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -133,7 +136,7 @@ function KanbanCardContent({
           style={{ color: "var(--cds-text-primary)", textDecoration: "none" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {lic.orgaoNome} — {lic.objeto || lic.miniResumo || lic.resumo || lic.numeroEdital}
+          {lic.orgaoNome} — {sintetizarMiniResumo(lic.miniResumo || lic.objeto || lic.resumo, lic.tipoSistemaCodigo)}
         </Link>
       </div>
 
@@ -168,10 +171,10 @@ function KanbanCardContent({
         </div>
       )}
 
-      {/* 5. Data e hora de abertura da sessão */}
+      {/* 5. Data e hora de abertura da sessão / prazo fatal de envio de proposta */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
         <Tag size="sm" type={urgente ? "red" : "cool-gray"} renderIcon={urgente ? WarningAlt : Events}>
-          Abertura: {dataFormatada}
+          Prazo: {dataFormatada}
         </Tag>
 
         {/* 6. Se for presencial, Informar o numero de distancia em KM de Goiania. Ex: 344 KM */}

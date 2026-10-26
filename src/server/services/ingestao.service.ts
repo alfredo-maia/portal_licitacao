@@ -16,6 +16,7 @@ import {
 } from "./licitacoes-store";
 import { criarNotificacao } from "./notificacoes.service";
 import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
+import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
 export { computeHashCritico } from "./hash-critico";
 export type { HashCriticoInput } from "./hash-critico";
@@ -51,7 +52,7 @@ function mapItemToLicitacaoData(
     poder: item.orgao.poder ?? null,
     modalidade: item.modalidade,
     portalDisputa: item.portalDisputa ?? null,
-    miniResumo: item.miniResumo,
+    miniResumo: sintetizarMiniResumo(item.miniResumo || item.resumo, item.tipoSistemaSugerido),
     resumo: item.resumo,
     valorEstimado: item.valorEstimado,
     dataAbertura: item.dataAbertura,
@@ -187,6 +188,7 @@ export async function ingestLicitacoesV2(
     const { status: _status, ...dadosSemStatus } = dados;
     const patch: Partial<NovaLicitacaoData> = {
       ...(preservarStatus ? dadosSemStatus : dados),
+      miniResumo: dados.miniResumo,
       // Preserva a data de abertura original do certame e atualiza a data de encerramento de envio de proposta
       dataAbertura: existente.dataAbertura,
       dataEncerramentoProposta: dados.dataEncerramentoProposta ?? dados.dataAbertura,

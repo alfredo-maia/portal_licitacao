@@ -298,7 +298,7 @@ export async function listOportunidades(
   try {
     const dbRecords = await prisma.licitacao.findMany({
       where: buildPrismaWhere(filters),
-      orderBy: { dataAbertura: "asc" },
+      orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
     });
     for (const record of dbRecords) {
       mergedByIdPncp.set(record.idPncp, record);
@@ -312,7 +312,7 @@ export async function listOportunidades(
       await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
       const retryRecords = await prisma.licitacao.findMany({
         where: buildPrismaWhere(filters),
-        orderBy: { dataAbertura: "asc" },
+        orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
       });
       for (const record of retryRecords) {
         mergedByIdPncp.set(record.idPncp, record);

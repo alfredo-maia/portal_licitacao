@@ -35,6 +35,7 @@ import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, Tra
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
+import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
 export const MOTIVOS_RECUSA_GENERICOS = [
   "Não se encaixa no perfil ou core business da empresa",
@@ -158,6 +159,7 @@ function OportunidadesContent() {
         const dataExibicao = dataStr && horaStr && horaStr !== "00:00" ? `${dataStr} ${horaStr}` : dataStr;
         return {
           ...dto,
+          miniResumo: sintetizarMiniResumo(dto.miniResumo || dto.resumo || (dto as any).objeto, dto.tipoSistemaCodigo),
           orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
           resumoObjeto: dto.resumo,
           acoes: "",

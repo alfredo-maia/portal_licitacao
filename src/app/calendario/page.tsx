@@ -21,6 +21,7 @@ import {
   Time,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
 interface CalendarioChip {
   id: string;
@@ -371,8 +372,9 @@ export default function CalendarioPage() {
                         minute: "2-digit",
                       });
 
-                      const tituloLicitacao =
-                        (chip as any).titulo || (chip as any).objeto || (chip as any).miniResumo || chip.numeroEdital;
+                      const tituloLicitacao = sintetizarMiniResumo(
+                        (chip as any).miniResumo || (chip as any).titulo || (chip as any).objeto || chip.numeroEdital
+                      );
 
                       return (
                         <div
