@@ -149,12 +149,19 @@ function OportunidadesContent() {
       const mappedOportunidades = (data.oportunidades || []).map((dto: any) => {
         const rawDate = dto.dataEncerramentoProposta || dto.dataAbertura;
         const d = new Date(rawDate);
+        const dataStr = !isNaN(d.getTime())
+          ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : "";
+        const horaStr = !isNaN(d.getTime())
+          ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+          : "";
+        const dataExibicao = dataStr && horaStr && horaStr !== "00:00" ? `${dataStr} ${horaStr}` : dataStr;
         return {
           ...dto,
           orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
           resumoObjeto: dto.resumo,
           acoes: "",
-          dataAbertura: !isNaN(d.getTime()) ? d.toLocaleDateString("pt-BR") : "",
+          dataAbertura: dataExibicao,
         };
       });
       setOportunidades(mappedOportunidades);
