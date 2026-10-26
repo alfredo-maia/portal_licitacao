@@ -334,7 +334,7 @@ export default function MinhasLicitacoesPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/oportunidades?pageSize=100");
+      const response = await fetch("/api/oportunidades?status=MINHAS&pageSize=100");
       if (!response.ok) {
         throw new Error("Erro ao carregar certames do funil");
       }

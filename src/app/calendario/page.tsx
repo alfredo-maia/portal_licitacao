@@ -371,15 +371,18 @@ export default function CalendarioPage() {
                         minute: "2-digit",
                       });
 
+                      const tituloLicitacao =
+                        (chip as any).titulo || (chip as any).objeto || (chip as any).miniResumo || chip.numeroEdital;
+
                       return (
                         <div
                           key={chip.id}
                           data-testid="calendario-chip"
                           onClick={() => router.push(chip.linkDestino)}
-                          title={`Limite de Proposta: ${hora} — ${chip.numeroEdital} - ${chip.orgaoNome} (${chip.status})`}
+                          title={`Órgão: ${chip.orgaoNome}\nTítulo: ${tituloLicitacao}\nStatus: ${chip.status}\nFechamento: ${hora}`}
                           style={{
-                            padding: "0.375rem 0.5rem",
-                            borderRadius: "3px",
+                            padding: "0.45rem 0.5rem",
+                            borderRadius: "4px",
                             backgroundColor: chip.opaco
                               ? "var(--cds-layer-02, #e0e0e0)"
                               : "var(--cds-layer-03, #d0e2ff)",
@@ -388,17 +391,62 @@ export default function CalendarioPage() {
                             transition: "all 0.15s ease",
                             display: "flex",
                             flexDirection: "column",
-                            gap: "0.125rem",
+                            gap: "0.25rem",
+                            border: "1px solid var(--cds-border-subtle)",
                           }}
                         >
+                          {/* 1. Nome do Órgão */}
+                          <div
+                            style={{
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              color: "var(--cds-text-primary)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {chip.orgaoNome}
+                          </div>
+
+                          {/* 2. Título da Licitação */}
+                          <div
+                            style={{
+                              fontSize: "0.6875rem",
+                              color: "var(--cds-text-secondary)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {tituloLicitacao}
+                          </div>
+
+                          {/* 3. Status da Licitação e 4. Horário do Fechamento */}
                           <div
                             style={{
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center",
                               gap: "0.25rem",
+                              marginTop: "0.125rem",
                             }}
                           >
+                            <Tag
+                              type={getStatusTagType(chip.status, chip.opaco)}
+                              size="sm"
+                              className="pncp-mono"
+                              style={{
+                                fontSize: "0.625rem",
+                                minHeight: "1.125rem",
+                                padding: "0 0.35rem",
+                                margin: 0,
+                              }}
+                            >
+                              {chip.status}
+                            </Tag>
                             <span
                               className="pncp-mono"
                               style={{
@@ -411,45 +459,7 @@ export default function CalendarioPage() {
                             >
                               {hora}
                             </span>
-                            <Tag
-                              type={getStatusTagType(chip.status, chip.opaco)}
-                              size="sm"
-                              className="pncp-mono"
-                              style={{
-                                fontSize: "0.625rem",
-                                minHeight: "1rem",
-                                padding: "0 0.25rem",
-                                margin: 0,
-                              }}
-                            >
-                              {chip.status}
-                            </Tag>
                           </div>
-
-                          <span
-                            style={{
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              color: "var(--cds-text-primary)",
-                            }}
-                          >
-                            {chip.numeroEdital}
-                          </span>
-
-                          <span
-                            style={{
-                              fontSize: "0.6875rem",
-                              color: "var(--cds-text-secondary)",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {chip.orgaoNome}
-                          </span>
                         </div>
                       );
                     })}

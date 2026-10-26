@@ -25,6 +25,8 @@ import {
   TableToolbarAction,
   Button,
   Dropdown,
+  Select,
+  SelectItem,
   TextInput,
   Modal,
   Pagination,
@@ -33,6 +35,16 @@ import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, Tra
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
+
+export const MOTIVOS_RECUSA_GENERICOS = [
+  "Não se encaixa no perfil ou core business da empresa",
+  "Prazo de entrega ou execução incompatível",
+  "Exigência de atestado técnico ou certidão não atendida",
+  "Preço estimado inexequível / margem insuficiente",
+  "Localização geográfica inviável / custo logístico elevado",
+  "Edital com risco jurídico, técnico ou cláusulas restritivas",
+  "Outro",
+];
 
 interface Oportunidade {
   id: string;
@@ -84,7 +96,8 @@ function OportunidadesContent() {
   const [showManualModal, setShowManualModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
-  const [recusaMotivo, setRecusaMotivo] = React.useState("");
+  const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
+  const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
   const [filtroTipoSistema, setFiltroTipoSistema] = React.useState('');
   const [filtroUf, setFiltroUf] = React.useState('');
@@ -180,6 +193,8 @@ function OportunidadesContent() {
 
   const handleRecusarClick = (id: string) => {
     setSelectedOpportunityId(id);
+    setRecusaMotivoGenerico(MOTIVOS_RECUSA_GENERICOS[0]);
+    setRecusaMotivoCustom("");
     setShowRecusarModal(true);
   };
 
@@ -203,11 +218,16 @@ function OportunidadesContent() {
 
   const handleConfirmRecusa = async () => {
     if (!selectedOpportunityId) return;
+    const motivoFinal =
+      recusaMotivoGenerico === "Outro"
+        ? (recusaMotivoCustom.trim() || "Outro motivo não especificado")
+        : recusaMotivoGenerico;
+
     try {
       const response = await fetch(`/api/oportunidades/${selectedOpportunityId}/decisao`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisao: "NO_GO", motivoRecusa: recusaMotivo }),
+        body: JSON.stringify({ decisao: "NO_GO", motivoRecusa: motivoFinal }),
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -215,7 +235,7 @@ function OportunidadesContent() {
       }
       await fetchOportunidades();
       setShowRecusarModal(false);
-      setRecusaMotivo("");
+      setRecusaMotivoCustom("");
       setSelectedOpportunityId(null);
     } catch (err) {
       console.error("Erro ao recusar oportunidade:", err);
@@ -706,12 +726,23 @@ function OportunidadesContent() {
                                 {cell.value}
                               </Tag>
                             ) : cell.info.header === "miniResumo" ? (
-                              <div style={{ wordBreak: "break-word", lineHeight: 1.4 }}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "flex-start",
+                                  gap: "0.35rem",
+                                  wordBreak: "break-word",
+                                  lineHeight: 1.4,
+                                }}
+                              >
                                 <span style={{ fontWeight: 500 }}>{cell.value}</span>
                                 {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
-                                  <Tag type="gray" style={{ marginLeft: "0.5rem", verticalAlign: "middle" }}>
-                                    {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo}
-                                  </Tag>
+                                  <div>
+                                    <Tag type="gray" size="sm" style={{ margin: 0 }}>
+                                      {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo}
+                                    </Tag>
+                                  </div>
                                 )}
                               </div>
                             ) : cell.info.header === "resumoObjeto" ? (
@@ -917,7 +948,7 @@ function OportunidadesContent() {
          open={showRecusarModal}
          onRequestClose={() => {
            setShowRecusarModal(false);
-           setRecusaMotivo("");
+           setRecusaMotivoCustom("");
          }}
          modalHeading="Recusar Oportunidade"
          primaryButtonText="Confirmar Recusa"
@@ -926,22 +957,38 @@ function OportunidadesContent() {
          onRequestSubmit={handleConfirmRecusa}
          onSecondarySubmit={() => {
            setShowRecusarModal(false);
-           setRecusaMotivo("");
+           setRecusaMotivoCustom("");
          }}
          data-testid="modal-recusar-licitacao"
        >
          <p style={{ marginBottom: "1rem" }}>
-           Por favor, forneça um motivo para a recusa da oportunidade.
+           Selecione um motivo genérico para a recusa ou escolha &quot;Outro&quot; para especificar:
          </p>
-         <TextInput
-           id="input-motivo-recusa"
-           labelText="Motivo da Recusa"
-           placeholder="Ex: Não se encaixa no perfil da empresa"
-           value={recusaMotivo}
-           onChange={(e) => setRecusaMotivo(e.target.value)}
-           style={{ marginBottom: "1rem" }}
-           data-testid="input-motivo-recusa"
-         />
+         <div style={{ marginBottom: "1rem" }}>
+           <Select
+             id="select-motivo-recusa"
+             labelText="Motivo da Recusa"
+             data-testid="select-motivo-recusa"
+             value={recusaMotivoGenerico}
+             onChange={(e) => setRecusaMotivoGenerico(e.target.value)}
+           >
+             {MOTIVOS_RECUSA_GENERICOS.map((motivo) => (
+               <SelectItem key={motivo} value={motivo} text={motivo} />
+             ))}
+           </Select>
+         </div>
+         {recusaMotivoGenerico === "Outro" && (
+           <div style={{ marginBottom: "1rem" }}>
+             <TextInput
+               id="input-motivo-recusa"
+               labelText="Especifique o Motivo da Recusa"
+               placeholder="Descreva o motivo da recusa..."
+               value={recusaMotivoCustom}
+               onChange={(e) => setRecusaMotivoCustom(e.target.value)}
+               data-testid="input-motivo-recusa"
+             />
+           </div>
+         )}
        </Modal>
      </ModulePageShell>
    );

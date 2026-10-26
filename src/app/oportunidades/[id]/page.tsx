@@ -39,6 +39,40 @@ import {
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 
+const MOTIVOS_RECUSA_GENERICOS = [
+  "Não se encaixa no perfil ou core business da empresa",
+  "Prazo de entrega ou execução incompatível",
+  "Exigência de atestado técnico ou certidão não atendida",
+  "Preço estimado inexequível / margem insuficiente",
+  "Localização geográfica inviável / custo logístico elevado",
+  "Edital com risco jurídico, técnico ou cláusulas restritivas",
+  "Outro",
+];
+
+const STATUS_OPTIONS_PIPELINE = [
+  { id: "ACEITA", text: "Participar (Aceita)" },
+  { id: "ANALISE_TECNICA", text: "Análise Técnica" },
+  { id: "ANALISE_FINANCEIRA", text: "Análise Financeira" },
+  { id: "REVISAO_PROPOSTA", text: "Revisão da Proposta" },
+  { id: "ENVIADA", text: "Enviada" },
+  { id: "EM_DISPUTA", text: "Em Disputa / Lances" },
+  { id: "AGUARDANDO_RESULTADO", text: "Aguardando Resultado" },
+  { id: "CONTEMPLADA", text: "Contemplada 🏆" },
+  { id: "IMPUGNADA", text: "Impugnada ⚖️" },
+  { id: "NAO_CONTEMPLADA_PRECO", text: "Perda por Preço" },
+  { id: "NAO_CONTEMPLADA_DOCUMENTACAO", text: "Perda por Documentação" },
+  { id: "NAO_CONTEMPLADA_DESISTENCIA", text: "Desistência Operacional" },
+  { id: "REVOGADA_ANULADA", text: "Revogada / Anulada" },
+  { id: "RECUSADA", text: "Recusada (No-GO)" },
+];
+
+const STATUS_PERDA = [
+  "NAO_CONTEMPLADA_PRECO",
+  "NAO_CONTEMPLADA_DOCUMENTACAO",
+  "NAO_CONTEMPLADA_DESISTENCIA",
+  "REVOGADA_ANULADA",
+];
+
 interface UsuarioItem {
   id: string;
   name: string;
@@ -92,6 +126,7 @@ interface OportunidadeDetalhe {
   parecerIA: "GO" | "AVALIAR" | "NO_GO";
   justificativaIA?: string | null;
   status: string;
+  motivoRecusa?: string | null;
   isPresencial: boolean;
   distanciaGoianiaKm?: number | null;
   quantidadeLotes: number;
@@ -165,7 +200,10 @@ export default function OportunidadesDetalhePage({
 
   // Modal Recusa GO/No-GO
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
-  const [recusaMotivo, setRecusaMotivo] = React.useState("");
+  const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
+  const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
+  const [salvandoStatusPipeline, setSalvandoStatusPipeline] = React.useState(false);
+  const [statusPipelineMsg, setStatusPipelineMsg] = React.useState<string | null>(null);
 
   // Resolver params assíncrono (Next.js 15)
   React.useEffect(() => {
@@ -353,10 +391,41 @@ export default function OportunidadesDetalhePage({
       }
       showNotification("success", `Licitação deliberada como ${decisao}!`);
       setShowRecusarModal(false);
-      setRecusaMotivo("");
+      setRecusaMotivoCustom("");
       carregarDados(id);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro na deliberação.");
+    }
+  };
+
+  // Alteração Direta de Status pelo Dossiê (Pipeline / Participação)
+  const handleMudarStatusPipeline = async (novoStatus: string) => {
+    if (!id || !oportunidade || novoStatus === oportunidade.status) return;
+    setSalvandoStatusPipeline(true);
+    setStatusPipelineMsg(null);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: novoStatus,
+          ...(STATUS_PERDA.includes(novoStatus)
+            ? { motivoPerda: oportunidade.motivoRecusa || "Alterado via Dossiê" }
+            : {}),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Erro ao atualizar status da licitação");
+      }
+      setOportunidade((prev) => (prev ? { ...prev, status: novoStatus } : null));
+      setStatusPipelineMsg("Status atualizado!");
+      showNotification("success", `Status alterado para ${novoStatus}!`);
+      setTimeout(() => setStatusPipelineMsg(null), 3500);
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao alterar status.");
+    } finally {
+      setSalvandoStatusPipeline(false);
     }
   };
 
@@ -543,60 +612,111 @@ Realize uma análise profunda estruturada em 4 dimensões:
 
         {/* Barra de Ações Rápidas da Diretoria */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1rem" }}>
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            <Button
-              kind="primary"
-              size="sm"
-              renderIcon={CheckmarkOutline}
-              onClick={() => handleDecisao("GO")}
-              data-testid="btn-dossie-aceitar"
-              style={{ backgroundColor: "#24a148", color: "#ffffff" }}
-            >
-              Participar
-            </Button>
-            <Button
-              kind="danger"
-              size="sm"
-              renderIcon={CloseOutline}
-              onClick={() => setShowRecusarModal(true)}
-              data-testid="btn-dossie-recusar"
-              style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
-            >
-              Não Participar
-            </Button>
-            <Button
-              kind="tertiary"
-              size="sm"
-              renderIcon={Bot}
-              onClick={() => setModalIAOpen(true)}
-              data-testid="btn-open-verificar-participacao"
-              style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
-            >
-              🤖 Verificar Status de Participação
-            </Button>
-          </div>
+          {oportunidade.status === "PENDENTE" ? (
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+              <Button
+                kind="primary"
+                size="sm"
+                renderIcon={CheckmarkOutline}
+                onClick={() => handleDecisao("GO")}
+                data-testid="btn-dossie-aceitar"
+                style={{ backgroundColor: "#24a148", color: "#ffffff" }}
+              >
+                Participar
+              </Button>
+              <Button
+                kind="danger"
+                size="sm"
+                renderIcon={CloseOutline}
+                onClick={() => setShowRecusarModal(true)}
+                data-testid="btn-dossie-recusar"
+                style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
+              >
+                Não Participar
+              </Button>
+              <Button
+                kind="tertiary"
+                size="sm"
+                renderIcon={Bot}
+                onClick={() => setModalIAOpen(true)}
+                data-testid="btn-open-verificar-participacao"
+                style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
+              >
+                🤖 Verificar Status de Participação
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ minWidth: "250px" }}>
+                <Select
+                  id="select-pipeline-status"
+                  labelText="Status da Licitação"
+                  data-testid="select-pipeline-status"
+                  size="sm"
+                  value={oportunidade.status}
+                  disabled={salvandoStatusPipeline}
+                  onChange={(e) => handleMudarStatusPipeline(e.target.value)}
+                >
+                  {STATUS_OPTIONS_PIPELINE.map((st) => (
+                    <SelectItem key={st.id} value={st.id} text={st.text} />
+                  ))}
+                </Select>
+              </div>
+              <Button
+                kind="tertiary"
+                size="sm"
+                renderIcon={Bot}
+                onClick={() => setModalIAOpen(true)}
+                data-testid="btn-open-verificar-participacao"
+                style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
+              >
+                🤖 Verificar Status de Participação
+              </Button>
+              {statusPipelineMsg && (
+                <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
+                  ✓ {statusPipelineMsg}
+                </span>
+              )}
+            </div>
+          )}
 
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Button
-              kind="ghost"
-              size="sm"
-              renderIcon={Launch}
-              href={oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${oportunidade.idPncp}`}
-              target="_blank"
-              data-testid="btn-link-pncp"
-            >
-              Abrir Edital Oficial no PNCP ↗
-            </Button>
-            {oportunidade.linkSistemaOrigem && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <Button
                 kind="ghost"
                 size="sm"
                 renderIcon={Launch}
-                href={oportunidade.linkSistemaOrigem}
+                href={oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${oportunidade.idPncp}`}
                 target="_blank"
+                data-testid="btn-link-pncp"
               >
-                Portal de Disputa ↗
+                Abrir Edital Oficial no PNCP ↗
               </Button>
+              {oportunidade.linkSistemaOrigem && (
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  renderIcon={Launch}
+                  href={oportunidade.linkSistemaOrigem}
+                  target="_blank"
+                >
+                  Portal de Disputa ↗
+                </Button>
+              )}
+            </div>
+            {oportunidade.motivoRecusa && (
+              <div
+                data-testid="dossie-motivo-recusa"
+                style={{
+                  fontStyle: "italic",
+                  color: "var(--cds-text-secondary)",
+                  fontSize: "0.875rem",
+                  marginTop: "0.25rem",
+                  textAlign: "right",
+                }}
+              >
+                Motivo da recusa: {oportunidade.motivoRecusa}
+              </div>
             )}
           </div>
         </div>
@@ -1247,21 +1367,49 @@ Realize uma análise profunda estruturada em 4 dimensões:
         modalHeading="Recusar Oportunidade (No-GO)"
         primaryButtonText="Confirmar Recusa"
         secondaryButtonText="Cancelar"
-        onRequestClose={() => setShowRecusarModal(false)}
-        onRequestSubmit={() => handleDecisao("NO_GO", recusaMotivo)}
+        danger
+        onRequestClose={() => {
+          setShowRecusarModal(false);
+          setRecusaMotivoCustom("");
+        }}
+        onRequestSubmit={() => {
+          const motivoFinal =
+            recusaMotivoGenerico === "Outro"
+              ? (recusaMotivoCustom.trim() || "Outro motivo não especificado")
+              : recusaMotivoGenerico;
+          handleDecisao("NO_GO", motivoFinal);
+        }}
         data-testid="modal-recusar-dossie"
       >
         <p style={{ marginBottom: "1rem", fontSize: "0.875rem" }}>
-          Informe o motivo estratégico para a recusa da oportunidade{" "}
+          Selecione o motivo para a recusa da oportunidade{" "}
           <strong>{oportunidade.numeroEdital}</strong>:
         </p>
-        <TextInput
-          id="input-motivo-recusa-dossie"
-          labelText="Motivo da Recusa"
-          placeholder="Ex: Objeto fora do foco estratégico / margem insuficiente"
-          value={recusaMotivo}
-          onChange={(e) => setRecusaMotivo(e.target.value)}
-        />
+        <div style={{ marginBottom: "1rem" }}>
+          <Select
+            id="select-motivo-recusa-dossie"
+            labelText="Motivo da Recusa"
+            data-testid="select-motivo-recusa-dossie"
+            value={recusaMotivoGenerico}
+            onChange={(e) => setRecusaMotivoGenerico(e.target.value)}
+          >
+            {MOTIVOS_RECUSA_GENERICOS.map((motivo) => (
+              <SelectItem key={motivo} value={motivo} text={motivo} />
+            ))}
+          </Select>
+        </div>
+        {recusaMotivoGenerico === "Outro" && (
+          <div style={{ marginBottom: "1rem" }}>
+            <TextInput
+              id="input-motivo-recusa-dossie"
+              labelText="Especifique o Motivo da Recusa"
+              placeholder="Descreva o motivo detalhado da recusa..."
+              value={recusaMotivoCustom}
+              onChange={(e) => setRecusaMotivoCustom(e.target.value)}
+              data-testid="input-motivo-recusa-dossie"
+            />
+          </div>
+        )}
       </Modal>
     </ModulePageShell>
   );
