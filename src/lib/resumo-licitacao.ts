@@ -54,25 +54,57 @@ export function sintetizarMiniResumo(
   if (rawLower.includes("realidade virtual") || rawLower.includes("planetário") || rawLower.includes("planetario")) {
     return "Solução de realidade virtual (VR) e simulação astronômica";
   }
-  if (rawLower.includes("datacenter") || rawLower.includes("data center") || rawLower.includes("sala segura")) {
-    return "Expansão de infraestrutura de datacenter corporativo e nuvem para IA";
+  if (rawLower.includes("oracle") || rawLower.includes("banco de dados oracle")) {
+    return "Licenciamento de banco de dados corporativo e suporte (Oracle)";
+  }
+  if (rawLower.includes("google workspace")) {
+    return "Subscrição SaaS corporativa Google Workspace em nuvem";
+  }
+  if (rawLower.includes("atlassian") || rawLower.includes("jira") || rawLower.includes("trello")) {
+    return "Licenciamento e subscrição SaaS ecossistema Atlassian (Jira/Trello)";
+  }
+  if (rawLower.includes("autocad") || rawLower.includes("autodesk") || rawLower.includes("coreldraw") || rawLower.includes("adobe") || rawLower.includes("design visual")) {
+    return "Licenciamento de softwares técnicos e design visual";
+  }
+  if (rawLower.includes("vmware") || (rawLower.includes("virtualização") && rawLower.includes("servidores"))) {
+    return "Licenciamento de software de virtualização de servidores (VMware)";
+  }
+  if (rawLower.includes("portal de governança") || rawLower.includes("gestão de reuniões") || rawLower.includes("colegiados")) {
+    return "SaaS de portal de governança corporativa e colegiados";
+  }
+  if (rawLower.includes("portal institucional")) {
+    return "Licenciamento e sustentação de portal institucional em nuvem";
+  }
+  if (rawLower.includes("cibersegurança") || rawLower.includes("ngfw") || (rawLower.includes("segurança da informação") && rawLower.includes("firewall"))) {
+    return "Solução integrada de cibersegurança e proteção de rede";
+  }
+  if (rawLower.includes("inteligência artificial generativa") || rawLower.includes("ia generativa") || rawLower.includes("plataformas de inteligência artificial")) {
+    return "SaaS de acesso a plataformas de Inteligência Artificial";
+  }
+  if (rawLower.includes("gerenciamento de senhas") || rawLower.includes("painel de senhas") || (rawLower.includes("senhas") && rawLower.includes("autoatendimento"))) {
+    return "Sistema de atendimento, gerenciamento e triagem de senhas";
+  }
+  if (rawLower.includes("regulação e despacho") || rawLower.includes("regulacao e despacho") || rawLower.includes("regulação médica") || rawLower.includes("regulacao medica")) {
+    return "Sistema integrado SaaS de regulação médica e despacho";
   }
   if (
     rawLower.includes("assistência social") ||
     rawLower.includes("assistencia social") ||
-    (rawLower.includes("suas") && (rawLower.includes("social") || rawLower.includes("cras") || rawLower.includes("creas"))) ||
-    /\bcras\b/i.test(objetoRaw) ||
-    /\bcreas\b/i.test(objetoRaw)
+    ((rawLower.includes("social") || /\bcras\b/i.test(objetoRaw) || /\bcreas\b/i.test(objetoRaw)) && (rawLower.includes("suas") || rawLower.includes("vulnerabilidade")))
   ) {
     const mod = rawLower.includes("saas") ? "SaaS" : "Software";
     return `${mod} de gestão da assistência social (SUAS)`;
   }
+
+  // 2. ERP e Gestão Pública Municipal Integrada
   if (
     rawLower.includes("gestão pública") ||
+    rawLower.includes("gestao publica") ||
     rawLower.includes("erp municipal") ||
-    (rawLower.includes("prefeitura") && (rawLower.includes("secretarias") || rawLower.includes("sistemas de gestão") || rawLower.includes("tributos") || rawLower.includes("contabilidade")))
+    (rawLower.includes("sistema integrado") && rawLower.includes("prefeitura")) ||
+    (rawLower.includes("erp") && rawLower.includes("prefeitura"))
   ) {
-    if (rawLower.includes("loca") || rawLower.includes("locação")) {
+    if (rawLower.includes("loca") || rawLower.includes("locação") || rawLower.includes("locacao")) {
       return "Locação de sistema de gestão pública para prefeitura e secretarias";
     }
     if (rawLower.includes("saas") || rawLower.includes("nuvem")) {
@@ -80,64 +112,86 @@ export function sintetizarMiniResumo(
     }
     return "Sistema de gestão pública municipal integrada (ERP)";
   }
-  if (rawLower.includes("bi em saúde") || (rawLower.includes("business intelligence") && rawLower.includes("saúde"))) {
-    return "Licenciamento de software de BI em saúde com IA";
+
+  // 3. Softwares de Áreas Específicas
+  if (rawLower.includes("folha de pagamento") || (rawLower.includes("recursos humanos") && rawLower.includes("sistema") && rawLower.includes("contracheque"))) {
+    return "Sistema web de gestão de folha de pagamento e RH";
   }
-  if (rawLower.includes("inteligência artificial generativa") || rawLower.includes("ia generativa")) {
-    return "SaaS de acesso a plataformas de Inteligência Artificial Generativa";
-  }
-  if (rawLower.includes("cibersegurança") || rawLower.includes("ngfw") || (rawLower.includes("segurança da informação") && rawLower.includes("firewall"))) {
-    return "Solução integrada de cibersegurança e proteção de rede";
-  }
-  if (
-    rawLower.includes("gestão escolar") ||
-    rawLower.includes("portal do aluno") ||
-    rawLower.includes("diário eletrônico") ||
-    (rawLower.includes("educação") && (rawLower.includes("matrícula") || rawLower.includes("censo escolar") || rawLower.includes("i-educar")))
-  ) {
-    return "Plataforma de gestão escolar, diário eletrônico e portal do aluno";
-  }
-  if (rawLower.includes("prontuário eletrônico") || rawLower.includes("e-sus") || rawLower.includes("atenção primária")) {
+  if (rawLower.includes("prontuário eletrônico") || rawLower.includes("e-sus") || rawLower.includes("atenção primária") || rawLower.includes("bi em saúde")) {
     return "Sistema de prontuário eletrônico em saúde integrado ao e-SUS";
   }
   if (rawLower.includes("gestão hospitalar") || (rawLower.includes("hospital") && rawLower.includes("leitos"))) {
     return "Sistema de gestão hospitalar integrado e regulação de leitos";
   }
-  if (rawLower.includes("processos judiciais") || rawLower.includes("processo eletrônico") || rawLower.includes("1doc") || rawLower.includes("processo digital")) {
+  if (
+    rawLower.includes("processos judiciais") ||
+    rawLower.includes("processo eletrônico") ||
+    rawLower.includes("processos administrativos") ||
+    rawLower.includes("1doc") ||
+    rawLower.includes("processo digital") ||
+    rawLower.includes("gestão eletrônica de documentos")
+  ) {
     return "Sistema de processo administrativo eletrônico e gestão documental";
   }
-  if (rawLower.includes("vmware") || (rawLower.includes("virtualização") && rawLower.includes("servidores"))) {
-    return "Licenciamento de software de virtualização de servidores (VMware)";
+  if (
+    rawLower.includes("gestão escolar") ||
+    rawLower.includes("portal do aluno") ||
+    rawLower.includes("diário eletrônico") ||
+    rawLower.includes("escola do legislativo") ||
+    rawLower.includes("trilhas de aprendizagem") ||
+    rawLower.includes("rede municipal de ensino") ||
+    (rawLower.includes("educação") && (rawLower.includes("matrícula") || rawLower.includes("censo escolar") || rawLower.includes("ensino") || rawLower.includes("educacional")))
+  ) {
+    return "Plataforma de gestão escolar, diário eletrônico e educação digital";
   }
-  if (rawLower.includes("microsoft 365") || rawLower.includes("m365") || rawLower.includes("office 365")) {
-    return "Licenciamento corporativo de softwares e subscrições Microsoft 365";
-  }
-  if (rawLower.includes("google workspace")) {
-    return "Subscrição SaaS corporativa Google Workspace";
-  }
-  if (rawLower.includes("fábrica de software") || rawLower.includes("desenvolvimento de software") || rawLower.includes("ust") || rawLower.includes("pontos de função")) {
-    return "Fábrica de software, sustentação e desenvolvimento sob medida";
-  }
-  if (rawLower.includes("frota") && (rawLower.includes("rastreamento") || rawLower.includes("telemetria") || rawLower.includes("abastecimento") || rawLower.includes("gestão de frota"))) {
-    return "Sistema informatizado de gestão, rastreamento e telemetria de frota";
-  }
-  if (rawLower.includes("folha de pagamento") || rawLower.includes("recursos humanos") && rawLower.includes("sistema")) {
-    return "Sistema web de gestão de folha de pagamento e RH";
-  }
-  if (rawLower.includes("tributário") || rawLower.includes("arrecadação") || rawLower.includes("iptu") || rawLower.includes("nfs-e") || rawLower.includes("issqn")) {
+  if (
+    rawLower.includes("receitas públicas") ||
+    rawLower.includes("auditoria de receitas") ||
+    rawLower.includes("tributário") ||
+    rawLower.includes("tributos") ||
+    rawLower.includes("arrecadação") ||
+    rawLower.includes("iptu") ||
+    rawLower.includes("nfs-e") ||
+    rawLower.includes("issqn")
+  ) {
     return "Sistema de gestão tributária municipal, IPTU e NFS-e";
   }
-  if (rawLower.includes("previdência") || rawLower.includes("rpps")) {
+  if (rawLower.includes("previdência") || /\brpps\b/i.test(objetoRaw)) {
     return "Sistema integrado de gestão previdenciária municipal (RPPS)";
   }
-  if (rawLower.includes("diário oficial") || rawLower.includes("portal da transparência")) {
+  if (rawLower.includes("diário oficial") || rawLower.includes("portal da transparência") || rawLower.includes("transparência pública")) {
     return "Portal da transparência e publicação de diário oficial eletrônico";
   }
-  if (rawLower.includes("autocad") || rawLower.includes("autodesk") || rawLower.includes("adobe creative")) {
-    return "Licenciamento de softwares técnicos e design visual";
+  if (rawLower.includes("frota") || rawLower.includes("abastecimento") || rawLower.includes("telemetria") || rawLower.includes("rastreamento")) {
+    return "Sistema informatizado de gestão, rastreamento e telemetria de frota";
   }
-  if (rawLower.includes("saneamento") && (rawLower.includes("faturamento") || rawLower.includes("comercial") || rawLower.includes("água"))) {
+  if (rawLower.includes("saneamento") && (rawLower.includes("faturamento") || rawLower.includes("comercial") || rawLower.includes("água") || rawLower.includes("esgoto"))) {
     return "Sistema de gestão comercial e faturamento de saneamento básico";
+  }
+  if (rawLower.includes("datacenter") || rawLower.includes("data center") || rawLower.includes("nuvem privada") || rawLower.includes("sala segura")) {
+    return "Expansão de infraestrutura de datacenter corporativo e nuvem";
+  }
+  if (rawLower.includes("microsoft") || rawLower.includes("windows server") || rawLower.includes("office 365") || /\bm365\b/i.test(objetoRaw)) {
+    return "Licenciamento corporativo de softwares e subscrições Microsoft";
+  }
+  if (
+    rawLower.includes("fábrica de software") ||
+    rawLower.includes("desenvolvimento de software") ||
+    /\bust\b/i.test(objetoRaw) ||
+    rawLower.includes("pontos de função") ||
+    rawLower.includes("soluções digitais") ||
+    rawLower.includes("solucoes digitais")
+  ) {
+    return "Fábrica de software, sustentação e desenvolvimento sob medida";
+  }
+  if (rawLower.includes("software como serviço") || rawLower.includes("saas")) {
+    return "SaaS e solução tecnológica integrada em nuvem";
+  }
+  if (rawLower.includes("seicom")) {
+    return "Licenciamento de software e subscrições para comunicação";
+  }
+  if (rawLower.includes("licença de uso") || rawLower.includes("licenciamento")) {
+    return "Licenciamento corporativo e subscrição de softwares";
   }
 
   // 2. Fallback Inteligente: Higienização de Bordões e Extração da Frase Descritiva

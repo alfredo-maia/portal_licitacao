@@ -177,7 +177,11 @@ export async function ingestLicitacoesV2(
       continue;
     }
 
-    if (existente.hashCritico === novoHash) {
+    if (
+      existente.hashCritico === novoHash &&
+      existente.miniResumo === dados.miniResumo &&
+      existente.tipoSistemaCodigo === dados.tipoSistemaCodigo
+    ) {
       inalterados += 1;
       registros.push(existente);
       continue;
