@@ -8,16 +8,17 @@ const STOP_PREFIXES: RegExp[] = [
   /^\s*\[.*?\]\s*[-–—:]*\s*/i,
   /^\s*\(.*?\)\s*[-–—:]*\s*/i,
   /^\s*(?:preg[ãa]o\s+eletr[ôo]nico|concorr[êe]ncia\s+eletr[ôo]nica|dispensa|inexigibilidade)[^,;-]*[,;-]\s*/i,
-  /^\s*(?:pelo\s+|atrav[ée]s\s+do\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?[^,;-]*[,;-]\s*/i,
+  /^\s*contrata[çc][ãa]o(?:,?\s*mediante\s+sistema\s+de\s+registro\s+de\s+pre[çc]os?,?)?\s*(?:de\s+|para\s+)?/i,
+  /^\s*(?:pelo\s+|atrav[ée]s\s+do\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?[^,;-]*[,;-]?\s*/i,
   /^\s*registro\s+de\s+pre[çc]os?\s+(?:para\s+)?(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?(?:aquisi[çc][ãa]o|contrata[çc][ãa]o|fornecimento|loca[çc][ãa]o)?\s*(?:de\s+)?/i,
   /^\s*(?:visando\s+a\s+|objetivando\s+a\s+)?(?:eventual\s+)?contrata[çc][ãa]o\s+de\s+empresa\s+(?:especializada\s+)?(?:para\s+|na\s+|em\s+)?(?:a\s+)?/i,
   /^\s*contrata[çc][ãa]o\s+de\s+pessoa\s+jur[íi]dica\s+(?:para\s+|na\s+|em\s+)?/i,
   /^\s*contrata[çc][ãa]o\s+de\s+empresa\s+/i,
   /^\s*contrata[çc][ãa]o\s+de\s+/i,
+  /^\s*(?:eventual\s+)?aquisi[çc][ãa]o\s+de\s+(?:\d+\s+)?(?:\([a-z0-9\s]+\)\s+)?(?:solu[çc][õo]es?\s+tecnol[óo]gicas?\s+integradas?\s+)?(?:destinadas?\s+ao?\s+)?/i,
   /^\s*(?:para\s+a?\s*|na?\s*)?presta[çc][ãa]o\s+de\s+servi[çc]os?\s+(?:t[ée]cnicos?\s+)?(?:especializados?\s+)?(?:de\s+|em\s+|para\s+)?/i,
   /^\s*presta[çc][ãa]o\s+de\s+servi[çc]os?\s+(?:de\s+|em\s+|para\s+)?/i,
   /^\s*servi[çc]os?\s+(?:t[ée]cnicos?\s+)?(?:especializados?\s+)?de\s+/i,
-  /^\s*(?:para\s+a?\s*)?aquisi[çc][ãa]o\s+de\s+/i,
   /^\s*(?:para\s+a?\s*)?fornecimento\s+de\s+/i,
   /^\s*implanta[çc][ãa]o\s+(?:e\s+suporte\s+)?de\s+/i,
   /^\s*constitui\s+objeto\s+(?:da|do|desta|deste)?\s*(?:presente\s+)?licita[çc][ãa]o\s*(?:a\s+|o\s+)?/i,
@@ -49,6 +50,12 @@ export function sintetizarMiniResumo(
   // 1. Dicionário Semântico de Alta Precisão (Baseado no histórico do AV-8 e padrões de mercado)
   if (rawLower.includes("endpoints") || rawLower.includes("gerenciamento unificado de ativos")) {
     return "Gerenciamento unificado de ativos (endpoints) de TI";
+  }
+  if (rawLower.includes("realidade virtual") || rawLower.includes("planetário") || rawLower.includes("planetario")) {
+    return "Solução de realidade virtual (VR) e simulação astronômica";
+  }
+  if (rawLower.includes("datacenter") || rawLower.includes("data center") || rawLower.includes("sala segura")) {
+    return "Expansão de infraestrutura de datacenter corporativo e nuvem para IA";
   }
   if (
     rawLower.includes("assistência social") ||
