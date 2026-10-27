@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -49,24 +49,41 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ ok: false, error: "CAMINHO_INVALIDO" }, { status: 400 });
   }
 
-  // Sanitização estrita contra path traversal
-  const cleanPath = pathSegments
-    .join("/")
-    .replace(/\.\./g, "")
-    .replace(/^\/+/, "");
+  // Bloqueio imediato e estrito contra Path Traversal
+  if (
+    pathSegments.some(
+      (seg) =>
+        seg.includes("..") ||
+        seg.includes("\0") ||
+        seg.startsWith("/") ||
+        seg.startsWith("\\"),
+    )
+  ) {
+    return NextResponse.json({ ok: false, error: "ACESSO_NEGADO" }, { status: 403 });
+  }
 
+  const cleanPath = pathSegments.join("/").replace(/^\/+/, "");
   const fileName = pathSegments[pathSegments.length - 1];
+  const decodedFileName = decodeURIComponent(fileName);
+
+  const allowedRoots = [
+    "/data/uploads",
+    join(process.cwd(), "public", "uploads"),
+    join(process.cwd(), "uploads"),
+  ];
 
   // Busca nos diretórios de persistência (/data/uploads e public/uploads)
   const candidatePaths = [
     join("/data/uploads", cleanPath),
+    join("/data/uploads", decodeURIComponent(cleanPath)),
     join(process.cwd(), "public", "uploads", cleanPath),
+    join(process.cwd(), "public", "uploads", decodeURIComponent(cleanPath)),
     join(process.cwd(), "uploads", cleanPath),
-    // Caso o path venha prefixado ou sem prefixo editais/documentos
-    join("/data/uploads", "editais", cleanPath),
-    join("/data/uploads", "documentos", cleanPath),
-    join(process.cwd(), "public", "uploads", "editais", cleanPath),
-    join(process.cwd(), "public", "uploads", "documentos", cleanPath),
+    join(process.cwd(), "uploads", decodeURIComponent(cleanPath)),
+    join("/data/uploads", "editais", cleanPath.replace(/^editais\/?/, "")),
+    join("/data/uploads", "documentos", cleanPath.replace(/^documentos\/?/, "")),
+    join(process.cwd(), "public", "uploads", "editais", cleanPath.replace(/^editais\/?/, "")),
+    join(process.cwd(), "public", "uploads", "documentos", cleanPath.replace(/^documentos\/?/, "")),
   ];
 
   for (const filePath of candidatePaths) {
@@ -86,6 +103,52 @@ export async function GET(_request: Request, { params }: RouteParams) {
         });
       } catch (err) {
         console.error(`[UploadsHandler] Erro ao ler arquivo ${filePath}:`, err);
+      }
+    }
+  }
+
+  // Fallback inteligente: se o arquivo exato não bateu por sanitização de caracteres, busca na pasta pai
+  const parentSubpath = pathSegments.slice(0, -1).join("/");
+  const candidateFolders = [
+    join("/data/uploads", parentSubpath),
+    join("/data/uploads", decodeURIComponent(parentSubpath)),
+    join(process.cwd(), "public", "uploads", parentSubpath),
+    join(process.cwd(), "public", "uploads", decodeURIComponent(parentSubpath)),
+    join("/data/uploads", "editais", parentSubpath.replace(/^editais\/?/, "")),
+    join(process.cwd(), "public", "uploads", "editais", parentSubpath.replace(/^editais\/?/, "")),
+  ];
+
+  for (const folder of candidateFolders) {
+    if (existsSync(folder)) {
+      try {
+        const files = await readdir(folder);
+        const matched = files.find(
+          (f) =>
+            f === fileName ||
+            f === decodedFileName ||
+            f.toLowerCase() === fileName.toLowerCase() ||
+            f.toLowerCase() === decodedFileName.toLowerCase() ||
+            f.replace(/[^a-zA-Z0-9._-]/g, "_") === fileName ||
+            fileName.replace(/[^a-zA-Z0-9._-]/g, "_") === f,
+        );
+
+        if (matched) {
+          const matchedPath = join(folder, matched);
+          const buffer = await readFile(matchedPath);
+          const mimeType = getMimeType(matched);
+
+          return new NextResponse(buffer, {
+            status: 200,
+            headers: {
+              "Content-Type": mimeType,
+              "Content-Disposition": `inline; filename="${encodeURIComponent(matched)}"`,
+              "Content-Length": buffer.length.toString(),
+              "Cache-Control": "public, max-age=86400, stale-while-revalidate=3600",
+            },
+          });
+        }
+      } catch (err) {
+        // Ignora erro de leitura do diretório
       }
     }
   }

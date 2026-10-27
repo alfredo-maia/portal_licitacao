@@ -49,6 +49,6 @@ describe("Uploads Route Handler — GET /uploads/[...path]", () => {
       params: Promise.resolve({ path: ["..", "..", "etc", "passwd"] }),
     });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 });

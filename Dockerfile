@@ -44,8 +44,6 @@ COPY --from=deps --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/docker-entrypoint.cjs ./docker-entrypoint.cjs
 
-USER nextjs
-
 EXPOSE 3000
 
 CMD ["node", "docker-entrypoint.cjs"]

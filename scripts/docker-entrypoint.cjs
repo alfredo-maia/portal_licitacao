@@ -18,7 +18,32 @@ const DIRECTORS_SEED = [
   },
 ];
 
+function initUploadDirectories() {
+  const dirs = [
+    "/data/uploads",
+    "/data/uploads/editais",
+    "/data/uploads/documentos",
+    path.join(process.cwd(), "public", "uploads"),
+    path.join(process.cwd(), "public", "uploads", "editais"),
+    path.join(process.cwd(), "public", "uploads", "documentos"),
+  ];
+
+  for (const dir of dirs) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.chmodSync(dir, 0o777);
+    } catch (err) {
+      // Ignora erro em ambientes sem privilégio de chmod
+    }
+  }
+  console.log("[entrypoint] Diretórios de uploads verificados e inicializados com sucesso.");
+}
+
 async function bootstrapDatabase() {
+  initUploadDirectories();
+
   if (!process.env.DATABASE_URL) {
     console.warn("[entrypoint] DATABASE_URL não definida; pulando bootstrap do banco.");
     return;
