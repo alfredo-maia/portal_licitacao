@@ -203,7 +203,68 @@ export default function DeclaracoesPage() {
   };
 
   const handleImprimir = () => {
-    window.print();
+    const conteudo = documentoGerado?.conteudoHtml || document.getElementById("a4-folha-oficial")?.innerHTML;
+    if (!conteudo) {
+      window.print();
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${documentoGerado?.titulo || "Declaração Oficial"}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 15mm;
+            }
+            body {
+              font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              color: #161616;
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+              font-size: 11pt;
+              line-height: 1.5;
+            }
+            * { box-sizing: border-box; }
+            h1, h2, h3, h4 { color: #161616; margin-top: 0; }
+          </style>
+        </head>
+        <body>
+          ${conteudo}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {}
+      }, 1500);
+    }, 300);
   };
 
   const handleBaixarTxt = () => {
@@ -221,7 +282,24 @@ export default function DeclaracoesPage() {
     <ModulePageShell routePath="/declaracoes" subtitle="Gerador de modelos oficiais.">
       <style>{`
         @media print {
-          /* Oculta toda a interface do portal durante a impressão */
+          /* Garante que apenas o documento oficial é impresso */
+          body * {
+            visibility: hidden !important;
+          }
+          #a4-folha-oficial, #a4-folha-oficial * {
+            visibility: visible !important;
+          }
+          #a4-folha-oficial {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 1.5cm !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
           header, aside, nav, .cds--header, .cds--side-nav, .pncp-shell-header, .pncp-split-form, .pncp-no-print {
             display: none !important;
           }
@@ -230,14 +308,6 @@ export default function DeclaracoesPage() {
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
-          }
-          #a4-folha-oficial {
-            box-shadow: none !important;
-            border: none !important;
-            margin: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 2cm !important;
           }
         }
 

@@ -32,6 +32,7 @@ import {
   WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { FileDropZone } from "@/components/ui/file-drop-zone";
 
 interface DocumentoItem {
   id: string;
@@ -98,6 +99,7 @@ export default function DocumentacaoPage() {
   const [dataEmissao, setDataEmissao] = useState("");
   const [dataVencimento, setDataVencimento] = useState("");
   const [arquivoNome, setArquivoNome] = useState("");
+  const [arquivoFile, setArquivoFile] = useState<File | null>(null);
 
   // Modal Nova Versão
   const [modalVersaoAberto, setModalVersaoAberto] = useState(false);
@@ -105,6 +107,16 @@ export default function DocumentacaoPage() {
   const [versaoDataEmissao, setVersaoDataEmissao] = useState("");
   const [versaoDataVencimento, setVersaoDataVencimento] = useState("");
   const [versaoArquivoNome, setVersaoArquivoNome] = useState("");
+  const [versaoArquivoFile, setVersaoArquivoFile] = useState<File | null>(null);
+
+  const handleBaixarDocumento = (doc: DocumentoItem) => {
+    const a = document.createElement("a");
+    a.href = `/api/documentos/${doc.id}/download`;
+    a.setAttribute("download", doc.arquivoNome || `${doc.nome}.pdf`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const carregarDocumentos = useCallback(async () => {
     setCarregando(true);
@@ -532,7 +544,8 @@ export default function DocumentacaoPage() {
                           kind="ghost"
                           size="sm"
                           renderIcon={Download}
-                          onClick={() => alert(`Download de ${doc.arquivoNome || doc.nome}`)}
+                          data-testid={`btn-baixar-doc-${doc.id}`}
+                          onClick={() => handleBaixarDocumento(doc)}
                         >
                           Baixar
                         </Button>
@@ -671,64 +684,23 @@ export default function DocumentacaoPage() {
 
             <Column lg={16} md={8} sm={4}>
               <div style={{ marginTop: "0.5rem" }}>
-                <label
-                  htmlFor="doc-file-upload"
-                  style={{
-                    display: "block",
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    marginBottom: "0.5rem",
-                    color: "var(--cds-text-secondary, #525252)",
+                <FileDropZone
+                  id="doc-file-upload"
+                  label="Arquivo do Documento (PDF, DOCX ou Imagem)"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                  selectedFile={arquivoFile}
+                  selectedFileName={arquivoNome}
+                  onFileSelect={(file) => {
+                    setArquivoFile(file);
+                    setArquivoNome(file.name);
                   }}
-                >
-                  Arquivo do Documento (PDF, DOCX ou Imagem)
-                </label>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    padding: "0.75rem",
-                    border: "1px dashed var(--cds-border-subtle, #8d8d8d)",
-                    borderRadius: "4px",
-                    backgroundColor: "var(--cds-layer-01, #f4f4f4)",
-                    flexWrap: "wrap",
+                  onFileClear={() => {
+                    setArquivoFile(null);
+                    setArquivoNome("");
                   }}
-                >
-                  <label
-                    htmlFor="doc-file-upload"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem 1rem",
-                      backgroundColor: "var(--cds-layer-accent-01, #0f62fe)",
-                      color: "#ffffff",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                    }}
-                  >
-                    <Upload size={16} />
-                    Selecionar arquivo
-                  </label>
-                  <input
-                    id="doc-file-upload"
-                    type="file"
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setArquivoNome(file.name);
-                      }
-                    }}
-                  />
-                  <span style={{ fontSize: "0.875rem", color: arquivoNome ? "var(--cds-text-primary, #161616)" : "var(--cds-text-secondary, #6f6f6f)" }}>
-                    {arquivoNome ? `Selecionado: ${arquivoNome}` : "Nenhum arquivo selecionado"}
-                  </span>
-                </div>
+                  helperText="Arraste e solte o arquivo aqui ou clique para selecionar (PDF, DOCX, PNG, JPG)"
+                  dataTestId="dropzone-doc-upload"
+                />
               </div>
             </Column>
           </Grid>
@@ -793,64 +765,23 @@ export default function DocumentacaoPage() {
             </Column>
             <Column lg={16} md={8} sm={4}>
               <div style={{ marginTop: "0.5rem" }}>
-                <label
-                  htmlFor="versao-file-upload"
-                  style={{
-                    display: "block",
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    marginBottom: "0.5rem",
-                    color: "var(--cds-text-secondary, #525252)",
+                <FileDropZone
+                  id="versao-file-upload"
+                  label="Novo Arquivo Atualizado"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                  selectedFile={versaoArquivoFile}
+                  selectedFileName={versaoArquivoNome}
+                  onFileSelect={(file) => {
+                    setVersaoArquivoFile(file);
+                    setVersaoArquivoNome(file.name);
                   }}
-                >
-                  Novo Arquivo Atualizado
-                </label>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    padding: "0.75rem",
-                    border: "1px dashed var(--cds-border-subtle, #8d8d8d)",
-                    borderRadius: "4px",
-                    backgroundColor: "var(--cds-layer-01, #f4f4f4)",
-                    flexWrap: "wrap",
+                  onFileClear={() => {
+                    setVersaoArquivoFile(null);
+                    setVersaoArquivoNome("");
                   }}
-                >
-                  <label
-                    htmlFor="versao-file-upload"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.5rem 1rem",
-                      backgroundColor: "var(--cds-layer-accent-01, #0f62fe)",
-                      color: "#ffffff",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                    }}
-                  >
-                    <Upload size={16} />
-                    Selecionar arquivo
-                  </label>
-                  <input
-                    id="versao-file-upload"
-                    type="file"
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                    style={{ display: "none" }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setVersaoArquivoNome(file.name);
-                      }
-                    }}
-                  />
-                  <span style={{ fontSize: "0.875rem", color: versaoArquivoNome ? "var(--cds-text-primary, #161616)" : "var(--cds-text-secondary, #6f6f6f)" }}>
-                    {versaoArquivoNome ? `Selecionado: ${versaoArquivoNome}` : "Nenhum arquivo selecionado"}
-                  </span>
-                </div>
+                  helperText="Arraste a nova versão do arquivo aqui ou clique para selecionar"
+                  dataTestId="dropzone-versao-upload"
+                />
               </div>
             </Column>
           </Grid>

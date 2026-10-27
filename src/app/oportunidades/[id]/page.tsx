@@ -37,6 +37,7 @@ import {
   UserFollow,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
@@ -939,45 +940,19 @@ Realize uma análise profunda estruturada em 4 dimensões:
               </p>
 
               {/* Upload Drag-and-drop / Seletor */}
-              <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap", padding: "1rem", border: "1px dashed var(--cds-border-subtle)", borderRadius: "4px" }}>
-                <div style={{ flex: 1, minWidth: "260px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <label htmlFor="input-file-edital" style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                      Selecione um arquivo para upload (PDF, DOCX, ZIP, XLSX)
-                    </label>
-                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-                      <label
-                        htmlFor="input-file-edital"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "0.5rem 1rem",
-                          backgroundColor: "var(--cds-layer-02)",
-                          border: "1px solid var(--cds-border-subtle)",
-                          borderRadius: "2px",
-                          cursor: "pointer",
-                          fontSize: "0.875rem",
-                          fontWeight: 500,
-                        }}
-                      >
-                        Escolher Arquivo
-                      </label>
-                      <input
-                        type="file"
-                        id="input-file-edital"
-                        data-testid="input-file-edital"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) setUploadFile(f);
-                        }}
-                      />
-                      <span style={{ fontSize: "0.875rem", color: uploadFile ? "var(--cds-text-primary)" : "var(--cds-text-secondary)" }}>
-                        {uploadFile ? uploadFile.name : "Nenhum arquivo selecionado"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap" }}>
+                <FileDropZone
+                  id="input-file-edital"
+                  label="Selecione ou arraste um arquivo para upload no Dossiê (PDF, DOCX, ZIP, XLSX)"
+                  accept=".pdf,.doc,.docx,.zip,.xlsx,.png,.jpg"
+                  selectedFile={uploadFile}
+                  selectedFileName={uploadFile?.name}
+                  onFileSelect={(file) => setUploadFile(file)}
+                  onFileClear={() => setUploadFile(null)}
+                  helperText="Arraste e solte o arquivo aqui ou clique para selecionar"
+                  dataTestId="dropzone-file-edital"
+                  style={{ flex: 1, minWidth: "280px", marginBottom: 0 }}
+                />
                 <Button
                   kind="primary"
                   size="md"

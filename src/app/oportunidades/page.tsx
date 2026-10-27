@@ -33,6 +33,7 @@ import {
 } from "@carbon/react";
 import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { ESTADOS_BRASIL } from "@/config/estados";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
@@ -119,22 +120,28 @@ function OportunidadesContent() {
   const [manualTipoSistema, setManualTipoSistema] = React.useState("");
 
   const [importJsonContent, setImportJsonContent] = React.useState("");
+  const [jsonFile, setJsonFile] = React.useState<File | null>(null);
+
+  const processJsonFile = (file: File) => {
+    setJsonFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        JSON.parse(content);
+        setImportJsonContent(content);
+      } catch {
+        alert("Erro: O arquivo não é um JSON válido.");
+        setImportJsonContent("");
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const content = e.target?.result as string;
-          JSON.parse(content); // Valida se é um JSON válido
-          setImportJsonContent(content);
-        } catch (error) {
-          alert("Erro: O arquivo não é um JSON válido.");
-          setImportJsonContent("");
-        }
-      };
-      reader.readAsText(file);
+      processJsonFile(file);
     }
   };
 
@@ -929,14 +936,19 @@ function OportunidadesContent() {
          <p style={{ marginBottom: "1rem" }}>
            Cole o conteúdo JSON do relatório de licitações ou faça upload de um arquivo.
          </p>
-         <TextInput
-           type="file"
+         <FileDropZone
            id="input-file-json"
-           data-testid="input-file-json"
-           labelText="Carregar arquivo JSON"
-           accept=".json"
-           onChange={handleFileImport}
-           style={{ marginBottom: "1rem" }}
+           dataTestId="input-file-json"
+           label="Carregar arquivo JSON"
+           helperText="Arraste o arquivo .json da listagem de licitações ou clique para buscar"
+           accept=".json,application/json"
+           selectedFile={jsonFile}
+           onFileSelect={processJsonFile}
+           onFileClear={() => {
+             setJsonFile(null);
+             setImportJsonContent("");
+           }}
+           style={{ marginBottom: "1.5rem" }}
          />
          <TextArea
            id="import-json-content"
