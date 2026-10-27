@@ -7,7 +7,7 @@ import {
   Column,
   Grid,
   InlineLoading,
-  InlineNotification,
+  ActionableNotification,
   Select,
   SelectItem,
   Tag,
@@ -243,22 +243,16 @@ export default function CalendarioPage() {
           <Column lg={16} md={8} sm={4} style={{ marginBottom: "1rem" }}>
             <div data-testid="alertas-documentais-banner">
               {dados.alertasDocumentais.map((alerta) => (
-                <InlineNotification
+                <ActionableNotification
                   key={alerta.documentoId}
+                  inline
                   kind="warning"
                   title={`Dia ${alerta.dia}: ${alerta.titulo}`}
                   subtitle={alerta.mensagem}
+                  actionButtonLabel="Ver Documentos"
+                  onActionButtonClick={() => router.push(alerta.linkDestino)}
                   style={{ marginBottom: "0.5rem" }}
-                >
-                  <Button
-                    kind="ghost"
-                    size="sm"
-                    onClick={() => router.push(alerta.linkDestino)}
-                    style={{ marginTop: "0.5rem" }}
-                  >
-                    Ver Documentos
-                  </Button>
-                </InlineNotification>
+                />
               ))}
             </div>
           </Column>

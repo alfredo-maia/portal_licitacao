@@ -198,6 +198,41 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
       fireEvent.click(chips[0]);
       expect(mockPush).toHaveBeenCalledWith("/oportunidades/lic-cal-1");
     });
+
+    it("deve renderizar a faixa de alertas documentais sem quebrar com ActionableNotification", async () => {
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/calendario")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              ok: true,
+              mes: 11,
+              ano: 2026,
+              chips: [],
+              alertasDocumentais: [
+                {
+                  documentoId: "doc-venc-1",
+                  titulo: "Certidão FGTS",
+                  dia: 26,
+                  mensagem: "⚠️ Certidão FGTS — Vencimento no dia 26/11 (Atualizar)",
+                  linkDestino: "/documentacao",
+                },
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+
+      render(<CalendarioPage />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("alertas-documentais-banner")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/Dia 26: Certidão FGTS/i)).toBeInTheDocument();
+      expect(screen.getByText(/Ver Documentos/i)).toBeInTheDocument();
+    });
   });
 
   describe("3. Motor de Notificações e Sino Global", () => {
