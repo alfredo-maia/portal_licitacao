@@ -232,4 +232,45 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
     fireEvent.click(screen.getByTestId("btn-voltar"));
     expect(mockPush).toHaveBeenCalledWith("/minhas-licitacoes");
   });
+
+  it("deve chamar router.back() ao clicar no botão Voltar quando houver histórico de navegação (Issue #4)", async () => {
+    mockSearchParams = new URLSearchParams();
+    if (typeof window !== "undefined") {
+      window.history.pushState({}, "", "/calendario");
+      window.history.pushState({}, "", "/oportunidades/lic-history-test");
+    }
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/oportunidades/lic-history-test")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            oportunidade: {
+              id: "lic-history-test",
+              numeroEdital: "003/2026",
+              orgaoNome: "Prefeitura de Rio Verde",
+              orgaoCnpj: "00.000.000/0001-00",
+              uf: "GO",
+              miniResumo: "Portal da Transparência",
+              status: "ACEITA",
+              parecerIA: "GO",
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, usuarios: [] }) });
+    });
+
+    render(
+      <OportunidadesDetalhePage params={Promise.resolve({ id: "lic-history-test" })} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("btn-voltar")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("btn-voltar"));
+    expect(mockBack).toHaveBeenCalled();
+  });
 });

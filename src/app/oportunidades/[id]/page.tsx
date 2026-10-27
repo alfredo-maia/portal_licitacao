@@ -186,15 +186,21 @@ function OportunidadesDetalheContent({
   const searchParams = useSearchParams();
 
   const handleVoltar = React.useCallback(() => {
-    // 1. Prioriza query param explícito (?origem=/calendario ou ?from=/minhas-licitacoes)
-    const origem = searchParams.get("origem") || searchParams.get("from");
-    if (origem && origem.startsWith("/")) {
-      router.push(origem);
+    // 1. Suporte a parâmetro explícito caso exista em deep links
+    const origemParam = searchParams?.get("origem") || searchParams?.get("from");
+    if (origemParam && origemParam.startsWith("/") && !origemParam.startsWith("/oportunidades/")) {
+      router.push(origemParam);
       return;
     }
 
-    // 2. Histórico de origem gravado pela navegação na sessão
     if (typeof window !== "undefined") {
+      // 2. Histórico nativo do navegador (retorna à tela de origem preservando estado e filtros)
+      if (window.history.length > 1) {
+        router.back();
+        return;
+      }
+
+      // 3. Memória de sessão invisível rastreada no AppShell
       try {
         const storedOrigin = sessionStorage.getItem("portal_nav_origin");
         if (storedOrigin && storedOrigin.startsWith("/") && !storedOrigin.startsWith("/oportunidades/")) {
@@ -202,17 +208,11 @@ function OportunidadesDetalheContent({
           return;
         }
       } catch {
-        // Ignora erros de sessionStorage
-      }
-
-      // 3. Fallback para histórico do navegador
-      if (window.history.length > 1) {
-        router.back();
-        return;
+        // Ignora erros de storage
       }
     }
 
-    // 4. Fallback padrão para /oportunidades
+    // 4. Fallback padrão seguro para a Central de Oportunidades
     router.push("/oportunidades");
   }, [router, searchParams]);
 

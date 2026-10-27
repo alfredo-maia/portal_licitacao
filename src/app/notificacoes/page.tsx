@@ -361,11 +361,7 @@ export default function NotificacoesPage() {
                           kind="tertiary"
                           size="sm"
                           renderIcon={ArrowRight}
-                          onClick={() => {
-                            const dest = item.linkDestino!;
-                            const sep = dest.includes("?") ? "&" : "?";
-                            router.push(`${dest}${sep}origem=/notificacoes`);
-                          }}
+                          onClick={() => router.push(item.linkDestino!)}
                         >
                           Ver licitação
                         </Button>

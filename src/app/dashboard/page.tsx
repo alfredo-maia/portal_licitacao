@@ -575,7 +575,7 @@ export default function DashboardPage() {
                       <div
                         key={critica.id}
                         data-testid={`critica-row-${critica.id}`}
-                        onClick={() => router.push(`/oportunidades/${critica.id}?origem=/dashboard`)}
+                        onClick={() => router.push(`/oportunidades/${critica.id}`)}
                         style={{
                           padding: "0.75rem 1rem",
                           backgroundColor: "var(--cds-layer-02, rgba(255,255,255,0.05))",

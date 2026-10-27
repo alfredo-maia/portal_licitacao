@@ -687,7 +687,7 @@ function OportunidadesContent() {
                       <TableRow
                         {...getRowProps({ row })}
                         data-testid={`oportunidade-row-${row.id}`}
-                        onClick={() => router.push(`/oportunidades/${row.id}?origem=/oportunidades`)}
+                        onClick={() => router.push(`/oportunidades/${row.id}`)}
                         style={{ cursor: "pointer" }}
                       >
                         <TableSelectRow {...getSelectionProps({ row })} />
