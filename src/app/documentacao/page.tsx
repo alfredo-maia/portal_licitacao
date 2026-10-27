@@ -170,27 +170,31 @@ export default function DocumentacaoPage() {
     setSalvando(true);
     setFormErro(null);
 
-    const payload = {
-      nome: nome.trim(),
-      categoria,
-      tipo: tipo.trim() || null,
-      orgaoEmissor: orgaoEmissor.trim() || null,
-      semValidade,
-      dataEmissao: dataEmissao ? new Date(dataEmissao).toISOString() : null,
-      dataVencimento: semValidade || !dataVencimento ? null : new Date(dataVencimento).toISOString(),
-      arquivoNome: arquivoNome.trim() || `${nome.toLowerCase().replace(/\s+/g, "_")}.pdf`,
-      arquivoUrl: `/uploads/${arquivoNome || "doc.pdf"}`,
-    };
+    const formData = new FormData();
+    formData.append("nome", nome.trim());
+    formData.append("categoria", categoria);
+    if (tipo.trim()) formData.append("tipo", tipo.trim());
+    if (orgaoEmissor.trim()) formData.append("orgaoEmissor", orgaoEmissor.trim());
+    formData.append("semValidade", String(semValidade));
+    if (dataEmissao) formData.append("dataEmissao", dataEmissao);
+    if (!semValidade && dataVencimento) formData.append("dataVencimento", dataVencimento);
+    if (arquivoFile) {
+      formData.append("file", arquivoFile);
+      formData.append("arquivoNome", arquivoFile.name);
+    } else if (arquivoNome.trim()) {
+      formData.append("arquivoNome", arquivoNome.trim());
+    }
 
     try {
       const res = await fetch("/api/documentos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       if (res.ok) {
         setModalNovoAberto(false);
+        setArquivoFile(null);
+        setArquivoNome("");
         await carregarDocumentos();
       } else {
         const err = await res.json();
@@ -208,6 +212,7 @@ export default function DocumentacaoPage() {
     setVersaoDataEmissao("");
     setVersaoDataVencimento("");
     setVersaoArquivoNome("");
+    setVersaoArquivoFile(null);
     setFormErro(null);
     setModalVersaoAberto(true);
   };
@@ -222,22 +227,26 @@ export default function DocumentacaoPage() {
     setSalvando(true);
     setFormErro(null);
 
-    const payload = {
-      dataEmissao: versaoDataEmissao ? new Date(versaoDataEmissao).toISOString() : undefined,
-      dataVencimento: versaoDataVencimento ? new Date(versaoDataVencimento).toISOString() : undefined,
-      arquivoNome: versaoArquivoNome.trim() || `versao_${docAlvoVersao.versao + 1}_${docAlvoVersao.arquivoNome || "doc.pdf"}`,
-      arquivoUrl: `/uploads/v${docAlvoVersao.versao + 1}_doc.pdf`,
-    };
+    const formData = new FormData();
+    if (versaoDataEmissao) formData.append("dataEmissao", versaoDataEmissao);
+    if (versaoDataVencimento) formData.append("dataVencimento", versaoDataVencimento);
+    if (versaoArquivoFile) {
+      formData.append("file", versaoArquivoFile);
+      formData.append("arquivoNome", versaoArquivoFile.name);
+    } else if (versaoArquivoNome.trim()) {
+      formData.append("arquivoNome", versaoArquivoNome.trim());
+    }
 
     try {
       const res = await fetch(`/api/documentos/${docAlvoVersao.id}/nova-versao`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       if (res.ok) {
         setModalVersaoAberto(false);
+        setVersaoArquivoFile(null);
+        setVersaoArquivoNome("");
         await carregarDocumentos();
       } else {
         const err = await res.json();

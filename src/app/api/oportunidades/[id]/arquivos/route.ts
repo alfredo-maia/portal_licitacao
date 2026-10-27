@@ -35,11 +35,20 @@ export async function POST(request: Request, context: RouteContext) {
     const buffer = Buffer.from(bytes);
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    
+    // 1. Salvar no volume persistente do Docker (/data/uploads)
+    try {
+      const dataDir = join("/data/uploads", "editais", id);
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(join(dataDir, safeName), buffer);
+    } catch {
+      // Ignora se estiver em ambiente sem acesso a /data/uploads (ex: dev local mac)
+    }
+
+    // 2. Salvar no diretório public da aplicação
     const uploadDir = join(process.cwd(), "public", "uploads", "editais", id);
     await mkdir(uploadDir, { recursive: true });
-
-    const filePath = join(uploadDir, safeName);
-    await writeFile(filePath, buffer);
+    await writeFile(join(uploadDir, safeName), buffer);
 
     const publicPath = `/uploads/editais/${id}/${safeName}`;
 
