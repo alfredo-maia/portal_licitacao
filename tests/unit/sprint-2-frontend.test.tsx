@@ -1,24 +1,34 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import MinhasLicitacoesPage from "@/app/minhas-licitacoes/page";
 import OportunidadesDetalhePage from "@/app/oportunidades/[id]/page";
+
+const mockPush = vi.fn();
+const mockBack = vi.fn();
+let mockSearchParams = new URLSearchParams();
 
 // Mocks de navegação e fetch
 vi.mock("next/navigation", () => ({
   usePathname: () => "/minhas-licitacoes",
   useRouter: () => ({
-    push: vi.fn(),
+    push: mockPush,
     replace: vi.fn(),
     prefetch: vi.fn(),
-    back: vi.fn(),
+    back: mockBack,
   }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockPush.mockClear();
+    mockBack.mockClear();
+    mockSearchParams = new URLSearchParams();
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.clear();
+    }
   });
 
   it("deve renderizar o Funil Kanban com 9 colunas ativas e métricas de funil", async () => {
@@ -140,5 +150,86 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
 
     expect(screen.getByTestId("btn-open-verificar-participacao")).toBeInTheDocument();
     expect(screen.getByText(/Tribunal de Justiça de GO — Fábrica de software/i)).toBeInTheDocument();
+
+    // Verificação do Botão Voltar (Issue #4)
+    const btnVoltar = screen.getByTestId("btn-voltar");
+    expect(btnVoltar).toBeInTheDocument();
+    expect(btnVoltar).toHaveTextContent("Voltar");
+    expect(btnVoltar).not.toHaveTextContent("Voltar para Central de Oportunidades");
+  });
+
+  it("deve navegar para a tela de origem ao clicar no botão Voltar quando houver ?origem= (Issue #4)", async () => {
+    mockSearchParams = new URLSearchParams("origem=/calendario");
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/oportunidades/lic-origem-test")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            oportunidade: {
+              id: "lic-origem-test",
+              numeroEdital: "001/2026",
+              orgaoNome: "Prefeitura de Goiânia",
+              orgaoCnpj: "00.000.000/0001-00",
+              uf: "GO",
+              miniResumo: "Portal Escolar",
+              status: "ACEITA",
+              parecerIA: "GO",
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, usuarios: [] }) });
+    });
+
+    render(
+      <OportunidadesDetalhePage params={Promise.resolve({ id: "lic-origem-test" })} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("btn-voltar")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("btn-voltar"));
+    expect(mockPush).toHaveBeenCalledWith("/calendario");
+  });
+
+  it("deve navegar para a tela gravada na sessão (ex: /minhas-licitacoes) ao clicar no botão Voltar (Issue #4)", async () => {
+    mockSearchParams = new URLSearchParams();
+    sessionStorage.setItem("portal_nav_origin", "/minhas-licitacoes");
+
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/oportunidades/lic-origem-test-2")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            oportunidade: {
+              id: "lic-origem-test-2",
+              numeroEdital: "002/2026",
+              orgaoNome: "Prefeitura de Anápolis",
+              orgaoCnpj: "00.000.000/0001-00",
+              uf: "GO",
+              miniResumo: "ERP Municipal",
+              status: "ANALISE_TECNICA",
+              parecerIA: "GO",
+            },
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, usuarios: [] }) });
+    });
+
+    render(
+      <OportunidadesDetalhePage params={Promise.resolve({ id: "lic-origem-test-2" })} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("btn-voltar")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("btn-voltar"));
+    expect(mockPush).toHaveBeenCalledWith("/minhas-licitacoes");
   });
 });

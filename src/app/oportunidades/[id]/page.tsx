@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Tag,
   Tile,
@@ -163,10 +163,59 @@ function formatarBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-export default function OportunidadesDetalhePage({
+export default function OportunidadesDetalhePage(props: OportunidadesDetalhePageProps) {
+  return (
+    <React.Suspense
+      fallback={
+        <ModulePageShell routePath="/oportunidades">
+          <Tile style={{ padding: "2rem" }}>
+            <InlineLoading description="Carregando dossiê..." />
+          </Tile>
+        </ModulePageShell>
+      }
+    >
+      <OportunidadesDetalheContent {...props} />
+    </React.Suspense>
+  );
+}
+
+function OportunidadesDetalheContent({
   params,
 }: OportunidadesDetalhePageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const handleVoltar = React.useCallback(() => {
+    // 1. Prioriza query param explícito (?origem=/calendario ou ?from=/minhas-licitacoes)
+    const origem = searchParams.get("origem") || searchParams.get("from");
+    if (origem && origem.startsWith("/")) {
+      router.push(origem);
+      return;
+    }
+
+    // 2. Histórico de origem gravado pela navegação na sessão
+    if (typeof window !== "undefined") {
+      try {
+        const storedOrigin = sessionStorage.getItem("portal_nav_origin");
+        if (storedOrigin && storedOrigin.startsWith("/") && !storedOrigin.startsWith("/oportunidades/")) {
+          router.push(storedOrigin);
+          return;
+        }
+      } catch {
+        // Ignora erros de sessionStorage
+      }
+
+      // 3. Fallback para histórico do navegador
+      if (window.history.length > 1) {
+        router.back();
+        return;
+      }
+    }
+
+    // 4. Fallback padrão para /oportunidades
+    router.push("/oportunidades");
+  }, [router, searchParams]);
+
   const [id, setId] = React.useState<string>("");
   const [oportunidade, setOportunidade] = React.useState<OportunidadeDetalhe | null>(null);
   const [usuarios, setUsuarios] = React.useState<UsuarioItem[]>([]);
@@ -530,8 +579,14 @@ Realize uma análise profunda estruturada em 4 dimensões:
             Erro ao carregar oportunidade
           </h2>
           <p style={{ marginBottom: "1.5rem" }}>{error || "Registro não localizado."}</p>
-          <Button kind="secondary" renderIcon={ArrowLeft} onClick={() => router.push("/oportunidades")}>
-            Voltar para Central de Oportunidades
+          <Button
+            kind="secondary"
+            onClick={handleVoltar}
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
+            data-testid="btn-voltar-erro"
+          >
+            <ArrowLeft size={16} />
+            <span>Voltar</span>
           </Button>
         </Tile>
       </ModulePageShell>
@@ -583,11 +638,18 @@ Realize uma análise profunda estruturada em 4 dimensões:
             <Button
               kind="ghost"
               size="sm"
-              renderIcon={ArrowLeft}
-              onClick={() => router.push("/oportunidades")}
-              style={{ paddingLeft: 0, marginBottom: "0.5rem" }}
+              onClick={handleVoltar}
+              style={{
+                paddingLeft: 0,
+                marginBottom: "0.5rem",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+              data-testid="btn-voltar"
             >
-              Voltar para Central de Oportunidades
+              <ArrowLeft size={16} />
+              <span>Voltar</span>
             </Button>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0, lineHeight: 1.2 }}>
               {oportunidade.orgaoNome} — {sintetizarMiniResumo(oportunidade.miniResumo || oportunidade.objeto || oportunidade.resumo, oportunidade.tipoSistemaCodigo)}

@@ -132,7 +132,7 @@ function KanbanCardContent({
       {/* 1. Nome do Órgão — Objeto da licitação */}
       <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", lineHeight: 1.3 }}>
         <Link
-          href={`/oportunidades/${lic.id}`}
+          href={`/oportunidades/${lic.id}?origem=/minhas-licitacoes`}
           style={{ color: "var(--cds-text-primary)", textDecoration: "none" }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -188,7 +188,7 @@ function KanbanCardContent({
       {/* 7. Botão Abrir Projeto */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.5rem", marginTop: "0.5rem" }}>
         <Link
-          href={`/oportunidades/${lic.id}`}
+          href={`/oportunidades/${lic.id}?origem=/minhas-licitacoes`}
           style={{
             fontSize: "0.8125rem",
             fontWeight: 600,

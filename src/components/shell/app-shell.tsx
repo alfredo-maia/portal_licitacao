@@ -58,6 +58,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { isDark, toggleTheme } = useAppTheme();
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && pathname && !pathname.startsWith("/oportunidades/")) {
+      try {
+        sessionStorage.setItem("portal_nav_origin", pathname);
+      } catch {
+        // Ignora erros de storage (ex: modo restrito)
+      }
+    }
+  }, [pathname]);
+
   const handleToggleSideNav = () => {
     setIsSideNavExpanded((prev) => !prev);
   };
