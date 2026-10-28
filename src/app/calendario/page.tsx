@@ -18,7 +18,6 @@ import {
   Calendar,
   Document,
   Time,
-  WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
@@ -457,7 +456,7 @@ export default function CalendarioPage() {
                             `${alerta.linkDestino}?busca=${encodeURIComponent(alerta.titulo)}`
                           )
                         }
-                        title={`Lembrete: ${alerta.titulo} (Atualizar) — Vencimento documental no dia ${alerta.dia}/${String(mesSelecionado).padStart(2, "0")}`}
+                        title={`Lembrete: Documento - ${alerta.titulo} (Atualizar) — Vencimento documental no dia ${alerta.dia}/${String(mesSelecionado).padStart(2, "0")}`}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
@@ -469,33 +468,7 @@ export default function CalendarioPage() {
                           }
                         }}
                       >
-                        <WarningAlt
-                          size={14}
-                          style={{
-                            color: "var(--cds-support-warning, #f1c21b)",
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div
-                          style={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            color: "var(--cds-text-primary)",
-                            fontWeight: 500,
-                          }}
-                        >
-                          <span>{alerta.titulo}</span>{" "}
-                          <span
-                            style={{
-                              color: "var(--cds-link-primary, #0f62fe)",
-                              fontWeight: 600,
-                              textDecoration: "underline",
-                            }}
-                          >
-                            (Atualizar)
-                          </span>
-                        </div>
+                        Documento - {alerta.titulo} (Atualizar)
                       </div>
                     ))}
                   </div>

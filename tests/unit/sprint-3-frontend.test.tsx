@@ -246,11 +246,12 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
       // 1. Não deve haver faixa de alerta no topo acima do calendário
       expect(screen.queryByTestId("alertas-documentais-banner")).not.toBeInTheDocument();
 
-      // 2. O alerta deve estar presente dentro da célula do dia correspondente
+      // 2. O alerta deve estar presente dentro da célula do dia correspondente com o texto minimalista exato
       const alertaItem = screen.getByTestId("calendario-alerta-doc-venc-1");
       expect(alertaItem).toBeInTheDocument();
-      expect(alertaItem).toHaveTextContent("Certidão FGTS");
-      expect(alertaItem).toHaveTextContent("(Atualizar)");
+      expect(alertaItem).toHaveTextContent("Documento - Certidão FGTS (Atualizar)");
+      // Sem ícone SVG
+      expect(alertaItem.querySelector("svg")).toBeNull();
 
       // 3. O alerta deve estar posicionado abaixo do chip de licitação na célula
       const dia26Container = alertaItem.parentElement;
