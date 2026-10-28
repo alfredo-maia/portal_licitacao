@@ -199,7 +199,7 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
       expect(mockPush).toHaveBeenCalledWith("/oportunidades/lic-cal-1");
     });
 
-    it("deve renderizar a faixa de alertas documentais sem quebrar com ActionableNotification", async () => {
+    it("deve renderizar alertas documentais dentro da célula do dia correspondente e abaixo das licitações", async () => {
       global.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/api/calendario")) {
           return Promise.resolve({
@@ -208,7 +208,20 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
               ok: true,
               mes: 11,
               ano: 2026,
-              chips: [],
+              chips: [
+                {
+                  id: "lic-cal-26",
+                  numeroEdital: "026/2026",
+                  orgaoNome: "Prefeitura de Campinas",
+                  titulo: "Serviço de Nuvem",
+                  dataAbertura: "2026-11-26T10:00:00.000Z",
+                  dataEncerramentoProposta: "2026-11-26T10:00:00.000Z",
+                  dia: 26,
+                  status: "ACEITA",
+                  opaco: false,
+                  linkDestino: "/oportunidades/lic-cal-26",
+                },
+              ],
               alertasDocumentais: [
                 {
                   documentoId: "doc-venc-1",
@@ -227,11 +240,34 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
       render(<CalendarioPage />);
 
       await waitFor(() => {
-        expect(screen.getByTestId("alertas-documentais-banner")).toBeInTheDocument();
+        expect(screen.getByTestId("calendario-grid")).toBeInTheDocument();
       });
 
-      expect(screen.getByText(/Dia 26: Certidão FGTS/i)).toBeInTheDocument();
-      expect(screen.getByText(/Ver Documentos/i)).toBeInTheDocument();
+      // 1. Não deve haver faixa de alerta no topo acima do calendário
+      expect(screen.queryByTestId("alertas-documentais-banner")).not.toBeInTheDocument();
+
+      // 2. O alerta deve estar presente dentro da célula do dia correspondente
+      const alertaItem = screen.getByTestId("calendario-alerta-doc-venc-1");
+      expect(alertaItem).toBeInTheDocument();
+      expect(alertaItem).toHaveTextContent("Certidão FGTS");
+      expect(alertaItem).toHaveTextContent("(Atualizar)");
+
+      // 3. O alerta deve estar posicionado abaixo do chip de licitação na célula
+      const dia26Container = alertaItem.parentElement;
+      const chipLic = screen.getByText("Prefeitura de Campinas").closest("[data-testid='calendario-chip']");
+      expect(chipLic).toBeInTheDocument();
+      expect(dia26Container).toContainElement(chipLic as HTMLElement);
+      expect(dia26Container).toContainElement(alertaItem);
+
+      // Verificar ordem dos nós no container (chip antes do alerta)
+      const children = Array.from(dia26Container?.children || []);
+      const chipIndex = children.indexOf(chipLic as HTMLElement);
+      const alertaIndex = children.indexOf(alertaItem);
+      expect(chipIndex).toBeLessThan(alertaIndex);
+
+      // 4. Clicar no alerta redireciona para a página de documentação
+      fireEvent.click(alertaItem);
+      expect(mockPush).toHaveBeenCalledWith(expect.stringMatching(/\/documentacao/));
     });
   });
 

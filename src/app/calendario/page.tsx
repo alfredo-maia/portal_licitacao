@@ -7,7 +7,6 @@ import {
   Column,
   Grid,
   InlineLoading,
-  ActionableNotification,
   Select,
   SelectItem,
   Tag,
@@ -19,6 +18,7 @@ import {
   Calendar,
   Document,
   Time,
+  WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
@@ -238,25 +238,7 @@ export default function CalendarioPage() {
           </Tile>
         </Column>
 
-        {/* Faixa de Alerta Documental (Sprint 4 preparada) */}
-        {dados?.alertasDocumentais && dados.alertasDocumentais.length > 0 && (
-          <Column lg={16} md={8} sm={4} style={{ marginBottom: "1rem" }}>
-            <div data-testid="alertas-documentais-banner">
-              {dados.alertasDocumentais.map((alerta) => (
-                <ActionableNotification
-                  key={alerta.documentoId}
-                  inline
-                  kind="warning"
-                  title={`Dia ${alerta.dia}: ${alerta.titulo}`}
-                  subtitle={alerta.mensagem}
-                  actionButtonLabel="Ver Documentos"
-                  onActionButtonClick={() => router.push(alerta.linkDestino)}
-                  style={{ marginBottom: "0.5rem" }}
-                />
-              ))}
-            </div>
-          </Column>
-        )}
+
 
         {/* Grade Mensal */}
         <Column lg={16} md={8} sm={4}>
@@ -302,6 +284,10 @@ export default function CalendarioPage() {
 
                 const chipsDoDia = dia !== null && dados?.chips
                   ? dados.chips.filter((c) => c.dia === dia)
+                  : [];
+
+                const alertasDoDia = dia !== null && dados?.alertasDocumentais
+                  ? dados.alertasDocumentais.filter((a) => a.dia === dia)
                   : [];
 
                 return (
@@ -459,6 +445,59 @@ export default function CalendarioPage() {
                         </div>
                       );
                     })}
+
+                    {/* Alertas e Lembretes Documentais do Dia (Sempre abaixo das licitações) */}
+                    {alertasDoDia.map((alerta) => (
+                      <div
+                        key={alerta.documentoId}
+                        data-testid={`calendario-alerta-${alerta.documentoId}`}
+                        className="pncp-calendario-alerta"
+                        onClick={() =>
+                          router.push(
+                            `${alerta.linkDestino}?busca=${encodeURIComponent(alerta.titulo)}`
+                          )
+                        }
+                        title={`Lembrete: ${alerta.titulo} (Atualizar) — Vencimento documental no dia ${alerta.dia}/${String(mesSelecionado).padStart(2, "0")}`}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            router.push(
+                              `${alerta.linkDestino}?busca=${encodeURIComponent(alerta.titulo)}`
+                            );
+                          }
+                        }}
+                      >
+                        <WarningAlt
+                          size={14}
+                          style={{
+                            color: "var(--cds-support-warning, #f1c21b)",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            color: "var(--cds-text-primary)",
+                            fontWeight: 500,
+                          }}
+                        >
+                          <span>{alerta.titulo}</span>{" "}
+                          <span
+                            style={{
+                              color: "var(--cds-link-primary, #0f62fe)",
+                              fontWeight: 600,
+                              textDecoration: "underline",
+                            }}
+                          >
+                            (Atualizar)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 );
               })}

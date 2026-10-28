@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Button,
   Checkbox,
@@ -76,14 +77,16 @@ const CATEGORIAS = [
   { id: "OUTROS", rotulo: "Outros Documentos" },
 ];
 
-export default function DocumentacaoPage() {
+function DocumentacaoContent() {
+  const searchParams = useSearchParams();
+  const buscaInicial = searchParams.get("busca") || "";
   const [categoriaAtiva, setCategoriaAtiva] = useState("");
   const [documentos, setDocumentos] = useState<DocumentoItem[]>([]);
   const [total, setTotal] = useState(0);
   const [vencidosOuVencendo, setVencidosOuVencendo] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [carregando, setCarregando] = useState(true);
 
   // Modal Novo Documento
@@ -799,3 +802,12 @@ export default function DocumentacaoPage() {
     </ModulePageShell>
   );
 }
+
+export default function DocumentacaoPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <DocumentacaoContent />
+    </React.Suspense>
+  );
+}
+
