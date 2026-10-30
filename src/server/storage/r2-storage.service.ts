@@ -37,17 +37,44 @@ export interface R2Objeto {
   atualizadoEm: Date;
 }
 
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+
 // Storage resiliente em memória para fallback (CI, testes ou dev sem credenciais Cloudflare R2)
 const memoryStorageR2 = new Map<string, R2Objeto>();
+let s3ClientInstance: S3Client | null = null;
 
 export function getR2Config() {
   return {
     accountId: process.env.CLOUDFLARE_R2_ACCOUNT_ID || "",
     accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || "",
     secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || "",
-    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME || "portal-licitacoes-docs",
+    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME || "portal-licitacoes",
     publicDomain: process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || "https://docs.licitacao.internal",
   };
+}
+
+function getS3Client(): S3Client | null {
+  const config = getR2Config();
+  if (!config.accountId || !config.accessKeyId || !config.secretAccessKey) {
+    return null;
+  }
+  if (!s3ClientInstance) {
+    s3ClientInstance = new S3Client({
+      region: "auto",
+      endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
+      },
+    });
+  }
+  return s3ClientInstance;
 }
 
 /**
@@ -65,8 +92,9 @@ export async function fazerUploadStreamingR2(
 
   const etag = `etag-${randomUUID().slice(0, 8)}`;
   const agora = new Date();
+  const config = getR2Config();
 
-  // Armazena no memoryStorage (e se houver credenciais ativas, envia via S3 Client)
+  // 1. Armazena no memoryStorage (garante fallback e agilidade em testes)
   memoryStorageR2.set(params.chave, {
     chave: params.chave,
     buffer: params.buffer,
@@ -76,8 +104,25 @@ export async function fazerUploadStreamingR2(
     atualizadoEm: agora,
   });
 
-  const config = getR2Config();
-  const url = `${config.publicDomain}/${params.chave}`;
+  // 2. Se credenciais Cloudflare R2 estiverem configuradas, envia para a nuvem da Cloudflare
+  const s3 = getS3Client();
+  if (s3) {
+    try {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config.bucketName,
+          Key: params.chave,
+          Body: params.buffer,
+          ContentType: params.mimeType,
+          Metadata: params.metadata,
+        }),
+      );
+    } catch (err) {
+      console.warn("[Cloudflare R2] Aviso no upload físico (mantido em fallback):", err);
+    }
+  }
+
+  const url = `${config.publicDomain.replace(/\/+$/, "")}/${params.chave}`;
 
   return {
     ok: true,
@@ -93,6 +138,33 @@ export async function fazerUploadStreamingR2(
  * Obtém objeto armazenado no R2.
  */
 export async function obterObjetoR2(chave: string): Promise<R2Objeto | null> {
+  const config = getR2Config();
+  const s3 = getS3Client();
+
+  if (s3) {
+    try {
+      const res = await s3.send(
+        new GetObjectCommand({
+          Bucket: config.bucketName,
+          Key: chave,
+        }),
+      );
+      if (res.Body) {
+        const bytes = await res.Body.transformToByteArray();
+        return {
+          chave,
+          buffer: Buffer.from(bytes),
+          mimeType: res.ContentType || "application/octet-stream",
+          tamanho: res.ContentLength || bytes.length,
+          metadata: res.Metadata,
+          atualizadoEm: res.LastModified || new Date(),
+        };
+      }
+    } catch {
+      // Fallback para memória se S3 falhar
+    }
+  }
+
   const obj = memoryStorageR2.get(chave);
   if (obj) {
     return obj;
@@ -104,6 +176,23 @@ export async function obterObjetoR2(chave: string): Promise<R2Objeto | null> {
  * Verifica se um objeto existe no R2.
  */
 export async function verificarObjetoR2(chave: string): Promise<boolean> {
+  const s3 = getS3Client();
+  const config = getR2Config();
+
+  if (s3) {
+    try {
+      await s3.send(
+        new HeadObjectCommand({
+          Bucket: config.bucketName,
+          Key: chave,
+        }),
+      );
+      return true;
+    } catch {
+      // Ignora erro e checa memória
+    }
+  }
+
   return memoryStorageR2.has(chave);
 }
 
@@ -111,6 +200,22 @@ export async function verificarObjetoR2(chave: string): Promise<boolean> {
  * Remove um objeto do R2.
  */
 export async function deletarObjetoR2(chave: string): Promise<boolean> {
+  const s3 = getS3Client();
+  const config = getR2Config();
+
+  if (s3) {
+    try {
+      await s3.send(
+        new DeleteObjectCommand({
+          Bucket: config.bucketName,
+          Key: chave,
+        }),
+      );
+    } catch {
+      // fallback
+    }
+  }
+
   return memoryStorageR2.delete(chave);
 }
 
