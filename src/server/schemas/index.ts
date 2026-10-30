@@ -26,3 +26,4 @@ export * from "./segmentos.schema";
 export * from "./modalidades.schema";
 export * from "./busca-licitacoes.schema";
 export * from "./storage-r2.schema";
+export * from "./arsenal.schema";
