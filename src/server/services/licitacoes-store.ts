@@ -93,6 +93,10 @@ function seedToRecord(seed: LicitacaoSeedItem): LicitacaoRecord {
     hashCritico: computeHashCritico(seed),
     valorArrematado: null,
     responsavelId: null,
+    modalidadeCodigo: 6,
+    numeroControlePNCP: null,
+    segmentoMacro: null,
+    subcategorias: [],
     createdAt: agora,
     updatedAt: agora,
   };

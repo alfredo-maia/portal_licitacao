@@ -37,12 +37,19 @@ export interface IngestaoLoteV2Result {
   registros: LicitacaoRecord[];
 }
 
+import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
+import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
+
 function mapItemToLicitacaoData(
   item: IngestaoLicitacaoItem,
   hashCritico: string,
 ): NovaLicitacaoData {
+  const normModalidade = normalizarModalidade(item.modalidade);
+  const classificacao = classificarLicitacaoPorTexto(item.resumo, item.miniResumo);
+
   return {
     idPncp: item.pncpId,
+    numeroControlePNCP: item.pncpId,
     numeroEdital: item.numeroEdital,
     orgaoNome: item.orgao.nome,
     orgaoCnpj: item.orgao.cnpj,
@@ -50,7 +57,10 @@ function mapItemToLicitacaoData(
     municipio: item.orgao.municipio ?? null,
     esfera: item.orgao.esfera ?? null,
     poder: item.orgao.poder ?? null,
-    modalidade: item.modalidade,
+    modalidade: normModalidade.nome,
+    modalidadeCodigo: normModalidade.codigo,
+    segmentoMacro: classificacao.macro,
+    subcategorias: classificacao.subcategorias,
     portalDisputa: item.portalDisputa ?? null,
     miniResumo: sintetizarMiniResumo(item.miniResumo || item.resumo, item.tipoSistemaSugerido),
     resumo: item.resumo,
@@ -196,6 +206,9 @@ export async function ingestLicitacoesV2(
       // Preserva a data de abertura original do certame e atualiza a data de encerramento de envio de proposta
       dataAbertura: existente.dataAbertura,
       dataEncerramentoProposta: dados.dataEncerramentoProposta ?? dados.dataAbertura,
+      modalidadeCodigo: dados.modalidadeCodigo,
+      segmentoMacro: dados.segmentoMacro,
+      subcategorias: dados.subcategorias,
     };
 
     const atualizado = await updateLicitacao(existente.id, patch);

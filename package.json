@@ -5,7 +5,6 @@
   "description": "Plataforma corporativa de inteligência e gestão em licitações públicas de TI (Lei 14.133/2021)",
   "scripts": {
     "dev": "next dev -p 3010",
-    "postinstall": "prisma generate && node -e \"try { const fs=require('fs'); const p='node_modules/temporal-polyfill/package.json'; if(fs.existsSync(p)){ const j=JSON.parse(fs.readFileSync(p,'utf8')); j.type='commonjs'; if(j.exports?.['./global']) j.exports['./global'].require='./global.js'; fs.writeFileSync(p,JSON.stringify(j,null,2)); } } catch(e){}\"",
     "build": "prisma generate && next build && :",
     "start": "next start -p 3010",
     "lint": "prisma generate && tsc --noEmit && :",

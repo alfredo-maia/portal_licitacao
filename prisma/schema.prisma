@@ -197,6 +197,10 @@ model Licitacao {
   analisesIA            AnaliseStatusParticipacao[]
   historicoStatus       LicitacaoStatusHistorico[]
   notificacoes          Notificacao[]
+  modalidadeCodigo      Int?
+  numeroControlePNCP    String?
+  segmentoMacro         String?
+  subcategorias         Json?
   impugnacoes           Impugnacao[]
   tenantLicitacoes      TenantLicitacao[]
   createdAt             DateTime                    @default(now())
@@ -206,6 +210,8 @@ model Licitacao {
   @@index([status])
   @@index([idPncp])
   @@index([tipoSistemaCodigo])
+  @@index([segmentoMacro])
+  @@index([modalidadeCodigo])
   @@index([createdAt])
 }
 

@@ -37,6 +37,8 @@ import {
   type NovaLicitacaoData,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
+import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
+import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
 
 /** Erro tipado de serviço: as rotas HTTP mapeiam `status` para a resposta. */
 export class OportunidadesServiceError extends Error {
@@ -892,8 +894,12 @@ export async function criarOportunidadeManual(
     orgaoCnpj: input.orgaoCnpj,
   });
 
+  const normModalidade = normalizarModalidade(input.modalidade);
+  const classif = classificarLicitacaoPorTexto(input.resumo, input.miniResumo);
+
   const data: NovaLicitacaoData = {
     idPncp: pncpId,
+    numeroControlePNCP: pncpId,
     numeroEdital: input.numeroEdital,
     orgaoNome: input.orgaoNome,
     orgaoCnpj: input.orgaoCnpj,
@@ -901,7 +907,10 @@ export async function criarOportunidadeManual(
     municipio: input.municipio ?? null,
     esfera: null,
     poder: null,
-    modalidade: input.modalidade,
+    modalidade: normModalidade.nome,
+    modalidadeCodigo: normModalidade.codigo,
+    segmentoMacro: classif.macro,
+    subcategorias: classif.subcategorias,
     portalDisputa: null,
     miniResumo: input.miniResumo,
     resumo: input.resumo,
