@@ -392,11 +392,22 @@ Para pesquisar centenas de milhares de licitações sem a sobrecarga de memória
 ### 10.2. Armazenamento Externo Cloudflare R2
 - Todos os documentos residem no Cloudflare R2 (custo de tráfego/egress = **$0,00**, armazenamento = **$0,015/GB/mês**).
 
-### 10.3. Botão "Abrir Documentos" com Revalidação Diária (TTL 24h)
-1. **Primeiro Acesso:** Ao clicar em "Abrir Documentos", modal exibe loading de sincronização. O backend consome os arquivos no PNCP, faz o streaming direto para o R2, salva os links no banco e atualiza `lastCheckedAt = hoje`.
-2. **Acesso no Mesmo Dia:** Exibição instantânea (< 100ms) consumindo os links do R2 sem nova chamada ao PNCP.
-3. **Acesso em Dias Posteriores (> 24h):** O backend realiza checagem rápida no PNCP. Se o órgão publicou retificações, termos aditivos ou respostas a esclarecimentos, faz o download apenas dos novos arquivos e atualiza a lista.
-4. **Resiliência a Falhas do Governo:** Se o portal federal sair do ar (erros 502/504), os documentos já cacheados no R2 continuam acessíveis aos nossos clientes sem interrupção.
+### 10.4. Cofre de Documentos de Habilitação & Política de Uso Justo Silenciosa (Fair Use Invisível)
+Para permitir que os clientes guardem suas certidões negativas, contratos sociais e atestados com total segurança, sem risco de desvio da plataforma como "Google Drive":
+1. **Whitelist Estrita de Extensões & Segurança Anti-Malware:**
+   - **Formatos Aceitos:** Estritamente `.pdf` (`application/pdf`) e fotos nítidas de documentos (`.jpg`, `.jpeg`, `.png`).
+   - **Bloqueio Sumário:** Rejeição no frontend e validação de magic bytes no backend para arquivos executáveis (`.exe`, `.bat`, `.sh`), planilhas com macros, arquivos compactados (`.zip`, `.rar`) e vídeos (`.mp4`), impedindo que o domínio corporativo seja manchado ou bloqueado por antivírus.
+2. **Teto Individual por Arquivo:** Máximo de **20 MB por arquivo** (atende com folga a balanços patrimoniais de alta resolução, mas inviabiliza vídeos e arquivos pesados).
+3. **Cotas Silenciosas de Armazenamento por Plano (Invisíveis ao Cliente):**
+   - **Plano Básico:** Até **500 MB** de cofre (capacidade para mais de 250 certidões em PDF).
+   - **Plano Pro:** Até **2 GB** (capacidade para mais de 1.000 documentos e atestados).
+   - **Plano Enterprise:** Até **5 GB** (capacidade corporativa expansível).
+   - *Percepção Pública:* O cliente **não vê** limites de megabytes em tabelas comerciais ou na interface — vê apenas a entrega de valor de um **"Cofre Digital de Certidões e Documentos"**.
+4. **Soft Limit Amigável (Atendimento Humanizado):**
+   - Se o cliente atingir o limite silencioso, o sistema não bloqueia bruscamente sua conta. Exibe um modal Carbon acolhedor:
+     > *"📁 Você atingiu a capacidade recomendada do seu cofre de documentos.*  
+     > *Para garantir a máxima segurança dos seus arquivos e liberar espaço adicional gratuitamente para a sua empresa, converse com a nossa equipe de suporte."*  
+     > *(Botão com link direto para o WhatsApp oficial de suporte).*
 
 ---
 
@@ -421,13 +432,21 @@ Para pesquisar centenas de milhares de licitações sem a sobrecarga de memória
 
 ---
 
-## 13. Portal Administrativo (SuperAdmin / Backoffice)
+## 13. Portal Administrativo (SuperAdmin / Backoffice Executivo)
 
-Painel restrito à gestão da plataforma (`admin.portal.com.br`):
-1. **Conector WhatsApp:** Pareamento por QR Code (Evolution API / Z-API), status de conexão e fila de mensagens.
-2. **Gestão de Assinaturas & Clientes:** Visão de clientes por CNPJ, dias restantes de trial e prorrogação manual de testes.
-3. **Métricas Financeiras Asaas:** MRR, inadimplência e status de webhooks.
-4. **Health Check da Ingestão:** Relatório da coleta da madrugada e integridade do cache R2.
+Painel restrito à gestão da plataforma (`/admin` - Perfil `SUPERADMIN`):
+1. **Conector WhatsApp:** Pareamento por QR Code (Evolution API / Z-API), status de conexão da instância e monitor da fila com jitter humano.
+2. **Monitor de Armazenamento por Empresa & Expansão com 1 Clique:**
+   - Visão em tempo real do espaço ocupado no cofre por cada CNPJ (em MB e %).
+   - Identificação de clientes próximos ao teto silencioso.
+   - **Ação Imediata:** Botão no painel para conceder espaço extra (`+ 1 GB`, `+ 2 GB` ou valor customizado) na hora, caso o cliente entre em contato com o suporte.
+3. **Inteligência de Vitórias & Sucesso dos Clientes (Social Proof / Cases):**
+   - Rastreamento analítico de todas as licitações marcadas como `statusKanban === CONTEMPLADA` no funil dos clientes.
+   - Totalizador do **Volume Financeiro Arrematado (R$)** gerado pela plataforma para as empresas assinantes.
+   - Tabela detalhada de pregões vencidos por cliente (órgão comprador, número do edital, valor adjudicado e data da homologação), permitindo colher depoimentos e parabenizar clientes fiéis de forma proativa.
+4. **Gestão de Assinaturas & Clientes:** Visão de clientes por CNPJ, dias restantes de trial gratuito, status de adimplência e prorrogação manual de testes.
+5. **Métricas Financeiras Asaas:** MRR (Receita Recorrente Mensal), inadimplência, taxa de conversão do trial e logs de webhooks.
+6. **Health Check da Ingestão Noturna:** Relatório diário da coleta da madrugada com marca d'água (watermark), status do cache R2 e botão de emergência **"Sincronizar PNCP Agora"**.
 
 ---
 
