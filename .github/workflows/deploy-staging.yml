@@ -3,9 +3,7 @@ name: CD (Staging - VPS Hostinger)
 # Dispara o deploy de staging para validação e testes da Squad
 # Ambiente: Subdomínio staging.aponta.cloud / Porta 3011 na VPS Hostinger
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
     branches:
       - feat/saas-multi-tenant
       - staging
@@ -17,9 +15,8 @@ concurrency:
 
 jobs:
   deploy-staging:
-    name: Deploy to VPS Staging (only if CI passed)
+    name: Deploy to VPS Staging
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Deploy to VPS Staging using SSH
         uses: appleboy/ssh-action@master
