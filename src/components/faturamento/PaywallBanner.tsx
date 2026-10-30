@@ -41,21 +41,20 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
           title="Período de Tolerância Ativo (3 Dias de Graça)"
           subtitle={`Sua assinatura venceu há ${billing?.diasAtraso || 1} dia(s). Seu acesso a todas as oportunidades continua 100% liberado, mas regularize para evitar interrupções.`}
           lowContrast
-        >
-          <div style={{ marginTop: "0.5rem" }}>
-            <a
-              href="/faturamento"
-              style={{
-                fontWeight: 600,
-                color: "inherit",
-                textDecoration: "underline",
-                cursor: "pointer",
-              }}
-            >
-              Regularizar Pagamento (PIX / Cartão) &rarr;
-            </a>
-          </div>
-        </InlineNotification>
+        />
+        <div style={{ marginTop: "0.5rem" }}>
+          <a
+            href="/faturamento"
+            style={{
+              fontWeight: 600,
+              color: "inherit",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            Regularizar Pagamento (PIX / Cartão) &rarr;
+          </a>
+        </div>
       </div>
     );
   }
@@ -68,21 +67,20 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
           title="Assinatura Pendente de Regularização"
           subtitle="O período de tolerância de 3 dias expirou. Conclua o pagamento para reativar o acesso total à plataforma e continuar recebendo alertas matinais."
           lowContrast
-        >
-          <div style={{ marginTop: "0.5rem" }}>
-            <a
-              href="/faturamento"
-              style={{
-                fontWeight: 600,
-                color: "inherit",
-                textDecoration: "underline",
-                cursor: "pointer",
-              }}
-            >
-              Reativar Assinatura Agora &rarr;
-            </a>
-          </div>
-        </InlineNotification>
+        />
+        <div style={{ marginTop: "0.5rem" }}>
+          <a
+            href="/faturamento"
+            style={{
+              fontWeight: 600,
+              color: "inherit",
+              textDecoration: "underline",
+              cursor: "pointer",
+            }}
+          >
+            Reativar Assinatura Agora &rarr;
+          </a>
+        </div>
       </div>
     );
   }

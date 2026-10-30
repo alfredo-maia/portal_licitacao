@@ -138,7 +138,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error("useAppTheme deve ser utilizado dentro de um ThemeProvider");
+    return {
+      theme: "g100",
+      mode: "dark",
+      isDark: true,
+      toggleTheme: () => {},
+      setTheme: () => {},
+    };
   }
   return context;
 }

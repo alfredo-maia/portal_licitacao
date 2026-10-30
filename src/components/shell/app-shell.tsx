@@ -72,6 +72,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsSideNavExpanded((prev) => !prev);
   };
 
+  const isAuthRoute =
+    pathname === "/login" ||
+    pathname === "/cadastro" ||
+    pathname === "/recuperar-senha";
+
+  if (isAuthRoute) {
+    return (
+      <main id="main-content" style={{ minHeight: "100vh", width: "100%" }}>
+        {children}
+      </main>
+    );
+  }
+
   return (
     <div data-testid="carbon-ui-shell">
       <Header aria-label={APP_CONFIG.brandName}>
