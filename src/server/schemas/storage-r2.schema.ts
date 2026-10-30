@@ -22,6 +22,12 @@ export const COTAS_STORAGE_POR_PLANO: Record<string, number> = {
   ENTERPRISE: 5 * 1024 * 1024 * 1024, // 5 GB
 };
 
+export const PLAN_STORAGE_QUOTAS_MB: Record<string, number> = {
+  BASICO: 500,
+  PRO: 2000,
+  ENTERPRISE: 5000,
+};
+
 export const TTL_CACHE_EDITAIS_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 export const validarArquivoUploadSchema = z.object({

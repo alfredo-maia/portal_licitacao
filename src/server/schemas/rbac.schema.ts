@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const roleSchema = z.enum([
+  "SUPERADMIN",
   "DIRETORIA",
   "ANALISTA_COMERCIAL",
   "OPERADOR",

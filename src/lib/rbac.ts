@@ -1,4 +1,4 @@
-export type Role = "DIRETORIA" | "ANALISTA_COMERCIAL" | "OPERADOR";
+export type Role = "SUPERADMIN" | "DIRETORIA" | "ANALISTA_COMERCIAL" | "OPERADOR";
 
 export type RbacAction =
   | "view"
@@ -16,7 +16,9 @@ export type RbacAction =
   | "impugnar"
   | "export"
   | "licitacao:decide"
-  | "licitacao:create";
+  | "licitacao:create"
+  | "superadmin:view"
+  | "superadmin:manage";
 
 export type RbacResource =
   | "dashboard"
@@ -32,7 +34,10 @@ export type RbacResource =
   | "configuracoes"
   | "licitacao"
   | "audit_log"
-  | "equipe";
+  | "equipe"
+  | "admin"
+  | "superadmin"
+  | "saas";
 
 export interface RbacUser {
   id?: string;
@@ -40,6 +45,7 @@ export interface RbacUser {
   email?: string | null;
   role: Role | string;
   ativo?: boolean;
+  isSuperAdmin?: boolean;
 }
 
 /**
@@ -56,6 +62,26 @@ export interface RbacUser {
 export const ROLE_PERMISSIONS_CONTRACT: Readonly<
   Record<Role, readonly RbacAction[]>
 > = {
+  SUPERADMIN: [
+    "view",
+    "read",
+    "create",
+    "update",
+    "delete",
+    "decide_go_nogo",
+    "approve_price",
+    "discard",
+    "manage_team",
+    "audit",
+    "upload",
+    "generate_declaration",
+    "impugnar",
+    "export",
+    "licitacao:decide",
+    "licitacao:create",
+    "superadmin:view",
+    "superadmin:manage",
+  ],
   DIRETORIA: [
     "view",
     "read",
@@ -106,6 +132,11 @@ export function can(
     return false;
   }
 
+  // SuperAdmin tem acesso irrestrito
+  if (user.role === "SUPERADMIN" || user.isSuperAdmin === true) {
+    return true;
+  }
+
   const role = user.role as Role;
   const allowedActions = ROLE_PERMISSIONS_CONTRACT[role];
   if (!allowedActions) {
@@ -116,10 +147,11 @@ export function can(
 }
 
 /**
- * Nível hierárquico do perfil (Sprint 7 — Item 11.2):
- * Diretoria (3) > Analista Comercial (2) > Operador / Operador Técnico (1)
+ * Nível hierárquico do perfil:
+ * SuperAdmin (4) > Diretoria (3) > Analista Comercial (2) > Operador / Operador Técnico (1)
  */
 export function getRoleHierarchyLevel(role: string): number {
+  if (role === "SUPERADMIN") return 4;
   if (role === "DIRETORIA") return 3;
   if (role === "ANALISTA_COMERCIAL") return 2;
   return 1;

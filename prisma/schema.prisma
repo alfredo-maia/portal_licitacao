@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum Role {
+  SUPERADMIN
   DIRETORIA
   ANALISTA_COMERCIAL
   OPERADOR
@@ -105,6 +106,7 @@ model User {
   passwordHash               String
   role                       Role                       @default(OPERADOR)
   ativo                      Boolean                    @default(true)
+  isSuperAdmin               Boolean                    @default(false)
   createdAt                  DateTime                   @default(now())
   updatedAt                  DateTime                   @updatedAt
   accounts                   Account[]
@@ -487,23 +489,37 @@ model ConfiguracaoEmpresa {
   @@map("configuracao_empresa")
 }
 
+enum TenantBillingStatus {
+  TRIAL
+  ATIVO
+  GRACE_PERIOD
+  BLOQUEADO
+  CANCELADO
+}
+
 // Sprint SaaS 1 — Multi-Tenant, Schemas por CNPJ & Isolamento de Dados (PRD §3 / ADR 0007 / Issue #9)
 model Tenant {
-  id            String          @id @default(cuid())
-  cnpj          String          @unique
-  razaoSocial   String
-  nomeFantasia  String?
-  cnaePrincipal String?
-  endereco      String?
-  cidade        String?
-  uf            String?         @db.VarChar(2)
-  plano         PlanoAssinatura @default(BASICO)
-  maxCnpjs      Int             @default(1)
-  maxUsers      Int             @default(1)
-  ativo         Boolean         @default(true)
-  trialFim      DateTime?
-  criadoEm      DateTime        @default(now())
-  atualizadoEm  DateTime        @updatedAt
+  id                  String              @id @default(cuid())
+  cnpj                String              @unique
+  razaoSocial         String
+  nomeFantasia        String?
+  cnaePrincipal       String?
+  endereco            String?
+  cidade              String?
+  uf                  String?             @db.VarChar(2)
+  plano               PlanoAssinatura     @default(BASICO)
+  billingStatus       TenantBillingStatus @default(TRIAL)
+  storageExtraQuotaMb Int                 @default(0)
+  asaasCustomerId     String?
+  asaasSubscriptionId String?
+  vencimentoAssinatura DateTime?
+  ultimoPagamentoEm   DateTime?
+  maxCnpjs            Int                 @default(1)
+  maxUsers            Int                 @default(1)
+  ativo               Boolean             @default(true)
+  trialFim            DateTime?
+  criadoEm            DateTime            @default(now())
+  atualizadoEm        DateTime            @updatedAt
 
   users         TenantUser[]
   licitacoes    TenantLicitacao[]
@@ -577,5 +593,60 @@ model TenantConvite {
   @@index([email])
   @@map("tenant_convite")
 }
+
+// Sprint SaaS 4 — Idempotência de Webhooks Asaas (PRD §6 / ADR 0010)
+model AsaasWebhookEvent {
+  id           String    @id
+  evento       String
+  tenantId     String?
+  payload      Json?
+  processado   Boolean   @default(false)
+  processadoEm DateTime?
+  criadoEm     DateTime  @default(now())
+
+  @@index([evento])
+  @@index([processado])
+  @@index([criadoEm])
+  @@map("asaas_webhook_event")
+}
+
+// Sprint SaaS 4 — Fila de WhatsApp com Jitter Humano Anti-Ban (PRD §7 / ADR 0010)
+enum WhatsAppStatus {
+  PENDENTE
+  ENVIANDO
+  ENVIADO
+  FALHA
+  PAUSADO_OPT_OUT
+}
+
+model WhatsAppMensagem {
+  id             String         @id @default(cuid())
+  tenantId       String?
+  destinatario   String
+  mensagem       String         @db.Text
+  tipo           String         @default("ALERTA")
+  status         WhatsAppStatus @default(PENDENTE)
+  tentativas     Int            @default(0)
+  erro           String?
+  jitterSegundos Int            @default(4)
+  agendadoPara   DateTime       @default(now())
+  enviadoEm      DateTime?
+  criadoEm       DateTime       @default(now())
+
+  @@index([status, agendadoPara])
+  @@index([destinatario])
+  @@map("whatsapp_mensagem")
+}
+
+model WhatsAppOptOut {
+  id           String   @id @default(cuid())
+  telefone     String   @unique
+  motivo       String?  @default("Solicitação do usuário")
+  criadoEm     DateTime @default(now())
+
+  @@index([telefone])
+  @@map("whatsapp_opt_out")
+}
+
 
 
