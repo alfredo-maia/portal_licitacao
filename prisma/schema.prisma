@@ -271,11 +271,15 @@ model Arquivo {
   tamanho     Int
   mimeType    String
   caminho     String
+  r2Key       String?
+  r2Url       String?
+  cachedAt    DateTime?
   criadoEm    DateTime @default(now())
 
   licitacao Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
+  @@index([r2Key])
   @@map("arquivo")
 }
 

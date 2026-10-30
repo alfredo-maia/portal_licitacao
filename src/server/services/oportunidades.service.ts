@@ -698,7 +698,15 @@ export async function salvarAnaliseIA(
  */
 export async function adicionarArquivoEdital(
   licitacaoId: string,
-  dadosArquivo: { nome: string; tamanho: number; mimeType: string; caminho: string },
+  dadosArquivo: {
+    nome: string;
+    tamanho: number;
+    mimeType: string;
+    caminho: string;
+    r2Key?: string | null;
+    r2Url?: string | null;
+    cachedAt?: Date | null;
+  },
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
@@ -713,6 +721,9 @@ export async function adicionarArquivoEdital(
         tamanho: dadosArquivo.tamanho,
         mimeType: dadosArquivo.mimeType,
         caminho: dadosArquivo.caminho,
+        r2Key: dadosArquivo.r2Key ?? null,
+        r2Url: dadosArquivo.r2Url ?? null,
+        cachedAt: dadosArquivo.cachedAt ?? null,
       },
     });
   } catch {
