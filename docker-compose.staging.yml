@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: portal-licitacao-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pncp_staging
+      POSTGRES_PASSWORD: pncp_staging_secret_2026
+      POSTGRES_DB: portal_licitacao_staging
+    ports:
+      - "127.0.0.1:15435:5432"
+    volumes:
+      - portal_licitacao_staging_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pncp_staging -d portal_licitacao_staging"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portal-licitacao-staging-app
+    restart: unless-stopped
+    ports:
+      - "3011:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://pncp_staging:pncp_staging_secret_2026@db:5432/portal_licitacao_staging?schema=public
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://staging.aponta.cloud}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-pncp-staging-secret-2026}
+      SEED_DIRECTOR_PASSWORD: ${SEED_DIRECTOR_PASSWORD:-Pncp@2026!Diretoria}
+    volumes:
+      - portal_licitacao_staging_uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  portal_licitacao_staging_pgdata:
+  portal_licitacao_staging_uploads:

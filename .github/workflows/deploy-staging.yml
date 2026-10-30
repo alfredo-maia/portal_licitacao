@@ -1,0 +1,54 @@
+name: CD (Staging - VPS Hostinger)
+
+# Dispara o deploy de staging para validação e testes da Squad
+# Ambiente: Subdomínio staging.aponta.cloud / Porta 3011 na VPS Hostinger
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches:
+      - feat/saas-multi-tenant
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Deploy to VPS Staging (only if CI passed)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy to VPS Staging using SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: 2000
+          script: |
+            set -e
+            echo "Iniciando Deploy do ambiente de Staging (portal_licitacao_staging)..."
+            STAGING_DIR="/home/hermes/apps/portal_licitacao_staging"
+
+            if [ ! -d "$STAGING_DIR" ]; then
+              echo "Diretório de staging não encontrado, clonando repositório..."
+              git clone -b feat/saas-multi-tenant https://github.com/alfredo-maia/portal_licitacao.git "$STAGING_DIR"
+            fi
+
+            cd "$STAGING_DIR"
+            git fetch origin feat/saas-multi-tenant
+            git checkout feat/saas-multi-tenant
+            git reset --hard origin/feat/saas-multi-tenant
+
+            # Sobe o stack de staging com container e porta isolados (3011)
+            if [ -f docker-compose.staging.yml ]; then
+              docker compose -p portal_licitacao_staging -f docker-compose.staging.yml up -d --build
+            elif [ -f docker-compose.yml ]; then
+              # Se ainda não houver arquivo específico de staging, usa docker-compose com prefixo isolado
+              docker compose -p portal_licitacao_staging up -d --build
+            fi
+
+            echo "Deploy de Staging concluído com sucesso!"

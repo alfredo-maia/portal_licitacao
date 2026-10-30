@@ -7,6 +7,7 @@ import {
   type LoginCredentialsInput,
   type SeedDirectorContract,
   type SessionUserContract,
+  SESSION_MAX_AGE_SECONDS,
   loginCredentialsSchema,
   sessionUserSchema,
 } from "@/server/schemas/auth.schema";
@@ -44,28 +45,76 @@ export function getInMemoryAuthUserByEmail(
   return inMemoryUsersByEmail.get(email.trim().toLowerCase());
 }
 
+interface StoredOtpRecord {
+  code: string;
+  expiraEm: Date;
+  method: "WHATSAPP_OTP" | "EMAIL_OTP";
+}
+const inMemoryOtpStore = new Map<string, StoredOtpRecord>();
+
+export function generateAndStoreOtp(
+  email: string,
+  method: "WHATSAPP_OTP" | "EMAIL_OTP",
+): string {
+  const normalized = email.trim().toLowerCase();
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiraEm = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
+  inMemoryOtpStore.set(normalized, { code, expiraEm, method });
+  return code;
+}
+
+export function verifyOtpCode(email: string, code: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  const record = inMemoryOtpStore.get(normalized);
+  if (!record) return false;
+  if (record.expiraEm.getTime() < Date.now()) {
+    inMemoryOtpStore.delete(normalized);
+    return false;
+  }
+  if (record.code === code.trim()) {
+    inMemoryOtpStore.delete(normalized);
+    return true;
+  }
+  return false;
+}
+
 /**
- * Validação de credenciais (E-mail + Senha bcryptjs) com sessão JWT (PRD §2.3 / sprint-0-spec §2.5).
- * Consulta o PostgreSQL 16 via Prisma ORM e mantém fallback em memória para ambientes de CI sem container DB.
+ * Validação de credenciais (E-mail + Senha bcryptjs ou OTP) com sessão JWT de 30 dias (PRD §4 / ADR 0007).
  */
+export type AuthCredentialsInput = {
+  email?: string;
+  password?: string;
+  code?: string;
+} | Record<string, unknown>;
+
 export async function authorizeCredentials(
-  credentials: LoginCredentialsInput | Record<string, unknown> | undefined,
+  credentials: AuthCredentialsInput | undefined,
 ): Promise<SessionUserContract | null> {
-  const parsed = loginCredentialsSchema.safeParse(credentials);
-  if (!parsed.success) {
+  const credsRecord = (credentials ?? {}) as Record<string, unknown>;
+  const rawEmail = typeof credsRecord.email === "string" ? credsRecord.email : "";
+  const normalizedEmail = rawEmail.trim().toLowerCase();
+  const plainPassword = typeof credsRecord.password === "string" ? credsRecord.password : "";
+  const otpCode = typeof credsRecord.code === "string" ? credsRecord.code : "";
+
+  if (!normalizedEmail) {
     return null;
   }
-
-  const normalizedEmail = parsed.data.email.trim().toLowerCase();
-  const plainPassword = parsed.data.password;
 
   let targetUser: StoredAuthUser | null = null;
 
   try {
     const dbUser = await prisma.user.findUnique({
       where: { email: normalizedEmail },
+      include: {
+        tenantMemberships: {
+          include: {
+            tenant: true,
+          },
+        },
+      },
     });
     if (dbUser) {
+      const primaryMembership = dbUser.tenantMemberships?.[0];
       targetUser = {
         id: dbUser.id,
         name: dbUser.name,
@@ -73,11 +122,15 @@ export async function authorizeCredentials(
         role: dbUser.role,
         ativo: dbUser.ativo,
         passwordHash: dbUser.passwordHash,
+        activeTenantId: primaryMembership?.tenantId ?? null,
+        cnpj: primaryMembership?.tenant?.cnpj ?? null,
+        plano: primaryMembership?.tenant?.plano ?? null,
+        tenantRole: primaryMembership?.role ?? null,
       };
       upsertInMemoryAuthUser(targetUser);
     }
   } catch {
-    // Fallback para cache em memória quando o banco não está disponível (ex.: CI sem serviço Postgres)
+    // Fallback para cache em memória quando o banco não está disponível (ex.: CI)
   }
 
   if (!targetUser) {
@@ -99,6 +152,10 @@ export async function authorizeCredentials(
         role: seedMatch.role,
         ativo: seedMatch.ativo,
         passwordHash,
+        activeTenantId: null,
+        cnpj: null,
+        plano: null,
+        tenantRole: null,
       };
       upsertInMemoryAuthUser(targetUser);
     }
@@ -108,11 +165,21 @@ export async function authorizeCredentials(
     return null;
   }
 
-  const passwordMatches = await bcrypt.compare(
-    plainPassword,
-    targetUser.passwordHash,
-  );
-  if (!passwordMatches) {
+  // Se foi fornecido código OTP (WhatsApp ou E-mail)
+  if (otpCode) {
+    const isOtpValid = verifyOtpCode(normalizedEmail, otpCode);
+    if (!isOtpValid) {
+      return null;
+    }
+  } else if (plainPassword) {
+    const passwordMatches = await bcrypt.compare(
+      plainPassword,
+      targetUser.passwordHash,
+    );
+    if (!passwordMatches) {
+      return null;
+    }
+  } else {
     return null;
   }
 
@@ -122,12 +189,17 @@ export async function authorizeCredentials(
     email: targetUser.email,
     role: targetUser.role,
     ativo: targetUser.ativo,
+    activeTenantId: targetUser.activeTenantId ?? null,
+    cnpj: targetUser.cnpj ?? null,
+    plano: targetUser.plano ?? null,
+    tenantRole: targetUser.tenantRole ?? null,
   });
 }
 
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
+    maxAge: SESSION_MAX_AGE_SECONDS, // 30 dias de persistência
   },
   pages: {
     signIn: "/login",
@@ -139,6 +211,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "E-mail", type: "email" },
         password: { label: "Senha", type: "password" },
+        code: { label: "Código OTP", type: "text" },
       },
       async authorize(credentials) {
         const user = await authorizeCredentials(credentials);
@@ -151,6 +224,10 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role,
           ativo: user.ativo,
+          activeTenantId: user.activeTenantId ?? null,
+          cnpj: user.cnpj ?? null,
+          plano: user.plano ?? null,
+          tenantRole: user.tenantRole ?? null,
         };
       },
     }),
@@ -174,6 +251,10 @@ export const authOptions: NextAuthOptions = {
         token.sub = typedUser.id;
         token.role = typedUser.role;
         token.ativo = typedUser.ativo;
+        token.activeTenantId = typedUser.activeTenantId;
+        token.cnpj = typedUser.cnpj;
+        token.plano = typedUser.plano;
+        token.tenantRole = typedUser.tenantRole;
       }
       return token;
     },
@@ -183,6 +264,10 @@ export const authOptions: NextAuthOptions = {
         mutableUser.id = token.sub;
         mutableUser.role = token.role ?? "OPERADOR";
         mutableUser.ativo = token.ativo ?? true;
+        mutableUser.activeTenantId = token.activeTenantId ?? null;
+        mutableUser.cnpj = token.cnpj ?? null;
+        mutableUser.plano = token.plano ?? null;
+        mutableUser.tenantRole = token.tenantRole ?? null;
       }
       return session;
     },

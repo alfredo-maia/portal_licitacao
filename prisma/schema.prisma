@@ -86,24 +86,39 @@ enum DocumentoStatus {
   SUBSTITUIDO
 }
 
+enum PlanoAssinatura {
+  BASICO
+  PRO
+  ENTERPRISE
+}
+
+enum TenantRole {
+  TITULAR
+  MEMBRO
+  CONSULTOR
+}
+
 model User {
-  id                    String                     @id @default(cuid())
-  name                  String
-  email                 String                     @unique
-  passwordHash          String
-  role                  Role                       @default(OPERADOR)
-  ativo                 Boolean                    @default(true)
-  createdAt             DateTime                   @default(now())
-  updatedAt             DateTime                   @updatedAt
-  accounts              Account[]
-  sessions              Session[]
-  auditLogs             AuditLog[]
-  licitacoesResponsavel Licitacao[]                @relation("LicitacaoResponsavel")
-  licitacoesAtribuido   LicitacaoAtribuido[]
-  notificacoesRecebidas NotificacaoDestinatario[]
-  statusAlterados       LicitacaoStatusHistorico[]
-  documentosCriados     Documento[]
-  impugnacoesCriadas    Impugnacao[]
+  id                         String                     @id @default(cuid())
+  name                       String
+  email                      String                     @unique
+  passwordHash               String
+  role                       Role                       @default(OPERADOR)
+  ativo                      Boolean                    @default(true)
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  accounts                   Account[]
+  sessions                   Session[]
+  auditLogs                  AuditLog[]
+  licitacoesResponsavel      Licitacao[]                @relation("LicitacaoResponsavel")
+  licitacoesAtribuido        LicitacaoAtribuido[]
+  notificacoesRecebidas      NotificacaoDestinatario[]
+  statusAlterados            LicitacaoStatusHistorico[]
+  documentosCriados          Documento[]
+  impugnacoesCriadas         Impugnacao[]
+  tenantMemberships          TenantUser[]
+  tenantConvitesCriados      TenantConvite[]            @relation("ConvitesCriados")
+  tenantLicitacoesResponsavel TenantLicitacao[]          @relation("TenantLicitacaoResponsavel")
 
   @@index([email])
   @@index([role])
@@ -183,6 +198,7 @@ model Licitacao {
   historicoStatus       LicitacaoStatusHistorico[]
   notificacoes          Notificacao[]
   impugnacoes           Impugnacao[]
+  tenantLicitacoes      TenantLicitacao[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 
@@ -218,9 +234,12 @@ model AuditLog {
   antes        Json?
   depois       Json?
   usuario      User?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([entidadeTipo, entidadeId])
   @@index([ocorridoEm])
+  @@index([tenantId])
   @@map("audit_log")
 }
 
@@ -385,10 +404,13 @@ model Documento {
   documentoPai       Documento?  @relation("HistoricoVersoes", fields: [documentoPaiId], references: [id], onDelete: SetNull)
   versoesAnteriores  Documento[] @relation("HistoricoVersoes")
   criadoPor          User?       @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+  tenantId           String?
+  tenant             Tenant?     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([categoria, status])
   @@index([dataVencimento])
   @@index([documentoPaiId])
+  @@index([tenantId])
   @@map("documento")
 }
 
@@ -448,8 +470,102 @@ model ConfiguracaoEmpresa {
   agencia            String?  @default("1234-5")
   contaCorrente      String?  @default("98765-4")
   chavePix           String?  @default("12.345.678/0001-90")
+  tenantId           String?  @unique
+  tenant             Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   atualizadoEm       DateTime @default(now()) @updatedAt
 
   @@map("configuracao_empresa")
 }
+
+// Sprint SaaS 1 — Multi-Tenant, Schemas por CNPJ & Isolamento de Dados (PRD §3 / ADR 0007 / Issue #9)
+model Tenant {
+  id            String          @id @default(cuid())
+  cnpj          String          @unique
+  razaoSocial   String
+  nomeFantasia  String?
+  cnaePrincipal String?
+  endereco      String?
+  cidade        String?
+  uf            String?         @db.VarChar(2)
+  plano         PlanoAssinatura @default(BASICO)
+  maxCnpjs      Int             @default(1)
+  maxUsers      Int             @default(1)
+  ativo         Boolean         @default(true)
+  trialFim      DateTime?
+  criadoEm      DateTime        @default(now())
+  atualizadoEm  DateTime        @updatedAt
+
+  users         TenantUser[]
+  licitacoes    TenantLicitacao[]
+  convites      TenantConvite[]
+  documentos    Documento[]
+  configuracao  ConfiguracaoEmpresa?
+  auditLogs     AuditLog[]
+
+  @@index([cnpj])
+  @@index([plano])
+  @@map("tenant")
+}
+
+model TenantUser {
+  id       String     @id @default(cuid())
+  tenantId String
+  userId   String
+  role     TenantRole @default(MEMBRO)
+  ativo    Boolean    @default(true)
+  criadoEm DateTime   @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("tenant_user")
+}
+
+model TenantLicitacao {
+  id            String          @id @default(cuid())
+  tenantId      String
+  licitacaoId   String
+  statusKanban  LicitacaoStatus @default(PENDENTE)
+  tags          String[]        @default([])
+  notas         String?         @db.Text
+  lanceMinimo   Float?
+  motivoRecusa  String?         @db.Text
+  dataDecisao   DateTime?
+  responsavelId String?
+  criadoEm      DateTime        @default(now())
+  atualizadoEm  DateTime        @updatedAt
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  licitacao   Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  responsavel User?     @relation("TenantLicitacaoResponsavel", fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, licitacaoId])
+  @@index([tenantId, statusKanban])
+  @@index([licitacaoId])
+  @@map("tenant_licitacao")
+}
+
+model TenantConvite {
+  id          String     @id @default(cuid())
+  tenantId    String
+  email       String
+  role        TenantRole @default(MEMBRO)
+  token       String     @unique
+  expiraEm    DateTime
+  aceitoEm    DateTime?
+  criadoPorId String
+  criadoEm    DateTime   @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  criadoPor User   @relation("ConvitesCriados", fields: [criadoPorId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([token])
+  @@index([email])
+  @@map("tenant_convite")
+}
+
 

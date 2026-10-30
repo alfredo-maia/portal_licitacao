@@ -21,3 +21,4 @@ export * from "./declaracao.schema";
 export * from "./impugnacao.schema";
 export * from "./configuracao.schema";
 export * from "./audit-viewer.schema";
+export * from "./tenant.schema";
