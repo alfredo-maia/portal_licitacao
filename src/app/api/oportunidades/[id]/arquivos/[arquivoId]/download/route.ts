@@ -76,7 +76,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const nomeArquivo = arquivo.nome || "documento_edital.pdf";
   const safeFilename = encodeURIComponent(nomeArquivo);
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     status: 200,
     headers: {
       "Content-Type": mimeType,

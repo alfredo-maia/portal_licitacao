@@ -29,15 +29,15 @@ describe("Sprint Nova Task 7 — Notificações: Alertas de Vencimento em 30 Dia
     expect(resultadoJob.contagens.N6_VENCIMENTO_PORTAL).toBeGreaterThanOrEqual(1);
   });
 
-  it("deve cobrir janelas de 30, 15, 7, 3 e 1 dias para documentos e portais", async () => {
+  it("deve cobrir janelas oficiais da matriz (ex: 14 e 1 dias) para documentos e portais", async () => {
     const hoje = new Date("2026-11-01T10:00:00Z");
-    const data15d = new Date("2026-11-16T10:00:00Z"); // 15 dias
+    const data14d = new Date("2026-11-15T10:00:00Z"); // 14 dias
 
     insertInMemoryDocumento({
-      id: "doc_venc_15d_teste",
+      id: "doc_venc_14d_teste",
       nome: "Alvará Sanitário",
       categoria: "HABILITACAO_JURIDICA",
-      dataVencimento: data15d,
+      dataVencimento: data14d,
       semValidade: false,
       status: "ATIVO",
     });

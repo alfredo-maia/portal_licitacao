@@ -491,7 +491,7 @@ export async function atualizarConfiguracaoEmpresa(
         billingStatus,
         segmentos,
         ufs,
-        ufSede: validado.uf,
+        ufSede: validado.uf || undefined,
         brasilInteiro,
       });
 
@@ -566,7 +566,7 @@ export async function atualizarConfiguracaoEmpresa(
         billingStatus: memTenant.billingStatus || "TRIAL",
         segmentos,
         ufs,
-        ufSede: validado.uf,
+        ufSede: validado.uf || undefined,
         brasilInteiro,
       });
       memTenant.segmentos = escopo.segmentos;

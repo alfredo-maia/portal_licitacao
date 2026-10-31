@@ -266,7 +266,8 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
       const macro = (enriched as any).segmentoMacro;
       const tipo = enriched.tipoSistemaCodigo;
       const matchesAny =
-        selectedSegments.includes(macro) || selectedSegments.includes(tipo);
+        (macro && selectedSegments.includes(macro)) ||
+        (tipo ? selectedSegments.includes(tipo) : false);
       if (!matchesAny) {
         return false;
       }
@@ -278,8 +279,8 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
     const macro = (enriched as any).segmentoMacro;
     const tipo = enriched.tipoSistemaCodigo;
     const matchesTenant =
-      filters.segmentosTenantAtivo.includes(macro) ||
-      filters.segmentosTenantAtivo.includes(tipo);
+      (macro && filters.segmentosTenantAtivo.includes(macro)) ||
+      (tipo ? filters.segmentosTenantAtivo.includes(tipo) : false);
     if (!matchesTenant) {
       return false;
     }

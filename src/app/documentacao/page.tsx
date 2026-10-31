@@ -723,7 +723,7 @@ function DocumentacaoContent() {
       {/* Modal Atualizar Documento */}
       <Modal
         open={modalVersaoAberto}
-        modalHeading={`Atualizar Documento — ${docAlvoVersao?.nome || ""}`}
+        modalHeading={`Adicionar Nova Versão — ${docAlvoVersao?.nome || ""}`}
         primaryButtonText={salvando ? "Atualizando..." : "Atualizar Documento"}
         secondaryButtonText="Cancelar"
         primaryButtonDisabled={salvando}
@@ -754,7 +754,7 @@ function DocumentacaoContent() {
               fontSize: "0.8125rem",
             }}
           >
-            Ao salvar, o documento e suas datas de validade serão atualizados diretamente, substituindo o arquivo atual sem criar registros duplicados.
+            Ao salvar nova versão (v2), o documento e suas datas de validade serão atualizados diretamente, substituindo o arquivo atual sem criar registros duplicados.
           </div>
 
           <Grid fullWidth style={{ padding: 0 }}>

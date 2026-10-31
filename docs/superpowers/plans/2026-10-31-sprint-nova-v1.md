@@ -714,22 +714,22 @@ git commit -m "feat(notificacoes): alertas confiaveis de oportunidades documento
 **Files:**
 - Modify: `docs/superpowers/plans/2026-10-31-sprint-nova-v1.md` (marcar tarefas concluídas)
 
-- [ ] **Step 1: Executar suíte completa de testes do Vitest**
+- [x] **Step 1: Executar suíte completa de testes do Vitest**
 
 Run: `npx vitest run`
 Expected: 100% dos testes aprovados (0 falhas).
 
-- [ ] **Step 2: Executar checagem estrita de tipos TypeScript**
+- [x] **Step 2: Executar checagem estrita de tipos TypeScript**
 
 Run: `npx tsc --noEmit`
 Expected: Zero erros de compilação TypeScript.
 
-- [ ] **Step 3: Executar build de produção do Next.js**
+- [x] **Step 3: Executar build de produção do Next.js**
 
 Run: `npm run build`
 Expected: Build concluído com sucesso, gerando todas as rotas estáticas e dinâmicas do App Router.
 
-- [ ] **Step 4: Commit e Push para a Branch de Trabalho**
+- [x] **Step 4: Commit e Push para a Branch de Trabalho**
 
 ```bash
 git push origin feat/saas-multi-tenant

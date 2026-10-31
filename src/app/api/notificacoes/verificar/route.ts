@@ -17,7 +17,6 @@ export async function POST(req: Request) {
     const resultado = await executarJobNotificacoesDiarias(referencia);
 
     return NextResponse.json({
-      ok: true,
       ...resultado,
     });
   } catch (error: any) {

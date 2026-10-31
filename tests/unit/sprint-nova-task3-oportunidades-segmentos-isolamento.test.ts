@@ -19,7 +19,7 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       tipoSistemaCodigo: "OUTROS",
       segmentoMacro: "ALIMENTACAO_BEBIDAS",
       status: "PENDENTE",
-    });
+    } as any);
 
     // Licitação de Medicamentos
     insertInMemoryLicitacao({
@@ -34,7 +34,7 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       tipoSistemaCodigo: "OUTROS",
       segmentoMacro: "SAUDE_MEDICAMENTOS",
       status: "PENDENTE",
-    });
+    } as any);
 
     // Cenário: Empresa ativa trabalha APENAS com ALIMENTACAO_BEBIDAS
     const resultadoEmpresaAlimentos = await listOportunidades({

@@ -1123,7 +1123,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-cep"
                   labelText="CEP *"
-                  value={empresa.cep}
+                  value={empresa.cep || ""}
                   onChange={(e) => {
                     const v = maskCep(e.target.value);
                     setEmpresa({ ...empresa, cep: v });
@@ -1141,7 +1141,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-endereco"
                   labelText="Logradouro / Rua *"
-                  value={empresa.endereco}
+                  value={empresa.endereco || ""}
                   onChange={(e) => setEmpresa({ ...empresa, endereco: e.target.value })}
                 />
               </Column>
@@ -1173,7 +1173,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-cidade"
                   labelText="Cidade *"
-                  value={empresa.cidade}
+                  value={empresa.cidade || ""}
                   onChange={(e) => setEmpresa({ ...empresa, cidade: e.target.value })}
                 />
               </Column>
@@ -1181,7 +1181,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-uf"
                   labelText="UF *"
-                  value={empresa.uf}
+                  value={empresa.uf || ""}
                   onChange={(e) => setEmpresa({ ...empresa, uf: e.target.value.toUpperCase().slice(0, 2) })}
                 />
               </Column>
@@ -1196,7 +1196,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-rep-nome"
                   labelText="Nome Completo *"
-                  value={empresa.representanteNome}
+                  value={empresa.representanteNome || ""}
                   onChange={(e) => setEmpresa({ ...empresa, representanteNome: e.target.value })}
                 />
               </Column>
@@ -1204,7 +1204,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-rep-cpf"
                   labelText="CPF *"
-                  value={empresa.representanteCpf}
+                  value={empresa.representanteCpf || ""}
                   onChange={(e) => setEmpresa({ ...empresa, representanteCpf: maskCpf(e.target.value) })}
                 />
               </Column>
@@ -1220,7 +1220,7 @@ export default function ConfiguracoesPage() {
                 <TextInput
                   id="empresa-rep-cargo"
                   labelText="Cargo *"
-                  value={empresa.representanteCargo}
+                  value={empresa.representanteCargo || ""}
                   onChange={(e) => setEmpresa({ ...empresa, representanteCargo: e.target.value })}
                 />
               </Column>

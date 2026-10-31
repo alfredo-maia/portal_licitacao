@@ -274,6 +274,9 @@ function calcularDiasCivis(dataFutura: Date, dataRef: Date): number {
 export async function executarJobNotificacoesDiarias(referencia?: Date): Promise<{
   ok: true;
   criadas: Record<NotificacaoTipo, number>;
+  contagens: Record<NotificacaoTipo, number>;
+  executadoEm: string;
+  dataReferencia: string;
   ignoradasPorIdempotencia: number;
 }> {
   const agora = referencia ?? new Date();
