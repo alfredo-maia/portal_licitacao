@@ -15,14 +15,8 @@ import {
   TableBody,
   TableCell,
   TableToolbar,
-  TableBatchActions,
-  TableBatchAction,
-  TableSelectAll,
-  TableSelectRow,
   TableToolbarContent,
   TableToolbarSearch,
-  TableToolbarMenu,
-  TableToolbarAction,
   Button,
   Dropdown,
   Select,
@@ -30,9 +24,11 @@ import {
   TextInput,
   Modal,
   Pagination,
+  Tooltip,
 } from "@carbon/react";
-import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Edit, TrashCan, Download, Search } from "@carbon/icons-react";
+import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { ESTADOS_BRASIL } from "@/config/estados";
@@ -87,13 +83,14 @@ function OportunidadesContent() {
 
   const page = Number(searchParams.get("page")) || 1;
   const pageSize = Number(searchParams.get("pageSize")) || 10;
+  const { isReadOnly } = useTenantSubscription();
 
   const headers = [
-    { key: "dataAbertura", header: "Data Limite (Proposta)" },
-    { key: "orgaoUF", header: "Órgão e UF" },
-    { key: "miniResumo", header: "Mini-resumo" },
-    { key: "valorEstimado", header: "Valor Estimado" },
-    { key: "acoes", header: "Ações Rápidas" },
+    { key: "dataAbertura", header: "Data Limite (Proposta)", isSortable: true },
+    { key: "orgaoUF", header: "Órgão e UF", isSortable: true },
+    { key: "miniResumo", header: "Objeto", isSortable: true },
+    { key: "valorEstimado", header: "Valor Estimado", isSortable: true },
+    { key: "acoes", header: "Ações Rápidas", isSortable: false },
   ];
 
   const [showManualModal, setShowManualModal] = React.useState(false);
@@ -651,230 +648,202 @@ function OportunidadesContent() {
         {!loading && !error && (
           <>
             <DataTable
-            rows={oportunidades}
-            headers={headers}
-            data-testid="oportunidades-datatable"
-            render={({
-              rows,
-              headers,
-              getHeaderProps,
-              getRowProps,
-              getBatchActionProps,
-              onInputChange,
-              selectedRows,
-              getSelectionProps,
-            }) => (
+              rows={oportunidades}
+              headers={headers}
+              isSortable
+              data-testid="oportunidades-datatable"
+              render={({
+                rows,
+                headers,
+                getHeaderProps,
+                getRowProps,
+              }) => (
                 <TableContainer style={{ overflowX: "auto", maxWidth: "100%" }}>
-                <TableToolbar>
-                  <TableBatchActions {...getBatchActionProps()}>
-                    <TableBatchAction
-                      tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
-                      onClick={() => {}}
-                    >
-                      Excluir
-                    </TableBatchAction>
-                    <TableBatchAction
-                      tabIndex={getBatchActionProps().shouldShowBatchActions ? 0 : -1}
-                      onClick={() => {}}
-                    >
-                      Marcar como lido
-                    </TableBatchAction>
-                  </TableBatchActions>
-                  <TableToolbarContent>
-                    <TableToolbarMenu>
-                      <TableToolbarAction onClick={() => alert("Download")}>
-                        <Download size={16} />
-                      </TableToolbarAction>
-                      <TableToolbarAction onClick={() => alert("Editar")}>
-                        <Edit size={16} />
-                      </TableToolbarAction>
-                      <TableToolbarAction onClick={() => alert("Deletar")}>
-                        <TrashCan size={16} />
-                      </TableToolbarAction>
-                    </TableToolbarMenu>
-                    <Button
-                      onClick={() => setShowManualModal(true)}
-                      kind="primary"
-                      data-testid="btn-open-manual-modal"
-                      style={{ maxWidth: "230px", whiteSpace: "nowrap" }}
-                    >
-                      + Adicionar Manualmente
-                    </Button>
-                  </TableToolbarContent>
-                </TableToolbar>
-                <Table className="pncp-opportunities-table">
-                  <TableHead>
-                    <TableRow>
-                      <TableSelectAll {...getSelectionProps()} />
-                      {headers.map((header) => {
-                        let headerStyle: React.CSSProperties = {};
-                        if (header.key === "dataAbertura") {
-                          headerStyle = { width: "120px", whiteSpace: "nowrap" };
-                        } else if (header.key === "orgaoUF") {
-                          headerStyle = { width: "28%" };
-                        } else if (header.key === "miniResumo") {
-                          headerStyle = { width: "46%" };
-                        } else if (header.key === "valorEstimado") {
-                          headerStyle = { width: "140px", whiteSpace: "nowrap" };
-                        } else if (header.key === "acoes") {
-                          headerStyle = { width: "80px", whiteSpace: "nowrap", textAlign: "center" };
-                        }
-                        return (
-                          <TableHeader
-                            {...getHeaderProps({ header })}
-                            style={headerStyle}
-                          >
-                            {header.header}
-                          </TableHeader>
-                        );
-                      })}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow
-                        {...getRowProps({ row })}
-                        data-testid={`oportunidade-row-${row.id}`}
-                        onClick={() => router.push(`/oportunidades/${row.id}`)}
-                        style={{ cursor: "pointer" }}
+                  <TableToolbar>
+                    <TableToolbarContent>
+                      <Button
+                        onClick={() => setShowManualModal(true)}
+                        kind="primary"
+                        size="sm"
+                        disabled={isReadOnly}
+                        data-testid="btn-open-manual-modal"
+                        style={{ whiteSpace: "nowrap" }}
                       >
-                        <TableSelectRow {...getSelectionProps({ row })} />
-                        {row.cells.map((cell) => (
-                          <TableCell
-                            key={cell.id}
-                            style={
-                              cell.info.header === "dataAbertura"
-                                ? { whiteSpace: "nowrap" }
-                                : cell.info.header === "orgaoUF"
-                                ? { wordBreak: "break-word" }
-                                : cell.info.header === "miniResumo"
-                                ? { wordBreak: "break-word" }
-                                : cell.info.header === "valorEstimado"
-                                ? { whiteSpace: "nowrap" }
-                                : cell.info.header === "acoes"
-                                ? { width: "80px", textAlign: "center", padding: "0 0.25rem" }
-                                : undefined
-                            }
-                          >
-                            {cell.info.header === "dataAbertura" ? (
-                              <span
-                                style={{
-                                  fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
-                                }}
-                              >
-                                {cell.value}
-                              </span>
-                            ) : cell.info.header === "valorEstimado" ? (
-                              <span
-                                style={{ fontFamily: "'IBM Plex Mono', monospace" }}
-                                data-testid="valor-estimado-cell"
-                              >
-                                {new Intl.NumberFormat("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                }).format(cell.value)}
-                              </span>
-                            ) : cell.info.header === "miniResumo" ? (
-                              <span style={{ fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
-                                {cell.value}
-                              </span>
-                            ) : cell.info.header === "resumoObjeto" ? (
-                              <span title={String(cell.value)}>
-                                {String(cell.value).substring(0, 100)}...
-                              </span>
-                            ) : cell.info.header === "acoes" ? (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                  display: "flex",
-                                  gap: "0.4rem",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  data-testid={`btn-aceitar-${row.id}`}
-                                  title="Participar"
-                                  aria-label="Participar"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAceitarClick(row.id);
-                                  }}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    width: "30px",
-                                    height: "30px",
-                                    borderRadius: "4px",
-                                    border: "1px solid rgba(36, 161, 72, 0.3)",
-                                    background: "rgba(36, 161, 72, 0.08)",
-                                    color: "#24a148",
-                                    cursor: "pointer",
-                                    transition: "all 0.15s ease",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = "#24a148";
-                                    e.currentTarget.style.color = "#ffffff";
-                                    e.currentTarget.style.borderColor = "#24a148";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = "rgba(36, 161, 72, 0.08)";
-                                    e.currentTarget.style.color = "#24a148";
-                                    e.currentTarget.style.borderColor = "rgba(36, 161, 72, 0.3)";
-                                  }}
-                                >
-                                  <Checkmark size={18} />
-                                </button>
-                                <button
-                                  type="button"
-                                  data-testid={`btn-recusar-${row.id}`}
-                                  title="Não Participar"
-                                  aria-label="Não Participar"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRecusarClick(row.id);
-                                  }}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    width: "30px",
-                                    height: "30px",
-                                    borderRadius: "4px",
-                                    border: "1px solid rgba(218, 30, 40, 0.3)",
-                                    background: "rgba(218, 30, 40, 0.08)",
-                                    color: "#da1e28",
-                                    cursor: "pointer",
-                                    transition: "all 0.15s ease",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.background = "#da1e28";
-                                    e.currentTarget.style.color = "#ffffff";
-                                    e.currentTarget.style.borderColor = "#da1e28";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = "rgba(218, 30, 40, 0.08)";
-                                    e.currentTarget.style.color = "#da1e28";
-                                    e.currentTarget.style.borderColor = "rgba(218, 30, 40, 0.3)";
-                                  }}
-                                >
-                                  <Close size={18} />
-                                </button>
-                              </div>
-                            ) : (
-                              cell.value
-                            )}
-                          </TableCell>
-                        ))}
+                        + Adicionar Manualmente
+                      </Button>
+                    </TableToolbarContent>
+                  </TableToolbar>
+                  <Table className="pncp-opportunities-table">
+                    <TableHead>
+                      <TableRow>
+                        {headers.map((header) => {
+                          let headerStyle: React.CSSProperties = {};
+                          if (header.key === "dataAbertura") {
+                            headerStyle = { width: "120px", whiteSpace: "nowrap" };
+                          } else if (header.key === "orgaoUF") {
+                            headerStyle = { width: "28%" };
+                          } else if (header.key === "miniResumo") {
+                            headerStyle = { width: "46%" };
+                          } else if (header.key === "valorEstimado") {
+                            headerStyle = { width: "140px", whiteSpace: "nowrap" };
+                          } else if (header.key === "acoes") {
+                            headerStyle = { width: "80px", whiteSpace: "nowrap", textAlign: "center" };
+                          }
+                          return (
+                            <TableHeader
+                              {...getHeaderProps({ header, isSortable: header.isSortable })}
+                              style={headerStyle}
+                            >
+                              {header.header}
+                            </TableHeader>
+                          );
+                        })}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          />
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow
+                          {...getRowProps({ row })}
+                          data-testid={`oportunidade-row-${row.id}`}
+                          onClick={() => router.push(`/oportunidades/${row.id}`)}
+                          style={{ cursor: "pointer" }}
+                        >
+                          {row.cells.map((cell) => (
+                            <TableCell
+                              key={cell.id}
+                              style={
+                                cell.info.header === "dataAbertura"
+                                  ? { whiteSpace: "nowrap" }
+                                  : cell.info.header === "orgaoUF"
+                                  ? { wordBreak: "break-word" }
+                                  : cell.info.header === "miniResumo"
+                                  ? { wordBreak: "break-word" }
+                                  : cell.info.header === "valorEstimado"
+                                  ? { whiteSpace: "nowrap" }
+                                  : cell.info.header === "acoes"
+                                  ? { width: "80px", textAlign: "center", padding: "0 0.25rem" }
+                                  : undefined
+                              }
+                            >
+                              {cell.info.header === "dataAbertura" ? (
+                                <span
+                                  style={{
+                                    fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
+                                  }}
+                                >
+                                  {cell.value}
+                                </span>
+                              ) : cell.info.header === "valorEstimado" ? (
+                                <span
+                                  style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                                  data-testid="valor-estimado-cell"
+                                >
+                                  {new Intl.NumberFormat("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  }).format(cell.value)}
+                                </span>
+                              ) : cell.info.header === "miniResumo" ? (
+                                <span
+                                  style={{ fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}
+                                  title={
+                                    String(
+                                      oportunidades.find((o) => o.id === row.id)?.resumoObjeto ||
+                                        cell.value ||
+                                        "",
+                                    ).slice(0, 300) +
+                                    (String(
+                                      oportunidades.find((o) => o.id === row.id)?.resumoObjeto ||
+                                        cell.value ||
+                                        "",
+                                    ).length > 300
+                                      ? "..."
+                                      : "")
+                                  }
+                                >
+                                  {cell.value}
+                                </span>
+                              ) : cell.info.header === "resumoObjeto" ? (
+                                <span title={String(cell.value)}>
+                                  {String(cell.value).substring(0, 100)}...
+                                </span>
+                              ) : cell.info.header === "acoes" ? (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.4rem",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    data-testid={`btn-aceitar-${row.id}`}
+                                    title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Participar"}
+                                    aria-label="Participar"
+                                    disabled={isReadOnly}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isReadOnly) handleAceitarClick(row.id);
+                                    }}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      width: "30px",
+                                      height: "30px",
+                                      borderRadius: "4px",
+                                      border: "1px solid rgba(36, 161, 72, 0.3)",
+                                      background: "rgba(36, 161, 72, 0.08)",
+                                      color: "#24a148",
+                                      cursor: isReadOnly ? "not-allowed" : "pointer",
+                                      opacity: isReadOnly ? 0.4 : 1,
+                                      transition: "all 0.15s ease",
+                                    }}
+                                  >
+                                    <Checkmark size={18} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid={`btn-recusar-${row.id}`}
+                                    title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Não Participar"}
+                                    aria-label="Não Participar"
+                                    disabled={isReadOnly}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isReadOnly) handleRecusarClick(row.id);
+                                    }}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      width: "30px",
+                                      height: "30px",
+                                      borderRadius: "4px",
+                                      border: "1px solid rgba(218, 30, 40, 0.3)",
+                                      background: "rgba(218, 30, 40, 0.08)",
+                                      color: "#da1e28",
+                                      cursor: isReadOnly ? "not-allowed" : "pointer",
+                                      opacity: isReadOnly ? 0.4 : 1,
+                                      transition: "all 0.15s ease",
+                                    }}
+                                  >
+                                    <Close size={18} />
+                                  </button>
+                                </div>
+                              ) : (
+                                cell.value
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            />
           <Pagination
             backwardText="Página anterior"
             forwardText="Próxima página"

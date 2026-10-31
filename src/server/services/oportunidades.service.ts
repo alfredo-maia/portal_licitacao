@@ -39,6 +39,24 @@ import {
 } from "./licitacoes-store";
 import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
 import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
+import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
+
+export function obterPalavrasChaveSubsegmento(subsegmento: string): string[] {
+  const norm = subsegmento.toLowerCase().trim();
+  for (const macro of Object.values(CATALOGO_MACRO_SEGMENTOS)) {
+    for (const sub of macro.subcategorias) {
+      if (
+        sub.codigo.toLowerCase() === norm ||
+        sub.nome.toLowerCase() === norm ||
+        norm.includes(sub.codigo.toLowerCase()) ||
+        norm.includes(sub.nome.toLowerCase())
+      ) {
+        return sub.palavrasChave;
+      }
+    }
+  }
+  return [subsegmento];
+}
 
 /** Erro tipado de serviço: as rotas HTTP mapeiam `status` para a resposta. */
 export class OportunidadesServiceError extends Error {
@@ -93,11 +111,12 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
     });
   }
   if (filters.subsegmento) {
+    const palavras = obterPalavrasChaveSubsegmento(filters.subsegmento);
     and.push({
-      OR: [
-        { resumo: { contains: filters.subsegmento, mode: "insensitive" } },
-        { miniResumo: { contains: filters.subsegmento, mode: "insensitive" } },
-      ],
+      OR: palavras.flatMap((p) => [
+        { resumo: { contains: p, mode: "insensitive" } },
+        { miniResumo: { contains: p, mode: "insensitive" } },
+      ]),
     });
   }
   if (filters.uf) {
@@ -187,7 +206,9 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
   }
   if (filters.subsegmento) {
     const text = `${record.resumo || ""} ${record.miniResumo || ""}`.toLowerCase();
-    if (!text.includes(filters.subsegmento.toLowerCase())) {
+    const palavras = obterPalavrasChaveSubsegmento(filters.subsegmento);
+    const match = palavras.some((p) => text.includes(p.toLowerCase()));
+    if (!match) {
       return false;
     }
   }
