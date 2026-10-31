@@ -69,6 +69,18 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
     ];
 
     global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/auth/session")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            user: {
+              name: "Vítor Henrique",
+              email: "vitorhenrique018@gmail.com",
+              role: "DIRETORIA",
+            },
+          }),
+        });
+      }
       if (url.includes("/api/configuracoes/empresa")) {
         return Promise.resolve({
           ok: true,
@@ -104,8 +116,10 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
     expect(screen.getByRole("tab", { name: /Trilha de Auditoria/i })).toBeDefined();
 
     // Perfil do Usuário
-    expect(screen.getByText("Vítor Henrique")).toBeDefined();
-    expect(screen.getByText("DIRETORIA (Acesso Total)")).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText("Vítor Henrique")).toBeDefined();
+      expect(screen.getByText("DIRETORIA (Acesso Total)")).toBeDefined();
+    });
     expect(screen.getByRole("button", { name: /Tema Claro/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /Tema Escuro/i })).toBeDefined();
 

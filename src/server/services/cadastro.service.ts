@@ -64,6 +64,7 @@ export async function realizarCadastroConta(
     await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "brasilInteiro" BOOLEAN DEFAULT TRUE;`).catch(() => undefined);
     await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
     await prisma.$executeRawUnsafe(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`).catch(() => undefined);
   } catch {
     // Ignora se não for PostgreSQL
   }
@@ -110,6 +111,21 @@ export async function realizarCadastroConta(
           userId,
           role: "TITULAR",
           ativo: true,
+        },
+      });
+
+      // Cria registro de dados da empresa vinculado diretamente ao Tenant
+      await tx.configuracaoEmpresa.create({
+        data: {
+          id: `cfg_${tenantId}`,
+          tenantId,
+          razaoSocial: input.razaoSocial,
+          cnpj: input.cnpj,
+          representanteNome: nomeFinal,
+          endereco: "",
+          cidade: "",
+          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "GO",
+          cep: "",
         },
       });
     });

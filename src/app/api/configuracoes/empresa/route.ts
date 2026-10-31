@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/server/auth";
 import { configuracaoEmpresaAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   atualizarConfiguracaoEmpresa,
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req?: Request) {
   try {
-    const empresa = await obterConfiguracaoEmpresa();
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = (session?.user as any)?.activeTenantId;
+    const empresa = await obterConfiguracaoEmpresa(tenantId);
     return NextResponse.json({ ok: true, empresa });
   } catch (error: any) {
     return NextResponse.json(
@@ -22,7 +25,7 @@ export async function GET(_req?: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
     const body = await req.json().catch(() => ({}));
     const parseResult = configuracaoEmpresaAtualizarInputSchema.safeParse(body);
 
@@ -37,9 +40,11 @@ export async function PUT(req: Request) {
       );
     }
 
+    const tenantId = (session?.user as any)?.activeTenantId;
     const empresa = await atualizarConfiguracaoEmpresa(
       parseResult.data,
       (session?.user as any)?.id,
+      tenantId,
     );
 
     return NextResponse.json({ ok: true, empresa });

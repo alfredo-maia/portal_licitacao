@@ -37,3 +37,4 @@ Com base no documento de homologação e feedback de produto (`Sprint 6.pdf`), o
 - Os novos usuários cadastram-se já segmentados com foco operacional restrito ao seu nicho de negócio.
 - O login torna-se à prova de falhas e mais flexível, atendendo operadores que preferem autenticação instantânea por código no WhatsApp ou E-mail.
 - O código do frontend fica alinhado às diretrizes do IBM Carbon Design System, sem tooltips nativos em inglês e com design corporativo limpo.
+

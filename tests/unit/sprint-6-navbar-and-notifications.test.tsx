@@ -68,3 +68,4 @@ describe("Sprint 6 - Task 4: NavBar e Cabeçalho Global", () => {
     expect(screen.queryByText(/· v\d+\.\d+\.\d+/i)).toBeNull();
   });
 });
+

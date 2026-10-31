@@ -2,6 +2,7 @@
 
 import React, { useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import {
   Button,
   Header,
@@ -25,6 +26,7 @@ import {
   Document,
   Earth,
   Light,
+  Logout,
   Notification,
   Rule,
   Search,
@@ -122,6 +124,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => router.push("/configuracoes")}
           >
             <UserAvatar size={20} />
+          </HeaderGlobalAction>
+
+          <HeaderGlobalAction
+            aria-label="Sair da Conta (Logout)"
+            data-testid="header-logout-btn"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+          >
+            <Logout size={20} />
           </HeaderGlobalAction>
         </HeaderGlobalBar>
 

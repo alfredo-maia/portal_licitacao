@@ -111,3 +111,4 @@ describe("Sprint 6 - Task 2: Tela de Cadastro em 2 Etapas", () => {
     expect(btnFinalizar).not.toBeDisabled();
   });
 });
+

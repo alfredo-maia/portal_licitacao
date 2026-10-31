@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import { signOut } from "next-auth/react";
 import {
   Button,
   Column,
@@ -25,6 +26,7 @@ import {
   Edit,
   Enterprise,
   Group,
+  Logout,
   Renew,
   Save,
   Security,
@@ -43,13 +45,24 @@ import type { AuditViewerItem } from "@/server/schemas/audit-viewer.schema";
 
 export default function ConfiguracoesPage() {
   const [userRole, setUserRole] = useState<string>("DIRETORIA");
+  const [currentUser, setCurrentUser] = useState<{
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    cnpj?: string;
+    plano?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/session")
       .then((res) => res.json())
       .then((session) => {
-        if (session?.user?.role) {
-          setUserRole(session.user.role);
+        if (session?.user) {
+          setCurrentUser(session.user);
+          if (session.user.role) {
+            setUserRole(session.user.role);
+          }
         }
       })
       .catch(() => {});
@@ -96,22 +109,22 @@ export default function ConfiguracoesPage() {
   // 2. Dados da Empresa
   const [empresa, setEmpresa] = useState<ConfiguracaoEmpresa>({
     id: "default",
-    razaoSocial: "APONTA TECNOLOGIA E SERVICOS LTDA",
-    cnpj: "12.345.678/0001-90",
-    inscricaoEstadual: "10.123.456-7",
-    cnae: "62.01-5-01 - Desenvolvimento de programas de computador",
-    endereco: "Av. República do Líbano, 1200, Setor Oeste",
-    cidade: "Goiânia",
-    uf: "GO",
-    cep: "74115-030",
-    representanteNome: "Vítor Henrique de Souza",
-    representanteCpf: "123.456.789-00",
-    representanteRg: "5432109-SSP/GO",
+    razaoSocial: "",
+    cnpj: "",
+    inscricaoEstadual: "",
+    cnae: "",
+    endereco: "",
+    cidade: "",
+    uf: "",
+    cep: "",
+    representanteNome: "",
+    representanteCpf: "",
+    representanteRg: "",
     representanteCargo: "Sócio-Administrador",
-    bancoNome: "Banco do Brasil",
-    agencia: "1234-5",
-    contaCorrente: "98765-4",
-    chavePix: "12.345.678/0001-90",
+    bancoNome: "",
+    agencia: "",
+    contaCorrente: "",
+    chavePix: "",
   });
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
 
@@ -349,16 +362,42 @@ export default function ConfiguracoesPage() {
                         fontWeight: 700,
                       }}
                     >
-                      VH
+                      {(currentUser?.name || "Usuário")
+                        .split(" ")
+                        .filter(Boolean)
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase() || "US"}
                     </div>
                     <div>
-                      <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600 }}>Vítor Henrique</h2>
+                      <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600 }}>
+                        {currentUser?.name || "Usuário"}
+                      </h2>
                       <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-                        vitorhenrique018@gmail.com
+                        {currentUser?.email || "usuario@empresa.com.br"}
                       </div>
-                      <Tag type="blue" size="sm" style={{ marginTop: "0.5rem" }}>
-                        DIRETORIA (Acesso Total)
-                      </Tag>
+                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
+                        <Tag type="blue" size="sm">
+                          {currentUser?.role === "SUPERADMIN"
+                            ? "SUPERADMIN (Acesso Global)"
+                            : currentUser?.role === "DIRETORIA"
+                            ? "DIRETORIA (Acesso Total)"
+                            : currentUser?.role === "ANALISTA_COMERCIAL"
+                            ? "ANALISTA COMERCIAL"
+                            : currentUser?.role || "OPERADOR"}
+                        </Tag>
+                        {currentUser?.plano && (
+                          <Tag type="green" size="sm">
+                            PLANO {currentUser.plano}
+                          </Tag>
+                        )}
+                        {currentUser?.cnpj && (
+                          <Tag type="cool-gray" size="sm">
+                            {maskCnpj(currentUser.cnpj)}
+                          </Tag>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -384,6 +423,25 @@ export default function ConfiguracoesPage() {
                       id="btn-tema-escuro"
                     >
                       Tema Escuro (g100)
+                    </Button>
+                  </div>
+
+                  <div style={{ marginTop: "1.5rem", paddingTop: "1.5rem", borderTop: "1px solid var(--cds-border-subtle)" }}>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                      Sessão Ativa
+                    </h3>
+                    <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                      Encerre a sessão atual para entrar com outra conta de usuário ou empresa.
+                    </p>
+                    <Button
+                      kind="danger--ghost"
+                      size="md"
+                      renderIcon={Logout}
+                      onClick={() => signOut({ callbackUrl: "/login" })}
+                      id="btn-logout-perfil"
+                      data-testid="btn-logout-perfil"
+                    >
+                      Sair da Conta
                     </Button>
                   </div>
                 </Tile>

@@ -12,10 +12,37 @@ export async function middleware(req: NextRequest) {
 
   // 1. Proteção de Borda Defensiva para o Portal SuperAdmin
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    const token = await getToken({
-      req,
-      secret: process.env.NEXTAUTH_SECRET || "pncp-dev-secret-2026",
-    });
+    const hasSecureCookie = Boolean(
+      req.cookies.get("__Secure-next-auth.session-token")?.value,
+    );
+    const hasStandardCookie = Boolean(
+      req.cookies.get("next-auth.session-token")?.value,
+    );
+
+    let token = null;
+
+    if (hasSecureCookie) {
+      token = await getToken({
+        req,
+        secret: process.env.NEXTAUTH_SECRET || "pncp-dev-secret-2026",
+        secureCookie: true,
+      });
+    }
+
+    if (!token && hasStandardCookie) {
+      token = await getToken({
+        req,
+        secret: process.env.NEXTAUTH_SECRET || "pncp-dev-secret-2026",
+        secureCookie: false,
+      });
+    }
+
+    if (!token && !hasSecureCookie && !hasStandardCookie) {
+      token = await getToken({
+        req,
+        secret: process.env.NEXTAUTH_SECRET || "pncp-dev-secret-2026",
+      });
+    }
 
     const email = typeof token?.email === "string" ? token.email.toLowerCase() : "";
     const isSuper =

@@ -192,9 +192,9 @@ export default function CadastroPage() {
       });
 
       if (loginRes?.error) {
-        router.push("/login");
+        window.location.href = "/login";
       } else {
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
       }
     } catch {
       setErrorMessage("Falha de conexão com o servidor ao concluir cadastro.");

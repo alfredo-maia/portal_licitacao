@@ -215,15 +215,21 @@ function OportunidadesContent() {
     setFiltroBusca(searchParams.get("busca") || "");
   }, [searchParams]);
 
-  const handleFilterChange = (filterName: string, value: string) => {
+  const handleFiltersChange = (updates: Record<string, string>) => {
     const currentParams = new URLSearchParams(searchParams.toString());
-    if (value) {
-      currentParams.set(filterName, value);
-    } else {
-      currentParams.delete(filterName);
+    for (const [filterName, value] of Object.entries(updates)) {
+      if (value) {
+        currentParams.set(filterName, value);
+      } else {
+        currentParams.delete(filterName);
+      }
     }
     currentParams.set("page", "1");
     router.push(`/oportunidades?${currentParams.toString()}`);
+  };
+
+  const handleFilterChange = (filterName: string, value: string) => {
+    handleFiltersChange({ [filterName]: value });
   };
 
   const handleRecusarClick = (id: string) => {
@@ -492,9 +498,10 @@ function OportunidadesContent() {
             }
             onChange={({ selectedItem }) => {
               const novoSeg = selectedItem?.id || "";
-              handleFilterChange("segmento", novoSeg);
-              // Ao mudar segmento, limpa o subsegmento
-              handleFilterChange("subsegmento", "");
+              handleFiltersChange({
+                segmento: novoSeg,
+                subsegmento: "",
+              });
             }}
             style={{ minWidth: "220px" }}
           />

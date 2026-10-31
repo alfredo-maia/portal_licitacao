@@ -22,8 +22,43 @@ import {
 import bcrypt from "bcryptjs";
 import { canManageTeamMember } from "@/lib/rbac";
 
-export async function obterConfiguracaoEmpresa(): Promise<ConfiguracaoEmpresa> {
+export async function obterConfiguracaoEmpresa(
+  tenantId?: string | null,
+): Promise<ConfiguracaoEmpresa> {
   try {
+    if (tenantId) {
+      const config = await (prisma as any).configuracaoEmpresa.findFirst({
+        where: { tenantId },
+      });
+      if (config) return config;
+
+      // Se o tenant existe mas ainda não possui configuracao_empresa salva, sintetiza a partir do tenant
+      const tenant = await (prisma as any).tenant.findUnique({
+        where: { id: tenantId },
+      });
+      if (tenant) {
+        return {
+          id: `cfg_${tenant.id}`,
+          razaoSocial: tenant.razaoSocial,
+          cnpj: tenant.cnpj,
+          inscricaoEstadual: "",
+          cnae: tenant.cnaePrincipal || "",
+          endereco: tenant.endereco || "",
+          cidade: tenant.cidade || "",
+          uf: tenant.uf || (Array.isArray(tenant.ufs) ? tenant.ufs[0] : "") || "GO",
+          cep: "",
+          representanteNome: "",
+          representanteCpf: "",
+          representanteRg: "",
+          representanteCargo: "Sócio-Administrador",
+          bancoNome: "",
+          agencia: "",
+          contaCorrente: "",
+          chavePix: tenant.cnpj,
+        };
+      }
+    }
+
     const config = await (prisma as any).configuracaoEmpresa.findUnique({
       where: { id: "default" },
     });
@@ -37,10 +72,44 @@ export async function obterConfiguracaoEmpresa(): Promise<ConfiguracaoEmpresa> {
 export async function atualizarConfiguracaoEmpresa(
   data: ConfiguracaoEmpresaAtualizarInput,
   usuarioId?: string | null,
+  tenantId?: string | null,
 ): Promise<ConfiguracaoEmpresa> {
   const validado = configuracaoEmpresaAtualizarInputSchema.parse(data);
 
   try {
+    if (tenantId) {
+      const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
+        where: { tenantId },
+        create: {
+          ...validado,
+          id: `cfg_${tenantId}`,
+          tenantId,
+        },
+        update: validado,
+      });
+
+      await (prisma as any).tenant.update({
+        where: { id: tenantId },
+        data: {
+          ...(validado.razaoSocial ? { razaoSocial: validado.razaoSocial } : {}),
+          ...(validado.cnpj ? { cnpj: validado.cnpj } : {}),
+          ...(validado.uf ? { uf: validado.uf } : {}),
+          ...(validado.cidade ? { cidade: validado.cidade } : {}),
+          ...(validado.endereco ? { endereco: validado.endereco } : {}),
+        },
+      }).catch(() => undefined);
+
+      await recordAuditLog({
+        acao: "CONFIGURACAO_EMPRESA_ATUALIZADA",
+        entidadeTipo: "CONFIGURACAO",
+        entidadeId: atualizado.id,
+        usuarioId: usuarioId ?? null,
+        depois: validado as any,
+      });
+
+      return atualizado;
+    }
+
     const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
       where: { id: "default" },
       create: { ...validado, id: "default" },
@@ -62,7 +131,7 @@ export async function atualizarConfiguracaoEmpresa(
     await recordAuditLog({
       acao: "CONFIGURACAO_EMPRESA_ATUALIZADA",
       entidadeTipo: "CONFIGURACAO",
-      entidadeId: "default",
+      entidadeId: tenantId ? `cfg_${tenantId}` : "default",
       usuarioId: usuarioId ?? null,
       depois: validado as any,
     });
