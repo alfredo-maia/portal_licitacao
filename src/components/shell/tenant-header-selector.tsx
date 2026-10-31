@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { InlineLoading } from "@carbon/react";
+import { InlineLoading, Loading, ToastNotification } from "@carbon/react";
 
 interface TenantInfo {
   id: string;
@@ -27,6 +27,10 @@ export function TenantHeaderSelector() {
   const [activeTenantId, setActiveTenantId] = useState<string>("");
   const [isSwitching, setIsSwitching] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [toastSuccess, setToastSuccess] = useState<{
+    razaoSocial: string;
+    cnpj?: string;
+  } | null>(null);
 
   const carregarTenants = useCallback(async () => {
     try {
@@ -50,6 +54,19 @@ export function TenantHeaderSelector() {
   }, []);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("portal_licitacao_tenant_switched");
+        if (stored) {
+          sessionStorage.removeItem("portal_licitacao_tenant_switched");
+          const parsed = JSON.parse(stored);
+          setToastSuccess(parsed);
+        }
+      } catch {
+        // Ignora erro de parse
+      }
+    }
+
     carregarTenants();
 
     const handleTenantChanged = (e: any) => {
@@ -69,6 +86,7 @@ export function TenantHeaderSelector() {
   const handleSelectChange = async (targetTenantId: string) => {
     if (!targetTenantId || targetTenantId === activeTenantId) return;
 
+    const targetTenant = tenants.find((t) => t.id === targetTenantId);
     setIsSwitching(true);
     try {
       const res = await fetch("/api/configuracoes/tenants", {
@@ -79,13 +97,38 @@ export function TenantHeaderSelector() {
 
       if (res.ok) {
         setActiveTenantId(targetTenantId);
+
         if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem(
+              "portal_licitacao_tenant_switched",
+              JSON.stringify({
+                razaoSocial: targetTenant?.razaoSocial || "Empresa",
+                cnpj: targetTenant?.cnpj ? formatCnpj(targetTenant.cnpj) : "",
+              }),
+            );
+          } catch {}
+
           window.dispatchEvent(
             new CustomEvent("tenant-changed", {
               detail: { tenantId: targetTenantId },
             }),
           );
+
+          if (typeof window.location?.reload === "function") {
+            try {
+              window.location.reload();
+              return;
+            } catch {
+              // Em ambientes jsdom onde reload não navega
+            }
+          }
         }
+
+        setToastSuccess({
+          razaoSocial: targetTenant?.razaoSocial || "Empresa",
+          cnpj: targetTenant?.cnpj ? formatCnpj(targetTenant.cnpj) : "",
+        });
         router.refresh();
       }
     } catch (err) {
@@ -108,68 +151,104 @@ export function TenantHeaderSelector() {
   const formattedCnpj = formatCnpj(activeTenant.cnpj);
 
   return (
-    <div
-      data-testid="tenant-header-container"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        marginLeft: "1rem",
-        padding: "0.25rem 0.625rem",
-        borderRadius: "4px",
-        backgroundColor: "var(--cds-layer-02, rgba(255, 255, 255, 0.08))",
-        fontSize: "0.8125rem",
-        color: "var(--cds-text-primary, #ffffff)",
-      }}
-    >
-      {isSwitching ? (
-        <InlineLoading
-          status="active"
-          description="Alternando empresa..."
-          style={{ width: "auto" }}
+    <>
+      {isSwitching && (
+        <Loading
+          withOverlay={true}
+          description="Alternando empresa e recarregando os dados..."
+          data-testid="tenant-switch-screen-loading"
         />
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-            <span data-testid="tenant-header-current-name" style={{ fontWeight: 600 }}>{activeTenant.razaoSocial}</span>
-            <span
-              data-testid="tenant-header-current-cnpj"
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--cds-text-secondary, #c6c6c6)",
-                fontFamily: "monospace",
-              }}
-            >
-              {formattedCnpj}
-            </span>
-          </div>
+      )}
 
-          {tenants.length > 1 && (
-            <select
-              data-testid="tenant-header-select"
-              aria-label="Selecionar Empresa Ativa"
-              value={activeTenantId}
-              onChange={(e) => handleSelectChange(e.target.value)}
-              style={{
-                marginLeft: "0.5rem",
-                padding: "0.25rem 0.5rem",
-                borderRadius: "3px",
-                border: "1px solid var(--cds-border-subtle, #525252)",
-                backgroundColor: "var(--cds-field, #262626)",
-                color: "var(--cds-text-primary, #ffffff)",
-                fontSize: "0.75rem",
-                cursor: "pointer",
-              }}
-            >
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.razaoSocial} ({formatCnpj(t.cnpj)})
-                </option>
-              ))}
-            </select>
-          )}
+      <div
+        data-testid="tenant-header-container"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          marginLeft: "1rem",
+          padding: "0.25rem 0.625rem",
+          borderRadius: "4px",
+          backgroundColor: "var(--cds-layer-02, rgba(255, 255, 255, 0.08))",
+          fontSize: "0.8125rem",
+          color: "var(--cds-text-primary, #ffffff)",
+        }}
+      >
+        {isSwitching ? (
+          <InlineLoading
+            status="active"
+            description="Alternando empresa..."
+            style={{ width: "auto" }}
+          />
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+              <span data-testid="tenant-header-current-name" style={{ fontWeight: 600 }}>{activeTenant.razaoSocial}</span>
+              <span
+                data-testid="tenant-header-current-cnpj"
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--cds-text-secondary, #c6c6c6)",
+                  fontFamily: "monospace",
+                }}
+              >
+                {formattedCnpj}
+              </span>
+            </div>
+
+            {tenants.length > 1 && (
+              <select
+                data-testid="tenant-header-select"
+                aria-label="Selecionar Empresa Ativa"
+                value={activeTenantId}
+                onChange={(e) => handleSelectChange(e.target.value)}
+                style={{
+                  marginLeft: "0.5rem",
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "3px",
+                  border: "1px solid var(--cds-border-subtle, #525252)",
+                  backgroundColor: "var(--cds-field, #262626)",
+                  color: "var(--cds-text-primary, #ffffff)",
+                  fontSize: "0.75rem",
+                  cursor: "pointer",
+                }}
+              >
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.razaoSocial} ({formatCnpj(t.cnpj)})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+      </div>
+
+      {toastSuccess && (
+        <div
+          data-testid="tenant-switch-toast-container"
+          style={{
+            position: "fixed",
+            bottom: "1.5rem",
+            right: "1.5rem",
+            zIndex: 99999,
+          }}
+        >
+          <ToastNotification
+            kind="success"
+            title="Troca de empresa efetuada com sucesso"
+            subtitle={
+              toastSuccess.cnpj
+                ? `Empresa ativa: ${toastSuccess.razaoSocial} (${toastSuccess.cnpj})`
+                : `Empresa ativa: ${toastSuccess.razaoSocial}`
+            }
+            caption={new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            timeout={5000}
+            onClose={() => setToastSuccess(null)}
+            data-testid="tenant-switch-toast"
+          />
         </div>
       )}
-    </div>
+    </>
   );
 }
