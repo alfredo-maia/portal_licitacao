@@ -73,6 +73,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setThemeState(resolved);
     if (typeof document !== "undefined") {
       document.documentElement.dataset.carbonTheme = resolved;
+      document.documentElement.setAttribute("data-carbon-theme", resolved);
+      const isDk = resolved === "g90" || resolved === "g100";
+      document.documentElement.style.colorScheme = isDk ? "dark" : "light";
+      document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
     }
   }, []);
 
@@ -87,6 +91,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     if (typeof document !== "undefined") {
       document.documentElement.dataset.carbonTheme = nextTheme;
+      document.documentElement.setAttribute("data-carbon-theme", nextTheme);
+      const isDk = nextTheme === "g90" || nextTheme === "g100";
+      document.documentElement.style.colorScheme = isDk ? "dark" : "light";
+      document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
     }
   }, []);
 
@@ -106,6 +114,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       }
       if (typeof document !== "undefined") {
         document.documentElement.dataset.carbonTheme = nextTheme;
+        document.documentElement.setAttribute("data-carbon-theme", nextTheme);
+        const isDk = nextTheme === "g90" || nextTheme === "g100";
+        document.documentElement.style.colorScheme = isDk ? "dark" : "light";
+        document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
       }
 
       return nextTheme;
