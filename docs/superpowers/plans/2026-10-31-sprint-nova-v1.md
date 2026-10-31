@@ -548,7 +548,7 @@ git commit -m "fix(documentacao): correcao de fuso horario na data de vencimento
     - `empresaRazaoSocial`, `empresaCnpj`, `empresaEndereco` (logradouro, número, complemento, bairro, cidade, UF, CEP), `representanteNome`, `representanteCpf`, `representanteRg`, `representanteCargo`, `cidade` e `uf`.
   - Recarregamento automático ao detectar alteração de empresa no Header (`tenant-changed`).
 
-- [ ] **Step 1: Escrever teste de unidade RED em `tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.ts`**
+- [x] **Step 1: Escrever teste de unidade RED em `tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.tsx`**
 
 ```typescript
 import { describe, expect, it, vi } from "vitest";
@@ -599,12 +599,12 @@ describe("Sprint Nova Task 6 — Declarações: Preenchimento Completo de Dados 
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha (RED)**
+- [x] **Step 2: Executar teste para verificar falha (RED)**
 
-Run: `npx vitest run tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.ts`
+Run: `npx vitest run tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.tsx`
 Expected: FAIL (campos de RG e Cargo não estão sendo vinculados ao input ou preenchidos pelo fetch).
 
-- [ ] **Step 3: Implementar carregamento completo e escuta de troca de tenant em `src/app/declaracoes/page.tsx`**
+- [x] **Step 3: Implementar carregamento completo e escuta de troca de tenant em `src/app/declaracoes/page.tsx`**
 
 1. Em `src/app/declaracoes/page.tsx`:
    - Atualizar a função `carregarDadosEmpresa`:
@@ -613,12 +613,12 @@ Expected: FAIL (campos de RG e Cargo não estão sendo vinculados ao input ou pr
    - Adicionar listener para o evento `window.addEventListener("tenant-changed", carregarDadosEmpresa)`.
    - Garantir que todos os campos possuam inputs correspondentes editáveis pelo usuário no formulário de geração.
 
-- [ ] **Step 4: Executar teste para verificar aprovação (GREEN)**
+- [x] **Step 4: Executar teste para verificar aprovação (GREEN)**
 
-Run: `npx vitest run tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.ts`
+Run: `npx vitest run tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/declaracoes/page.tsx tests/unit/sprint-nova-task6-declaracoes-dados-empresa.test.ts

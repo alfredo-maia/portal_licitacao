@@ -95,8 +95,9 @@ export default function DeclaracoesPage() {
         }
       })
       .catch(() => {});
+  }, []);
 
-    // Carrega dados societários oficiais de Configurações > Empresa (Item 11.1)
+  const carregarDadosEmpresa = useCallback(() => {
     fetch("/api/configuracoes/empresa")
       .then((res) => res.json())
       .then((data) => {
@@ -104,11 +105,23 @@ export default function DeclaracoesPage() {
           const emp = data.empresa;
           if (emp.razaoSocial) setEmpresaRazaoSocial(emp.razaoSocial);
           if (emp.cnpj) setEmpresaCnpj(maskCnpj(emp.cnpj));
-          if (emp.endereco) {
-            const endCompleto = [emp.endereco, emp.cidade, emp.uf, emp.cep ? `CEP ${emp.cep}` : null]
-              .filter(Boolean)
-              .join(", ");
+          const logr = emp.logradouro || emp.endereco || "";
+          const num = emp.numero ? (logr.includes(emp.numero) ? null : `nº ${emp.numero}`) : null;
+          const endCompleto = [
+            logr,
+            num,
+            emp.complemento,
+            emp.bairro,
+            emp.cidade,
+            emp.uf,
+            emp.cep ? `CEP ${emp.cep}` : null,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          if (endCompleto) {
             setEmpresaEndereco(endCompleto);
+          } else if (emp.endereco) {
+            setEmpresaEndereco(emp.endereco);
           }
           if (emp.representanteNome) setRepresentanteNome(emp.representanteNome);
           if (emp.representanteCpf) setRepresentanteCpf(maskCpf(emp.representanteCpf));
@@ -120,6 +133,17 @@ export default function DeclaracoesPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    carregarDadosEmpresa();
+    const handleTenantChanged = () => {
+      carregarDadosEmpresa();
+    };
+    window.addEventListener("tenant-changed", handleTenantChanged);
+    return () => {
+      window.removeEventListener("tenant-changed", handleTenantChanged);
+    };
+  }, [carregarDadosEmpresa]);
 
   const metaAtual = DECLARACAO_METADATA[tipoSelecionado] || templates.find((t) => t.codigo === tipoSelecionado);
 
