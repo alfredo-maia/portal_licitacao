@@ -19,6 +19,7 @@ import {
   InlineNotification,
   FilterableMultiSelect,
   InlineLoading,
+  Checkbox,
 } from "@carbon/react";
 import {
   ArrowLeft,
@@ -232,9 +233,11 @@ function OportunidadesDetalheContent({
   const [tipoSelecionado, setTipoSelecionado] = React.useState<string>("");
   const [salvandoTipo, setSalvandoTipo] = React.useState(false);
 
-  // Aba 2: Upload de Arquivos
+  // Aba 2: Upload e Sincronização PNCP de Arquivos
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [enviandoArquivo, setEnviandoArquivo] = React.useState(false);
+  const [arquivosSelecionados, setArquivosSelecionados] = React.useState<string[]>([]);
+  const [buscandoPncp, setBuscandoPncp] = React.useState(false);
 
   // Aba 3: Repositórios Similares
   const [repNome, setRepNome] = React.useState("");
@@ -384,6 +387,46 @@ function OportunidadesDetalheContent({
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao excluir arquivo.");
     }
+  };
+
+  // Buscar Edital no PNCP
+  const handleBuscarEditalPncp = async () => {
+    if (!id) return;
+    setBuscandoPncp(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/arquivos/sync-pncp`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.mensagem || data?.error || "Erro ao sincronizar arquivos do PNCP.");
+      }
+      showNotification("success", data.mensagem || "Arquivos sincronizados com sucesso!");
+      await carregarDados(id);
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao buscar edital no PNCP.");
+    } finally {
+      setBuscandoPncp(false);
+    }
+  };
+
+  // Baixar Selecionados
+  const handleBaixarSelecionados = () => {
+    const alvos = (oportunidade?.arquivos || []).filter((a) => arquivosSelecionados.includes(a.id));
+    alvos.forEach((arq) => {
+      if (typeof window !== "undefined") {
+        window.open(arq.caminho, "_blank");
+      }
+    });
+  };
+
+  // Baixar Todos os Arquivos
+  const handleBaixarTodos = () => {
+    (oportunidade?.arquivos || []).forEach((arq) => {
+      if (typeof window !== "undefined") {
+        window.open(arq.caminho, "_blank");
+      }
+    });
   };
 
   // Adicionar Repositório
@@ -660,17 +703,9 @@ Realize uma análise profunda estruturada em 4 dimensões:
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            <Tag type={parecerIATagType} size="md">
-              Parecer IA: {oportunidade.parecerIA}
-            </Tag>
             <Tag type="blue" size="md">
               Status: {oportunidade.status}
             </Tag>
-            {oportunidade.tipoSistemaCodigo && (
-              <Tag type="cool-gray" size="md">
-                {oportunidade.tipoSistemaCodigo}
-              </Tag>
-            )}
           </div>
         </div>
 
@@ -745,29 +780,6 @@ Realize uma análise profunda estruturada em 4 dimensões:
           )}
 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <Button
-                kind="ghost"
-                size="sm"
-                renderIcon={Launch}
-                href={oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${oportunidade.idPncp}`}
-                target="_blank"
-                data-testid="btn-link-pncp"
-              >
-                Abrir Edital Oficial no PNCP ↗
-              </Button>
-              {oportunidade.linkSistemaOrigem && (
-                <Button
-                  kind="ghost"
-                  size="sm"
-                  renderIcon={Launch}
-                  href={oportunidade.linkSistemaOrigem}
-                  target="_blank"
-                >
-                  Portal de Disputa ↗
-                </Button>
-              )}
-            </div>
             {oportunidade.motivoRecusa && (
               <div
                 data-testid="dossie-motivo-recusa"
@@ -836,16 +848,11 @@ Realize uma análise profunda estruturada em 4 dimensões:
         </div>
       </Tile>
 
-      {/* 4 Carbon Tabs do Dossiê */}
+      {/* 3 Carbon Tabs do Dossiê */}
       <Tabs>
         <TabList aria-label="Abas do Dossiê da Licitação">
           <Tab data-testid="tab-visao-geral">Visão Geral & Dados Técnicos</Tab>
-          <Tab data-testid="tab-arquivos">
-            Arquivos do Edital ({arquivos.length})
-          </Tab>
-          <Tab data-testid="tab-repositorios">
-            Repositórios Similares ({repositorios.length}/5)
-          </Tab>
+          <Tab data-testid="tab-arquivos">Arquivos do Edital</Tab>
           <Tab data-testid="tab-analise-ia">
             🤖 Histórico Análise IA ({analises.length})
           </Tab>
@@ -953,53 +960,55 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 </div>
               </div>
 
-              {/* Edição do Tipo de Sistema (PRD §4.3 & 22 Tipos) */}
-              <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1.5rem" }}>
-                <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-                  Classificação do Tipo de Sistema
-                </h4>
-                <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-                  A esteira de IA sugere o tipo inicial na triagem, mas a equipe comercial pode reclassificar a qualquer momento.
-                </p>
-                <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", maxWidth: "600px" }}>
-                  <div style={{ flex: 1 }}>
-                    <Select
-                      id="select-tipo-sistema-dossie"
-                      data-testid="select-tipo-sistema-dossie"
-                      labelText="Tipo de Sistema"
-                      value={tipoSelecionado}
-                      onChange={(e) => setTipoSelecionado(e.target.value)}
-                    >
-                      <SelectItem value="" text="Selecione um tipo..." />
-                      {TIPOS_SISTEMA_CATALOG.map((tipo) => (
-                        <SelectItem key={tipo.codigo} value={tipo.codigo} text={`${tipo.ordem}. ${tipo.nome}`} />
-                      ))}
-                    </Select>
-                  </div>
-                  <Button
-                    kind="secondary"
-                    size="md"
-                    renderIcon={Save}
-                    onClick={handleAtualizarTipoSistema}
-                    disabled={salvandoTipo || tipoSelecionado === oportunidade.tipoSistemaCodigo}
-                    data-testid="btn-salvar-tipo-sistema"
-                  >
-                    {salvandoTipo ? "Salvando..." : "Atualizar"}
-                  </Button>
-                </div>
-              </div>
             </Tile>
           </TabPanel>
 
           {/* Aba 2: Arquivos do Edital */}
           <TabPanel style={{ padding: "1.5rem 0" }}>
             <Tile style={{ padding: "1.5rem" }}>
-              <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-                Anexos Oficiais e Documentos do Certame
-              </h3>
-              <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1.5rem" }}>
-                Termo de Referência (TR), Minuta de Contrato, Planilhas de Custos e Editais anexados para análise.
-              </p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    Anexos Oficiais e Documentos do Certame
+                  </h3>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0 }}>
+                    Termo de Referência (TR), Minuta de Contrato, Planilhas de Custos e Editais anexados para análise.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <Button
+                    kind="secondary"
+                    size="md"
+                    renderIcon={buscandoPncp ? undefined : Download}
+                    onClick={handleBuscarEditalPncp}
+                    disabled={buscandoPncp}
+                    data-testid="btn-buscar-edital-pncp"
+                  >
+                    {buscandoPncp ? <InlineLoading description="Buscando no PNCP..." /> : "Buscar Edital"}
+                  </Button>
+                  <Button
+                    kind="tertiary"
+                    size="md"
+                    renderIcon={Download}
+                    onClick={handleBaixarSelecionados}
+                    disabled={arquivosSelecionados.length === 0}
+                    data-testid="btn-baixar-selecionados"
+                  >
+                    Baixar Selecionados ({arquivosSelecionados.length})
+                  </Button>
+                  <Button
+                    kind="ghost"
+                    size="md"
+                    renderIcon={Download}
+                    onClick={handleBaixarTodos}
+                    disabled={arquivos.length === 0}
+                    data-testid="btn-baixar-todos"
+                  >
+                    Baixar Todos os Arquivos
+                  </Button>
+                </div>
+              </div>
 
               {/* Upload Drag-and-drop / Seletor */}
               <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap" }}>
@@ -1027,13 +1036,30 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 </Button>
               </div>
 
-              {/* Lista de Arquivos */}
+              {/* Lista de Arquivos com Seleção Múltipla */}
               {arquivos.length === 0 ? (
                 <p style={{ color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
-                  Nenhum arquivo anexado a esta licitação até o momento.
+                  Nenhum arquivo anexado a esta licitação até o momento. Clique em &ldquo;Buscar Edital&rdquo; para sincronizar os documentos oficiais do PNCP.
                 </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }} data-testid="arquivos-list">
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0 0.5rem 0" }}>
+                    <Checkbox
+                      id="select-all-arquivos"
+                      labelText={`Selecionar todos (${arquivosSelecionados.length}/${arquivos.length})`}
+                      checked={arquivos.length > 0 && arquivosSelecionados.length === arquivos.length}
+                      indeterminate={arquivosSelecionados.length > 0 && arquivosSelecionados.length < arquivos.length}
+                      onChange={(_e, { checked }) => {
+                        if (checked) {
+                          setArquivosSelecionados(arquivos.map((a) => a.id));
+                        } else {
+                          setArquivosSelecionados([]);
+                        }
+                      }}
+                      data-testid="checkbox-select-all"
+                    />
+                  </div>
+
                   {arquivos.map((arq) => (
                     <Tile
                       key={arq.id}
@@ -1047,6 +1073,19 @@ Realize uma análise profunda estruturada em 4 dimensões:
                       data-testid={`arquivo-item-${arq.id}`}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <Checkbox
+                          id={`check-arq-${arq.id}`}
+                          labelText=""
+                          checked={arquivosSelecionados.includes(arq.id)}
+                          onChange={(_e, { checked }) => {
+                            if (checked) {
+                              setArquivosSelecionados((prev) => [...prev, arq.id]);
+                            } else {
+                              setArquivosSelecionados((prev) => prev.filter((item) => item !== arq.id));
+                            }
+                          }}
+                          data-testid={`checkbox-arquivo-${arq.id}`}
+                        />
                         <Document size={24} />
                         <div>
                           <strong style={{ fontSize: "0.875rem" }}>{arq.nome}</strong>
@@ -1083,123 +1122,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
             </Tile>
           </TabPanel>
 
-          {/* Aba 3: Repositórios Similares (Limite Estrito de 5) */}
-          <TabPanel style={{ padding: "1.5rem 0" }}>
-            <Tile style={{ padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
-                  Repositórios de Código Similares (Benchmarking)
-                </h3>
-                <Tag
-                  type={repositorios.length >= 5 ? "red" : "cool-gray"}
-                  size="md"
-                  data-testid="contador-repositorios"
-                >
-                  {repositorios.length} / 5 cadastrados
-                </Tag>
-              </div>
-
-              <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1.5rem" }}>
-                Vincule até no máximo 5 links de repositórios (GitHub, GitLab) de soluções semelhantes para estimativa técnica de código e reaproveitamento de componentes.
-              </p>
-
-              {/* Formulário de Adição */}
-              {repositorios.length < 5 ? (
-                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end", marginBottom: "2rem", padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
-                  <div style={{ flex: 1, minWidth: "200px" }}>
-                    <TextInput
-                      id="input-rep-nome"
-                      data-testid="input-rep-nome"
-                      labelText="Identificador do Repositório"
-                      placeholder="Ex: portal-saude-ubs-v2"
-                      value={repNome}
-                      onChange={(e) => setRepNome(e.target.value)}
-                    />
-                  </div>
-                  <div style={{ flex: 2, minWidth: "260px" }}>
-                    <TextInput
-                      id="input-rep-url"
-                      data-testid="input-rep-url"
-                      labelText="URL do Repositório (HTTPS)"
-                      placeholder="Ex: https://github.com/organizacao/portal-saude"
-                      value={repUrl}
-                      onChange={(e) => setRepUrl(e.target.value)}
-                    />
-                  </div>
-                  <Button
-                    kind="primary"
-                    size="md"
-                    renderIcon={Code}
-                    onClick={handleAdicionarRepositorio}
-                    disabled={salvandoRep || !repNome.trim() || !repUrl.trim()}
-                    data-testid="btn-adicionar-repositorio"
-                  >
-                    {salvandoRep ? "Adicionando..." : "+ Adicionar Link"}
-                  </Button>
-                </div>
-              ) : (
-                <InlineNotification
-                  kind="warning"
-                  title="Limite Atingido:"
-                  subtitle="O limite estrito de 5 repositórios de benchmarking por licitação foi alcançado. Remova um existente para cadastrar outro."
-                  hideCloseButton
-                  style={{ marginBottom: "1.5rem" }}
-                  data-testid="aviso-limite-repositorios"
-                />
-              )}
-
-              {/* Lista de Repositórios */}
-              {repositorios.length === 0 ? (
-                <p style={{ color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
-                  Nenhum repositório similar cadastrado para este certame.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }} data-testid="repositorios-list">
-                  {repositorios.map((rep) => (
-                    <Tile
-                      key={rep.id}
-                      style={{
-                        padding: "1rem",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        backgroundColor: "var(--cds-layer-01)",
-                      }}
-                      data-testid={`repositorio-item-${rep.id}`}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <Code size={24} />
-                        <div>
-                          <strong style={{ fontSize: "0.875rem" }}>{rep.nome}</strong>
-                          <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                            <a
-                              href={rep.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ color: "var(--cds-link-primary)", textDecoration: "none" }}
-                            >
-                              {rep.url} <Launch size={12} />
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-
-                      <Button
-                        kind="ghost"
-                        size="sm"
-                        renderIcon={TrashCan}
-                        hasIconOnly
-                        iconDescription="Remover Repositório"
-                        onClick={() => handleExcluirRepositorio(rep.id)}
-                      />
-                    </Tile>
-                  ))}
-                </div>
-              )}
-            </Tile>
-          </TabPanel>
-
-          {/* Aba 4: 🤖 Análise IA & Status de Participação */}
+          {/* Aba 3: 🤖 Análise IA & Status de Participação */}
           <TabPanel style={{ padding: "1.5rem 0" }}>
             <Tile style={{ padding: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>

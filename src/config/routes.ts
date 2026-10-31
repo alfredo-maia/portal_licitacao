@@ -20,8 +20,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     label: "Dashboard",
     name: "Dashboard",
     title: "Dashboard",
-    description:
-      "Visão executiva mensal, 4 cards de topo, indicadores de resultado e Top 4 histórico.",
+    description: "Visão executiva mensal.",
   },
   {
     order: 2,

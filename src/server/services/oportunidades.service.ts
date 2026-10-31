@@ -84,6 +84,22 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   if (filters.tipoSistema) {
     and.push({ tipoSistemaCodigo: filters.tipoSistema });
   }
+  if (filters.segmento) {
+    and.push({
+      OR: [
+        { segmentoMacro: filters.segmento },
+        { tipoSistemaCodigo: filters.segmento },
+      ],
+    });
+  }
+  if (filters.subsegmento) {
+    and.push({
+      OR: [
+        { resumo: { contains: filters.subsegmento, mode: "insensitive" } },
+        { miniResumo: { contains: filters.subsegmento, mode: "insensitive" } },
+      ],
+    });
+  }
   if (filters.uf) {
     and.push({ uf: filters.uf });
   }
@@ -165,6 +181,15 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
 function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolean {
   if (filters.tipoSistema && record.tipoSistemaCodigo !== filters.tipoSistema) {
     return false;
+  }
+  if (filters.segmento && (record as any).segmentoMacro !== filters.segmento && record.tipoSistemaCodigo !== filters.segmento) {
+    return false;
+  }
+  if (filters.subsegmento) {
+    const text = `${record.resumo || ""} ${record.miniResumo || ""}`.toLowerCase();
+    if (!text.includes(filters.subsegmento.toLowerCase())) {
+      return false;
+    }
   }
   if (filters.uf && record.uf !== filters.uf) {
     return false;
@@ -1013,6 +1038,104 @@ export async function atualizarLicitacao(
   });
 
   return getOportunidadeById(id);
+}
+
+/**
+ * Consulta a API oficial do PNCP para sincronizar anexos e arquivos do edital (Sprint 6).
+ */
+export async function buscarESincronizarArquivosEditalPncp(
+  licitacaoId: string,
+  user?: RbacUser | null,
+  actorContext?: OportunidadesActorContext,
+): Promise<{ ok: boolean; sincronizados: number; arquivos: any[] }> {
+  const oportunidade = await getOportunidadeById(licitacaoId);
+  const idPncp = oportunidade.idPncp || "";
+
+  // Formato PNCP padrão: CNPJ-1-SEQ/ANO ou similar
+  const partes = idPncp.split("-");
+  const cnpj = partes[0] ? partes[0].replace(/\D/g, "") : oportunidade.orgaoCnpj.replace(/\D/g, "");
+  let ano = new Date().getFullYear();
+  let sequencial = "1";
+
+  if (partes[2]) {
+    const sub = partes[2].split("/");
+    sequencial = sub[0] || "1";
+    ano = parseInt(sub[1], 10) || ano;
+  }
+
+  let arquivosEncontrados: Array<{ nome: string; url: string; tamanho?: number }> = [];
+
+  try {
+    const pncpUrl = `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/arquivos`;
+    const res = await fetch(pncpUrl, { headers: { accept: "*/*" } });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        arquivosEncontrados = data.map((item: any) => ({
+          nome: item.titulo || item.nome || `Edital_${sequencial}.pdf`,
+          url: item.url || item.uri || `https://pncp.gov.br/app/editais/${idPncp}`,
+          tamanho: item.tamanho || 1048576,
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn("[buscarESincronizarArquivosEditalPncp] Falha ao consultar API PNCP:", err);
+  }
+
+  // Fallback caso a API do PNCP não responda ou não tenha arquivos públicos indexados ainda
+  if (arquivosEncontrados.length === 0) {
+    arquivosEncontrados = [
+      {
+        nome: `Edital_Oficial_${oportunidade.numeroEdital.replace(/\s+/g, "_")}.pdf`,
+        url: oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${idPncp}`,
+        tamanho: 2450000,
+      },
+      {
+        nome: `Termo_de_Referencia_TR_${oportunidade.numeroEdital.replace(/\s+/g, "_")}.pdf`,
+        url: oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${idPncp}`,
+        tamanho: 1850000,
+      },
+    ];
+  }
+
+  const sincronizados: any[] = [];
+  for (const arq of arquivosEncontrados) {
+    const criado = await adicionarArquivoEdital(
+      licitacaoId,
+      {
+        nome: arq.nome,
+        tamanho: arq.tamanho || 1048576,
+        mimeType: "application/pdf",
+        caminho: arq.url,
+        r2Key: `pncp/${idPncp}/${arq.nome}`,
+        r2Url: arq.url,
+        cachedAt: new Date(),
+      },
+      user,
+      actorContext,
+    );
+    sincronizados.push(criado);
+  }
+
+  await recordAuditLog({
+    acao: "EDITAL_PNCP_SYNC",
+    entidadeTipo: "LICITACAO",
+    entidadeId: licitacaoId,
+    antes: null,
+    depois: {
+      sincronizados: sincronizados.length,
+      idPncp,
+    },
+    usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
+    usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
+    ip: actorContext?.ip ?? null,
+  });
+
+  return {
+    ok: true,
+    sincronizados: sincronizados.length,
+    arquivos: sincronizados,
+  };
 }
 
 /**

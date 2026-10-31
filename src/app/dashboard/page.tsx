@@ -241,7 +241,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                    Recebidas da Coleta PNCP
+                    Oportunidades Recebidas
                   </span>
                   <Tag type="blue" size="sm" className="pncp-mono">
                     Mês
@@ -249,13 +249,10 @@ export default function DashboardPage() {
                 </div>
                 <div
                   className="pncp-mono"
-                  style={{ fontSize: "2.25rem", fontWeight: 700, marginBottom: "0.25rem" }}
+                  style={{ fontSize: "2.25rem", fontWeight: 700 }}
                 >
                   {dados.cards.recebidas.total}
                 </div>
-                <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                  Editais enviados pela esteira no mês
-                </p>
               </ClickableTile>
             </Column>
 
@@ -274,7 +271,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                    Aguardando Decisão (GO/NO-GO)
+                    Aguardando Decisão
                   </span>
                   <Tag type="warm-gray" size="sm" className="pncp-mono">
                     Backlog
@@ -282,13 +279,10 @@ export default function DashboardPage() {
                 </div>
                 <div
                   className="pncp-mono"
-                  style={{ fontSize: "2.25rem", fontWeight: 700, marginBottom: "0.25rem" }}
+                  style={{ fontSize: "2.25rem", fontWeight: 700 }}
                 >
                   {dados.cards.aguardandoDecisao.total}
                 </div>
-                <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                  {dados.cards.aguardandoDecisao.recebidasNoMes} recebidas no mês
-                </p>
               </ClickableTile>
             </Column>
 
@@ -307,7 +301,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                    Em Precificação (GO)
+                    Em Precificação
                   </span>
                   <Tag type="green" size="sm" className="pncp-mono">
                     Ativas
@@ -315,13 +309,10 @@ export default function DashboardPage() {
                 </div>
                 <div
                   className="pncp-mono"
-                  style={{ fontSize: "2.25rem", fontWeight: 700, marginBottom: "0.25rem" }}
+                  style={{ fontSize: "2.25rem", fontWeight: 700 }}
                 >
                   {dados.cards.emPrecificacao.total}
                 </div>
-                <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                  Certames aceitos em elaboração ativa
-                </p>
               </ClickableTile>
             </Column>
 
@@ -340,7 +331,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <span style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                    Recusadas (NO-GO)
+                    Recusadas
                   </span>
                   <Tag type="red" size="sm" className="pncp-mono">
                     Descarte
@@ -348,13 +339,10 @@ export default function DashboardPage() {
                 </div>
                 <div
                   className="pncp-mono"
-                  style={{ fontSize: "2.25rem", fontWeight: 700, marginBottom: "0.25rem" }}
+                  style={{ fontSize: "2.25rem", fontWeight: 700 }}
                 >
                   {dados.cards.recusadas.total}
                 </div>
-                <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                  Certames descartados no período
-                </p>
               </ClickableTile>
             </Column>
 
@@ -526,12 +514,12 @@ export default function DashboardPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.25rem 0" }}>
                       <Tag type="green" size="md" className="pncp-mono" renderIcon={CheckmarkOutline}>
                         {dados.indicadores.viabilidadeIA.goPercentual !== null
-                          ? `${dados.indicadores.viabilidadeIA.goPercentual}% GO`
+                          ? `${dados.indicadores.viabilidadeIA.goPercentual}% Participar`
                           : "—"}
                       </Tag>
                       <Tag type="red" size="md" className="pncp-mono" renderIcon={CloseOutline}>
                         {dados.indicadores.viabilidadeIA.noGoPercentual !== null
-                          ? `${dados.indicadores.viabilidadeIA.noGoPercentual}% NO-GO`
+                          ? `${dados.indicadores.viabilidadeIA.noGoPercentual}% Descartar`
                           : "—"}
                       </Tag>
                     </div>
@@ -611,47 +599,6 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 )}
-              </Tile>
-            </Column>
-
-            {/* LINHA 4 — Top 4 Tipos de Licitação (Histórico Acumulado) */}
-            <Column lg={16} md={8} sm={4}>
-              <Tile data-testid="top-tipos-panel" style={{ padding: "1.5rem" }}>
-                <div style={{ marginBottom: "1rem" }}>
-                  <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "1rem", fontWeight: 600 }}>
-                    Top 4 Categorias de TI (Histórico Acumulado)
-                  </h3>
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                    Ranking histórico dinâmico das categorias com maior volume de editais desde a criação do portal. Clique para filtrar a tabela de oportunidades.
-                  </p>
-                </div>
-
-                <Grid fullWidth style={{ padding: 0 }}>
-                  {(dados.topTipos || []).map((tipo) => (
-                    <Column key={tipo.tipoSistemaCodigo} lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
-                      <ClickableTile
-                        href={`/oportunidades?tipoSistema=${tipo.tipoSistemaCodigo}`}
-                        data-testid={`top-tipo-card-${tipo.posicao}`}
-                        style={{ height: "100%", padding: "1rem" }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                          <Tag type="cool-gray" size="sm" className="pncp-mono">
-                            {tipo.posicao}º Lugar
-                          </Tag>
-                          <span className="pncp-mono" style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-                            {tipo.total}
-                          </span>
-                        </div>
-                        <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
-                          {tipo.nome}
-                        </div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                          Clique para ver oportunidades →
-                        </div>
-                      </ClickableTile>
-                    </Column>
-                  ))}
-                </Grid>
               </Tile>
             </Column>
           </>

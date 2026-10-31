@@ -57,9 +57,6 @@ export function ModulePageShell({
                 </Tag>
               )}
             </div>
-            <Tag type="outline" size="sm" className="pncp-mono">
-              {APP_CONFIG.brandName} · v{APP_CONFIG.version}
-            </Tag>
           </div>
           <p
             style={{

@@ -517,6 +517,11 @@ model Tenant {
   maxCnpjs            Int                 @default(1)
   maxUsers            Int                 @default(1)
   ativo               Boolean             @default(true)
+  telefone            String?
+  segmentos           String[]            @default([])
+  subsegmentos        String[]            @default([])
+  ufs                 String[]            @default([])
+  brasilInteiro       Boolean             @default(true)
   trialFim            DateTime?
   criadoEm            DateTime            @default(now())
   atualizadoEm        DateTime            @updatedAt

@@ -126,10 +126,8 @@ describe("Sprint 3 — Frontend Dashboard, Calendário & Notificações (AV-54)"
       expect(screen.getByTestId("criticas-72h-panel")).toBeInTheDocument();
       expect(screen.getByText(/099\/2026 — Prefeitura de Goiânia/i)).toBeInTheDocument();
 
-      // Validar Top 4 categorias
-      expect(screen.getByTestId("top-tipos-panel")).toBeInTheDocument();
-      expect(screen.getByTestId("top-tipo-card-1")).toBeInTheDocument();
-      expect(screen.getByText("Portal de Educação")).toBeInTheDocument();
+      // Sprint 6: Top 4 categorias removido para dar foco aos indicadores operacionais
+      expect(screen.queryByTestId("top-tipos-panel")).toBeNull();
 
       // Regra explícita do PRD §4.1: SEM mini-calendário nesta tela
       expect(screen.queryByTestId("calendario-grid")).not.toBeInTheDocument();

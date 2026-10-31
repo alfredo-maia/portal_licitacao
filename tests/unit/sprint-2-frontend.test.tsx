@@ -144,7 +144,7 @@ describe("Sprint 2 — Frontend Kanban e Dossiê com 4 Abas (AV-48)", () => {
       expect(screen.getByTestId("equipe-assignment-box")).toBeInTheDocument();
       expect(screen.getByTestId("tab-visao-geral")).toBeInTheDocument();
       expect(screen.getByTestId("tab-arquivos")).toBeInTheDocument();
-      expect(screen.getByTestId("tab-repositorios")).toBeInTheDocument();
+      expect(screen.queryByTestId("tab-repositorios")).toBeNull();
       expect(screen.getByTestId("tab-analise-ia")).toBeInTheDocument();
     });
 

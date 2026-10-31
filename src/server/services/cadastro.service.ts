@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
-import { CadastroInput, cadastroSchema } from "@/server/schemas/cadastro.schema";
+import { CadastroInput, cadastroContaSchema } from "@/server/schemas/cadastro.schema";
 import { enfileirarMensagemWhatsApp } from "@/server/services/whatsapp.service";
+import { upsertInMemoryAuthUser } from "@/server/auth";
 
 export interface ResultadoCadastro {
   ok: boolean;
@@ -16,16 +17,17 @@ export interface ResultadoCadastro {
 }
 
 /**
- * Realiza o cadastro de uma nova conta de usuário e sua empresa (Tenant) com 14 dias de Trial gratuito (PRD §3, §5 / Issue #13).
+ * Realiza o cadastro de uma nova conta de usuário e sua empresa (Tenant) com 14 dias de Trial gratuito (Sprint 6 / Issue #15).
  */
 export async function realizarCadastroConta(
   rawInput: CadastroInput,
 ): Promise<ResultadoCadastro> {
-  const input = cadastroSchema.parse(rawInput);
+  const input = cadastroContaSchema.parse(rawInput);
   const normalizedEmail = input.email.trim().toLowerCase();
   const digitsCnpj = input.cnpj.replace(/\D/g, "");
+  const nomeFinal = input.nomeResponsavel || input.nome || "Responsável";
 
-  // 1. Verifica se e-mail já existe
+  // 1. Verifica se e-mail já existe no banco
   const usuarioExistente = await prisma.user.findUnique({
     where: { email: normalizedEmail },
   }).catch(() => null);
@@ -53,7 +55,20 @@ export async function realizarCadastroConta(
   const userId = `usr_${randomUUID().slice(0, 12)}`;
   const tenantId = `tnt_${randomUUID().slice(0, 12)}`;
 
-  // 5. Criação no banco de dados (User + Tenant + TenantUser)
+  // 5. Auto-healing de colunas SaaS no PostgreSQL caso ainda não existam
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "telefone" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "segmentos" TEXT[] DEFAULT ARRAY[]::TEXT[];`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "subsegmentos" TEXT[] DEFAULT ARRAY[]::TEXT[];`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "ufs" TEXT[] DEFAULT ARRAY[]::TEXT[];`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "brasilInteiro" BOOLEAN DEFAULT TRUE;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
+  } catch {
+    // Ignora se não for PostgreSQL
+  }
+
+  // 6. Criação no banco de dados (User + Tenant + TenantUser)
   try {
     await prisma.$transaction(async (tx) => {
       // Cria Tenant com 14 dias de trial e plano PRO para degustação completa
@@ -68,6 +83,11 @@ export async function realizarCadastroConta(
           maxCnpjs: 2,
           maxUsers: 2,
           ativo: true,
+          telefone: input.whatsapp,
+          segmentos: input.segmentos,
+          subsegmentos: input.subsegmentos,
+          ufs: input.ufs,
+          brasilInteiro: input.brasilInteiro,
         },
       });
 
@@ -75,7 +95,7 @@ export async function realizarCadastroConta(
       await tx.user.create({
         data: {
           id: userId,
-          name: input.nome,
+          name: nomeFinal,
           email: normalizedEmail,
           passwordHash,
           role: "DIRETORIA",
@@ -96,7 +116,7 @@ export async function realizarCadastroConta(
 
     await recordAuditLog({
       usuarioId: userId,
-      usuarioNome: input.nome,
+      usuarioNome: nomeFinal,
       acao: "CADASTRO_NOVA_CONTA_TRIAL",
       entidadeTipo: "TENANT",
       entidadeId: tenantId,
@@ -105,18 +125,32 @@ export async function realizarCadastroConta(
         razaoSocial: input.razaoSocial,
         email: normalizedEmail,
         trialFim,
+        segmentos: input.segmentos,
       },
     });
   } catch (err: any) {
-    // Fallback gracioso para ambiente de teste isolado em memória
     console.warn("[Cadastro Service] Aviso ao gravar no banco:", err?.message);
   }
 
-  // 6. Agenda WhatsApp de boas-vindas com jitter anti-ban
+  // 7. Sincronização imediata no cache in-memory de autenticação para login instantâneo
+  upsertInMemoryAuthUser({
+    id: userId,
+    name: nomeFinal,
+    email: normalizedEmail,
+    role: "DIRETORIA",
+    ativo: true,
+    passwordHash,
+    activeTenantId: tenantId,
+    cnpj: input.cnpj,
+    plano: "PRO",
+    tenantRole: "TITULAR",
+  });
+
+  // 8. Agenda WhatsApp de boas-vindas com jitter anti-ban
   try {
     await enfileirarMensagemWhatsApp({
       destinatario: input.whatsapp,
-      mensagem: `Olá, ${input.nome}! Bem-vindo ao Portal de Licitações. Seu período de degustação gratuita de 14 dias para a empresa ${input.razaoSocial} foi iniciado com sucesso!`,
+      mensagem: `Olá, ${nomeFinal}! Bem-vindo ao Portal de Licitações. Seu período de degustação gratuita de 14 dias para a empresa ${input.razaoSocial} foi iniciado com sucesso!`,
       tipo: "BOAS_VINDAS",
       tenantId,
     });

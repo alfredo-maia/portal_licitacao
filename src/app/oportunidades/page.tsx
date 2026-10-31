@@ -38,6 +38,7 @@ import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { ESTADOS_BRASIL } from "@/config/estados";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
+import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 
 export const MOTIVOS_RECUSA_GENERICOS = [
   "Não se encaixa no perfil ou core business da empresa",
@@ -92,7 +93,6 @@ function OportunidadesContent() {
     { key: "orgaoUF", header: "Órgão e UF" },
     { key: "miniResumo", header: "Mini-resumo" },
     { key: "valorEstimado", header: "Valor Estimado" },
-    { key: "parecerIA", header: "Parecer da IA" },
     { key: "acoes", header: "Ações Rápidas" },
   ];
 
@@ -102,11 +102,17 @@ function OportunidadesContent() {
   const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
   const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
-  const [filtroTipoSistema, setFiltroTipoSistema] = React.useState('');
+  const [preferencias, setPreferencias] = React.useState<{
+    segmentos: string[];
+    subsegmentos: string[];
+    ufs: string[];
+    brasilInteiro: boolean;
+  } | null>(null);
+  const [filtroSegmento, setFiltroSegmento] = React.useState('');
+  const [filtroSubsegmento, setFiltroSubsegmento] = React.useState('');
   const [filtroUf, setFiltroUf] = React.useState('');
   const [filtroFaixaValor, setFiltroFaixaValor] = React.useState('');
   const [filtroStatus, setFiltroStatus] = React.useState('');
-  const [filtroParecerIA, setFiltroParecerIA] = React.useState('');
   const [filtroBusca, setFiltroBusca] = React.useState('');
 
   const [manualNumeroEdital, setManualNumeroEdital] = React.useState("");
@@ -187,13 +193,25 @@ function OportunidadesContent() {
     fetchOportunidades();
   }, [fetchOportunidades]);
 
+  // Carrega preferências do Tenant
+  React.useEffect(() => {
+    fetch("/api/tenant/preferencias")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.ok) {
+          setPreferencias(data);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
   // Inicializa os filtros com base na URL
   React.useEffect(() => {
-    setFiltroTipoSistema(searchParams.get("tipoSistema") || "");
+    setFiltroSegmento(searchParams.get("segmento") || "");
+    setFiltroSubsegmento(searchParams.get("subsegmento") || "");
     setFiltroUf(searchParams.get("uf") || "");
     setFiltroFaixaValor(searchParams.get("faixaValor") || "");
     setFiltroStatus(searchParams.get("status") || "");
-    setFiltroParecerIA(searchParams.get("parecerIA") || "");
     setFiltroBusca(searchParams.get("busca") || "");
   }, [searchParams]);
 
@@ -443,28 +461,92 @@ function OportunidadesContent() {
         </div>
 
         <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+          {/* Segmento / Ramo */}
           <Dropdown
-            id="filter-tipo-sistema"
-            data-testid="filter-tipo-sistema"
-            titleText="Tipo de Sistema"
-            label="Selecione um tipo"
+            id="filter-segmento"
+            data-testid="filter-segmento"
+            titleText="Segmento / Ramo"
+            label="Todos os Segmentos"
             items={[
-              { id: "", text: "Todos" },
-              ...TIPOS_SISTEMA_CATALOG.map((tipo) => ({ id: tipo.codigo, text: tipo.nome })),
+              { id: "", text: "Todos os Segmentos" },
+              ...(preferencias?.segmentos && preferencias.segmentos.length > 0
+                ? preferencias.segmentos.map((code) => ({
+                    id: code,
+                    text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
+                  }))
+                : Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => ({
+                    id: macro.codigo,
+                    text: macro.nome,
+                  }))),
             ]}
             itemToString={(item) => (item ? item.text : "")}
-            selectedItem={filtroTipoSistema ? { id: filtroTipoSistema, text: TIPOS_SISTEMA_CATALOG.find(t => t.codigo === filtroTipoSistema)?.nome || "" } : null}
-            onChange={({ selectedItem }) => handleFilterChange("tipoSistema", selectedItem?.id || "")}
-            style={{ minWidth: "200px" }}
+            selectedItem={
+              filtroSegmento
+                ? {
+                    id: filtroSegmento,
+                    text:
+                      CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]?.nome ||
+                      filtroSegmento,
+                  }
+                : null
+            }
+            onChange={({ selectedItem }) => {
+              const novoSeg = selectedItem?.id || "";
+              handleFilterChange("segmento", novoSeg);
+              // Ao mudar segmento, limpa o subsegmento
+              handleFilterChange("subsegmento", "");
+            }}
+            style={{ minWidth: "220px" }}
           />
+
+          {/* Sub-segmento dinâmico */}
+          <Dropdown
+            id="filter-subsegmento"
+            data-testid="filter-subsegmento"
+            titleText="Sub-segmento"
+            label={filtroSegmento ? "Todos os Sub-segmentos" : "Selecione um segmento primeiro"}
+            disabled={!filtroSegmento}
+            items={
+              filtroSegmento && CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]
+                ? [
+                    { id: "", text: "Todos os Sub-segmentos" },
+                    ...CATALOGO_MACRO_SEGMENTOS[
+                      filtroSegmento as MacroSegmento
+                    ].subcategorias.map((sub) => ({ id: sub.codigo, text: sub.nome })),
+                  ]
+                : [{ id: "", text: "Selecione um segmento primeiro" }]
+            }
+            itemToString={(item) => (item ? item.text : "")}
+            selectedItem={
+              filtroSubsegmento && filtroSegmento
+                ? {
+                    id: filtroSubsegmento,
+                    text:
+                      CATALOGO_MACRO_SEGMENTOS[
+                        filtroSegmento as MacroSegmento
+                      ]?.subcategorias.find((s) => s.codigo === filtroSubsegmento)?.nome ||
+                      filtroSubsegmento,
+                  }
+                : null
+            }
+            onChange={({ selectedItem }) => handleFilterChange("subsegmento", selectedItem?.id || "")}
+            style={{ minWidth: "220px" }}
+          />
+
+          {/* UF */}
           <Dropdown
             id="filter-uf"
             data-testid="filter-uf"
             titleText="UF"
-            label="Selecione um estado"
+            label="Todas as UFs"
             items={[
               { id: "", text: "Todas as UFs" },
-              ...ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.nome} (${e.sigla})` })),
+              ...(preferencias && !preferencias.brasilInteiro && preferencias.ufs.length > 0
+                ? ESTADOS_BRASIL.filter((e) => preferencias.ufs.includes(e.sigla)).map((e) => ({
+                    id: e.sigla,
+                    text: `${e.nome} (${e.sigla})`,
+                  }))
+                : ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.nome} (${e.sigla})` }))),
             ]}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={
@@ -481,6 +563,8 @@ function OportunidadesContent() {
             onChange={({ selectedItem }) => handleFilterChange("uf", selectedItem?.id || "")}
             style={{ minWidth: "180px" }}
           />
+
+          {/* Faixa de Valor */}
           <Dropdown
             id="filter-faixa-valor"
             data-testid="filter-faixa-valor"
@@ -499,6 +583,8 @@ function OportunidadesContent() {
             onChange={({ selectedItem }) => handleFilterChange("faixaValor", selectedItem?.id || "")}
             style={{ minWidth: "220px" }}
           />
+
+          {/* Status */}
           <Dropdown
             id="filter-status"
             data-testid="filter-status"
@@ -524,34 +610,6 @@ function OportunidadesContent() {
             }
             onChange={({ selectedItem }) => handleFilterChange("status", selectedItem?.id || "")}
             style={{ minWidth: "170px" }}
-          />
-          <Dropdown
-            id="filter-parecer-ia"
-            data-testid="filter-parecer-ia"
-            titleText="Parecer da IA"
-            label="Selecione um parecer"
-            items={[
-              { id: "", text: "Todos" },
-              { id: "GO", text: "Participar" },
-              { id: "AVALIAR", text: "AVALIAR" },
-              { id: "NO_GO", text: "Não Participar" },
-            ]}
-            itemToString={(item) => (item ? item.text : "")}
-            selectedItem={
-              filtroParecerIA
-                ? {
-                    id: filtroParecerIA,
-                    text:
-                      filtroParecerIA === "GO"
-                        ? "Participar"
-                        : filtroParecerIA === "NO_GO"
-                        ? "Não Participar"
-                        : filtroParecerIA,
-                  }
-                : null
-            }
-            onChange={({ selectedItem }) => handleFilterChange("parecerIA", selectedItem?.id || "")}
-            style={{ minWidth: "160px" }}
           />
           <div style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
             <TextInput
@@ -616,13 +674,6 @@ function OportunidadesContent() {
                     </TableBatchAction>
                   </TableBatchActions>
                   <TableToolbarContent>
-                    <TableToolbarSearch
-                      id="search-oportunidades"
-                      persistent
-                      labelText="Filtrar tabela..."
-                      placeholder="Filtrar tabela..."
-                      onChange={onInputChange}
-                    />
                     <TableToolbarMenu>
                       <TableToolbarAction onClick={() => alert("Download")}>
                         <Download size={16} />
@@ -642,14 +693,6 @@ function OportunidadesContent() {
                     >
                       + Adicionar Manualmente
                     </Button>
-                    <Button
-                      onClick={() => setShowImportModal(true)}
-                      kind="ghost"
-                      size="sm"
-                      data-testid="btn-open-import-modal"
-                    >
-                      Importar JSON
-                    </Button>
                   </TableToolbarContent>
                 </TableToolbar>
                 <Table className="pncp-opportunities-table">
@@ -659,15 +702,13 @@ function OportunidadesContent() {
                       {headers.map((header) => {
                         let headerStyle: React.CSSProperties = {};
                         if (header.key === "dataAbertura") {
-                          headerStyle = { width: "115px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "120px", whiteSpace: "nowrap" };
                         } else if (header.key === "orgaoUF") {
-                          headerStyle = { width: "18%" };
+                          headerStyle = { width: "28%" };
                         } else if (header.key === "miniResumo") {
-                          headerStyle = { width: "42%" };
+                          headerStyle = { width: "46%" };
                         } else if (header.key === "valorEstimado") {
-                          headerStyle = { width: "130px", whiteSpace: "nowrap" };
-                        } else if (header.key === "parecerIA") {
-                          headerStyle = { width: "110px", whiteSpace: "nowrap" };
+                          headerStyle = { width: "140px", whiteSpace: "nowrap" };
                         } else if (header.key === "acoes") {
                           headerStyle = { width: "80px", whiteSpace: "nowrap", textAlign: "center" };
                         }
@@ -703,8 +744,6 @@ function OportunidadesContent() {
                                 ? { wordBreak: "break-word" }
                                 : cell.info.header === "valorEstimado"
                                 ? { whiteSpace: "nowrap" }
-                                : cell.info.header === "parecerIA"
-                                ? { whiteSpace: "nowrap" }
                                 : cell.info.header === "acoes"
                                 ? { width: "80px", textAlign: "center", padding: "0 0.25rem" }
                                 : undefined
@@ -728,45 +767,10 @@ function OportunidadesContent() {
                                   currency: "BRL",
                                 }).format(cell.value)}
                               </span>
-                            ) : cell.info.header === "parecerIA" ? (
-                              <Tag
-                                type={
-                                  cell.value === "GO"
-                                    ? "green"
-                                    : cell.value === "AVALIAR"
-                                    ? "warm-gray"
-                                    : "red"
-                                }
-                                renderIcon={
-                                  cell.value === "GO"
-                                    ? CheckmarkOutline
-                                    : cell.value === "AVALIAR"
-                                    ? WarningAlt
-                                    : CloseOutline
-                                }
-                              >
-                                {cell.value}
-                              </Tag>
                             ) : cell.info.header === "miniResumo" ? (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "flex-start",
-                                  gap: "0.35rem",
-                                  wordBreak: "break-word",
-                                  lineHeight: 1.4,
-                                }}
-                              >
-                                <span style={{ fontWeight: 500 }}>{cell.value}</span>
-                                {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo && (
-                                  <div>
-                                    <Tag type="gray" size="sm" style={{ margin: 0 }}>
-                                      {oportunidades.find((opp: Oportunidade) => opp.id === row.id)?.tipoSistemaCodigo}
-                                    </Tag>
-                                  </div>
-                                )}
-                              </div>
+                              <span style={{ fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
+                                {cell.value}
+                              </span>
                             ) : cell.info.header === "resumoObjeto" ? (
                               <span title={String(cell.value)}>
                                 {String(cell.value).substring(0, 100)}...
