@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 export async function GET(_req?: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado" },
+        { status: 401 },
+      );
+    }
     const tenantId = (session?.user as any)?.activeTenantId;
 
     const resultado = await listarEquipe(tenantId);
@@ -27,6 +33,12 @@ export async function GET(_req?: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado" },
+        { status: 401 },
+      );
+    }
     const tenantId = (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeCriarInputSchema.safeParse(body);

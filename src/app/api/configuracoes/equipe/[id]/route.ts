@@ -15,6 +15,12 @@ export async function GET(
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado" },
+        { status: 401 },
+      );
+    }
     const tenantId = (session?.user as any)?.activeTenantId;
 
     if (tenantId) {
@@ -81,6 +87,12 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado" },
+        { status: 401 },
+      );
+    }
     const tenantId = (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeAtualizarInputSchema.safeParse(body);
