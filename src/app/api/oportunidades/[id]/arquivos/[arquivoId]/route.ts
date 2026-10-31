@@ -3,9 +3,14 @@ import { NextResponse } from "next/server";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import { removerArquivoEdital } from "@/server/services/oportunidades.service";
+import { GET as downloadArquivoGet } from "./download/route";
 
 interface RouteContext {
   params: Promise<{ id: string; arquivoId: string }>;
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  return downloadArquivoGet(request, context);
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {

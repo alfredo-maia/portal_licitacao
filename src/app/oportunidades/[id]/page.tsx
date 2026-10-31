@@ -436,12 +436,25 @@ function OportunidadesDetalheContent({
     }
   };
 
+  // Helper de URL de Download Segura
+  const obterUrlDownload = (arq: ArquivoItem) => {
+    if (
+      arq.caminho &&
+      arq.caminho.startsWith("http") &&
+      !arq.caminho.includes("docs.licitacao.internal") &&
+      !arq.caminho.includes("localhost")
+    ) {
+      return arq.caminho;
+    }
+    return `/api/oportunidades/${id}/arquivos/${arq.id}/download`;
+  };
+
   // Baixar Selecionados
   const handleBaixarSelecionados = () => {
     const alvos = (oportunidade?.arquivos || []).filter((a) => arquivosSelecionados.includes(a.id));
     alvos.forEach((arq) => {
       if (typeof window !== "undefined") {
-        window.open(arq.caminho, "_blank");
+        window.open(obterUrlDownload(arq), "_blank");
       }
     });
   };
@@ -450,7 +463,7 @@ function OportunidadesDetalheContent({
   const handleBaixarTodos = () => {
     (oportunidade?.arquivos || []).forEach((arq) => {
       if (typeof window !== "undefined") {
-        window.open(arq.caminho, "_blank");
+        window.open(obterUrlDownload(arq), "_blank");
       }
     });
   };
@@ -1135,7 +1148,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                           kind="ghost"
                           size="sm"
                           renderIcon={Download}
-                          href={arq.caminho}
+                          href={obterUrlDownload(arq)}
                           target="_blank"
                         >
                           Download
