@@ -10,6 +10,7 @@ import {
   HeaderGlobalBar,
   HeaderMenuButton,
   HeaderName,
+  InlineNotification,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -32,6 +33,7 @@ import {
   Search,
   Settings,
   Task,
+  Upgrade,
   UserAvatar,
   type CarbonIconType,
 } from "@carbon/icons-react";
@@ -51,6 +53,7 @@ const ROUTE_ICONS: Record<string, CarbonIconType> = {
   impugnacoes: Rule,
   "robo-de-lances": Bot,
   notificacoes: Notification,
+  planos: Upgrade,
   configuracoes: Settings,
 };
 
@@ -59,6 +62,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { isDark, toggleTheme } = useAppTheme();
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
+  const [subStatus, setSubStatus] = useState<{
+    isReadOnly?: boolean;
+    inGracePeriod?: boolean;
+    mensagemStatus?: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch("/api/planos/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && (data.inGracePeriod || data.isReadOnly)) {
+          setSubStatus(data);
+        } else {
+          setSubStatus(null);
+        }
+      })
+      .catch(() => {});
+  }, [pathname]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && pathname && !pathname.startsWith("/oportunidades/")) {
@@ -209,6 +230,42 @@ export function AppShell({ children }: { children: ReactNode }) {
           isSideNavExpanded ? "pncp-shell-content--expanded" : ""
         }`}
       >
+        {subStatus?.isReadOnly && pathname !== "/planos" && (
+          <div style={{ marginBottom: "1rem" }} data-testid="banner-bloqueio-planos">
+            <InlineNotification
+              kind="error"
+              title="Acesso Somente-Leitura:"
+              subtitle={
+                subStatus.mensagemStatus ||
+                "Seu período de teste expirou. Escolha um plano para reativar as ações."
+              }
+              hideCloseButton
+              actions={
+                <Button size="sm" kind="danger" onClick={() => router.push("/planos")}>
+                  Ver Planos
+                </Button>
+              }
+            />
+          </div>
+        )}
+        {subStatus?.inGracePeriod && pathname !== "/planos" && (
+          <div style={{ marginBottom: "1rem" }} data-testid="banner-carencia-planos">
+            <InlineNotification
+              kind="warning"
+              title="Período de Carência:"
+              subtitle={
+                subStatus.mensagemStatus ||
+                "Seu período de teste terminou. Você tem alguns dias de carência antes do bloqueio das ações."
+              }
+              hideCloseButton
+              actions={
+                <Button size="sm" kind="ghost" onClick={() => router.push("/planos")}>
+                  Regularizar Plano
+                </Button>
+              }
+            />
+          </div>
+        )}
         {children}
       </main>
     </div>

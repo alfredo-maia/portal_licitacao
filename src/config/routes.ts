@@ -124,6 +124,16 @@ export const APP_ROUTES: readonly AppRoute[] = [
   },
   {
     order: 11,
+    id: "planos",
+    path: "/planos",
+    href: "/planos",
+    label: "Planos",
+    name: "Planos",
+    title: "Planos & Assinatura",
+    description: "Gestão do plano de assinatura, limites e contratação.",
+  },
+  {
+    order: 12,
     id: "configuracoes",
     path: "/configuracoes",
     href: "/configuracoes",
