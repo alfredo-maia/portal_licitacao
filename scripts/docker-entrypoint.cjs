@@ -342,6 +342,151 @@ async function bootstrapDatabase() {
       });
     }
 
+    // Sprint SaaS Multi-Tenant (PRD §3, §4, §6 / ADR 0007, 0010)
+    console.log("[entrypoint] Verificando tabelas e enums SaaS Multi-Tenant...");
+    const ddlSaaS = [
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PlanoAssinatura') THEN CREATE TYPE "PlanoAssinatura" AS ENUM ('BASICO', 'PRO', 'ENTERPRISE'); END IF; END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TenantRole') THEN CREATE TYPE "TenantRole" AS ENUM ('TITULAR', 'MEMBRO', 'CONSULTOR'); END IF; END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TenantBillingStatus') THEN CREATE TYPE "TenantBillingStatus" AS ENUM ('TRIAL', 'ATIVO', 'GRACE_PERIOD', 'BLOQUEADO', 'CANCELADO'); END IF; END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'WhatsAppStatus') THEN CREATE TYPE "WhatsAppStatus" AS ENUM ('PENDENTE', 'ENVIANDO', 'ENVIADO', 'FALHA', 'PAUSADO_OPT_OUT'); END IF; END $$;`,
+      `CREATE TABLE IF NOT EXISTS "tenant" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "cnpj" TEXT NOT NULL UNIQUE,
+        "razaoSocial" TEXT NOT NULL,
+        "nomeFantasia" TEXT,
+        "cnaePrincipal" TEXT,
+        "endereco" TEXT,
+        "cidade" TEXT,
+        "uf" VARCHAR(2),
+        "plano" "PlanoAssinatura" NOT NULL DEFAULT 'BASICO',
+        "billingStatus" "TenantBillingStatus" NOT NULL DEFAULT 'TRIAL',
+        "storageExtraQuotaMb" INTEGER NOT NULL DEFAULT 0,
+        "asaasCustomerId" TEXT,
+        "asaasSubscriptionId" TEXT,
+        "vencimentoAssinatura" TIMESTAMP(3),
+        "ultimoPagamentoEm" TIMESTAMP(3),
+        "maxCnpjs" INTEGER NOT NULL DEFAULT 1,
+        "maxUsers" INTEGER NOT NULL DEFAULT 1,
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "telefone" TEXT,
+        "segmentos" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "subsegmentos" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "ufs" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "brasilInteiro" BOOLEAN NOT NULL DEFAULT true,
+        "trialFim" TIMESTAMP(3),
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "tenant_cnpj_idx" ON "tenant"("cnpj");`,
+      `CREATE INDEX IF NOT EXISTS "tenant_plano_idx" ON "tenant"("plano");`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`,
+      `CREATE TABLE IF NOT EXISTS "tenant_user" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
+        "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+        "role" "TenantRole" NOT NULL DEFAULT 'MEMBRO',
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "tenant_user_tenantId_userId_key" UNIQUE ("tenantId", "userId")
+      );`,
+      `CREATE INDEX IF NOT EXISTS "tenant_user_userId_idx" ON "tenant_user"("userId");`,
+      `CREATE INDEX IF NOT EXISTS "tenant_user_tenantId_idx" ON "tenant_user"("tenantId");`,
+      `CREATE TABLE IF NOT EXISTS "tenant_licitacao" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
+        "licitacaoId" TEXT NOT NULL REFERENCES "licitacao"("id") ON DELETE CASCADE,
+        "statusKanban" "LicitacaoStatus" NOT NULL DEFAULT 'PENDENTE',
+        "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "notas" TEXT,
+        "lanceMinimo" DOUBLE PRECISION,
+        "motivoRecusa" TEXT,
+        "dataDecisao" TIMESTAMP(3),
+        "responsavelId" TEXT REFERENCES "User"("id") ON DELETE SET NULL,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "tenant_licitacao_tenantId_licitacaoId_key" UNIQUE ("tenantId", "licitacaoId")
+      );`,
+      `CREATE TABLE IF NOT EXISTS "tenant_convite" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
+        "email" TEXT NOT NULL,
+        "role" "TenantRole" NOT NULL DEFAULT 'MEMBRO',
+        "token" TEXT NOT NULL UNIQUE,
+        "expiraEm" TIMESTAMP(3) NOT NULL,
+        "aceitoEm" TIMESTAMP(3),
+        "criadoPorId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "tenant_convite_tenantId_email_key" UNIQUE ("tenantId", "email")
+      );`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT UNIQUE;`,
+      `DO $$ BEGIN ALTER TABLE "configuracao_empresa" ADD CONSTRAINT "configuracao_empresa_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `DO $$ BEGIN ALTER TABLE "documento" ADD CONSTRAINT "documento_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `CREATE TABLE IF NOT EXISTS "audit_log" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "ocorridoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "usuarioId" TEXT REFERENCES "User"("id") ON DELETE SET NULL,
+        "usuarioNome" TEXT,
+        "ip" TEXT,
+        "acao" TEXT NOT NULL,
+        "entidadeTipo" TEXT NOT NULL,
+        "entidadeId" TEXT NOT NULL,
+        "antes" JSONB,
+        "depois" JSONB,
+        "tenantId" TEXT REFERENCES "tenant"("id") ON DELETE SET NULL
+      );`,
+      `ALTER TABLE "audit_log" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "audit_log_entidadeTipo_entidadeId_idx" ON "audit_log"("entidadeTipo", "entidadeId");`,
+      `CREATE INDEX IF NOT EXISTS "audit_log_ocorridoEm_idx" ON "audit_log"("ocorridoEm");`,
+      `CREATE INDEX IF NOT EXISTS "audit_log_tenantId_idx" ON "audit_log"("tenantId");`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "modalidadeCodigo" INTEGER;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "numeroControlePNCP" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "segmentoMacro" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "subcategorias" JSONB;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "modalidadeCodigo" INTEGER;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "numeroControlePNCP" TEXT;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "segmentoMacro" TEXT;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "subcategorias" JSONB;`,
+      `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "r2Key" TEXT;`,
+      `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "r2Url" TEXT;`,
+      `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "cachedAt" TIMESTAMP(3);`,
+      `CREATE TABLE IF NOT EXISTS "whatsapp_mensagem" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT,
+        "destinatario" TEXT NOT NULL,
+        "mensagem" TEXT NOT NULL,
+        "tipo" TEXT NOT NULL DEFAULT 'ALERTA',
+        "status" "WhatsAppStatus" NOT NULL DEFAULT 'PENDENTE',
+        "tentativas" INTEGER NOT NULL DEFAULT 0,
+        "erro" TEXT,
+        "jitterSegundos" INTEGER NOT NULL DEFAULT 4,
+        "agendadoPara" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "enviadoEm" TIMESTAMP(3),
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE TABLE IF NOT EXISTS "whatsapp_opt_out" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "telefone" TEXT NOT NULL UNIQUE,
+        "motivo" TEXT DEFAULT 'Solicitação do usuário',
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE TABLE IF NOT EXISTS "asaas_webhook_event" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "evento" TEXT NOT NULL,
+        "tenantId" TEXT,
+        "payload" JSONB,
+        "processado" BOOLEAN NOT NULL DEFAULT false,
+        "processadoEm" TIMESTAMP(3),
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+    ];
+
+    for (const stmt of ddlSaaS) {
+      await prisma.$executeRawUnsafe(stmt).catch((err) => {
+        console.warn("[entrypoint] Aviso DDL SaaS:", err.message);
+      });
+    }
+
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     const passwordHash = await bcrypt.hash(rawPassword, 10);

@@ -103,20 +103,29 @@ export async function authorizeCredentials(
   let targetUser: StoredAuthUser | null = null;
 
   try {
-    const dbUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      include: {
-        tenantMemberships: {
-          include: {
-            tenant: true,
+    let dbUser: any = null;
+    try {
+      dbUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        include: {
+          tenantMemberships: {
+            include: {
+              tenant: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch {
+      // Fallback: busca o usuário diretamente se a tabela de relacionamento falhar no join
+      dbUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+    }
+
     if (dbUser) {
       const primaryMembership = dbUser.tenantMemberships?.[0];
       const isSuper =
-        (dbUser as any).isSuperAdmin ||
+        Boolean((dbUser as any).isSuperAdmin) ||
         dbUser.role === "SUPERADMIN" ||
         normalizedEmail === "vitorhenrique018@gmail.com" ||
         normalizedEmail === "alfredosouza100@gmail.com";

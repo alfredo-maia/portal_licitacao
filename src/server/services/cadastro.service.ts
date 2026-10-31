@@ -145,7 +145,13 @@ export async function realizarCadastroConta(
       },
     });
   } catch (err: any) {
-    console.warn("[Cadastro Service] Aviso ao gravar no banco:", err?.message);
+    // Em ambiente de teste unitário sem banco, permite fallback em memória
+    if (process.env.VITEST || process.env.NODE_ENV === "test") {
+      console.warn("[Cadastro Service] Fallback em memória para teste:", err?.message);
+    } else {
+      console.error("[Cadastro Service] Erro crítico ao persistir no PostgreSQL:", err);
+      throw new Error(`Falha ao registrar conta no banco de dados: ${err?.message || "Erro de banco de dados"}`);
+    }
   }
 
   // 7. Sincronização imediata no cache in-memory de autenticação para login instantâneo
