@@ -74,9 +74,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsSideNavExpanded((prev) => !prev);
   };
 
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+        document.cookie = "portal_licitacao_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "__Secure-next-auth.session-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      } catch {
+        // Ignora erros de storage
+      }
+      try {
+        fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+      } catch {
+        // Ignora falhas de rede no logout
+      }
+    }
+    signOut({ callbackUrl: "/login" });
+  };
+
   const isAuthRoute =
     pathname === "/login" ||
     pathname === "/cadastro" ||
+    pathname === "/esqueci-senha" ||
     pathname === "/recuperar-senha";
 
   if (isAuthRoute) {
@@ -129,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <HeaderGlobalAction
             aria-label="Sair da Conta (Logout)"
             data-testid="header-logout-btn"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={handleLogout}
           >
             <Logout size={20} />
           </HeaderGlobalAction>

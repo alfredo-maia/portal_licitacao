@@ -498,7 +498,11 @@ export default function CadastroPage() {
                     <Button
                       type="submit"
                       data-testid="cadastro-submit"
-                      disabled={isSubmitting || segmentosSelecionados.length === 0}
+                      disabled={
+                        isSubmitting ||
+                        segmentosSelecionados.length === 0 ||
+                        (!brasilInteiro && ufsSelecionadas.length === 0)
+                      }
                       renderIcon={CheckmarkOutline}
                       style={{ flex: 2, minWidth: "240px" }}
                     >

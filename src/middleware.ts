@@ -2,15 +2,32 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+const PUBLIC_ROUTES = [
+  "/login",
+  "/cadastro",
+  "/esqueci-senha",
+  "/recuperar-senha",
+];
+
 /**
- * Middleware de Segurança e Governança Multi-Tenant (PRD §6, §13 / ADR 0010):
- * 1. Barreira Invisível para o Portal SuperAdmin (/admin): Retorna 404 para não administradores.
- * 2. Soft Paywall: Permite tráfego normal para Whitelist e redireciona clientes bloqueados.
+ * Middleware de Segurança, Autenticação Estrita e Governança Multi-Tenant (PRD §6, §13 / ADR 0010 / Issue #20):
+ * 1. Rotas Públicas: Libera /login, /cadastro, /esqueci-senha sem verificação de sessão.
+ * 2. Barreira Invisível para o Portal SuperAdmin (/admin): Retorna 404 para não administradores.
+ * 3. Proteção Estrita de Rotas Pós-Logout: Redireciona (307) para /login se não houver cookie de sessão ativo.
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Proteção de Borda Defensiva para o Portal SuperAdmin
+  // 1. Liberação de rotas públicas de autenticação
+  const isPublicRoute = PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+
+  if (isPublicRoute) {
+    return NextResponse.next();
+  }
+
+  // 2. Proteção de Borda Defensiva para o Portal SuperAdmin (/admin)
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     const hasSecureCookie = Boolean(
       req.cookies.get("__Secure-next-auth.session-token")?.value,
@@ -58,11 +75,24 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // 3. Verificação de Sessão Ativa em Rotas Protegidas
+  const hasSession = Boolean(
+    req.cookies.get("next-auth.session-token")?.value ||
+    req.cookies.get("__Secure-next-auth.session-token")?.value ||
+    req.cookies.get("portal_licitacao_token")?.value,
+  );
+
+  if (!hasSession) {
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl, 307);
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    "/admin/:path*",
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 };

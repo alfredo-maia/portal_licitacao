@@ -6,6 +6,8 @@ import { TenantBillingStatusType } from "@/server/schemas/asaas.schema";
 export const ROTAS_WHITELIST_PAYWALL = [
   "/",
   "/login",
+  "/cadastro",
+  "/esqueci-senha",
   "/recuperar-senha",
   "/faturamento",
   "/checkout",

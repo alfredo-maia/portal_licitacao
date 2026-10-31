@@ -344,16 +344,17 @@ export default function LoginPage() {
                       >
                         Senha
                       </label>
-                      <a
-                        href="/recuperar-senha"
+                      <Link
+                        href="/esqueci-senha"
+                        data-testid="link-esqueci-senha"
                         style={{
                           fontSize: "0.75rem",
                           color: "var(--cds-link-primary)",
                           textDecoration: "none",
                         }}
                       >
-                        Esqueceu a senha?
-                      </a>
+                        Esqueci minha senha
+                      </Link>
                     </div>
                     <PasswordInput
                       id="login-password"

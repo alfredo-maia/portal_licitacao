@@ -375,7 +375,7 @@ export default function ConfiguracoesPage() {
                         {currentUser?.name || "Usuário"}
                       </h2>
                       <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-                        {currentUser?.email || "usuario@empresa.com.br"}
+                        {currentUser?.email || ""}
                       </div>
                       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
                         <Tag type="blue" size="sm">
