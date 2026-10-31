@@ -193,7 +193,7 @@ function OportunidadesContent() {
   }, [fetchOportunidades]);
 
   // Carrega preferências do Tenant
-  React.useEffect(() => {
+  const carregarPreferencias = React.useCallback(() => {
     fetch("/api/tenant/preferencias")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -203,6 +203,17 @@ function OportunidadesContent() {
       })
       .catch(() => undefined);
   }, []);
+
+  React.useEffect(() => {
+    carregarPreferencias();
+
+    const handleTenantChanged = () => {
+      carregarPreferencias();
+      fetchOportunidades();
+    };
+    window.addEventListener("tenant-changed", handleTenantChanged);
+    return () => window.removeEventListener("tenant-changed", handleTenantChanged);
+  }, [carregarPreferencias, fetchOportunidades]);
 
   // Inicializa os filtros com base na URL
   React.useEffect(() => {
@@ -470,44 +481,79 @@ function OportunidadesContent() {
         </div>
 
         <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-          {/* Segmento / Ramo */}
-          <Dropdown
-            id="filter-segmento"
-            data-testid="filter-segmento"
-            titleText="Segmento / Ramo"
-            label="Todos os Segmentos"
-            items={[
-              { id: "", text: "Todos os Segmentos" },
-              ...(preferencias?.segmentos && preferencias.segmentos.length > 0
-                ? preferencias.segmentos.map((code) => ({
+          {/* Segmento / Ramo: MultiSelect quando a empresa possui múltiplos segmentos cadastrados */}
+          {preferencias?.segmentos && preferencias.segmentos.length >= 2 ? (
+            <div style={{ minWidth: "240px" }} data-testid="filter-segmento-multiselect-wrapper">
+              <MultiSelect
+                id="filter-segmento"
+                data-testid="filter-segmento"
+                titleText="Segmentos da Empresa"
+                label="Todos os seus segmentos"
+                items={preferencias.segmentos.map((code) => ({
+                  id: code,
+                  text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
+                }))}
+                itemToString={(item: any) => (item ? item.text : "")}
+                selectedItems={preferencias.segmentos
+                  .filter((code) =>
+                    filtroSegmento
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .includes(code),
+                  )
+                  .map((code) => ({
                     id: code,
                     text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
-                  }))
-                : Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => ({
-                    id: macro.codigo,
-                    text: macro.nome,
-                  }))),
-            ]}
-            itemToString={(item) => (item ? item.text : "")}
-            selectedItem={
-              filtroSegmento
-                ? {
-                    id: filtroSegmento,
-                    text:
-                      CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]?.nome ||
-                      filtroSegmento,
-                  }
-                : null
-            }
-            onChange={({ selectedItem }) => {
-              const novoSeg = selectedItem?.id || "";
-              handleFiltersChange({
-                segmento: novoSeg,
-                subsegmento: "",
-              });
-            }}
-            style={{ minWidth: "220px" }}
-          />
+                  }))}
+                onChange={({ selectedItems }: any) => {
+                  const codes = (selectedItems || []).map((i: any) => i.id).join(",");
+                  handleFiltersChange({
+                    segmento: codes,
+                    subsegmento: "",
+                  });
+                }}
+              />
+            </div>
+          ) : (
+            <Dropdown
+              id="filter-segmento"
+              data-testid="filter-segmento"
+              titleText="Segmento / Ramo"
+              label="Todos os Segmentos da Empresa"
+              items={[
+                { id: "", text: "Todos os Segmentos da Empresa" },
+                ...(preferencias?.segmentos && preferencias.segmentos.length > 0
+                  ? preferencias.segmentos.map((code) => ({
+                      id: code,
+                      text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
+                    }))
+                  : Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => ({
+                      id: macro.codigo,
+                      text: macro.nome,
+                    }))),
+              ]}
+              itemToString={(item) => (item ? item.text : "")}
+              selectedItem={
+                filtroSegmento
+                  ? {
+                      id: filtroSegmento,
+                      text:
+                        CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]?.nome ||
+                        filtroSegmento,
+                    }
+                  : null
+              }
+              onChange={({ selectedItem }) => {
+                const novoSeg = selectedItem?.id || "";
+                handleFiltersChange({
+                  segmento: novoSeg,
+                  subsegmento: "",
+                });
+              }}
+              style={{ minWidth: "220px" }}
+            />
+          )}
 
           {/* Sub-segmento dinâmico (restrito ao que o cliente escolheu na Seção 5 de Configurações) */}
           <Dropdown

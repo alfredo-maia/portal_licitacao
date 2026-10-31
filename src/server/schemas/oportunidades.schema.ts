@@ -35,6 +35,10 @@ export const parecerIAFilterSchema = z
 export const oportunidadesFilterSchema = z.object({
   tipoSistema: tipoSistemaCodigoSchema.optional(),
   segmento: z.string().optional(),
+  segmentosTenantAtivo: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) => (Array.isArray(val) ? val : [val]))
+    .optional(),
   subsegmento: z.string().optional(),
   uf: z
     .string()

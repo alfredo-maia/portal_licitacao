@@ -113,6 +113,37 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   if (filters.tipoSistema) {
     and.push({ tipoSistemaCodigo: filters.tipoSistema });
   }
+  if (filters.segmento) {
+    const selectedSegments = filters.segmento
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (selectedSegments.length === 1) {
+      and.push({
+        OR: [
+          { segmentoMacro: selectedSegments[0] },
+          { tipoSistemaCodigo: selectedSegments[0] as any },
+        ],
+      });
+    } else if (selectedSegments.length > 1) {
+      and.push({
+        OR: [
+          { segmentoMacro: { in: selectedSegments } },
+          { tipoSistemaCodigo: { in: selectedSegments as any } },
+        ],
+      });
+    }
+  } else if (
+    filters.segmentosTenantAtivo &&
+    filters.segmentosTenantAtivo.length > 0
+  ) {
+    and.push({
+      OR: [
+        { segmentoMacro: { in: filters.segmentosTenantAtivo } },
+        { tipoSistemaCodigo: { in: filters.segmentosTenantAtivo as any } },
+      ],
+    });
+  }
   if (filters.uf) {
     const ufs = filters.uf
       .split(",")
@@ -226,12 +257,32 @@ function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolea
   if (filters.tipoSistema && enriched.tipoSistemaCodigo !== filters.tipoSistema) {
     return false;
   }
-  if (
-    filters.segmento &&
-    (enriched as any).segmentoMacro !== filters.segmento &&
-    enriched.tipoSistemaCodigo !== filters.segmento
+  if (filters.segmento) {
+    const selectedSegments = filters.segmento
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (selectedSegments.length > 0) {
+      const macro = (enriched as any).segmentoMacro;
+      const tipo = enriched.tipoSistemaCodigo;
+      const matchesAny =
+        selectedSegments.includes(macro) || selectedSegments.includes(tipo);
+      if (!matchesAny) {
+        return false;
+      }
+    }
+  } else if (
+    filters.segmentosTenantAtivo &&
+    filters.segmentosTenantAtivo.length > 0
   ) {
-    return false;
+    const macro = (enriched as any).segmentoMacro;
+    const tipo = enriched.tipoSistemaCodigo;
+    const matchesTenant =
+      filters.segmentosTenantAtivo.includes(macro) ||
+      filters.segmentosTenantAtivo.includes(tipo);
+    if (!matchesTenant) {
+      return false;
+    }
   }
   if (filters.subsegmento) {
     const subs: string[] = Array.isArray((enriched as any).subcategorias)

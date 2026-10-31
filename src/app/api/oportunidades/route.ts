@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions, DIRECTORS_SEED } from "@/server/auth";
@@ -8,17 +9,34 @@ import {
   listOportunidadesPaginadas,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
+import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 
 /**
  * `GET /api/oportunidades` (sprint-2-spec §2.2): listagem paginada ordenada por
  * `dataAbertura ASC` com filtros e paginação (`page`, `pageSize`).
  */
 export async function GET(request: Request) {
-  const params = Object.fromEntries(
+  const params: Record<string, any> = Object.fromEntries(
     new URL(request.url).searchParams.entries(),
   );
 
   try {
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    if (tenantId && !params.segmentosTenantAtivo) {
+      try {
+        const cfg = await obterConfiguracaoEmpresa(tenantId);
+        if (cfg?.segmentos && cfg.segmentos.length > 0) {
+          params.segmentosTenantAtivo = cfg.segmentos;
+        }
+      } catch {}
+    }
+
     const result = await listOportunidadesPaginadas(params);
     return NextResponse.json(
       {
