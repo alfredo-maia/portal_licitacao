@@ -140,8 +140,32 @@ export async function atualizarConfiguracaoEmpresa(
   }
 }
 
-export async function listarEquipe(): Promise<UsuarioEquipeListResponse> {
+export async function listarEquipe(
+  tenantId?: string | null,
+): Promise<UsuarioEquipeListResponse> {
   try {
+    if (tenantId) {
+      const memberships = await prisma.tenantUser.findMany({
+        where: { tenantId },
+        include: { user: true },
+        orderBy: { criadoEm: "asc" },
+      });
+
+      return {
+        ok: true,
+        total: memberships.length,
+        usuarios: memberships.map((m) => ({
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          role: (m.user.role === "OPERADOR" ? "OPERADOR_TECNICO" : m.user.role) as any,
+          ativo: m.ativo && m.user.ativo,
+          createdAt: m.user.createdAt,
+          updatedAt: m.user.updatedAt,
+        })),
+      };
+    }
+
     const usuarios = await prisma.user.findMany({
       orderBy: [{ role: "asc" }, { name: "asc" }],
       select: {
@@ -169,7 +193,7 @@ export async function listarEquipe(): Promise<UsuarioEquipeListResponse> {
       })),
     };
   } catch {
-    const usuarios = listInMemoryUsuarios();
+    const usuarios = listInMemoryUsuarios(tenantId);
     return {
       ok: true,
       total: usuarios.length,
@@ -190,6 +214,7 @@ export async function criarMembroEquipe(
   data: UsuarioEquipeCriarInput,
   usuarioId?: string | null,
   actor?: { id: string; role: string },
+  tenantId?: string | null,
 ): Promise<UsuarioEquipeItem> {
   const validado = usuarioEquipeCriarInputSchema.parse(data);
 
@@ -218,10 +243,22 @@ export async function criarMembroEquipe(
       },
     });
 
+    if (tenantId) {
+      await prisma.tenantUser.create({
+        data: {
+          tenantId,
+          userId: novo.id,
+          role: "MEMBRO",
+          ativo: validado.ativo,
+        },
+      });
+    }
+
     await recordAuditLog({
       acao: "USUARIO_CRIADO",
       entidadeTipo: "USUARIO",
       entidadeId: novo.id,
+      tenantId: tenantId ?? null,
       usuarioId: usuarioId ?? null,
       depois: { name: novo.name, email: novo.email, role: validado.role },
     });
@@ -241,12 +278,14 @@ export async function criarMembroEquipe(
       email: validado.email,
       role: validado.role,
       ativo: validado.ativo,
+      tenantId: tenantId ?? null,
     });
 
     await recordAuditLog({
       acao: "USUARIO_CRIADO",
       entidadeTipo: "USUARIO",
       entidadeId: memoria.id,
+      tenantId: tenantId ?? null,
       usuarioId: usuarioId ?? null,
       depois: { name: memoria.name, email: memoria.email, role: validado.role },
     });
@@ -260,8 +299,31 @@ export async function atualizarMembroEquipe(
   data: UsuarioEquipeAtualizarInput,
   usuarioId?: string | null,
   actor?: { id: string; role: string },
+  tenantId?: string | null,
 ): Promise<UsuarioEquipeItem | null> {
   const validado = usuarioEquipeAtualizarInputSchema.parse(data);
+
+  if (tenantId) {
+    let pertenceAoTenant = false;
+    try {
+      const membership = await prisma.tenantUser.findUnique({
+        where: {
+          tenantId_userId: {
+            tenantId,
+            userId: id,
+          },
+        },
+      });
+      pertenceAoTenant = Boolean(membership);
+    } catch {
+      const memUser = getInMemoryUsuario(id);
+      pertenceAoTenant = Boolean(memUser && (!memUser.tenantId || memUser.tenantId === tenantId));
+    }
+
+    if (!pertenceAoTenant) {
+      throw new Error("Colaborador não pertence à sua organização.");
+    }
+  }
 
   if (actor) {
     let existingUser: any;
@@ -312,10 +374,18 @@ export async function atualizarMembroEquipe(
       },
     });
 
+    if (tenantId && validado.ativo !== undefined) {
+      await prisma.tenantUser.updateMany({
+        where: { tenantId, userId: id },
+        data: { ativo: validado.ativo },
+      }).catch(() => undefined);
+    }
+
     await recordAuditLog({
       acao: "USUARIO_ATUALIZADO",
       entidadeTipo: "USUARIO",
       entidadeId: id,
+      tenantId: tenantId ?? null,
       usuarioId: usuarioId ?? null,
       depois: validado as any,
     });
@@ -329,7 +399,10 @@ export async function atualizarMembroEquipe(
       createdAt: atualizado.createdAt,
       updatedAt: atualizado.updatedAt,
     };
-  } catch {
+  } catch (err: any) {
+    if (err.message?.includes("não pertence")) {
+      throw err;
+    }
     const memoria = updateInMemoryUsuario(id, validado);
     if (!memoria) return null;
 
@@ -337,6 +410,7 @@ export async function atualizarMembroEquipe(
       acao: "USUARIO_ATUALIZADO",
       entidadeTipo: "USUARIO",
       entidadeId: id,
+      tenantId: tenantId ?? null,
       usuarioId: usuarioId ?? null,
       depois: validado as any,
     });

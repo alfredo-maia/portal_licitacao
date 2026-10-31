@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/server/auth";
 import { usuarioEquipeCriarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   criarMembroEquipe,
@@ -10,7 +11,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req?: Request) {
   try {
-    const resultado = await listarEquipe();
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = (session?.user as any)?.activeTenantId;
+
+    const resultado = await listarEquipe(tenantId);
     return NextResponse.json(resultado);
   } catch (error: any) {
     return NextResponse.json(
@@ -22,7 +26,8 @@ export async function GET(_req?: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeCriarInputSchema.safeParse(body);
 
@@ -45,11 +50,15 @@ export async function POST(req: Request) {
       parseResult.data,
       (session?.user as any)?.id,
       actor,
+      tenantId,
     );
 
     return NextResponse.json({ ok: true, usuario }, { status: 201 });
   } catch (error: any) {
-    const isPermissionError = error.message?.includes("não pode") || error.message?.includes("não possui permissão");
+    const isPermissionError =
+      error.message?.includes("não pode") ||
+      error.message?.includes("não possui permissão") ||
+      error.message?.includes("não pertence");
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao criar membro da equipe" },
       { status: isPermissionError ? 403 : 500 },

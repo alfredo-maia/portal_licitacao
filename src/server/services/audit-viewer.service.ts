@@ -9,11 +9,14 @@ import {
 
 export async function listarAuditLogs(
   rawQuery?: Partial<AuditViewerQuery>,
+  sessionTenantId?: string | null,
 ): Promise<AuditViewerListResponse> {
   const query = auditViewerQuerySchema.parse(rawQuery ?? {});
+  const effectiveTenantId = sessionTenantId ?? query.tenantId;
 
   try {
     const where: any = {};
+    if (effectiveTenantId) where.tenantId = effectiveTenantId;
     if (query.entidadeTipo) where.entidadeTipo = query.entidadeTipo;
     if (query.acao) where.acao = query.acao;
     if (query.usuarioId) where.usuarioId = query.usuarioId;
@@ -41,6 +44,7 @@ export async function listarAuditLogs(
       ocorridoEm: l.ocorridoEm,
       usuarioId: l.usuarioId,
       usuarioNome: l.usuarioNome,
+      tenantId: l.tenantId,
       ip: l.ip,
       acao: l.acao,
       entidadeTipo: l.entidadeTipo,
@@ -60,6 +64,9 @@ export async function listarAuditLogs(
   } catch {
     // Fallback em memória
     let logs = [...getInMemoryAuditLogs()];
+    if (effectiveTenantId) {
+      logs = logs.filter((l) => (l as any).tenantId === effectiveTenantId);
+    }
     if (query.entidadeTipo) {
       logs = logs.filter((l) => l.entidadeTipo === query.entidadeTipo);
     }
@@ -100,6 +107,7 @@ export async function listarAuditLogs(
         ocorridoEm: new Date(l.ocorridoEm),
         usuarioId: l.usuarioId ?? null,
         usuarioNome: l.usuarioNome ?? null,
+        tenantId: (l as any).tenantId ?? null,
         ip: l.ip ?? null,
         acao: l.acao,
         entidadeTipo: l.entidadeTipo,
@@ -130,9 +138,10 @@ function sanitizarCelulaCsv(valor: any): string {
 
 export async function exportarAuditLogsCsv(
   rawQuery?: Partial<AuditViewerQuery>,
+  sessionTenantId?: string | null,
 ): Promise<string> {
   const query = { ...(rawQuery ?? {}), page: 1, pageSize: 1000 };
-  const resultado = await listarAuditLogs(query);
+  const resultado = await listarAuditLogs(query, sessionTenantId);
 
   const colunas = [
     "ID",

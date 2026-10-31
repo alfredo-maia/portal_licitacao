@@ -566,12 +566,21 @@ export function updateInMemoryConfiguracaoEmpresa(patch: any): any {
   return { ...configuracaoEmpresaStore };
 }
 
-export function listInMemoryUsuarios(): any[] {
-  return Array.from(usuariosStore.values());
+export function listInMemoryUsuarios(tenantId?: string | null): any[] {
+  const all = Array.from(usuariosStore.values());
+  if (tenantId) {
+    return all.filter((u) => u.tenantId === tenantId);
+  }
+  return all;
 }
 
-export function getInMemoryUsuario(id: string): any | null {
-  return usuariosStore.get(id) || null;
+export function getInMemoryUsuario(id: string, tenantId?: string | null): any | null {
+  const user = usuariosStore.get(id) || null;
+  if (!user) return null;
+  if (tenantId && user.tenantId && user.tenantId !== tenantId) {
+    return null;
+  }
+  return user;
 }
 
 export function insertInMemoryUsuario(data: any): any {
@@ -583,6 +592,7 @@ export function insertInMemoryUsuario(data: any): any {
     email: data.email,
     role: data.role || "ANALISTA_COMERCIAL",
     ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
+    tenantId: data.tenantId || null,
     createdAt: now,
     updatedAt: now,
   };

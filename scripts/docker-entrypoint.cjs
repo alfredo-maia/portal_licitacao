@@ -510,6 +510,43 @@ async function bootstrapDatabase() {
       });
     }
 
+    const defaultTenant = await prisma.tenant.upsert({
+      where: { cnpj: "12.345.678/0001-90" },
+      update: {},
+      create: {
+        id: "tenant_aponta_matriz",
+        cnpj: "12.345.678/0001-90",
+        razaoSocial: "APONTA TECNOLOGIA LTDA",
+        nomeFantasia: "Aponta Tecnologia",
+        plano: "ENTERPRISE",
+        billingStatus: "ATIVO",
+        brasilInteiro: true,
+      },
+    });
+
+    for (const director of DIRECTORS_SEED) {
+      const u = await prisma.user.findUnique({
+        where: { email: director.email },
+      });
+      if (u) {
+        await prisma.tenantUser.upsert({
+          where: {
+            tenantId_userId: {
+              tenantId: defaultTenant.id,
+              userId: u.id,
+            },
+          },
+          update: { role: "TITULAR", ativo: true },
+          create: {
+            tenantId: defaultTenant.id,
+            userId: u.id,
+            role: "TITULAR",
+            ativo: true,
+          },
+        }).catch(() => undefined);
+      }
+    }
+
     console.log(
       "[entrypoint] Migrations e seed dos 2 diretores verificados com sucesso.",
     );

@@ -13,6 +13,7 @@ export const auditActionSchema = z.enum([
 export const auditLogInputSchema = z.object({
   usuarioId: z.string().nullable().optional(),
   usuarioNome: z.string().nullable().optional(),
+  tenantId: z.string().nullable().optional(),
   ip: z.string().nullable().optional(),
   acao: z.string().min(1),
   entidadeTipo: z.string().min(1),

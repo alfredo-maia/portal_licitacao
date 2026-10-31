@@ -13,6 +13,7 @@ export type { AuditLogInput, AuditLogRecord };
 export interface AuditActorContext {
   usuarioId?: string | null;
   usuarioNome?: string | null;
+  tenantId?: string | null;
   ip?: string | null;
 }
 
@@ -44,6 +45,7 @@ export async function recordAuditLog(
 
   const usuarioId = parsed.usuarioId ?? actor?.usuarioId ?? null;
   const usuarioNome = parsed.usuarioNome ?? actor?.usuarioNome ?? null;
+  const tenantId = parsed.tenantId ?? actor?.tenantId ?? null;
   const ip = parsed.ip ?? actor?.ip ?? null;
   const antes = parsed.antes ?? null;
   const depois = parsed.depois ?? null;
@@ -64,6 +66,7 @@ export async function recordAuditLog(
       data: {
         usuarioId: dbUsuarioId,
         usuarioNome,
+        tenantId,
         ip,
         acao: parsed.acao,
         entidadeTipo: parsed.entidadeTipo,
@@ -78,6 +81,7 @@ export async function recordAuditLog(
       ocorridoEm: created.ocorridoEm,
       usuarioId: created.usuarioId ?? usuarioId,
       usuarioNome: created.usuarioNome ?? usuarioNome,
+      tenantId: created.tenantId ?? tenantId,
       ip: created.ip ?? ip,
       acao: created.acao,
       entidadeTipo: created.entidadeTipo,
@@ -95,6 +99,7 @@ export async function recordAuditLog(
       ocorridoEm: new Date(),
       usuarioId,
       usuarioNome,
+      tenantId,
       ip,
       acao: parsed.acao,
       entidadeTipo: parsed.entidadeTipo,

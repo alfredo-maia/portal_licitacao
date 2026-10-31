@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/server/auth";
 import { usuarioEquipeAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import { atualizarMembroEquipe } from "@/server/services/configuracoes.service";
 import { getInMemoryUsuario } from "@/server/services/licitacoes-store";
@@ -13,6 +14,40 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = (session?.user as any)?.activeTenantId;
+
+    if (tenantId) {
+      let membership: any;
+      try {
+        membership = await prisma.tenantUser.findUnique({
+          where: { tenantId_userId: { tenantId, userId: id } },
+          include: { user: true },
+        });
+      } catch {
+        const mem = getInMemoryUsuario(id, tenantId);
+        if (mem) membership = { user: mem };
+      }
+
+      if (!membership || !membership.user) {
+        return NextResponse.json(
+          { ok: false, error: "Usuário não encontrado" },
+          { status: 404 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        usuario: {
+          id: membership.user.id,
+          name: membership.user.name,
+          email: membership.user.email,
+          role: membership.user.role,
+          ativo: membership.ativo !== undefined ? membership.ativo : membership.user.ativo,
+        },
+      });
+    }
+
     let user: any;
     try {
       user = await prisma.user.findUnique({
@@ -45,7 +80,8 @@ export async function PATCH(
 ) {
   try {
     const { id } = await context.params;
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    const tenantId = (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeAtualizarInputSchema.safeParse(body);
 
@@ -69,6 +105,7 @@ export async function PATCH(
       parseResult.data,
       (session?.user as any)?.id,
       actor,
+      tenantId,
     );
 
     if (!usuario) {
@@ -83,7 +120,8 @@ export async function PATCH(
     const isPermissionError =
       error.message?.includes("não pode") ||
       error.message?.includes("Não é permitido") ||
-      error.message?.includes("não possui permissão");
+      error.message?.includes("não possui permissão") ||
+      error.message?.includes("não pertence");
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao atualizar usuário" },
       { status: isPermissionError ? 403 : 500 },
