@@ -275,3 +275,73 @@ export async function excluirPortal(
     return deleteInMemoryPortal(id);
   }
 }
+
+export async function buscarPortaisVencendoNoMes(
+  ano: number,
+  mes: number,
+): Promise<
+  Array<{
+    portalId: string;
+    nome: string;
+    dia: number;
+    mensagem: string;
+    linkDestino: "/portais";
+  }>
+> {
+  const inicioMes = new Date(Date.UTC(ano, mes - 1, 1, 3, 0, 0));
+  const fimMes = new Date(Date.UTC(ano, mes, 1, 2, 59, 59, 999));
+
+  try {
+    const portais = await prisma.portal.findMany({
+      where: {
+        dataVencimento: {
+          gte: inicioMes,
+          lte: fimMes,
+        },
+      },
+      orderBy: { dataVencimento: "asc" },
+    });
+
+    return portais.map((p) => {
+      const dataVenc = new Date(p.dataVencimento!);
+      const dia = parseInt(
+        dataVenc.toLocaleDateString("en-US", {
+          day: "numeric",
+          timeZone: "America/Sao_Paulo",
+        }),
+        10,
+      );
+      return {
+        portalId: p.id,
+        nome: p.nome,
+        dia,
+        mensagem: `Vencimento da anuidade do portal ${p.nome}`,
+        linkDestino: "/portais" as const,
+      };
+    });
+  } catch {
+    return listInMemoryPortais()
+      .filter((p) => {
+        if (!p.dataVencimento) return false;
+        const d = new Date(p.dataVencimento);
+        return d >= inicioMes && d <= fimMes;
+      })
+      .map((p) => {
+        const dataVenc = new Date(p.dataVencimento!);
+        const dia = parseInt(
+          dataVenc.toLocaleDateString("en-US", {
+            day: "numeric",
+            timeZone: "America/Sao_Paulo",
+          }),
+          10,
+        );
+        return {
+          portalId: p.id,
+          nome: p.nome,
+          dia,
+          mensagem: `Vencimento da anuidade do portal ${p.nome}`,
+          linkDestino: "/portais" as const,
+        };
+      });
+  }
+}

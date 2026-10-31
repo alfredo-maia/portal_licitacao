@@ -688,25 +688,6 @@ export default function PortaisPage() {
             </Column>
 
             <Column lg={16} md={8} sm={4}>
-              <FormGroup legendText="Configurações Técnicas e Integrações">
-                <div style={{ display: "flex", gap: "2rem" }}>
-                  <Checkbox
-                    id="portal-aceita-robo"
-                    labelText="Plataforma aceita Robô de Lances"
-                    checked={aceitaRobo}
-                    onChange={(_, { checked }) => setAceitaRobo(checked)}
-                  />
-                  <Checkbox
-                    id="portal-exige-cert"
-                    labelText="Exige Certificado Digital (A1/A3)"
-                    checked={exigeCertificadoDigital}
-                    onChange={(_, { checked }) => setExigeCertificadoDigital(checked)}
-                  />
-                </div>
-              </FormGroup>
-            </Column>
-
-            <Column lg={16} md={8} sm={4}>
               <TextInput
                 id="portal-suporte"
                 labelText="Contatos de Suporte Técnico"

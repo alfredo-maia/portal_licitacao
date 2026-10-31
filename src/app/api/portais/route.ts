@@ -4,9 +4,8 @@ import { authOptions } from "@/server/auth";
 import { criarPortal, listarPortais } from "@/server/services/portais.service";
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  const user = session?.user as { id?: string } | undefined;
-  if (!user?.id) {
+  const session = await getServerSession(authOptions).catch(() => null);
+  if (!session?.user) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
@@ -35,15 +34,15 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  const user = session?.user as { id?: string; role?: string } | undefined;
-  if (!user?.id) {
+  const session = await getServerSession(authOptions).catch(() => null);
+  if (!session?.user) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
+  const userId = (session.user as any)?.id || "usr_sistema";
 
   try {
     const body = await request.json();
-    const portal = await criarPortal(body, user.id);
+    const portal = await criarPortal(body, userId);
     return NextResponse.json({ ok: true, portal }, { status: 201 });
   } catch (error: any) {
     const errorMsg = error?.errors?.[0]?.message || error?.message || "Erro de validação ao salvar portal.";

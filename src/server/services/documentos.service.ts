@@ -282,6 +282,22 @@ export async function criarNovaVersao(
       },
     });
 
+    // Atualiza metadados do documento raiz para refletir a nova versão ativa
+    if (raizId && raizId !== novoDoc.id) {
+      await prisma.documento.update({
+        where: { id: raizId },
+        data: {
+          dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
+          dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+          arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
+          arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
+          arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
+          mimeType: validado.mimeType || docAtual.mimeType,
+          versao: docAtual.versao + 1,
+        },
+      }).catch(() => undefined);
+    }
+
     await recordAuditLog({
       acao: "DOCUMENTO_NOVA_VERSAO",
       entidadeTipo: "DOCUMENTO",
@@ -315,6 +331,18 @@ export async function criarNovaVersao(
       status: "ATIVO",
       criadoPorId: usuarioId || null,
     });
+
+    if (raizId) {
+      updateInMemoryDocumento(raizId, {
+        dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
+        dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+        arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
+        arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
+        arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
+        mimeType: validado.mimeType || docAtual.mimeType,
+        versao: (docAtual.versao || 1) + 1,
+      });
+    }
 
     return mapToDocumentoItem(novoDoc);
   }

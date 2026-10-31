@@ -42,12 +42,21 @@ interface AlertaDocumental {
   linkDestino: "/documentacao";
 }
 
+interface AlertaPortal {
+  portalId: string;
+  nome: string;
+  dia: number;
+  mensagem: string;
+  linkDestino: "/portais";
+}
+
 interface CalendarioResponse {
   ok: true;
   mes: number;
   ano: number;
   chips: CalendarioChip[];
   alertasDocumentais: AlertaDocumental[];
+  alertasPortais?: AlertaPortal[];
 }
 
 const MESES = [
@@ -289,6 +298,10 @@ export default function CalendarioPage() {
                   ? dados.alertasDocumentais.filter((a) => a.dia === dia)
                   : [];
 
+                const alertasPortaisDoDia = dia !== null && dados?.alertasPortais
+                  ? dados.alertasPortais.filter((a) => a.dia === dia)
+                  : [];
+
                 return (
                   <div
                     key={idx}
@@ -469,6 +482,30 @@ export default function CalendarioPage() {
                         }}
                       >
                         Documento - {alerta.titulo} (Atualizar)
+                      </div>
+                    ))}
+
+                    {/* Alertas de Vencimento de Portais */}
+                    {alertasPortaisDoDia.map((alerta) => (
+                      <div
+                        key={alerta.portalId}
+                        data-testid={`calendario-alerta-portal-${alerta.portalId}`}
+                        className="pncp-calendario-alerta"
+                        style={{
+                          backgroundColor: "var(--cds-layer-accent-01, rgba(142, 68, 173, 0.1))",
+                          borderLeft: "3px solid #8e44ad",
+                          color: "var(--cds-text-primary)",
+                          padding: "0.25rem 0.35rem",
+                          fontSize: "0.6875rem",
+                          borderRadius: "2px",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => router.push(alerta.linkDestino)}
+                        title={alerta.mensagem}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        🌐 Portal: {alerta.nome} (Anuidade)
                       </div>
                     ))}
                   </div>

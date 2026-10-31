@@ -42,12 +42,21 @@ export const calendarioAlertaDocumentalSchema = z.object({
   linkDestino: z.literal("/documentacao"),
 });
 
+export const calendarioAlertaPortalSchema = z.object({
+  portalId: z.string().min(1),
+  nome: z.string().min(1),
+  dia: z.number().int().min(1).max(31),
+  mensagem: z.string().min(1),
+  linkDestino: z.literal("/portais"),
+});
+
 export const calendarioResponseSchema = z.object({
   ok: z.literal(true),
   mes: z.number().int().min(1).max(12),
   ano: z.number().int(),
   chips: z.array(calendarioChipSchema),
   alertasDocumentais: z.array(calendarioAlertaDocumentalSchema),
+  alertasPortais: z.array(calendarioAlertaPortalSchema).optional().default([]),
 });
 
 export type CalendarioQuery = z.infer<typeof calendarioQuerySchema>;

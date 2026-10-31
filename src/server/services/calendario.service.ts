@@ -16,6 +16,7 @@ import {
 } from "./licitacoes-store";
 
 import { buscarDocumentosVencendoNoMes } from "./documentos.service";
+import { buscarPortaisVencendoNoMes } from "./portais.service";
 
 export async function getCalendarioData(
   rawQuery?: CalendarioQuery,
@@ -137,6 +138,7 @@ export async function getCalendarioData(
     .sort((a, b) => a.dia - b.dia);
 
   const alertasDocumentais = await buscarDocumentosVencendoNoMes(ano, mes);
+  const alertasPortais = await buscarPortaisVencendoNoMes(ano, mes);
 
   return {
     ok: true,
@@ -144,5 +146,6 @@ export async function getCalendarioData(
     ano,
     chips,
     alertasDocumentais,
+    alertasPortais,
   };
 }

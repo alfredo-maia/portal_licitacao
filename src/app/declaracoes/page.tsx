@@ -47,19 +47,19 @@ export default function DeclaracoesPage() {
   );
 
   // Form State
-  const [numeroEdital, setNumeroEdital] = useState("PE 045/2026-SEDUC");
-  const [orgaoNome, setOrgaoNome] = useState("Secretaria de Estado da Educação - Governo de Goiás");
-  const [objetoLicitacao, setObjetoLicitacao] = useState("Aquisição de estações de trabalho de alto desempenho e servidores para laboratórios de informática");
-  const [empresaRazaoSocial, setEmpresaRazaoSocial] = useState("APONTA TECNOLOGIA E SERVICOS LTDA");
-  const [empresaCnpj, setEmpresaCnpj] = useState("12.345.678/0001-90");
-  const [empresaEndereco, setEmpresaEndereco] = useState("Av. República do Líbano, 1200, Setor Oeste, Goiânia - GO, CEP 74115-030");
-  const [representanteNome, setRepresentanteNome] = useState("Vítor Henrique de Souza");
-  const [representanteCpf, setRepresentanteCpf] = useState("123.456.789-00");
-  const [representanteRg, setRepresentanteRg] = useState("5432109-SSP/GO");
-  const [representanteCargo, setRepresentanteCargo] = useState("Sócio-Administrador");
-  const [cidade, setCidade] = useState("Goiânia");
-  const [uf, setUf] = useState("GO");
-  const [dataDeclaracao, setDataDeclaracao] = useState("2026-10-25");
+  const [numeroEdital, setNumeroEdital] = useState("");
+  const [orgaoNome, setOrgaoNome] = useState("");
+  const [objetoLicitacao, setObjetoLicitacao] = useState("");
+  const [empresaRazaoSocial, setEmpresaRazaoSocial] = useState("");
+  const [empresaCnpj, setEmpresaCnpj] = useState("");
+  const [empresaEndereco, setEmpresaEndereco] = useState("");
+  const [representanteNome, setRepresentanteNome] = useState("");
+  const [representanteCpf, setRepresentanteCpf] = useState("");
+  const [representanteRg, setRepresentanteRg] = useState("");
+  const [representanteCargo, setRepresentanteCargo] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [uf, setUf] = useState("");
+  const [dataDeclaracao, setDataDeclaracao] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Oportunidades ativas para auto-preenchimento
   const [oportunidades, setOportunidades] = useState<any[]>([]);
@@ -81,11 +81,17 @@ export default function DeclaracoesPage() {
       })
       .catch(() => {});
 
-    fetch("/api/oportunidades?pageSize=10")
+    fetch("/api/oportunidades?status=MINHAS&pageSize=50")
       .then((res) => res.json())
       .then((data) => {
-        if (data.ok && Array.isArray(data.oportunidades)) {
+        if (data.ok && Array.isArray(data.oportunidades) && data.oportunidades.length > 0) {
           setOportunidades(data.oportunidades);
+          const primeira = data.oportunidades[0];
+          if (primeira) {
+            setNumeroEdital(primeira.numeroEdital || "");
+            setOrgaoNome(primeira.orgaoNome || "");
+            setObjetoLicitacao(primeira.miniResumo || primeira.resumo || "");
+          }
         }
       })
       .catch(() => {});
@@ -234,7 +240,7 @@ export default function DeclaracoesPage() {
           <style>
             @page {
               size: A4 portrait;
-              margin: 15mm;
+              margin: 12mm 15mm;
             }
             body {
               font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -242,11 +248,12 @@ export default function DeclaracoesPage() {
               margin: 0;
               padding: 0;
               background: #ffffff;
-              font-size: 11pt;
-              line-height: 1.5;
+              font-size: 10pt;
+              line-height: 1.35;
             }
             * { box-sizing: border-box; }
-            h1, h2, h3, h4 { color: #161616; margin-top: 0; }
+            h1, h2, h3, h4 { color: #161616; margin-top: 0; margin-bottom: 0.5rem; }
+            p { margin-top: 0; margin-bottom: 0.75rem; }
           </style>
         </head>
         <body>
@@ -345,36 +352,6 @@ export default function DeclaracoesPage() {
             <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
               Split-view dinâmico: preencha as variáveis à esquerda com vínculo aos certames e visualize a folha A4 em tempo real à direita para pronta impressão e assinatura digital.
             </p>
-          </div>
-
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <Button
-              kind="secondary"
-              size="md"
-              renderIcon={Printer}
-              onClick={handleImprimir}
-              id="btn-imprimir-a4"
-            >
-              Imprimir / PDF A4
-            </Button>
-            <Button
-              kind="tertiary"
-              size="md"
-              renderIcon={Copy}
-              onClick={handleCopiarTexto}
-              id="btn-copiar-declaracao"
-            >
-              {copiado ? "Texto Copiado!" : "Copiar Texto"}
-            </Button>
-            <Button
-              kind="ghost"
-              size="md"
-              renderIcon={DocumentDownload}
-              onClick={handleBaixarTxt}
-              id="btn-baixar-txt"
-            >
-              Exportar .TXT
-            </Button>
           </div>
         </div>
 
@@ -585,7 +562,7 @@ export default function DeclaracoesPage() {
               </Column>
             </Grid>
 
-            <div style={{ display: "flex", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
               <Button
                 kind="primary"
                 onClick={handleGerar}
@@ -593,6 +570,33 @@ export default function DeclaracoesPage() {
                 id="btn-atualizar-folha-a4"
               >
                 {carregando ? <InlineLoading description="Processando..." /> : "Atualizar Folha A4"}
+              </Button>
+              <Button
+                kind="secondary"
+                size="md"
+                renderIcon={Printer}
+                onClick={handleImprimir}
+                id="btn-imprimir-a4"
+              >
+                Imprimir / PDF A4
+              </Button>
+              <Button
+                kind="tertiary"
+                size="md"
+                renderIcon={Copy}
+                onClick={handleCopiarTexto}
+                id="btn-copiar-declaracao"
+              >
+                {copiado ? "Texto Copiado!" : "Copiar Texto"}
+              </Button>
+              <Button
+                kind="ghost"
+                size="md"
+                renderIcon={DocumentDownload}
+                onClick={handleBaixarTxt}
+                id="btn-baixar-txt"
+              >
+                Exportar .TXT
               </Button>
             </div>
           </Tile>
