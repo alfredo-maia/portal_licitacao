@@ -8,9 +8,18 @@ export const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
   "image/png",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
 
-export const ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"] as const;
+export const ALLOWED_EXTENSIONS = [
+  ".pdf",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".doc",
+  ".docx",
+] as const;
 
 /** Teto máximo por arquivo individual: 20 MB */
 export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
@@ -31,7 +40,16 @@ export const PLAN_STORAGE_QUOTAS_MB: Record<string, number> = {
 export const TTL_CACHE_EDITAIS_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 export const validarArquivoUploadSchema = z.object({
-  nome: z.string().min(1).max(255),
+  nome: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine(
+      (nome) => !nome.toLowerCase().endsWith(".zip"),
+      {
+        message: "Arquivos compactados (.zip) não são permitidos. Envie os arquivos individualmente em formato PDF, DOCX, DOC ou imagem.",
+      },
+    ),
   tamanho: z
     .number()
     .int()
@@ -40,9 +58,15 @@ export const validarArquivoUploadSchema = z.object({
   mimeType: z
     .string()
     .refine(
-      (mime) => (ALLOWED_MIME_TYPES as readonly string[]).includes(mime),
+      (mime) => !mime.includes("zip"),
       {
-        message: "Tipo de arquivo não permitido. Apenas PDFs (.pdf) e imagens (.jpg, .png) são aceitos.",
+        message: "Arquivos compactados (.zip) não são permitidos. Envie os arquivos individualmente em formato PDF, DOCX, DOC ou imagem.",
+      },
+    )
+    .refine(
+      (mime) => (ALLOWED_MIME_TYPES as readonly string[]).includes(mime) || mime === "application/octet-stream",
+      {
+        message: "Tipo de arquivo não permitido. Apenas arquivos PDF (.pdf), Word (.doc, .docx) e imagens (.jpg, .png) são aceitos.",
       },
     ),
 });

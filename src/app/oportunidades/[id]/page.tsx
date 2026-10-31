@@ -19,6 +19,7 @@ import {
   InlineNotification,
   FilterableMultiSelect,
   InlineLoading,
+  Loading,
   Checkbox,
 } from "@carbon/react";
 import {
@@ -354,6 +355,13 @@ function OportunidadesDetalheContent({
   // Upload de Arquivo
   const handleUploadArquivo = async () => {
     if (!id || !uploadFile) return;
+    if (uploadFile.name.toLowerCase().endsWith(".zip")) {
+      showNotification(
+        "error",
+        "Arquivos compactados (.zip) não são permitidos. Envie os arquivos individualmente em formato PDF, DOCX, DOC ou imagem.",
+      );
+      return;
+    }
     setEnviandoArquivo(true);
     try {
       const formData = new FormData();
@@ -362,10 +370,13 @@ function OportunidadesDetalheContent({
         method: "POST",
         body: formData,
       });
-      if (!res.ok) throw new Error("Erro ao fazer upload do arquivo.");
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.mensagem || data?.error || "Erro ao fazer upload do arquivo.");
+      }
       setUploadFile(null);
       showNotification("success", "Arquivo anexado com sucesso!");
-      carregarDados(id);
+      await carregarDados(id);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro no upload.");
     } finally {
@@ -383,7 +394,7 @@ function OportunidadesDetalheContent({
       });
       if (!res.ok) throw new Error("Erro ao excluir arquivo.");
       showNotification("success", "Arquivo removido.");
-      carregarDados(id);
+      await carregarDados(id);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao excluir arquivo.");
     }
@@ -399,12 +410,27 @@ function OportunidadesDetalheContent({
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        throw new Error(data?.mensagem || data?.error || "Erro ao sincronizar arquivos do PNCP.");
+        throw new Error(
+          data?.mensagem || data?.error || "Falha de comunicação com o portal do PNCP ao baixar arquivos.",
+        );
       }
-      showNotification("success", data.mensagem || "Arquivos sincronizados com sucesso!");
+      if (data.sincronizados > 0) {
+        showNotification(
+          "success",
+          `${data.sincronizados} arquivos sincronizados com sucesso do PNCP.`,
+        );
+      } else {
+        showNotification(
+          "warning",
+          "Nenhum arquivo ou edital foi disponibilizado pelo órgão no PNCP para esta licitação.",
+        );
+      }
       await carregarDados(id);
     } catch (err) {
-      showNotification("error", err instanceof Error ? err.message : "Erro ao buscar edital no PNCP.");
+      showNotification(
+        "error",
+        err instanceof Error ? err.message : "Falha de comunicação com o portal do PNCP ao baixar arquivos.",
+      );
     } finally {
       setBuscandoPncp(false);
     }
@@ -741,7 +767,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação
+                🤖 Verificar Status de Participação ({oportunidade.analisesIA?.length || 0}/3)
               </Button>
             </div>
           ) : (
@@ -769,7 +795,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação
+                🤖 Verificar Status de Participação ({oportunidade.analisesIA?.length || 0}/3)
               </Button>
               {statusPipelineMsg && (
                 <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
@@ -898,20 +924,6 @@ Realize uma análise profunda estruturada em 4 dimensões:
                     </div>
                   )}
                 </div>
-
-                <div>
-                  <h4 style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
-                    Modalidade & Formato de Disputa
-                  </h4>
-                  <div style={{ fontSize: "1rem", fontWeight: 500 }}>
-                    {oportunidade.modalidade} •{" "}
-                    {oportunidade.isPresencial ? (
-                      <Tag type="red" size="sm">Presencial</Tag>
-                    ) : (
-                      <Tag type="green" size="sm">Eletrônica</Tag>
-                    )}
-                  </div>
-                </div>
               </div>
 
               {/* Logística se Presencial */}
@@ -1014,13 +1026,13 @@ Realize uma análise profunda estruturada em 4 dimensões:
               <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end", marginBottom: "2rem", flexWrap: "wrap" }}>
                 <FileDropZone
                   id="input-file-edital"
-                  label="Selecione ou arraste um arquivo para upload no Dossiê (PDF, DOCX, ZIP, XLSX)"
-                  accept=".pdf,.doc,.docx,.zip,.xlsx,.png,.jpg"
+                  label="Selecione ou arraste um arquivo para upload no Dossiê (PDF, DOC, DOCX, PNG, JPG)"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
                   selectedFile={uploadFile}
                   selectedFileName={uploadFile?.name}
                   onFileSelect={(file) => setUploadFile(file)}
                   onFileClear={() => setUploadFile(null)}
-                  helperText="Arraste e solte o arquivo aqui ou clique para selecionar"
+                  helperText="Arraste e solte o arquivo aqui ou clique para selecionar (Arquivos .zip não são permitidos)"
                   dataTestId="dropzone-file-edital"
                   style={{ flex: 1, minWidth: "280px", marginBottom: 0 }}
                 />
@@ -1371,6 +1383,34 @@ Realize uma análise profunda estruturada em 4 dimensões:
             />
           </div>
         )}
+      </Modal>
+
+      {/* Modal de Carregamento da Busca de Editais no PNCP */}
+      <Modal
+        open={buscandoPncp}
+        passiveModal
+        modalHeading="Sincronização de Arquivos com o PNCP"
+        preventCloseOnClickOutside
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "2rem 0",
+            gap: "1rem",
+          }}
+          data-testid="modal-loading-pncp"
+        >
+          <Loading withOverlay={false} description="Buscando no PNCP..." />
+          <p style={{ fontWeight: 600, color: "var(--cds-text-primary)", textAlign: "center", margin: 0 }}>
+            Buscando arquivos e editais oficiais no PNCP...
+          </p>
+          <span style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", textAlign: "center" }}>
+            Aguarde enquanto os anexos públicos são sincronizados com o dossiê da licitação.
+          </span>
+        </div>
       </Modal>
     </ModulePageShell>
   );
