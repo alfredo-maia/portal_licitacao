@@ -35,7 +35,7 @@ import {
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { getVisibleConfigTabs } from "@/lib/rbac";
-import { maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
+import { isValidCpf, maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
 import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 import { ESTADOS_BRASIL } from "@/config/estados";
 import type {
@@ -164,6 +164,14 @@ export default function ConfiguracoesPage() {
       if (data?.user) {
         setCurrentUser(data.user);
         if (data.user.role) setUserRole(data.user.role);
+        setPerfil((prev) => ({
+          ...prev,
+          name: prev.name || data.user.name || "",
+          email:
+            !prev.email || prev.email === "usuario@empresa.com.br"
+              ? data.user.email || prev.email
+              : prev.email,
+        }));
       }
     } catch {}
   }, []);
@@ -173,7 +181,17 @@ export default function ConfiguracoesPage() {
       const res = await fetch("/api/configuracoes/perfil");
       const data = await res.json();
       if (data.ok && data.perfil) {
-        setPerfil(data.perfil);
+        setPerfil((prev) => ({
+          ...data.perfil,
+          email:
+            data.perfil.email && data.perfil.email !== "usuario@empresa.com.br"
+              ? data.perfil.email
+              : prev.email || data.perfil.email,
+          name:
+            data.perfil.name && data.perfil.name !== "Usuário"
+              ? data.perfil.name
+              : prev.name || data.perfil.name,
+        }));
       }
     } catch {}
   }, []);
@@ -255,23 +273,40 @@ export default function ConfiguracoesPage() {
     }
   }, [visibleTabIds, abaSelecionada]);
 
-  // Tenant ativo resolvido
+  // Tenant ativo resolvido (Regra Geral: Trial = PRO; opaonossopanificadora@gmail.com = ENTERPRISE)
   const currentTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
-  const planoAtual = currentTenant?.plano || currentUser?.plano || "BASICO";
-  const billingStatus = currentTenant?.billingStatus || (currentUser as any)?.billingStatus || "TRIAL";
-  const maxCnpjs = currentTenant?.maxCnpjs || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
-  const maxUsers = currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 15 : planoAtual === "PRO" ? 5 : 1);
+  const isEnterpriseAccount =
+    currentUser?.email?.toLowerCase() === "opaonossopanificadora@gmail.com" ||
+    perfil.email?.toLowerCase() === "opaonossopanificadora@gmail.com";
+  const billingStatus = isEnterpriseAccount
+    ? "ATIVO"
+    : currentTenant?.billingStatus || (currentUser as any)?.billingStatus || "TRIAL";
+  const planoAtual = isEnterpriseAccount
+    ? "ENTERPRISE"
+    : billingStatus === "TRIAL"
+    ? "PRO"
+    : currentTenant?.plano || currentUser?.plano || "PRO";
+  const maxCnpjs = isEnterpriseAccount
+    ? 5
+    : billingStatus === "TRIAL"
+    ? Math.max(currentTenant?.maxCnpjs || 2, 2)
+    : currentTenant?.maxCnpjs || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
+  const maxUsers = isEnterpriseAccount
+    ? 10
+    : billingStatus === "TRIAL"
+    ? Math.max(currentTenant?.maxUsers || 2, 2)
+    : currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 10 : planoAtual === "PRO" ? 2 : 1);
   const isBasicoAtivo = planoAtual === "BASICO" && billingStatus !== "TRIAL";
 
   // Regra do Botão Adicionar CNPJ
-  const isCnpjLimitTrialOrBasico = billingStatus === "TRIAL" || planoAtual === "BASICO" || maxCnpjs <= 1;
-  const isCnpjLimitEnterpriseReached = planoAtual === "ENTERPRISE" && tenants.length >= 5;
-  const canAddCnpj = !isCnpjLimitTrialOrBasico && !isCnpjLimitEnterpriseReached;
+  const isCnpjLimitBasico = isBasicoAtivo || maxCnpjs <= 1;
+  const isCnpjLimitReached = tenants.length >= maxCnpjs;
+  const canAddCnpj = !isCnpjLimitBasico && !isCnpjLimitReached;
 
-  const tooltipAddCnpj = isCnpjLimitTrialOrBasico
+  const tooltipAddCnpj = isCnpjLimitBasico
     ? "Faça upgrade do seu plano para cadastrar múltiplos CNPJs."
-    : isCnpjLimitEnterpriseReached
-    ? "Você atingiu o limite máximo de 5 CNPJs do plano Enterprise."
+    : isCnpjLimitReached
+    ? `Você atingiu o limite máximo de ${maxCnpjs} CNPJ(s) do seu plano.`
     : undefined;
 
   // Regra de limite de usuários na equipe
@@ -305,6 +340,10 @@ export default function ConfiguracoesPage() {
   };
 
   const handleSalvarPerfil = async () => {
+    if (perfil.cpf && perfil.cpf.trim() !== "" && !isValidCpf(perfil.cpf)) {
+      setNotificacao({ tipo: "error", texto: "CPF inválido. Verifique os dígitos informados." });
+      return;
+    }
     if (novaSenha && novaSenha !== confirmarNovaSenha) {
       setNotificacao({ tipo: "error", texto: "A nova senha e a confirmação não coincidem." });
       return;
@@ -330,7 +369,16 @@ export default function ConfiguracoesPage() {
         setNotificacao({ tipo: "success", texto: "Seu perfil foi atualizado com sucesso!" });
         setNovaSenha("");
         setConfirmarNovaSenha("");
-        carregarPerfil();
+        if (data.perfil) {
+          setPerfil((prev) => ({
+            ...prev,
+            ...data.perfil,
+            email:
+              data.perfil.email && data.perfil.email !== "usuario@empresa.com.br"
+                ? data.perfil.email
+                : prev.email,
+          }));
+        }
       } else {
         setNotificacao({ tipo: "error", texto: data.error || "Erro ao salvar perfil." });
       }
@@ -585,9 +633,6 @@ export default function ConfiguracoesPage() {
               <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600 }}>
                 Configurações Corporativas
               </h1>
-              <Tag type="high-contrast" size="md" className="pncp-mono">
-                RBAC & Gestão Multi-CNPJ
-              </Tag>
             </div>
             <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
               Gestão de perfil de usuário, dados societários da empresa licitante e controle de membros da equipe.

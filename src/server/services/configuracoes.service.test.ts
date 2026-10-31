@@ -27,7 +27,7 @@ describe("Task 2 — Configurações Service (Meu Perfil, Multi-CNPJ, Planos & E
     it("deve atualizar dados cadastrais e endereço em Meu Perfil", async () => {
       const atualizado = await atualizarMeuPerfil("usr_test_1", {
         name: "Carlos Eduardo Silva",
-        cpf: "123.456.789-10",
+        cpf: "529.982.247-25",
         telefone: "(62) 98888-7777",
         cep: "74000-000",
         logradouro: "Rua 10",
@@ -39,7 +39,7 @@ describe("Task 2 — Configurações Service (Meu Perfil, Multi-CNPJ, Planos & E
       });
 
       expect(atualizado.name).toBe("Carlos Eduardo Silva");
-      expect(atualizado.cpf).toBe("123.456.789-10");
+      expect(atualizado.cpf).toBe("529.982.247-25");
       expect(atualizado.telefone).toBe("(62) 98888-7777");
       expect(atualizado.cep).toBe("74000-000");
       expect(atualizado.logradouro).toBe("Rua 10");

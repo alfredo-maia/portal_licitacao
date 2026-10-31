@@ -379,7 +379,40 @@ async function bootstrapDatabase() {
       );`,
       `CREATE INDEX IF NOT EXISTS "tenant_cnpj_idx" ON "tenant"("cnpj");`,
       `CREATE INDEX IF NOT EXISTS "tenant_plano_idx" ON "tenant"("plano");`,
+      `DO $$ BEGIN ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'SUPERADMIN'; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cpf" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "telefone" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cep" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "logradouro" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cidade" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "uf" TEXT;`,
+      `CREATE TABLE IF NOT EXISTS "TipoSistema" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "codigo" TEXT NOT NULL UNIQUE,
+        "nome" TEXT NOT NULL,
+        "ordem" INTEGER NOT NULL,
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "esfera" TEXT;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "poder" TEXT;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "portalDisputa" TEXT;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "atestadosExigidos" JSONB;`,
+      `ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "motivoRecusa" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "esfera" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "poder" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "portalDisputa" TEXT;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "atestadosExigidos" JSONB;`,
+      `ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "motivoRecusa" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "inscricaoMunicipal" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`,
       `CREATE TABLE IF NOT EXISTS "tenant_user" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
@@ -394,7 +427,7 @@ async function bootstrapDatabase() {
       `CREATE TABLE IF NOT EXISTS "tenant_licitacao" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
-        "licitacaoId" TEXT NOT NULL REFERENCES "licitacao"("id") ON DELETE CASCADE,
+        "licitacaoId" TEXT NOT NULL REFERENCES "Licitacao"("id") ON DELETE CASCADE,
         "statusKanban" "LicitacaoStatus" NOT NULL DEFAULT 'PENDENTE',
         "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
         "notas" TEXT,
@@ -546,6 +579,32 @@ async function bootstrapDatabase() {
         }).catch(() => undefined);
       }
     }
+
+    // Garante que todos os clientes em Teste Grátis (TRIAL) possuam plano base PRO (até 2 CNPJs e até 2 Colaboradores)
+    await prisma.$executeRawUnsafe(
+      `UPDATE "tenant" SET "plano" = 'PRO', "maxCnpjs" = GREATEST("maxCnpjs", 2), "maxUsers" = GREATEST("maxUsers", 2) WHERE "billingStatus" = 'TRIAL';`,
+    ).catch(() => undefined);
+
+    // Promove a conta opaonossopanificadora@gmail.com para o plano ENTERPRISE (até 5 CNPJs e 10 Colaboradores)
+    try {
+      const paoNossoUser = await prisma.user.findUnique({
+        where: { email: "opaonossopanificadora@gmail.com" },
+        include: { tenantMemberships: true },
+      });
+      if (paoNossoUser && paoNossoUser.tenantMemberships.length > 0) {
+        for (const membership of paoNossoUser.tenantMemberships) {
+          await prisma.tenant.update({
+            where: { id: membership.tenantId },
+            data: {
+              plano: "ENTERPRISE",
+              billingStatus: "ATIVO",
+              maxCnpjs: 5,
+              maxUsers: 10,
+            },
+          }).catch(() => undefined);
+        }
+      }
+    } catch {}
 
     console.log(
       "[entrypoint] Migrations e seed dos 2 diretores verificados com sucesso.",

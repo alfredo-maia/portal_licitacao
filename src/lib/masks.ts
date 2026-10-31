@@ -26,6 +26,8 @@ export function maskCpf(value: string): string {
     .replace(/\.(\d{3})(\d)/, ".$1-$2");
 }
 
+export { isValidCpf } from "./validations/cpf";
+
 /**
  * Aplica máscara de CEP (00000-000)
  */

@@ -132,18 +132,18 @@ export default function DeclaracoesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tipo: tipoSelecionado,
-          numeroEdital,
-          orgaoNome,
-          objetoLicitacao,
-          empresaRazaoSocial,
-          empresaCnpj,
-          empresaEndereco,
-          representanteNome,
-          representanteCpf,
-          representanteRg,
-          representanteCargo,
-          cidade,
-          uf,
+          numeroEdital: numeroEdital.trim() || "PE 001/2026",
+          orgaoNome: orgaoNome.trim() || "Órgão Público Licitante",
+          objetoLicitacao: objetoLicitacao.trim(),
+          empresaRazaoSocial: empresaRazaoSocial.trim() || "EMPRESA LICITANTE LTDA",
+          empresaCnpj: empresaCnpj.trim() || "00.000.000/0001-00",
+          empresaEndereco: empresaEndereco.trim(),
+          representanteNome: representanteNome.trim() || "Representante Legal",
+          representanteCpf: representanteCpf.trim() || "000.000.000-00",
+          representanteRg: representanteRg.trim(),
+          representanteCargo: representanteCargo.trim() || "Representante Legal",
+          cidade: cidade.trim() || "Goiânia",
+          uf: uf.trim() || "GO",
           dataDeclaracao,
         }),
       });
@@ -181,11 +181,6 @@ export default function DeclaracoesPage() {
     uf,
     dataDeclaracao,
   ]);
-
-  // Gera a primeira versão automaticamente ao carregar ou mudar tipo
-  useEffect(() => {
-    handleGerar();
-  }, [tipoSelecionado]);
 
   const handleVincularCertame = (licitacaoId: string) => {
     const selecionada = oportunidades.find((o) => o.id === licitacaoId);
@@ -236,24 +231,39 @@ export default function DeclaracoesPage() {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>${documentoGerado?.titulo || "Declaração Oficial"}</title>
+          <title>${documentoGerado?.titulo || metaAtual?.titulo || "Declaração Oficial"}</title>
           <style>
             @page {
               size: A4 portrait;
-              margin: 12mm 15mm;
+              margin: 10mm 14mm;
             }
-            body {
-              font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            html, body {
+              font-family: 'Times New Roman', Times, serif;
               color: #161616;
-              margin: 0;
-              padding: 0;
+              margin: 0 !important;
+              padding: 0 !important;
               background: #ffffff;
-              font-size: 10pt;
-              line-height: 1.35;
+              font-size: 10.5pt;
+              line-height: 1.38;
+              width: 100%;
+              max-height: 274mm !important;
+              overflow: hidden !important;
+              page-break-after: avoid !important;
+              page-break-before: avoid !important;
+              break-inside: avoid !important;
             }
             * { box-sizing: border-box; }
-            h1, h2, h3, h4 { color: #161616; margin-top: 0; margin-bottom: 0.5rem; }
-            p { margin-top: 0; margin-bottom: 0.75rem; }
+            .declaracao-a4-documento {
+              padding: 6mm 8mm !important;
+              max-width: 100% !important;
+              max-height: 270mm !important;
+              overflow: hidden !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-after: avoid !important;
+            }
+            h1, h2, h3, h4 { color: #161616; margin-top: 0; margin-bottom: 0.35rem; }
+            p { margin-top: 0; margin-bottom: 0.5rem; }
           </style>
         </head>
         <body>
@@ -289,23 +299,34 @@ export default function DeclaracoesPage() {
     <ModulePageShell routePath="/declaracoes" subtitle="Gerador de modelos oficiais.">
       <style>{`
         @media print {
-          /* Garante que apenas o documento oficial é impresso */
+          @page {
+            size: A4 portrait;
+            margin: 10mm 14mm;
+          }
+          /* Garante que apenas o documento oficial é impresso em 1 única página */
           body * {
             visibility: hidden !important;
           }
           #a4-folha-oficial, #a4-folha-oficial * {
             visibility: visible !important;
           }
-          #a4-folha-oficial {
+          #a4-folha-oficial, .a4-container {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
+            min-height: 0 !important;
+            max-height: 272mm !important;
+            height: auto !important;
+            overflow: hidden !important;
             margin: 0 !important;
-            padding: 1.5cm !important;
+            padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
+            page-break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-inside: avoid !important;
           }
           header, aside, nav, .cds--header, .cds--side-nav, .pncp-shell-header, .pncp-split-form, .pncp-no-print {
             display: none !important;
@@ -315,6 +336,8 @@ export default function DeclaracoesPage() {
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
+            max-height: 274mm !important;
+            overflow: hidden !important;
           }
         }
 
@@ -621,8 +644,155 @@ export default function DeclaracoesPage() {
                 dangerouslySetInnerHTML={{ __html: documentoGerado.conteudoHtml }}
               />
             ) : (
-              <div style={{ padding: "4rem 2rem", textAlign: "center", color: "#6f6f6f" }}>
-                <InlineLoading description="Carregando modelo A4 oficial..." />
+              <div
+                className="declaracao-a4-documento"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: "11pt",
+                  lineHeight: 1.42,
+                  color: "#161616",
+                  padding: "1.2cm 1.6cm",
+                  maxWidth: "21cm",
+                  maxHeight: "27.2cm",
+                  overflow: "hidden",
+                  margin: "0 auto",
+                  background: "#ffffff",
+                  boxSizing: "border-box",
+                }}
+              >
+                <header
+                  style={{
+                    borderBottom: "2px solid #161616",
+                    paddingBottom: "8px",
+                    marginBottom: "14px",
+                    textAlign: "center",
+                  }}
+                >
+                  <h2
+                    style={{
+                      fontSize: "13pt",
+                      margin: 0,
+                      textTransform: "uppercase",
+                      fontWeight: "bold",
+                      letterSpacing: "0.5px",
+                    }}
+                  >
+                    [RAZÃO SOCIAL DA EMPRESA LICITANTE]
+                  </h2>
+                  <p style={{ fontSize: "9.5pt", margin: "3px 0 0 0", color: "#525252" }}>
+                    CNPJ: 00.000.000/0001-00 • [Endereço Completo da Sede]
+                  </p>
+                </header>
+
+                <div
+                  style={{
+                    marginBottom: "14px",
+                    fontSize: "10pt",
+                    borderLeft: "3px solid #0f62fe",
+                    background: "#f4f4f4",
+                    padding: "6px 10px",
+                  }}
+                >
+                  <div>
+                    <strong>Órgão Licitante:</strong> [Nome do Órgão Licitante Convocatório]
+                  </div>
+                  <div>
+                    <strong>Processo / Edital:</strong> [Número do Edital / Pregão]
+                  </div>
+                  <div>
+                    <strong>Objeto:</strong> [Resumo do Objeto do Certame]
+                  </div>
+                </div>
+
+                <div style={{ textAlign: "center", margin: "16px 0 12px 0" }}>
+                  <h1
+                    style={{
+                      fontSize: "12pt",
+                      margin: 0,
+                      textTransform: "uppercase",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {metaAtual?.titulo ||
+                      "Declaração de Pleno Atendimento aos Requisitos de Habilitação"}
+                  </h1>
+                  <div
+                    style={{
+                      fontSize: "9.5pt",
+                      fontStyle: "italic",
+                      color: "#525252",
+                      marginTop: "3px",
+                    }}
+                  >
+                    Fundamento Legal:{" "}
+                    {metaAtual?.fundamentoLegal || "Art. 63, I da Lei nº 14.133/2021"}
+                  </div>
+                </div>
+
+                <section
+                  className="declaracao-corpo"
+                  style={{ textAlign: "justify", marginBottom: "20px" }}
+                >
+                  <p>
+                    A empresa <strong>[RAZÃO SOCIAL DA EMPRESA LICITANTE]</strong>, inscrita no
+                    CNPJ sob o nº <strong>[00.000.000/0001-00]</strong>, por meio de seu
+                    representante legal infra-assinado, <strong>DECLARA</strong> expressamente
+                    perante o órgão <strong>[Órgão Licitante]</strong>, para fins de habilitação
+                    no certame <strong>[Número do Edital]</strong>, sob as penas da lei (
+                    {metaAtual?.fundamentoLegal || "Lei Federal nº 14.133/2021"}), que cumpre
+                    integralmente todos os requisitos e exigências estabelecidos no Edital e seus
+                    anexos.
+                  </p>
+                  <p style={{ color: "#525252", fontStyle: "italic", fontSize: "10pt" }}>
+                    {metaAtual?.descricao ||
+                      "Preencha os campos à esquerda e clique em 'Atualizar Folha A4' para gerar o documento oficial com os dados da sua empresa."}
+                  </p>
+                </section>
+
+                <div
+                  style={{
+                    textAlign: "right",
+                    marginTop: "20px",
+                    marginBottom: "28px",
+                    fontSize: "10.5pt",
+                  }}
+                >
+                  [Cidade] - [UF], {new Date().toLocaleDateString("pt-BR")}
+                </div>
+
+                <div style={{ textAlign: "center", marginTop: "32px" }}>
+                  <div
+                    style={{
+                      display: "inline-block",
+                      minWidth: "320px",
+                      borderTop: "1px solid #161616",
+                      paddingTop: "6px",
+                    }}
+                  >
+                    <div style={{ fontWeight: "bold", fontSize: "10.5pt" }}>
+                      [Nome Completo do Declarante]
+                    </div>
+                    <div style={{ fontSize: "9.5pt", color: "#525252" }}>
+                      [Cargo / Função do Representante Legal]
+                    </div>
+                    <div style={{ fontSize: "9pt", color: "#525252" }}>CPF: 000.000.000-00</div>
+                  </div>
+                </div>
+
+                <footer
+                  style={{
+                    marginTop: "28px",
+                    paddingTop: "8px",
+                    borderTop: "1px dashed #c6c6c6",
+                    fontSize: "8pt",
+                    color: "#8d8d8d",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>Molde de Pré-visualização Oficial (Lei 14.133/2021)</span>
+                  <span>Clique em &ldquo;Atualizar Folha A4&rdquo; para preencher os dados</span>
+                </footer>
               </div>
             )}
           </div>

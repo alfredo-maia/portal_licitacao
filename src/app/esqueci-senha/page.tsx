@@ -168,34 +168,32 @@ export default function EsqueciSenhaPage() {
             )}
 
             {/* Formulário de Envio */}
-            {!successMessage && (
-              <Form onSubmit={handleSubmit} noValidate>
-                <Stack gap={5}>
-                  <TextInput
-                    id="esqueci-senha-email"
-                    data-testid="esqueci-senha-email"
-                    labelText="E-mail Corporativo"
-                    placeholder="usuario@empresa.com.br"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={isSubmitting}
-                    autoComplete="email"
-                    autoFocus
-                  />
+            <Form onSubmit={handleSubmit} noValidate>
+              <Stack gap={5}>
+                <TextInput
+                  id="esqueci-senha-email"
+                  data-testid="esqueci-senha-email"
+                  labelText="E-mail Corporativo"
+                  placeholder="usuario@empresa.com.br"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isSubmitting}
+                  autoComplete="email"
+                  autoFocus
+                />
 
-                  <Button
-                    type="submit"
-                    data-testid="esqueci-senha-submit"
-                    disabled={isSubmitting || !email.trim()}
-                    renderIcon={Send}
-                    style={{ width: "100%", maxWidth: "none" }}
-                  >
-                    {isSubmitting ? "Enviando instruções..." : "Recuperar Senha"}
-                  </Button>
-                </Stack>
-              </Form>
-            )}
+                <Button
+                  type="submit"
+                  data-testid="esqueci-senha-submit"
+                  disabled={isSubmitting || !email.trim()}
+                  renderIcon={Send}
+                  style={{ width: "100%", maxWidth: "none" }}
+                >
+                  {isSubmitting ? "Enviando instruções..." : "Recuperar Senha"}
+                </Button>
+              </Stack>
+            </Form>
 
             {/* Link de Retorno ao Login */}
             <div

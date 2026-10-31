@@ -325,6 +325,92 @@ export function marcarTodasInMemoryNotificacoesLidas(usuarioId: string): number 
 let portaisStore: Map<string, any> = new Map();
 let documentosStore: Map<string, any> = new Map();
 let impugnacoesStore: Map<string, any> = new Map();
+let licitacaoEquipeStore: Map<string, { responsavelId: string | null; atribuidoIds: string[] }> = new Map();
+let licitacaoArquivosStore: Map<string, any[]> = new Map();
+let licitacaoRepositoriosStore: Map<string, any[]> = new Map();
+let licitacaoAnalisesIAStore: Map<string, any[]> = new Map();
+
+export function setInMemoryLicitacaoEquipe(
+  licitacaoId: string,
+  data: { responsavelId: string | null; atribuidoIds: string[] },
+): void {
+  licitacaoEquipeStore.set(licitacaoId, {
+    responsavelId: data.responsavelId ?? null,
+    atribuidoIds: Array.from(new Set(data.atribuidoIds || [])),
+  });
+  updateInMemoryLicitacao(licitacaoId, { responsavelId: data.responsavelId ?? null });
+}
+
+export function getInMemoryLicitacaoEquipe(
+  licitacaoId: string,
+): { responsavelId: string | null; atribuidoIds: string[] } | null {
+  return licitacaoEquipeStore.get(licitacaoId) || null;
+}
+
+export function insertInMemoryLicitacaoArquivo(licitacaoId: string, data: any): any {
+  const atual = licitacaoArquivosStore.get(licitacaoId) || [];
+  const record = {
+    ...data,
+    id: data.id || `arq_${randomUUID()}`,
+    licitacaoId,
+    criadoEm: data.criadoEm ? new Date(data.criadoEm) : new Date(),
+  };
+  const filtrados = atual.filter((a) => a.id !== record.id);
+  licitacaoArquivosStore.set(licitacaoId, [record, ...filtrados]);
+  return record;
+}
+
+export function listInMemoryLicitacaoArquivos(licitacaoId: string): any[] {
+  return [...(licitacaoArquivosStore.get(licitacaoId) || [])];
+}
+
+export function deleteInMemoryLicitacaoArquivo(licitacaoId: string, arquivoId: string): boolean {
+  const atual = licitacaoArquivosStore.get(licitacaoId) || [];
+  const next = atual.filter((a) => a.id !== arquivoId);
+  licitacaoArquivosStore.set(licitacaoId, next);
+  return next.length !== atual.length;
+}
+
+export function insertInMemoryLicitacaoRepositorio(licitacaoId: string, data: any): any {
+  const atual = licitacaoRepositoriosStore.get(licitacaoId) || [];
+  const record = {
+    ...data,
+    id: data.id || `rep_${randomUUID()}`,
+    licitacaoId,
+    criadoEm: data.criadoEm ? new Date(data.criadoEm) : new Date(),
+  };
+  const filtrados = atual.filter((r) => r.id !== record.id);
+  licitacaoRepositoriosStore.set(licitacaoId, [record, ...filtrados]);
+  return record;
+}
+
+export function listInMemoryLicitacaoRepositorios(licitacaoId: string): any[] {
+  return [...(licitacaoRepositoriosStore.get(licitacaoId) || [])];
+}
+
+export function deleteInMemoryLicitacaoRepositorio(licitacaoId: string, repId: string): boolean {
+  const atual = licitacaoRepositoriosStore.get(licitacaoId) || [];
+  const next = atual.filter((r) => r.id !== repId);
+  licitacaoRepositoriosStore.set(licitacaoId, next);
+  return next.length !== atual.length;
+}
+
+export function insertInMemoryLicitacaoAnaliseIA(licitacaoId: string, data: any): any {
+  const atual = licitacaoAnalisesIAStore.get(licitacaoId) || [];
+  const record = {
+    ...data,
+    id: data.id || `ia_${randomUUID()}`,
+    licitacaoId,
+    criadoEm: data.criadoEm ? new Date(data.criadoEm) : new Date(),
+  };
+  const filtrados = atual.filter((a) => a.id !== record.id);
+  licitacaoAnalisesIAStore.set(licitacaoId, [record, ...filtrados]);
+  return record;
+}
+
+export function listInMemoryLicitacaoAnalisesIA(licitacaoId: string): any[] {
+  return [...(licitacaoAnalisesIAStore.get(licitacaoId) || [])];
+}
 
 export function insertInMemoryPortal(data: any): any {
   const id = data.id || `portal_${randomUUID()}`;
@@ -574,8 +660,21 @@ export function listInMemoryUsuarios(tenantId?: string | null): any[] {
   return all;
 }
 
-export function getInMemoryUsuario(id: string, tenantId?: string | null): any | null {
-  const user = usuariosStore.get(id) || null;
+export function getInMemoryUsuario(
+  id: string,
+  tenantId?: string | null,
+  email?: string | null,
+): any | null {
+  let user = usuariosStore.get(id) || null;
+  if (!user && email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    for (const u of usuariosStore.values()) {
+      if (u.email && u.email.trim().toLowerCase() === normalizedEmail) {
+        user = u;
+        break;
+      }
+    }
+  }
   if (!user) return null;
   if (tenantId && user.tenantId && user.tenantId !== tenantId) {
     return null;
@@ -593,6 +692,15 @@ export function insertInMemoryUsuario(data: any): any {
     role: data.role || "ANALISTA_COMERCIAL",
     ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
     tenantId: data.tenantId || null,
+    cpf: data.cpf ?? null,
+    telefone: data.telefone ?? null,
+    cep: data.cep ?? null,
+    logradouro: data.logradouro ?? null,
+    numero: data.numero ?? null,
+    complemento: data.complemento ?? null,
+    bairro: data.bairro ?? null,
+    cidade: data.cidade ?? null,
+    uf: data.uf ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -601,15 +709,34 @@ export function insertInMemoryUsuario(data: any): any {
 }
 
 export function updateInMemoryUsuario(id: string, patch: any): any | null {
-  const existing = usuariosStore.get(id);
-  if (!existing) return null;
+  let existing = usuariosStore.get(id);
+  if (!existing && patch?.email) {
+    const normalizedEmail = String(patch.email).trim().toLowerCase();
+    for (const u of usuariosStore.values()) {
+      if (u.email && u.email.trim().toLowerCase() === normalizedEmail) {
+        existing = u;
+        break;
+      }
+    }
+  }
+  const now = new Date();
   const updated = {
-    ...existing,
+    ...(existing || {
+      id,
+      name: patch.name || "Usuário",
+      email: patch.email || "usuario@empresa.com.br",
+      role: patch.role || "DIRETORIA",
+      ativo: true,
+      createdAt: now,
+    }),
     ...patch,
-    id: existing.id,
-    updatedAt: new Date(),
+    id: existing?.id || id,
+    updatedAt: now,
   };
   usuariosStore.set(id, updated);
+  if (existing && existing.id !== id) {
+    usuariosStore.set(existing.id, updated);
+  }
   return updated;
 }
 
@@ -624,6 +751,10 @@ export function resetInMemoryLicitacoes(): void {
   portaisStore.clear();
   documentosStore.clear();
   impugnacoesStore.clear();
+  licitacaoEquipeStore.clear();
+  licitacaoArquivosStore.clear();
+  licitacaoRepositoriosStore.clear();
+  licitacaoAnalisesIAStore.clear();
 }
 
 /** Limpa completamente todas as licitações em memória (sem recriar seeds). */
@@ -631,5 +762,9 @@ export function clearInMemoryLicitacoes(): void {
   storeById = new Map();
   storeIdByIdPncp = new Map();
   statusHistoricoStore = [];
+  licitacaoEquipeStore.clear();
+  licitacaoArquivosStore.clear();
+  licitacaoRepositoriosStore.clear();
+  licitacaoAnalisesIAStore.clear();
 }
 

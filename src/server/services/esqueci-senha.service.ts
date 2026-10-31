@@ -29,8 +29,9 @@ export async function solicitarRecuperacaoSenha(
   const parsed = esqueciSenhaSchema.parse({ email: rawEmail });
   const normalizedEmail = parsed.email.trim().toLowerCase();
 
-  // 1. Verificação de Rate Limit determinístico por E-mail + IP
-  const rateLimitKey = `${normalizedEmail}:${ip}`;
+  // 1. Verificação de Rate Limit determinístico por Cliente/IP (independente de o e-mail mudar entre tentativas)
+  const cleanIp = (ip || "127.0.0.1").split(",")[0].trim() || "127.0.0.1";
+  const rateLimitKey = `ip:${cleanIp}`;
   const now = Date.now();
   const history = (rateLimitStore.get(rateLimitKey) || []).filter(
     (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS,

@@ -134,41 +134,41 @@ export async function gerarDeclaracao(
   const dataExtenso = formatarDataExtenso(input.dataDeclaracao, input.cidade, input.uf);
 
   const conteudoHtml = `
-<div class="declaracao-a4-documento" style="font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.6; color: #161616; padding: 2.5cm 2.5cm 2.5cm 2.5cm; max-width: 21cm; margin: 0 auto; background: #ffffff; box-sizing: border-box;">
-  <header style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
-    <h2 style="font-size: 14pt; margin: 0; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">${input.empresaRazaoSocial}</h2>
-    <p style="font-size: 10pt; margin: 4px 0 0 0; color: #525252;">CNPJ: ${input.empresaCnpj} ${input.empresaEndereco ? `• ${input.empresaEndereco}` : ""}</p>
+<div class="declaracao-a4-documento" style="font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.42; color: #161616; padding: 1.2cm 1.6cm; max-width: 21cm; max-height: 27.2cm; overflow: hidden; margin: 0 auto; background: #ffffff; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid;">
+  <header style="border-bottom: 2px solid #161616; padding-bottom: 8px; margin-bottom: 14px; text-align: center;">
+    <h2 style="font-size: 13pt; margin: 0; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">${input.empresaRazaoSocial}</h2>
+    <p style="font-size: 9.5pt; margin: 3px 0 0 0; color: #525252;">CNPJ: ${input.empresaCnpj} ${input.empresaEndereco ? `• ${input.empresaEndereco}` : ""}</p>
   </header>
 
-  <div style="margin-bottom: 20px; font-size: 11pt; border-left: 3px solid #0f62fe; padding-left: 12px; background: #f4f4f4; padding: 8px 12px;">
+  <div style="margin-bottom: 14px; font-size: 10pt; border-left: 3px solid #0f62fe; background: #f4f4f4; padding: 6px 10px;">
     <div><strong>Órgão Licitante:</strong> ${input.orgaoNome}</div>
     <div><strong>Processo / Edital:</strong> ${input.numeroEdital}</div>
     ${input.objetoLicitacao ? `<div><strong>Objeto:</strong> ${input.objetoLicitacao}</div>` : ""}
   </div>
 
-  <div style="text-align: center; margin: 28px 0 20px 0;">
-    <h1 style="font-size: 13pt; margin: 0; text-transform: uppercase; font-weight: bold;">${meta.titulo}</h1>
-    <div style="font-size: 10pt; font-style: italic; color: #525252; margin-top: 4px;">Fundamento Legal: ${meta.fundamentoLegal}</div>
+  <div style="text-align: center; margin: 16px 0 12px 0;">
+    <h1 style="font-size: 12pt; margin: 0; text-transform: uppercase; font-weight: bold;">${meta.titulo}</h1>
+    <div style="font-size: 9.5pt; font-style: italic; color: #525252; margin-top: 3px;">Fundamento Legal: ${meta.fundamentoLegal}</div>
   </div>
 
-  <section class="declaracao-corpo" style="text-align: justify; margin-bottom: 40px;">
+  <section class="declaracao-corpo" style="text-align: justify; margin-bottom: 20px;">
     ${corpoHtml}
   </section>
 
-  <div style="text-align: right; margin-top: 40px; margin-bottom: 50px; font-size: 11pt;">
+  <div style="text-align: right; margin-top: 20px; margin-bottom: 28px; font-size: 10.5pt;">
     ${dataExtenso}
   </div>
 
-  <div style="text-align: center; margin-top: 60px; page-break-inside: avoid;">
-    <div style="display: inline-block; min-width: 350px; border-top: 1px solid #161616; padding-top: 8px;">
-      <div style="font-weight: bold; font-size: 11pt;">${input.representanteNome}</div>
-      <div style="font-size: 10pt; color: #525252;">${input.representanteCargo}</div>
+  <div style="text-align: center; margin-top: 32px; page-break-inside: avoid; break-inside: avoid;">
+    <div style="display: inline-block; min-width: 320px; border-top: 1px solid #161616; padding-top: 6px;">
+      <div style="font-weight: bold; font-size: 10.5pt;">${input.representanteNome}</div>
+      <div style="font-size: 9.5pt; color: #525252;">${input.representanteCargo}</div>
       <div style="font-size: 9pt; color: #525252;">CPF: ${input.representanteCpf}</div>
-      <div style="font-size: 9pt; color: #8d8d8d;">${input.empresaRazaoSocial}</div>
+      <div style="font-size: 8.5pt; color: #8d8d8d;">${input.empresaRazaoSocial}</div>
     </div>
   </div>
 
-  <footer style="margin-top: 60px; padding-top: 12px; border-top: 1px dashed #c6c6c6; font-size: 8pt; color: #8d8d8d; display: flex; justify-content: space-between;">
+  <footer style="margin-top: 28px; padding-top: 8px; border-top: 1px dashed #c6c6c6; font-size: 8pt; color: #8d8d8d; display: flex; justify-content: space-between; page-break-inside: avoid; break-inside: avoid;">
     <span>Emitido via Portal de Licitações (Lei 14.133/2021)</span>
     <span>Integridade do Documento: ${input.tipo} • ${new Date().toISOString().substring(0, 10)}</span>
   </footer>

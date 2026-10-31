@@ -46,13 +46,34 @@ export async function GET() {
       } catch {}
     }
 
+    const userEmail = session.user.email?.trim().toLowerCase() || "";
+    const isEnterpriseAccount = userEmail === "opaonossopanificadora@gmail.com";
+    const billingStatusEfetivo = isEnterpriseAccount
+      ? "ATIVO"
+      : tenantData?.billingStatus || "TRIAL";
+    const isTrial = billingStatusEfetivo === "TRIAL";
+
     const tenantInfo = {
-      plano: tenantData?.plano || (session.user as any)?.plano || "BASICO",
-      billingStatus: tenantData?.billingStatus || "TRIAL",
-      trialFim: tenantData?.trialFim || null,
+      plano: isEnterpriseAccount
+        ? "ENTERPRISE"
+        : isTrial
+        ? "PRO"
+        : tenantData?.plano || (session.user as any)?.plano || "PRO",
+      billingStatus: billingStatusEfetivo,
+      trialFim:
+        tenantData?.trialFim ||
+        (isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null),
       vencimentoAssinatura: tenantData?.vencimentoAssinatura || null,
-      maxCnpjs: tenantData?.maxCnpjs || 1,
-      maxUsers: tenantData?.maxUsers || 1,
+      maxCnpjs: isEnterpriseAccount
+        ? 5
+        : isTrial
+        ? Math.max(tenantData?.maxCnpjs || 2, 2)
+        : tenantData?.maxCnpjs || 2,
+      maxUsers: isEnterpriseAccount
+        ? 10
+        : isTrial
+        ? Math.max(tenantData?.maxUsers || 2, 2)
+        : tenantData?.maxUsers || 2,
     };
 
     const evaluation = evaluateTenantAccess(tenantInfo);

@@ -63,8 +63,20 @@ export async function realizarCadastroConta(
     await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "ufs" TEXT[] DEFAULT ARRAY[]::TEXT[];`).catch(() => undefined);
     await prisma.$executeRawUnsafe(`ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "brasilInteiro" BOOLEAN DEFAULT TRUE;`).catch(() => undefined);
     await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
-    await prisma.$executeRawUnsafe(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN DEFAULT FALSE;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cpf" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "telefone" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cep" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "logradouro" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "numero" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cidade" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "uf" TEXT;`).catch(() => undefined);
     await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "inscricaoMunicipal" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "numero" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`).catch(() => undefined);
   } catch {
     // Ignora se não for PostgreSQL
   }

@@ -38,8 +38,15 @@ export const oportunidadesFilterSchema = z.object({
   subsegmento: z.string().optional(),
   uf: z
     .string()
-    .length(2)
-    .transform((value) => value.toUpperCase())
+    .trim()
+    .regex(/^[a-zA-Z]{2}(\s*,\s*[a-zA-Z]{2})*$/, "UF inválida")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((u) => u.trim().toUpperCase())
+        .filter(Boolean)
+        .join(","),
+    )
     .optional(),
   faixaValor: faixaValorSchema.optional(),
   valorMin: z.coerce.number().nonnegative().optional(),
@@ -103,7 +110,9 @@ export const criarLicitacaoManualSchema = z.object({
       },
     ),
   resumo: z.string().min(1),
-  tipoSistemaCodigo: tipoSistemaCodigoSchema,
+  tipoSistemaCodigo: tipoSistemaCodigoSchema.default("OUTROS"),
+  segmentoMacro: z.string().optional(),
+  subsegmento: z.string().optional(),
   parecerIA: z.enum(["GO", "AVALIAR", "NO_GO"]).default("AVALIAR"),
   isPresencial: z.boolean().default(false),
   pncpId: z.string().min(1).optional(),

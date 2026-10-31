@@ -23,6 +23,8 @@ export async function GET(req: Request) {
         { status: 401 },
       );
     }
+    const userEmail = session?.user?.email?.trim().toLowerCase() || "";
+    const isEnterpriseAccount = userEmail === "opaonossopanificadora@gmail.com";
     let cookieActiveTenant: string | undefined;
     try {
       const cookieStore = await cookies();
@@ -33,29 +35,62 @@ export async function GET(req: Request) {
     let tenants: any[] = [];
 
     try {
-      const memberships = await prisma.tenantUser.findMany({
+      let memberships = await prisma.tenantUser.findMany({
         where: { userId, ativo: true },
         include: { tenant: true },
         orderBy: { criadoEm: "asc" },
       });
 
+      if (memberships.length === 0 && userEmail) {
+        const dbUser = await prisma.user.findUnique({ where: { email: userEmail } });
+        if (dbUser) {
+          memberships = await prisma.tenantUser.findMany({
+            where: { userId: dbUser.id, ativo: true },
+            include: { tenant: true },
+            orderBy: { criadoEm: "asc" },
+          });
+        }
+      }
+
       tenants = memberships
         .filter((m) => m.tenant && m.tenant.ativo)
-        .map((m) => ({
-          id: m.tenant.id,
-          cnpj: m.tenant.cnpj,
-          razaoSocial: m.tenant.razaoSocial,
-          nomeFantasia: m.tenant.nomeFantasia,
-          plano: m.tenant.plano,
-          billingStatus: m.tenant.billingStatus,
-          maxCnpjs: m.tenant.maxCnpjs,
-          maxUsers: m.tenant.maxUsers,
-          role: m.role,
-          segmentos: m.tenant.segmentos || [],
-          subsegmentos: m.tenant.subsegmentos || [],
-          ufs: m.tenant.ufs || [],
-          brasilInteiro: m.tenant.brasilInteiro ?? true,
-        }));
+        .map((m) => {
+          const isTrial = !isEnterpriseAccount && m.tenant.billingStatus === "TRIAL";
+          const planoEfetivo = isEnterpriseAccount
+            ? "ENTERPRISE"
+            : isTrial
+            ? "PRO"
+            : m.tenant.plano;
+          const billingEfetivo = isEnterpriseAccount
+            ? "ATIVO"
+            : m.tenant.billingStatus;
+          const maxCnpjsEfetivo = isEnterpriseAccount
+            ? 5
+            : isTrial
+            ? Math.max(m.tenant.maxCnpjs || 2, 2)
+            : m.tenant.maxCnpjs;
+          const maxUsersEfetivo = isEnterpriseAccount
+            ? 10
+            : isTrial
+            ? Math.max(m.tenant.maxUsers || 2, 2)
+            : m.tenant.maxUsers;
+
+          return {
+            id: m.tenant.id,
+            cnpj: m.tenant.cnpj,
+            razaoSocial: m.tenant.razaoSocial,
+            nomeFantasia: m.tenant.nomeFantasia,
+            plano: planoEfetivo,
+            billingStatus: billingEfetivo,
+            maxCnpjs: maxCnpjsEfetivo,
+            maxUsers: maxUsersEfetivo,
+            role: m.role,
+            segmentos: m.tenant.segmentos || [],
+            subsegmentos: m.tenant.subsegmentos || [],
+            ufs: m.tenant.ufs || [],
+            brasilInteiro: m.tenant.brasilInteiro ?? true,
+          };
+        });
     } catch {
       const inMemList = await listTenantsForUser(userId);
       tenants = inMemList.map((m) => ({
@@ -63,10 +98,10 @@ export async function GET(req: Request) {
         cnpj: m.tenant.cnpj,
         razaoSocial: m.tenant.razaoSocial,
         nomeFantasia: m.tenant.nomeFantasia,
-        plano: m.tenant.plano,
-        billingStatus: "TRIAL",
-        maxCnpjs: m.tenant.maxCnpjs,
-        maxUsers: m.tenant.maxUsers,
+        plano: isEnterpriseAccount ? "ENTERPRISE" : m.tenant.plano || "PRO",
+        billingStatus: isEnterpriseAccount ? "ATIVO" : "TRIAL",
+        maxCnpjs: isEnterpriseAccount ? 5 : Math.max(m.tenant.maxCnpjs || 2, 2),
+        maxUsers: isEnterpriseAccount ? 10 : Math.max(m.tenant.maxUsers || 2, 2),
         role: m.role,
         segmentos: m.tenant.segmentos || [],
         subsegmentos: m.tenant.subsegmentos || [],

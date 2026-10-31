@@ -125,7 +125,11 @@ export async function createTenantForUser(params: {
   input: CreateTenantInput;
 }): Promise<InMemoryTenantRecord> {
   const { userId, userEmail, userName, input } = params;
-  const userPlan: PlanoAssinatura = params.userPlan ?? input.plano ?? "BASICO";
+  const isEnterpriseSpecialAccount =
+    userEmail.trim().toLowerCase() === "opaonossopanificadora@gmail.com";
+  const userPlan: PlanoAssinatura = isEnterpriseSpecialAccount
+    ? "ENTERPRISE"
+    : params.userPlan ?? input.plano ?? "PRO";
   const cleanedCnpj = cleanCnpj(input.cnpj);
 
   if (!isValidCnpj(cleanedCnpj)) {

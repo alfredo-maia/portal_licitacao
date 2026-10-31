@@ -162,7 +162,16 @@ export function sintetizarMiniResumo(
   if (rawLower.includes("diário oficial") || rawLower.includes("portal da transparência") || rawLower.includes("transparência pública")) {
     return "Portal da transparência e publicação de diário oficial eletrônico";
   }
-  if (rawLower.includes("frota") || rawLower.includes("abastecimento") || rawLower.includes("telemetria") || rawLower.includes("rastreamento")) {
+  if (
+    (rawLower.includes("telemetria") ||
+      rawLower.includes("rastreamento") ||
+      ((rawLower.includes("sistema") || rawLower.includes("software") || rawLower.includes("informatizado")) &&
+        (rawLower.includes("frota") || rawLower.includes("abastecimento")))) &&
+    !rawLower.includes("óleo") &&
+    !rawLower.includes("oleo") &&
+    !rawLower.includes("lubrificante") &&
+    !rawLower.includes("pneu")
+  ) {
     return "Sistema informatizado de gestão, rastreamento e telemetria de frota";
   }
   if (rawLower.includes("saneamento") && (rawLower.includes("faturamento") || rawLower.includes("comercial") || rawLower.includes("água") || rawLower.includes("esgoto"))) {

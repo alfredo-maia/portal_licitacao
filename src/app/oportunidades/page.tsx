@@ -19,6 +19,7 @@ import {
   TableToolbarSearch,
   Button,
   Dropdown,
+  MultiSelect,
   Select,
   SelectItem,
   TextInput,
@@ -30,9 +31,9 @@ import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Search } 
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
-import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { ESTADOS_BRASIL } from "@/config/estados";
-import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
+import { FAIXAS_VALOR_SPRINT7, maskCnpj } from "@/lib/masks";
+import { isValidCnpj } from "@/lib/validations/cnpj";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 
@@ -116,11 +117,12 @@ function OportunidadesContent() {
   const [manualOrgaoNome, setManualOrgaoNome] = React.useState("");
   const [manualOrgaoCnpj, setManualOrgaoCnpj] = React.useState("");
   const [manualUf, setManualUf] = React.useState("");
+  const [manualSegmento, setManualSegmento] = React.useState("");
+  const [manualSubsegmento, setManualSubsegmento] = React.useState("");
   const [manualValorEstimado, setManualValorEstimado] = React.useState("");
   const [manualDataAbertura, setManualDataAbertura] = React.useState("");
   const [manualMiniResumo, setManualMiniResumo] = React.useState("");
   const [manualResumoObjeto, setManualResumoObjeto] = React.useState("");
-  const [manualTipoSistema, setManualTipoSistema] = React.useState("");
 
   const [importJsonContent, setImportJsonContent] = React.useState("");
   const [jsonFile, setJsonFile] = React.useState<File | null>(null);
@@ -291,44 +293,45 @@ function OportunidadesContent() {
         alert("Informe o nome do órgão.");
         return;
       }
-      if (!manualOrgaoCnpj.trim() || manualOrgaoCnpj.trim().length < 11) {
-        alert("Informe um CNPJ válido com pelo menos 11 dígitos.");
+      const cnpjDigits = manualOrgaoCnpj.replace(/\D/g, "");
+      if (cnpjDigits.length !== 14 || !isValidCnpj(manualOrgaoCnpj)) {
+        alert("Informe um CNPJ do órgão válido com 14 dígitos.");
         return;
       }
       if (!manualUf.trim() || manualUf.trim().length !== 2) {
-        alert("Informe a UF com 2 letras (ex: GO, SP).");
+        alert("Selecione a UF da licitação.");
         return;
       }
-      if (!manualTipoSistema) {
-        alert("Selecione o tipo de sistema.");
+      if (!manualSegmento) {
+        alert("Selecione o Segmento / Ramo da licitação.");
         return;
       }
 
-      // 1. Sanitizar valor estimado
-      let valorLimpo = manualValorEstimado.replace(/[^\d,\.]/g, '').trim();
-      if (valorLimpo.includes(',') && valorLimpo.includes('.')) {
-        valorLimpo = valorLimpo.replace(/\./g, '').replace(',', '.');
-      } else if (valorLimpo.includes(',')) {
-        valorLimpo = valorLimpo.replace(',', '.');
+      // 1. Sanitizar e validar valor estimado
+      let valorLimpo = manualValorEstimado.replace(/[^\d,\.]/g, "").trim();
+      if (valorLimpo.includes(",") && valorLimpo.includes(".")) {
+        valorLimpo = valorLimpo.replace(/\./g, "").replace(",", ".");
+      } else if (valorLimpo.includes(",")) {
+        valorLimpo = valorLimpo.replace(",", ".");
       }
       const valorNum = parseFloat(valorLimpo);
-      if (isNaN(valorNum) || valorNum < 0) {
-        alert("Informe um valor estimado válido.");
+      if (isNaN(valorNum) || valorNum <= 0) {
+        alert("Informe um valor estimado válido maior que zero.");
         return;
       }
 
       // 2. Sanitizar data limite
       let dataIso: string;
-      if (manualDataAbertura.includes('/')) {
-        const parts = manualDataAbertura.trim().split(' ');
-        const dateParts = parts[0].split('/');
+      if (manualDataAbertura.includes("/")) {
+        const parts = manualDataAbertura.trim().split(" ");
+        const dateParts = parts[0].split("/");
         const dia = parseInt(dateParts[0], 10);
         const mes = parseInt(dateParts[1], 10) - 1;
         const ano = parseInt(dateParts[2], 10);
         let hora = 9;
         let min = 0;
         if (parts[1]) {
-          const timeParts = parts[1].split(':');
+          const timeParts = parts[1].split(":");
           hora = parseInt(timeParts[0], 10) || 0;
           min = parseInt(timeParts[1], 10) || 0;
         }
@@ -359,14 +362,14 @@ function OportunidadesContent() {
         if (words.length < 2) {
           miniResumoTratado = `${miniResumoTratado} certame`;
         } else if (words.length > 5) {
-          miniResumoTratado = words.slice(0, 4).join(' ');
+          miniResumoTratado = words.slice(0, 4).join(" ");
         }
       }
 
       const resumoFinal =
         manualResumoObjeto.trim() ||
         manualMiniResumo.trim() ||
-        `Contratação de soluções de tecnologia e serviços correlatos para o órgão ${manualOrgaoNome}.`;
+        `Contratação para o órgão ${manualOrgaoNome}.`;
 
       const response = await fetch("/api/oportunidades", {
         method: "POST",
@@ -374,14 +377,16 @@ function OportunidadesContent() {
         body: JSON.stringify({
           numeroEdital: manualNumeroEdital.trim(),
           orgaoNome: manualOrgaoNome.trim(),
-          orgaoCnpj: manualOrgaoCnpj.trim(),
+          orgaoCnpj: maskCnpj(manualOrgaoCnpj.trim()),
           uf: manualUf.trim().toUpperCase(),
           valorEstimado: valorNum,
           dataAbertura: dataIso,
           dataEncerramentoProposta: dataIso,
           miniResumo: miniResumoTratado,
           resumo: resumoFinal,
-          tipoSistemaCodigo: manualTipoSistema,
+          tipoSistemaCodigo: "OUTROS",
+          segmentoMacro: manualSegmento,
+          subsegmento: manualSubsegmento || undefined,
         }),
       });
 
@@ -401,11 +406,12 @@ function OportunidadesContent() {
       setManualOrgaoNome("");
       setManualOrgaoCnpj("");
       setManualUf("");
+      setManualSegmento("");
+      setManualSubsegmento("");
       setManualValorEstimado("");
       setManualDataAbertura("");
       setManualMiniResumo("");
       setManualResumoObjeto("");
-      setManualTipoSistema("");
       alert("Oportunidade adicionada com sucesso!");
     } catch (err) {
       console.error("Erro ao salvar oportunidade manual:", err);
@@ -503,7 +509,7 @@ function OportunidadesContent() {
             style={{ minWidth: "220px" }}
           />
 
-          {/* Sub-segmento dinâmico */}
+          {/* Sub-segmento dinâmico (restrito ao que o cliente escolheu na Seção 5 de Configurações) */}
           <Dropdown
             id="filter-subsegmento"
             data-testid="filter-subsegmento"
@@ -514,9 +520,14 @@ function OportunidadesContent() {
               filtroSegmento && CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]
                 ? [
                     { id: "", text: "Todos os Sub-segmentos" },
-                    ...CATALOGO_MACRO_SEGMENTOS[
-                      filtroSegmento as MacroSegmento
-                    ].subcategorias.map((sub) => ({ id: sub.codigo, text: sub.nome })),
+                    ...CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento].subcategorias
+                      .filter(
+                        (sub) =>
+                          !preferencias?.subsegmentos ||
+                          preferencias.subsegmentos.length === 0 ||
+                          preferencias.subsegmentos.includes(sub.codigo),
+                      )
+                      .map((sub) => ({ id: sub.codigo, text: sub.nome })),
                   ]
                 : [{ id: "", text: "Selecione um segmento primeiro" }]
             }
@@ -537,36 +548,65 @@ function OportunidadesContent() {
             style={{ minWidth: "220px" }}
           />
 
-          {/* UF */}
-          <Dropdown
-            id="filter-uf"
-            data-testid="filter-uf"
-            titleText="UF"
-            label="Todas as UFs"
-            items={[
-              { id: "", text: "Todas as UFs" },
-              ...(preferencias && !preferencias.brasilInteiro && preferencias.ufs.length > 0
-                ? ESTADOS_BRASIL.filter((e) => preferencias.ufs.includes(e.sigla)).map((e) => ({
-                    id: e.sigla,
-                    text: `${e.nome} (${e.sigla})`,
-                  }))
-                : ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.nome} (${e.sigla})` }))),
-            ]}
-            itemToString={(item) => (item ? item.text : "")}
-            selectedItem={
-              filtroUf
-                ? {
-                    id: filtroUf,
-                    text:
-                      ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)
-                        ? `${ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)?.nome} (${filtroUf})`
-                        : filtroUf,
-                  }
-                : null
-            }
-            onChange={({ selectedItem }) => handleFilterChange("uf", selectedItem?.id || "")}
-            style={{ minWidth: "180px" }}
-          />
+          {/* UF: MultiSelect com checkbox quando o cliente escolheu 2+ estados específicos na Seção 5 */}
+          {preferencias && !preferencias.brasilInteiro && preferencias.ufs.length >= 2 ? (
+            <div style={{ minWidth: "220px" }} data-testid="filter-uf-multiselect-wrapper">
+              <MultiSelect
+                id="filter-uf"
+                titleText="UF (Múltiplos Estados)"
+                label="Selecione os estados"
+                items={ESTADOS_BRASIL.filter((e) => preferencias.ufs.includes(e.sigla)).map((e) => ({
+                  id: e.sigla,
+                  text: `${e.nome} (${e.sigla})`,
+                }))}
+                itemToString={(item: any) => (item ? item.text : "")}
+                selectedItems={ESTADOS_BRASIL.filter((e) =>
+                  filtroUf
+                    .split(",")
+                    .map((u) => u.trim())
+                    .filter(Boolean)
+                    .includes(e.sigla),
+                ).map((e) => ({
+                  id: e.sigla,
+                  text: `${e.nome} (${e.sigla})`,
+                }))}
+                onChange={({ selectedItems }: any) => {
+                  const siglas = (selectedItems || []).map((i: any) => i.id).join(",");
+                  handleFilterChange("uf", siglas);
+                }}
+              />
+            </div>
+          ) : (
+            <Dropdown
+              id="filter-uf"
+              data-testid="filter-uf"
+              titleText="UF"
+              label="Todas as UFs"
+              items={[
+                { id: "", text: "Todas as UFs" },
+                ...(preferencias && !preferencias.brasilInteiro && preferencias.ufs.length > 0
+                  ? ESTADOS_BRASIL.filter((e) => preferencias.ufs.includes(e.sigla)).map((e) => ({
+                      id: e.sigla,
+                      text: `${e.nome} (${e.sigla})`,
+                    }))
+                  : ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.nome} (${e.sigla})` }))),
+              ]}
+              itemToString={(item) => (item ? item.text : "")}
+              selectedItem={
+                filtroUf
+                  ? {
+                      id: filtroUf,
+                      text:
+                        ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)
+                          ? `${ESTADOS_BRASIL.find((e) => e.sigla === filtroUf)?.nome} (${filtroUf})`
+                          : filtroUf,
+                    }
+                  : null
+              }
+              onChange={({ selectedItem }) => handleFilterChange("uf", selectedItem?.id || "")}
+              style={{ minWidth: "180px" }}
+            />
+          )}
 
           {/* Faixa de Valor */}
           <Dropdown
@@ -651,6 +691,22 @@ function OportunidadesContent() {
               rows={oportunidades}
               headers={headers}
               isSortable
+              sortRow={(
+                cellA: any,
+                cellB: any,
+                { sortDirection, sortStates, key }: any,
+              ) => {
+                const dir = sortDirection === sortStates.DESC ? -1 : 1;
+                if (key === "valorEstimado") {
+                  return ((Number(cellA) || 0) - (Number(cellB) || 0)) * dir;
+                }
+                return (
+                  String(cellA ?? "").localeCompare(String(cellB ?? ""), "pt-BR", {
+                    sensitivity: "base",
+                    numeric: true,
+                  }) * dir
+                );
+              }}
               data-testid="oportunidades-datatable"
               render={({
                 rows,
@@ -876,23 +932,137 @@ function OportunidadesContent() {
          <p style={{ marginBottom: "1rem" }}>
            Preencha os campos abaixo para adicionar uma nova licitação manualmente.
          </p>
-         <TextInput id="input-manual-edital" data-testid="input-manual-edital" labelText="Número do Edital" placeholder="Ex: 001/2026" value={manualNumeroEdital} onChange={(e) => setManualNumeroEdital(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-orgao" data-testid="input-manual-orgao" labelText="Órgão" placeholder="Ex: Prefeitura de São Paulo" value={manualOrgaoNome} onChange={(e) => setManualOrgaoNome(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-cnpj" data-testid="input-manual-cnpj" labelText="CNPJ do Órgão" placeholder="Ex: 00.000.000/0000-00" value={manualOrgaoCnpj} onChange={(e) => setManualOrgaoCnpj(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-uf" data-testid="input-manual-uf" labelText="UF" placeholder="Ex: SP" value={manualUf} onChange={(e) => setManualUf(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-valor" data-testid="input-manual-valor" labelText="Valor Estimado" placeholder="Ex: 1500000.00" value={manualValorEstimado} onChange={(e) => setManualValorEstimado(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-abertura" data-testid="input-manual-abertura" labelText="Data Limite para Envio da Proposta" placeholder="DD/MM/AAAA" value={manualDataAbertura} onChange={(e) => setManualDataAbertura(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-mini-resumo" data-testid="input-manual-mini-resumo" labelText="Mini-resumo" placeholder="Ex: Aquisição de equipamentos" value={manualMiniResumo} onChange={(e) => setManualMiniResumo(e.target.value)} style={{ marginBottom: "1rem" }} />
-         <TextInput id="input-manual-resumo" data-testid="input-manual-resumo" labelText="Resumo do Objeto" placeholder="Ex: Aquisição de equipamentos de informática para secretarias..." value={manualResumoObjeto} onChange={(e) => setManualResumoObjeto(e.target.value)} style={{ marginBottom: "1rem" }} />
+         <TextInput
+           id="input-manual-edital"
+           data-testid="input-manual-edital"
+           labelText="Número do Edital *"
+           placeholder="Ex: 001/2026"
+           value={manualNumeroEdital}
+           onChange={(e) => setManualNumeroEdital(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-orgao"
+           data-testid="input-manual-orgao"
+           labelText="Órgão *"
+           placeholder="Ex: Prefeitura de São Paulo"
+           value={manualOrgaoNome}
+           onChange={(e) => setManualOrgaoNome(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-cnpj"
+           data-testid="input-manual-cnpj"
+           labelText="CNPJ do Órgão *"
+           placeholder="00.000.000/0000-00"
+           value={manualOrgaoCnpj}
+           onChange={(e) => setManualOrgaoCnpj(maskCnpj(e.target.value))}
+           invalid={Boolean(manualOrgaoCnpj && manualOrgaoCnpj.replace(/\D/g, "").length === 14 && !isValidCnpj(manualOrgaoCnpj))}
+           invalidText="CNPJ inválido segundo a Receita Federal."
+           style={{ marginBottom: "1rem" }}
+         />
          <Dropdown
-           id="input-manual-tipo-sistema"
-           data-testid="input-manual-tipo-sistema"
-           titleText="Tipo de Sistema"
-           label="Selecione um tipo"
-           items={TIPOS_SISTEMA_CATALOG.map((tipo) => ({ id: tipo.codigo, text: tipo.nome }))}
+           id="input-manual-uf"
+           data-testid="input-manual-uf"
+           titleText="UF *"
+           label="Selecione o Estado (UF)"
+           items={ESTADOS_BRASIL.map((e) => ({ id: e.sigla, text: `${e.sigla} — ${e.nome}` }))}
            itemToString={(item) => (item ? item.text : "")}
-           selectedItem={manualTipoSistema ? { id: manualTipoSistema, text: TIPOS_SISTEMA_CATALOG.find(t => t.codigo === manualTipoSistema)?.nome || "" } : null}
-           onChange={({ selectedItem }) => setManualTipoSistema(selectedItem?.id || "")}
+           selectedItem={
+             manualUf
+               ? {
+                   id: manualUf,
+                   text: `${manualUf} — ${ESTADOS_BRASIL.find((e) => e.sigla === manualUf)?.nome || manualUf}`,
+                 }
+               : null
+           }
+           onChange={({ selectedItem }) => setManualUf(selectedItem?.id || "")}
+           style={{ marginBottom: "1rem" }}
+         />
+         <Dropdown
+           id="input-manual-segmento"
+           data-testid="input-manual-segmento"
+           titleText="Segmento / Ramo *"
+           label="Selecione o Segmento"
+           items={Object.values(CATALOGO_MACRO_SEGMENTOS).map((m) => ({ id: m.codigo, text: m.nome }))}
+           itemToString={(item) => (item ? item.text : "")}
+           selectedItem={
+             manualSegmento
+               ? {
+                   id: manualSegmento,
+                   text: CATALOGO_MACRO_SEGMENTOS[manualSegmento as MacroSegmento]?.nome || manualSegmento,
+                 }
+               : null
+           }
+           onChange={({ selectedItem }) => {
+             setManualSegmento(selectedItem?.id || "");
+             setManualSubsegmento("");
+           }}
+           style={{ marginBottom: "1rem" }}
+         />
+         <Dropdown
+           id="input-manual-subsegmento"
+           data-testid="input-manual-subsegmento"
+           titleText="Sub-segmento"
+           label={manualSegmento ? "Selecione o Sub-segmento" : "Selecione um segmento primeiro"}
+           disabled={!manualSegmento}
+           items={
+             manualSegmento && CATALOGO_MACRO_SEGMENTOS[manualSegmento as MacroSegmento]
+               ? CATALOGO_MACRO_SEGMENTOS[manualSegmento as MacroSegmento].subcategorias.map((sub) => ({
+                   id: sub.codigo,
+                   text: sub.nome,
+                 }))
+               : []
+           }
+           itemToString={(item) => (item ? item.text : "")}
+           selectedItem={
+             manualSubsegmento && manualSegmento
+               ? {
+                   id: manualSubsegmento,
+                   text:
+                     CATALOGO_MACRO_SEGMENTOS[manualSegmento as MacroSegmento]?.subcategorias.find(
+                       (s) => s.codigo === manualSubsegmento,
+                     )?.nome || manualSubsegmento,
+                 }
+               : null
+           }
+           onChange={({ selectedItem }) => setManualSubsegmento(selectedItem?.id || "")}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-valor"
+           data-testid="input-manual-valor"
+           labelText="Valor Estimado (R$) *"
+           placeholder="Ex: 150.000,00"
+           value={manualValorEstimado}
+           onChange={(e) => setManualValorEstimado(e.target.value.replace(/[^\d.,]/g, ""))}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-abertura"
+           data-testid="input-manual-abertura"
+           labelText="Data Limite para Envio da Proposta"
+           placeholder="DD/MM/AAAA"
+           value={manualDataAbertura}
+           onChange={(e) => setManualDataAbertura(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-mini-resumo"
+           data-testid="input-manual-mini-resumo"
+           labelText="Mini-resumo"
+           placeholder="Ex: Aquisição de equipamentos"
+           value={manualMiniResumo}
+           onChange={(e) => setManualMiniResumo(e.target.value)}
+           style={{ marginBottom: "1rem" }}
+         />
+         <TextInput
+           id="input-manual-resumo"
+           data-testid="input-manual-resumo"
+           labelText="Resumo do Objeto"
+           placeholder="Ex: Aquisição de equipamentos de informática para secretarias..."
+           value={manualResumoObjeto}
+           onChange={(e) => setManualResumoObjeto(e.target.value)}
            style={{ marginBottom: "1rem" }}
          />
          <div className="cds--modal-footer">

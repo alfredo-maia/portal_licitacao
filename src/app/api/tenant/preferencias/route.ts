@@ -1,37 +1,52 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
+import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    const tenantId = (session?.user as any)?.activeTenantId;
+    const session = await getServerSession(authOptions).catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
 
-    if (tenantId) {
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: {
-          segmentos: true,
-          subsegmentos: true,
-          ufs: true,
-          brasilInteiro: true,
-        },
-      }).catch(() => null);
+    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const userId = (session?.user as any)?.id;
+    const userEmail = session?.user?.email?.trim().toLowerCase();
 
-      if (tenant && tenant.segmentos.length > 0) {
-        return NextResponse.json({
-          ok: true,
-          segmentos: tenant.segmentos,
-          subsegmentos: tenant.subsegmentos,
-          ufs: tenant.ufs,
-          brasilInteiro: tenant.brasilInteiro,
+    if (!tenantId && (userId || userEmail)) {
+      try {
+        const membership = await prisma.tenantUser.findFirst({
+          where: userId ? { userId } : { user: { email: userEmail } },
         });
-      }
+        if (membership) {
+          tenantId = membership.tenantId;
+        }
+      } catch {}
     }
 
-    // Default para SuperAdmin, Diretoria sem tenant específico ou fallback
+    const config = await obterConfiguracaoEmpresa(tenantId);
+    const hasCustomSegments = Array.isArray(config.segmentos) && config.segmentos.length > 0;
+    const hasCustomUfs = Array.isArray(config.ufs) && config.ufs.length > 0;
+
+    if (hasCustomSegments || hasCustomUfs || config.brasilInteiro === false) {
+      return NextResponse.json({
+        ok: true,
+        segmentos: hasCustomSegments ? config.segmentos : Object.keys(CATALOGO_MACRO_SEGMENTOS),
+        subsegmentos: Array.isArray(config.subsegmentos) ? config.subsegmentos : [],
+        ufs: hasCustomUfs ? config.ufs : [],
+        brasilInteiro: config.brasilInteiro ?? true,
+      });
+    }
+
+    // Default caso ainda não tenha configurado a Seção 5
     const todosSegmentos = Object.keys(CATALOGO_MACRO_SEGMENTOS);
     return NextResponse.json({
       ok: true,

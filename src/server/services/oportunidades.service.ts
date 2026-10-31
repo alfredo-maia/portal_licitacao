@@ -30,11 +30,22 @@ import {
 import { computeHashCritico } from "./hash-critico";
 import {
   clearInMemoryLicitacoes,
+  deleteInMemoryLicitacaoArquivo,
+  deleteInMemoryLicitacaoRepositorio,
   getInMemoryLicitacaoById,
+  getInMemoryLicitacaoEquipe,
+  getInMemoryUsuario,
   insertInMemoryLicitacao,
+  insertInMemoryLicitacaoAnaliseIA,
+  insertInMemoryLicitacaoArquivo,
+  insertInMemoryLicitacaoRepositorio,
   type LicitacaoRecord,
+  listInMemoryLicitacaoAnalisesIA,
+  listInMemoryLicitacaoArquivos,
+  listInMemoryLicitacaoRepositorios,
   listInMemoryLicitacoes,
   type NovaLicitacaoData,
+  setInMemoryLicitacaoEquipe,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
 import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
@@ -102,25 +113,16 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   if (filters.tipoSistema) {
     and.push({ tipoSistemaCodigo: filters.tipoSistema });
   }
-  if (filters.segmento) {
-    and.push({
-      OR: [
-        { segmentoMacro: filters.segmento },
-        { tipoSistemaCodigo: filters.segmento },
-      ],
-    });
-  }
-  if (filters.subsegmento) {
-    const palavras = obterPalavrasChaveSubsegmento(filters.subsegmento);
-    and.push({
-      OR: palavras.flatMap((p) => [
-        { resumo: { contains: p, mode: "insensitive" } },
-        { miniResumo: { contains: p, mode: "insensitive" } },
-      ]),
-    });
-  }
   if (filters.uf) {
-    and.push({ uf: filters.uf });
+    const ufs = filters.uf
+      .split(",")
+      .map((u) => u.trim().toUpperCase())
+      .filter(Boolean);
+    if (ufs.length === 1) {
+      and.push({ uf: ufs[0] });
+    } else if (ufs.length > 1) {
+      and.push({ uf: { in: ufs } });
+    }
   }
   if (filters.status === "MINHAS") {
     and.push({
@@ -197,23 +199,61 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
   return and.length > 0 ? { AND: and } : {};
 }
 
+function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
+  const classif = classificarLicitacaoPorTexto(
+    record.resumo || (record as any).objeto || "",
+    record.miniResumo || "",
+  );
+  const storedMacro = (record as any).segmentoMacro;
+  const effectiveMacro =
+    !storedMacro || (storedMacro === "TECNOLOGIA_TELECOM" && classif.macro !== "TECNOLOGIA_TELECOM")
+      ? classif.macro
+      : storedMacro;
+  const storedSubs = Array.isArray((record as any).subcategorias)
+    ? (record as any).subcategorias
+    : [];
+  const effectiveSubs = Array.from(new Set([...storedSubs, ...classif.subcategorias]));
+  return {
+    ...record,
+    segmentoMacro: effectiveMacro,
+    subcategorias: effectiveSubs,
+  } as LicitacaoRecord;
+}
+
 function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolean {
-  if (filters.tipoSistema && record.tipoSistemaCodigo !== filters.tipoSistema) {
+  const enriched = enrichRecordSegment(record);
+
+  if (filters.tipoSistema && enriched.tipoSistemaCodigo !== filters.tipoSistema) {
     return false;
   }
-  if (filters.segmento && (record as any).segmentoMacro !== filters.segmento && record.tipoSistemaCodigo !== filters.segmento) {
+  if (
+    filters.segmento &&
+    (enriched as any).segmentoMacro !== filters.segmento &&
+    enriched.tipoSistemaCodigo !== filters.segmento
+  ) {
     return false;
   }
   if (filters.subsegmento) {
-    const text = `${record.resumo || ""} ${record.miniResumo || ""}`.toLowerCase();
+    const subs: string[] = Array.isArray((enriched as any).subcategorias)
+      ? (enriched as any).subcategorias
+      : [];
+    const text = `${enriched.resumo || ""} ${enriched.miniResumo || ""}`.toLowerCase();
     const palavras = obterPalavrasChaveSubsegmento(filters.subsegmento);
-    const match = palavras.some((p) => text.includes(p.toLowerCase()));
+    const match =
+      subs.includes(filters.subsegmento) ||
+      palavras.some((p) => text.includes(p.toLowerCase()));
     if (!match) {
       return false;
     }
   }
-  if (filters.uf && record.uf !== filters.uf) {
-    return false;
+  if (filters.uf) {
+    const ufs = filters.uf
+      .split(",")
+      .map((u) => u.trim().toUpperCase())
+      .filter(Boolean);
+    if (ufs.length > 0 && !ufs.includes(enriched.uf.toUpperCase())) {
+      return false;
+    }
   }
   if (filters.status === "MINHAS") {
     if (record.status === "PENDENTE" || record.status === "RECUSADA") {
@@ -337,7 +377,8 @@ export async function listOportunidades(
 
   const mergedByIdPncp = new Map<string, LicitacaoRecord>();
 
-  for (const record of listInMemoryLicitacoes()) {
+  for (const rawRecord of listInMemoryLicitacoes()) {
+    const record = enrichRecordSegment(rawRecord);
     if (matchesFilters(record, filters)) {
       mergedByIdPncp.set(record.idPncp, record);
     }
@@ -348,8 +389,11 @@ export async function listOportunidades(
       where: buildPrismaWhere(filters),
       orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
     });
-    for (const record of dbRecords) {
-      mergedByIdPncp.set(record.idPncp, record);
+    for (const rawRecord of dbRecords) {
+      const record = enrichRecordSegment(rawRecord);
+      if (matchesFilters(record, filters)) {
+        mergedByIdPncp.set(record.idPncp, record);
+      }
     }
   } catch (err: unknown) {
     console.error("[listOportunidades] Erro ao buscar no banco:", err);
@@ -362,8 +406,11 @@ export async function listOportunidades(
         where: buildPrismaWhere(filters),
         orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
       });
-      for (const record of retryRecords) {
-        mergedByIdPncp.set(record.idPncp, record);
+      for (const rawRecord of retryRecords) {
+        const record = enrichRecordSegment(rawRecord);
+        if (matchesFilters(record, filters)) {
+          mergedByIdPncp.set(record.idPncp, record);
+        }
       }
     } catch (healErr) {
       console.warn("[listOportunidades] Auto-healing falhou:", healErr);
@@ -412,6 +459,116 @@ export async function listOportunidadesPaginadas(
  * Inclui relações de responsáveis, arquivos, repositórios e análises de IA.
  * Lança `OportunidadesServiceError` com `status: 404` quando não encontrada.
  */
+async function resolveUserSummary(userId: string | null | undefined): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+} | null> {
+  if (!userId) return null;
+  const mem = getInMemoryUsuario(userId);
+  if (mem) {
+    return {
+      id: mem.id,
+      name: mem.name,
+      email: mem.email,
+      role: mem.role || "ANALISTA_COMERCIAL",
+    };
+  }
+  try {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    if (dbUser) {
+      return {
+        id: dbUser.id,
+        name: dbUser.name || "Colaborador",
+        email: dbUser.email || "",
+        role: String(dbUser.role),
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return {
+    id: userId,
+    name: "Colaborador",
+    email: "",
+    role: "ANALISTA_COMERCIAL",
+  };
+}
+
+async function hydrateDossieRelations(base: any): Promise<any> {
+  const realId = base.id;
+  const memEquipe = getInMemoryLicitacaoEquipe(realId);
+
+  const responsavelId =
+    memEquipe !== null ? memEquipe.responsavelId : (base.responsavelId ?? null);
+  const responsavel =
+    base.responsavel && base.responsavel.id === responsavelId
+      ? base.responsavel
+      : await resolveUserSummary(responsavelId);
+
+  let atribuidos: any[] = Array.isArray(base.atribuidos) ? [...base.atribuidos] : [];
+  if (memEquipe !== null) {
+    const resolvedAtribuidos: any[] = [];
+    for (const uid of memEquipe.atribuidoIds) {
+      const existing = atribuidos.find((a) => a.usuarioId === uid);
+      if (existing) {
+        resolvedAtribuidos.push(existing);
+      } else {
+        const u = await resolveUserSummary(uid);
+        resolvedAtribuidos.push({
+          id: `atrib_${realId}_${uid}`,
+          licitacaoId: realId,
+          usuarioId: uid,
+          usuario: u,
+          criadoEm: new Date(),
+        });
+      }
+    }
+    atribuidos = resolvedAtribuidos;
+  }
+
+  const dbArquivos: any[] = Array.isArray(base.arquivos) ? base.arquivos : [];
+  const memArquivos = listInMemoryLicitacaoArquivos(realId);
+  const arquivosMap = new Map<string, any>();
+  for (const a of [...memArquivos, ...dbArquivos]) {
+    if (a && a.id && !arquivosMap.has(a.id)) {
+      arquivosMap.set(a.id, a);
+    }
+  }
+
+  const dbRepos: any[] = Array.isArray(base.repositoriosSimilares) ? base.repositoriosSimilares : [];
+  const memRepos = listInMemoryLicitacaoRepositorios(realId);
+  const reposMap = new Map<string, any>();
+  for (const r of [...memRepos, ...dbRepos]) {
+    if (r && r.id && !reposMap.has(r.id)) {
+      reposMap.set(r.id, r);
+    }
+  }
+
+  const dbAnalises: any[] = Array.isArray(base.analisesIA) ? base.analisesIA : [];
+  const memAnalises = listInMemoryLicitacaoAnalisesIA(realId);
+  const analisesMap = new Map<string, any>();
+  for (const an of [...memAnalises, ...dbAnalises]) {
+    if (an && an.id && !analisesMap.has(an.id)) {
+      analisesMap.set(an.id, an);
+    }
+  }
+
+  return {
+    ...base,
+    responsavelId,
+    responsavel,
+    atribuidos,
+    arquivos: Array.from(arquivosMap.values()),
+    repositoriosSimilares: Array.from(reposMap.values()),
+    analisesIA: Array.from(analisesMap.values()),
+  };
+}
+
 export async function getOportunidadeById(
   id: string,
 ): Promise<any> {
@@ -433,7 +590,7 @@ export async function getOportunidadeById(
       },
     });
     if (found) {
-      return found;
+      return hydrateDossieRelations(found);
     }
   } catch (err) {
     try {
@@ -456,7 +613,7 @@ export async function getOportunidadeById(
         },
       });
       if (retryFound) {
-        return retryFound;
+        return hydrateDossieRelations(retryFound);
       }
     } catch {}
 
@@ -469,14 +626,25 @@ export async function getOportunidadeById(
         },
       });
       if (basic) {
-        return {
+        const [arquivos, repositoriosSimilares, analisesIA, atribuidos] = await Promise.all([
+          prisma.arquivo.findMany({ where: { licitacaoId: basic.id }, orderBy: { criadoEm: "desc" } }).catch(() => []),
+          prisma.repositorioSimilar.findMany({ where: { licitacaoId: basic.id }, orderBy: { criadoEm: "desc" } }).catch(() => []),
+          prisma.analiseStatusParticipacao.findMany({ where: { licitacaoId: basic.id }, orderBy: { criadoEm: "desc" } }).catch(() => []),
+          prisma.licitacaoAtribuido
+            .findMany({
+              where: { licitacaoId: basic.id },
+              include: { usuario: { select: { id: true, name: true, email: true, role: true } } },
+            })
+            .catch(() => []),
+        ]);
+        return hydrateDossieRelations({
           ...basic,
           responsavel: null,
-          atribuidos: [],
-          repositoriosSimilares: [],
-          arquivos: [],
-          analisesIA: [],
-        };
+          atribuidos,
+          repositoriosSimilares,
+          arquivos,
+          analisesIA,
+        });
       }
     } catch {
       // PostgreSQL indisponível: fallback em memória
@@ -485,14 +653,14 @@ export async function getOportunidadeById(
 
   const inMemory = getInMemoryLicitacaoById(id);
   if (inMemory) {
-    return {
+    return hydrateDossieRelations({
       ...inMemory,
       responsavel: null,
       atribuidos: [],
       repositoriosSimilares: [],
       arquivos: [],
       analisesIA: [],
-    };
+    });
   }
 
   throw new OportunidadesServiceError(
@@ -565,31 +733,39 @@ export async function atualizarEquipe(
 ): Promise<any> {
   const input = equipeUpdateSchema.parse(rawInput);
   const oportunidade = await getOportunidadeById(id);
+  const realId = oportunidade.id;
+
+  setInMemoryLicitacaoEquipe(realId, {
+    responsavelId: input.responsavelId ?? null,
+    atribuidoIds: input.atribuidoIds ?? [],
+  });
 
   try {
-    await prisma.licitacao.update({
-      where: { id },
-      data: { responsavelId: input.responsavelId },
-    });
+    await prisma.licitacao
+      .update({
+        where: { id: realId },
+        data: { responsavelId: input.responsavelId },
+      })
+      .catch(() => undefined);
 
-    await prisma.licitacaoAtribuido.deleteMany({ where: { licitacaoId: id } });
+    await prisma.licitacaoAtribuido.deleteMany({ where: { licitacaoId: realId } });
     if (input.atribuidoIds.length > 0) {
       await prisma.licitacaoAtribuido.createMany({
         data: input.atribuidoIds.map((uid) => ({
-          licitacaoId: id,
+          licitacaoId: realId,
           usuarioId: uid,
         })),
         skipDuplicates: true,
       });
     }
   } catch {
-    // In-memory fallback
+    // In-memory fallback already persisted above
   }
 
   await recordAuditLog({
     acao: "EQUIPE_UPDATE",
     entidadeTipo: "LICITACAO",
-    entidadeId: id,
+    entidadeId: realId,
     antes: { responsavelId: oportunidade.responsavelId },
     depois: { responsavelId: input.responsavelId, atribuidoIds: input.atribuidoIds },
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
@@ -597,7 +773,7 @@ export async function atualizarEquipe(
     ip: actorContext?.ip ?? null,
   });
 
-  return getOportunidadeById(id);
+  return getOportunidadeById(realId);
 }
 
 /**
@@ -610,50 +786,50 @@ export async function adicionarRepositorioSimilar(
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
   const input = criarRepositorioSchema.parse(rawInput);
-  await getOportunidadeById(licitacaoId);
+  const oportunidade = await getOportunidadeById(licitacaoId);
+  const realId = oportunidade.id;
 
+  if ((oportunidade.repositoriosSimilares || []).length >= 5) {
+    throw new OportunidadesServiceError(
+      "LIMITE_REPOSITORIOS",
+      "Limite máximo de 5 repositórios de benchmarking atingido",
+      400,
+    );
+  }
+
+  let criado: any;
   try {
-    const count = await prisma.repositorioSimilar.count({
-      where: { licitacaoId },
-    });
-    if (count >= 5) {
-      throw new OportunidadesServiceError(
-        "LIMITE_REPOSITORIOS",
-        "Limite máximo de 5 repositórios de benchmarking atingido",
-        400,
-      );
-    }
-
-    const criado = await prisma.repositorioSimilar.create({
+    criado = await prisma.repositorioSimilar.create({
       data: {
-        licitacaoId,
+        licitacaoId: realId,
         nome: input.nome,
         url: input.url,
       },
     });
-
-    await recordAuditLog({
-      acao: "REPOSITORIO_ADICIONAR",
-      entidadeTipo: "REPOSITORIO_SIMILAR",
-      entidadeId: criado.id,
-      antes: null,
-      depois: { nome: criado.nome, url: criado.url, licitacaoId },
-      usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
-      usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
-      ip: actorContext?.ip ?? null,
-    });
-
-    return criado;
-  } catch (error) {
-    if (error instanceof OportunidadesServiceError) throw error;
-    return {
-      id: `rep_${Date.now()}`,
-      licitacaoId,
+  } catch {
+    criado = {
+      id: `rep_${randomUUID()}`,
+      licitacaoId: realId,
       nome: input.nome,
       url: input.url,
       criadoEm: new Date(),
     };
   }
+
+  insertInMemoryLicitacaoRepositorio(realId, criado);
+
+  await recordAuditLog({
+    acao: "REPOSITORIO_ADICIONAR",
+    entidadeTipo: "REPOSITORIO_SIMILAR",
+    entidadeId: criado.id,
+    antes: null,
+    depois: { nome: criado.nome, url: criado.url, licitacaoId: realId },
+    usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
+    usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
+    ip: actorContext?.ip ?? null,
+  });
+
+  return criado;
 }
 
 /**
@@ -665,6 +841,9 @@ export async function removerRepositorioSimilar(
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
+  const oportunidade = await getOportunidadeById(licitacaoId).catch(() => null);
+  const realId = oportunidade?.id || licitacaoId;
+  deleteInMemoryLicitacaoRepositorio(realId, repId);
   try {
     await prisma.repositorioSimilar.delete({ where: { id: repId } });
   } catch {
@@ -695,13 +874,14 @@ export async function salvarAnaliseIA(
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
   const input = salvarAnaliseIASchema.parse(rawInput);
-  await getOportunidadeById(licitacaoId);
+  const oportunidade = await getOportunidadeById(licitacaoId);
+  const realId = oportunidade.id;
 
   let criada: any;
   try {
     criada = await prisma.analiseStatusParticipacao.create({
       data: {
-        licitacaoId,
+        licitacaoId: realId,
         scriptPrompt: input.scriptPrompt,
         relatorioTexto: input.relatorioTexto,
         impedimentos: input.impedimentos ?? undefined,
@@ -713,8 +893,8 @@ export async function salvarAnaliseIA(
     });
   } catch {
     criada = {
-      id: `analise_${Date.now()}`,
-      licitacaoId,
+      id: `analise_${randomUUID()}`,
+      licitacaoId: realId,
       scriptPrompt: input.scriptPrompt,
       relatorioTexto: input.relatorioTexto,
       impedimentos: input.impedimentos,
@@ -725,12 +905,14 @@ export async function salvarAnaliseIA(
     };
   }
 
+  insertInMemoryLicitacaoAnaliseIA(realId, criada);
+
   await recordAuditLog({
     acao: "ANALISE_IA_SALVAR",
     entidadeTipo: "ANALISE_STATUS_PARTICIPACAO",
     entidadeId: criada.id,
     antes: null,
-    depois: { licitacaoId, executadoPorId: user?.id ?? null },
+    depois: { licitacaoId: realId, executadoPorId: user?.id ?? null },
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
     usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
@@ -756,13 +938,14 @@ export async function adicionarArquivoEdital(
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
-  await getOportunidadeById(licitacaoId);
+  const oportunidade = await getOportunidadeById(licitacaoId);
+  const realId = oportunidade.id;
 
   let criado: any;
   try {
     criado = await prisma.arquivo.create({
       data: {
-        licitacaoId,
+        licitacaoId: realId,
         nome: dadosArquivo.nome,
         tamanho: dadosArquivo.tamanho,
         mimeType: dadosArquivo.mimeType,
@@ -774,19 +957,21 @@ export async function adicionarArquivoEdital(
     });
   } catch {
     criado = {
-      id: `arq_${Date.now()}`,
-      licitacaoId,
+      id: `arq_${randomUUID()}`,
+      licitacaoId: realId,
       ...dadosArquivo,
       criadoEm: new Date(),
     };
   }
+
+  insertInMemoryLicitacaoArquivo(realId, criado);
 
   await recordAuditLog({
     acao: "ARQUIVO_UPLOAD",
     entidadeTipo: "ARQUIVO",
     entidadeId: criado.id,
     antes: null,
-    depois: { nome: criado.nome, tamanho: criado.tamanho, licitacaoId },
+    depois: { nome: criado.nome, tamanho: criado.tamanho, licitacaoId: realId },
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
     usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
@@ -804,6 +989,9 @@ export async function removerArquivoEdital(
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
+  const oportunidade = await getOportunidadeById(licitacaoId).catch(() => null);
+  const realId = oportunidade?.id || licitacaoId;
+  deleteInMemoryLicitacaoArquivo(realId, arquivoId);
   try {
     await prisma.arquivo.delete({ where: { id: arquivoId } });
   } catch {
@@ -966,8 +1154,10 @@ export async function criarOportunidadeManual(
     poder: null,
     modalidade: normModalidade.nome,
     modalidadeCodigo: normModalidade.codigo,
-    segmentoMacro: classif.macro,
-    subcategorias: classif.subcategorias,
+    segmentoMacro: input.segmentoMacro || classif.macro,
+    subcategorias: input.subsegmento
+      ? Array.from(new Set([input.subsegmento, ...classif.subcategorias]))
+      : classif.subcategorias,
     portalDisputa: null,
     miniResumo: input.miniResumo,
     resumo: input.resumo,

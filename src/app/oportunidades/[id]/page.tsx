@@ -847,6 +847,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
 
           <div style={{ minWidth: "320px", flex: 2 }}>
             <FilterableMultiSelect
+              key={`membros-${usuarios.length}-${(oportunidade.atribuidos || []).map((a) => a.usuarioId).sort().join(",")}`}
               id="multiselect-membros-equipe"
               titleText="Membros Atribuídos da Equipe"
               placeholder="Selecione os membros..."
@@ -872,6 +873,27 @@ Realize uma análise profunda estruturada em 4 dimensões:
             {salvandoEquipe ? "Salvando..." : "Salvar Equipe"}
           </Button>
         </div>
+
+        {(oportunidade.responsavel || (oportunidade.atribuidos && oportunidade.atribuidos.length > 0)) && (
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", marginTop: "0.75rem" }}>
+            {oportunidade.responsavel && (
+              <Tag type="teal" size="sm">
+                Coordenador: {oportunidade.responsavel.name}
+              </Tag>
+            )}
+            {(oportunidade.atribuidos || []).map((atrib) => {
+              const nomeMembro =
+                atrib.usuario?.name ||
+                usuarios.find((u) => u.id === atrib.usuarioId)?.name ||
+                "Membro da Equipe";
+              return (
+                <Tag key={atrib.usuarioId} type="cool-gray" size="sm">
+                  Membro: {nomeMembro}
+                </Tag>
+              );
+            })}
+          </div>
+        )}
       </Tile>
 
       {/* 3 Carbon Tabs do Dossiê */}

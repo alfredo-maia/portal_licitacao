@@ -28,10 +28,13 @@ export async function GET(_req?: Request) {
     let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
 
     const userId = (session.user as any)?.id;
-    if (!tenantId && userId) {
+    const userEmail = session.user.email?.trim().toLowerCase();
+    if (!tenantId && (userId || userEmail)) {
       try {
         const membership = await prisma.tenantUser.findFirst({
-          where: { userId },
+          where: userId
+            ? { userId }
+            : { user: { email: userEmail } },
         });
         if (membership) {
           tenantId = membership.tenantId;
@@ -39,7 +42,14 @@ export async function GET(_req?: Request) {
       } catch {}
     }
 
-    const resultado = await listarEquipe(tenantId);
+    const currentUser = {
+      id: userId ?? null,
+      name: session.user.name ?? null,
+      email: session.user.email ?? null,
+      role: (session.user as any)?.role ?? "DIRETORIA",
+    };
+
+    const resultado = await listarEquipe(tenantId, currentUser);
     return NextResponse.json(resultado);
   } catch (error: any) {
     return NextResponse.json(

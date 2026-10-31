@@ -73,10 +73,40 @@ function mapToDocumentoItem(doc: any): DocumentoItem {
   };
 }
 
+function filterInMemoryDocs(query: DocumentoListQuery): any[] {
+  let memoria = listInMemoryDocumentos();
+  if (query.categoria) {
+    memoria = memoria.filter((d) => d.categoria === query.categoria);
+  }
+  if (query.status) {
+    memoria = memoria.filter((d) => d.status === query.status);
+  }
+  if (query.busca) {
+    const termo = query.busca.toLowerCase();
+    memoria = memoria.filter(
+      (d) =>
+        d.nome.toLowerCase().includes(termo) ||
+        (d.tipo && d.tipo.toLowerCase().includes(termo)) ||
+        (d.orgaoEmissor && d.orgaoEmissor.toLowerCase().includes(termo)),
+    );
+  }
+  if (query.apenasVencendoEmDias) {
+    const limite = Date.now() + 1000 * 60 * 60 * 24 * query.apenasVencendoEmDias;
+    memoria = memoria.filter(
+      (d) =>
+        !d.semValidade &&
+        d.dataVencimento &&
+        new Date(d.dataVencimento).getTime() <= limite,
+    );
+  }
+  return memoria;
+}
+
 export async function listarDocumentos(
   rawQuery?: Partial<DocumentoListQuery>,
 ): Promise<DocumentoListResponse> {
   const query = documentoListQuerySchema.parse(rawQuery ?? {});
+  const memoriaFiltrada = filterInMemoryDocs(query);
 
   try {
     const where: any = {};
@@ -99,18 +129,31 @@ export async function listarDocumentos(
       where.dataVencimento = { lte: limite };
     }
 
-    const [total, docsDb] = await Promise.all([
+    const [, docsDb] = await Promise.all([
       prisma.documento.count({ where }),
       prisma.documento.findMany({
         where,
         orderBy: [{ dataVencimento: "asc" }, { nome: "asc" }],
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
       }),
     ]);
 
-    const documentos = docsDb.map(mapToDocumentoItem);
-    const vencidosOuVencendo = documentos.filter((d) => d.alertaVencimento).length;
+    const mergedMap = new Map<string, any>();
+    for (const d of docsDb) {
+      mergedMap.set(d.id, d);
+    }
+    for (const m of memoriaFiltrada) {
+      if (!mergedMap.has(m.id)) {
+        mergedMap.set(m.id, m);
+      }
+    }
+
+    const todos = Array.from(mergedMap.values()).map(mapToDocumentoItem);
+    const total = todos.length;
+    const vencidosOuVencendo = todos.filter((d) => d.alertaVencimento).length;
+    const documentos = todos.slice(
+      (query.page - 1) * query.pageSize,
+      query.page * query.pageSize,
+    );
 
     return {
       ok: true,
@@ -122,26 +165,8 @@ export async function listarDocumentos(
       documentos,
     };
   } catch {
-    // Fallback em memória
-    let memoria = listInMemoryDocumentos();
-    if (query.categoria) {
-      memoria = memoria.filter((d) => d.categoria === query.categoria);
-    }
-    if (query.status) {
-      memoria = memoria.filter((d) => d.status === query.status);
-    }
-    if (query.busca) {
-      const termo = query.busca.toLowerCase();
-      memoria = memoria.filter(
-        (d) =>
-          d.nome.toLowerCase().includes(termo) ||
-          (d.tipo && d.tipo.toLowerCase().includes(termo)) ||
-          (d.orgaoEmissor && d.orgaoEmissor.toLowerCase().includes(termo)),
-      );
-    }
-
-    const total = memoria.length;
-    const paginado = memoria.slice(
+    const total = memoriaFiltrada.length;
+    const paginado = memoriaFiltrada.slice(
       (query.page - 1) * query.pageSize,
       query.page * query.pageSize,
     );
@@ -168,30 +193,32 @@ export async function obterDocumento(
     const doc = await prisma.documento.findUnique({
       where: { id },
     });
-    if (!doc) return null;
+    if (doc) {
+      const raizId = doc.documentoPaiId || doc.id;
+      const versoes = await prisma.documento.findMany({
+        where: {
+          OR: [{ id: raizId }, { documentoPaiId: raizId }],
+        },
+        orderBy: { versao: "desc" },
+      });
 
-    const raizId = doc.documentoPaiId || doc.id;
-    const versoes = await prisma.documento.findMany({
-      where: {
-        OR: [{ id: raizId }, { documentoPaiId: raizId }],
-      },
-      orderBy: { versao: "desc" },
-    });
-
-    return {
-      ok: true,
-      documento: mapToDocumentoItem(doc),
-      historicoVersoes: versoes.map(mapToDocumentoItem),
-    };
+      return {
+        ok: true,
+        documento: mapToDocumentoItem(doc),
+        historicoVersoes: versoes.map(mapToDocumentoItem),
+      };
+    }
   } catch {
-    const doc = getInMemoryDocumento(id);
-    if (!doc) return null;
-    return {
-      ok: true,
-      documento: mapToDocumentoItem(doc),
-      historicoVersoes: [mapToDocumentoItem(doc)],
-    };
+    // fallback in-memory below
   }
+
+  const doc = getInMemoryDocumento(id);
+  if (!doc) return null;
+  return {
+    ok: true,
+    documento: mapToDocumentoItem(doc),
+    historicoVersoes: [mapToDocumentoItem(doc)],
+  };
 }
 
 export async function criarDocumento(
@@ -200,24 +227,46 @@ export async function criarDocumento(
 ): Promise<DocumentoItem> {
   const validado = documentoCriarInputSchema.parse(data);
 
+  const baseData = {
+    nome: validado.nome,
+    categoria: validado.categoria,
+    tipo: validado.tipo || null,
+    orgaoEmissor: validado.orgaoEmissor || null,
+    semValidade: validado.semValidade,
+    dataEmissao: validado.dataEmissao || null,
+    dataVencimento: validado.dataVencimento || null,
+    arquivoUrl: validado.arquivoUrl || null,
+    arquivoNome: validado.arquivoNome || null,
+    arquivoTamanho: validado.arquivoTamanho || null,
+    mimeType: validado.mimeType || null,
+    versao: 1,
+    status: "ATIVO" as const,
+  };
+
   try {
-    const doc = await prisma.documento.create({
-      data: {
-        nome: validado.nome,
-        categoria: validado.categoria,
-        tipo: validado.tipo || null,
-        orgaoEmissor: validado.orgaoEmissor || null,
-        semValidade: validado.semValidade,
-        dataEmissao: validado.dataEmissao || null,
-        dataVencimento: validado.dataVencimento || null,
-        arquivoUrl: validado.arquivoUrl || null,
-        arquivoNome: validado.arquivoNome || null,
-        arquivoTamanho: validado.arquivoTamanho || null,
-        mimeType: validado.mimeType || null,
-        versao: 1,
-        status: "ATIVO",
-        criadoPorId: usuarioId || null,
-      },
+    let doc: any;
+    try {
+      doc = await prisma.documento.create({
+        data: {
+          ...baseData,
+          criadoPorId: usuarioId || null,
+        },
+      });
+    } catch (err) {
+      if (usuarioId) {
+        doc = await prisma.documento.create({
+          data: {
+            ...baseData,
+            criadoPorId: null,
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
+
+    insertInMemoryDocumento({
+      ...doc,
     });
 
     await recordAuditLog({

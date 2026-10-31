@@ -25,39 +25,109 @@ import {
 import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
 import bcrypt from "bcryptjs";
 import { canManageTeamMember } from "@/lib/rbac";
+import { isValidCpf } from "@/lib/validations/cpf";
+import { getInMemoryAuthUserByEmail, upsertInMemoryAuthUser } from "@/server/auth";
+
+async function ensureUserProfileColumns(): Promise<void> {
+  const queries = [
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cpf" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "telefone" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cep" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "logradouro" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "numero" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "complemento" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "bairro" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cidade" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "uf" TEXT`,
+    `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isSuperAdmin" BOOLEAN NOT NULL DEFAULT false`,
+  ];
+  for (const sql of queries) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {}
+  }
+}
 
 // ==========================================
 // 1. MEU PERFIL (Dados Pessoais, Endereço, Senha)
 // ==========================================
 
-export async function obterMeuPerfil(userId: string): Promise<MeuPerfil> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        cpf: true,
-        telefone: true,
-        cep: true,
-        logradouro: true,
-        numero: true,
-        complemento: true,
-        bairro: true,
-        cidade: true,
-        uf: true,
-      },
-    });
-    if (user) return user;
-  } catch {}
+export async function obterMeuPerfil(
+  userId: string,
+  fallbackUser?: { email?: string | null; name?: string | null },
+): Promise<MeuPerfil> {
+  const selectFields = {
+    id: true,
+    name: true,
+    email: true,
+    cpf: true,
+    telefone: true,
+    cep: true,
+    logradouro: true,
+    numero: true,
+    complemento: true,
+    bairro: true,
+    cidade: true,
+    uf: true,
+  };
 
-  const mem = getInMemoryUsuario(userId);
+  let dbUser: MeuPerfil | null = null;
+  try {
+    dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: selectFields,
+    });
+    if (!dbUser && fallbackUser?.email) {
+      dbUser = await prisma.user.findUnique({
+        where: { email: fallbackUser.email.trim().toLowerCase() },
+        select: selectFields,
+      });
+    }
+  } catch (err: any) {
+    if (String(err?.message || "").includes("does not exist")) {
+      await ensureUserProfileColumns();
+      try {
+        dbUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: selectFields,
+        });
+        if (!dbUser && fallbackUser?.email) {
+          dbUser = await prisma.user.findUnique({
+            where: { email: fallbackUser.email.trim().toLowerCase() },
+            select: selectFields,
+          });
+        }
+      } catch {}
+    }
+  }
+
+  const mem = getInMemoryUsuario(userId, null, fallbackUser?.email);
+  const authMem = fallbackUser?.email
+    ? getInMemoryAuthUserByEmail(fallbackUser.email)
+    : undefined;
+
+  if (dbUser) {
+    return {
+      ...dbUser,
+      name: dbUser.name || mem?.name || fallbackUser?.name || "Usuário",
+      email: dbUser.email || mem?.email || fallbackUser?.email || "usuario@empresa.com.br",
+      cpf: dbUser.cpf ?? mem?.cpf ?? null,
+      telefone: dbUser.telefone ?? mem?.telefone ?? null,
+      cep: dbUser.cep ?? mem?.cep ?? null,
+      logradouro: dbUser.logradouro ?? mem?.logradouro ?? null,
+      numero: dbUser.numero ?? mem?.numero ?? null,
+      complemento: dbUser.complemento ?? mem?.complemento ?? null,
+      bairro: dbUser.bairro ?? mem?.bairro ?? null,
+      cidade: dbUser.cidade ?? mem?.cidade ?? null,
+      uf: dbUser.uf ?? mem?.uf ?? null,
+    };
+  }
+
   if (mem) {
     return {
-      id: mem.id,
-      name: mem.name,
-      email: mem.email,
+      id: mem.id || userId,
+      name: mem.name || fallbackUser?.name || authMem?.name || "Usuário",
+      email: fallbackUser?.email || mem.email || authMem?.email || "usuario@empresa.com.br",
       cpf: mem.cpf ?? null,
       telefone: mem.telefone ?? null,
       cep: mem.cep ?? null,
@@ -72,8 +142,8 @@ export async function obterMeuPerfil(userId: string): Promise<MeuPerfil> {
 
   return {
     id: userId,
-    name: "Usuário",
-    email: "usuario@empresa.com.br",
+    name: fallbackUser?.name || authMem?.name || "Usuário",
+    email: fallbackUser?.email || authMem?.email || "usuario@empresa.com.br",
     cpf: null,
     telefone: null,
     cep: null,
@@ -89,8 +159,15 @@ export async function obterMeuPerfil(userId: string): Promise<MeuPerfil> {
 export async function atualizarMeuPerfil(
   userId: string,
   data: MeuPerfilAtualizarInput,
+  fallbackUser?: { email?: string | null; name?: string | null },
 ): Promise<{ ok: boolean; perfil: MeuPerfil } & MeuPerfil> {
   const validado = meuPerfilAtualizarInputSchema.parse(data);
+
+  if (validado.cpf && validado.cpf.trim() !== "") {
+    if (!isValidCpf(validado.cpf)) {
+      throw new Error("CPF inválido. Verifique os dígitos informados.");
+    }
+  }
 
   if (validado.novaSenha || validado.confirmarNovaSenha) {
     if (validado.novaSenha !== validado.confirmarNovaSenha) {
@@ -120,45 +197,91 @@ export async function atualizarMeuPerfil(
     ...(passwordHash ? { passwordHash } : {}),
   };
 
-  let perfil: MeuPerfil;
+  const selectFields = {
+    id: true,
+    name: true,
+    email: true,
+    cpf: true,
+    telefone: true,
+    cep: true,
+    logradouro: true,
+    numero: true,
+    complemento: true,
+    bairro: true,
+    cidade: true,
+    uf: true,
+  };
+
+  let dbAtualizado: any = null;
+
+  const tryUpdateDb = async () => {
+    try {
+      dbAtualizado = await prisma.user.update({
+        where: { id: userId },
+        data: patch,
+        select: selectFields,
+      });
+    } catch (err: any) {
+      if (fallbackUser?.email) {
+        const normalizedEmail = fallbackUser.email.trim().toLowerCase();
+        dbAtualizado = await prisma.user.update({
+          where: { email: normalizedEmail },
+          data: patch,
+          select: selectFields,
+        });
+      } else {
+        throw err;
+      }
+    }
+  };
 
   try {
-    const atualizado = await prisma.user.update({
-      where: { id: userId },
-      data: patch,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        cpf: true,
-        telefone: true,
-        cep: true,
-        logradouro: true,
-        numero: true,
-        complemento: true,
-        bairro: true,
-        cidade: true,
-        uf: true,
-      },
-    });
-    perfil = atualizado;
-  } catch {
-    const mem = updateInMemoryUsuario(userId, patch);
-    perfil = {
-      id: userId,
-      name: mem?.name ?? validado.name ?? "Usuário",
-      email: mem?.email ?? "usuario@empresa.com.br",
-      cpf: mem?.cpf ?? validado.cpf ?? null,
-      telefone: mem?.telefone ?? validado.telefone ?? null,
-      cep: mem?.cep ?? validado.cep ?? null,
-      logradouro: mem?.logradouro ?? validado.logradouro ?? null,
-      numero: mem?.numero ?? validado.numero ?? null,
-      complemento: mem?.complemento ?? validado.complemento ?? null,
-      bairro: mem?.bairro ?? validado.bairro ?? null,
-      cidade: mem?.cidade ?? validado.cidade ?? null,
-      uf: mem?.uf ?? validado.uf ?? null,
-    };
+    await tryUpdateDb();
+  } catch (err: any) {
+    if (String(err?.message || "").includes("does not exist")) {
+      await ensureUserProfileColumns();
+      try {
+        await tryUpdateDb();
+      } catch {}
+    }
   }
+
+  const mem = updateInMemoryUsuario(userId, {
+    ...patch,
+    ...(fallbackUser?.email ? { email: fallbackUser.email.trim().toLowerCase() } : {}),
+  });
+
+  const resolvedEmail =
+    dbAtualizado?.email ||
+    fallbackUser?.email ||
+    mem?.email ||
+    "usuario@empresa.com.br";
+
+  if (resolvedEmail && resolvedEmail !== "usuario@empresa.com.br") {
+    const existingAuth = getInMemoryAuthUserByEmail(resolvedEmail);
+    if (existingAuth) {
+      upsertInMemoryAuthUser({
+        ...existingAuth,
+        name: dbAtualizado?.name || validado.name || existingAuth.name,
+        passwordHash: passwordHash || existingAuth.passwordHash,
+      });
+    }
+  }
+
+  const perfil: MeuPerfil = dbAtualizado || {
+    id: userId,
+    name: mem?.name ?? validado.name ?? fallbackUser?.name ?? "Usuário",
+    email: resolvedEmail,
+    cpf: mem?.cpf ?? validado.cpf ?? null,
+    telefone: mem?.telefone ?? validado.telefone ?? null,
+    cep: mem?.cep ?? validado.cep ?? null,
+    logradouro: mem?.logradouro ?? validado.logradouro ?? null,
+    numero: mem?.numero ?? validado.numero ?? null,
+    complemento: mem?.complemento ?? validado.complemento ?? null,
+    bairro: mem?.bairro ?? validado.bairro ?? null,
+    cidade: mem?.cidade ?? validado.cidade ?? null,
+    uf: mem?.uf ?? validado.uf ?? null,
+  };
 
   await recordAuditLog({
     acao: "MEU_PERFIL_ATUALIZADO",
@@ -471,52 +594,106 @@ export async function atualizarConfiguracaoEmpresa(
 
 export async function listarEquipe(
   tenantId?: string | null,
+  currentUser?: {
+    id?: string | null;
+    name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  } | null,
 ): Promise<UsuarioEquipeListResponse> {
-  try {
-    if (tenantId) {
+  if (!tenantId && !currentUser?.email) {
+    // Se tenantId for nulo/indefinido e não houver usuário logado identificado, NUNCA expor todos os usuários do banco
+    return {
+      ok: true,
+      total: 0,
+      usuarios: [],
+    };
+  }
+
+  const byEmail = new Map<string, UsuarioEquipeItem>();
+  const addUnique = (item: UsuarioEquipeItem) => {
+    const key = (item.email || item.id).trim().toLowerCase();
+    if (!byEmail.has(key)) {
+      byEmail.set(key, item);
+    }
+  };
+
+  if (tenantId) {
+    try {
       const memberships = await prisma.tenantUser.findMany({
         where: { tenantId },
         include: { user: true },
         orderBy: { criadoEm: "asc" },
       });
 
-      return {
-        ok: true,
-        total: memberships.length,
-        usuarios: memberships.map((m) => ({
+      for (const m of memberships) {
+        if (!m.user) continue;
+        addUnique({
           id: m.user.id,
           name: m.user.name,
           email: m.user.email,
-          role: (m.user.role === "OPERADOR" ? "ANALISTA_COMERCIAL" : m.user.role) as any,
+          role: (String(m.user.role) === "OPERADOR" || String(m.user.role) === "OPERADOR_TECNICO"
+            ? "ANALISTA_COMERCIAL"
+            : String(m.user.role) === "SUPERADMIN"
+            ? "DIRETORIA"
+            : m.user.role) as any,
           ativo: m.ativo && m.user.ativo,
           createdAt: m.user.createdAt,
           updatedAt: m.user.updatedAt,
-        })),
-      };
-    }
+        });
+      }
+    } catch {}
 
-    // Se tenantId for nulo/indefinido, NUNCA expor todos os usuários do banco (Prevenção estrita de vazamento Multi-Tenant)
-    return {
-      ok: true,
-      total: 0,
-      usuarios: [],
-    };
-  } catch {
-    const usuarios = listInMemoryUsuarios(tenantId);
-    return {
-      ok: true,
-      total: usuarios.length,
-      usuarios: usuarios.map((u) => ({
+    const memUsers = listInMemoryUsuarios(tenantId);
+    for (const u of memUsers) {
+      addUnique({
         id: u.id,
         name: u.name,
         email: u.email,
-        role: u.role === "OPERADOR" ? "ANALISTA_COMERCIAL" : u.role,
+        role: (u.role === "OPERADOR" || u.role === "OPERADOR_TECNICO"
+          ? "ANALISTA_COMERCIAL"
+          : u.role === "SUPERADMIN"
+          ? "DIRETORIA"
+          : u.role) as any,
         ativo: u.ativo,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
-      })),
-    };
+        createdAt: u.createdAt || new Date(),
+        updatedAt: u.updatedAt || new Date(),
+      });
+    }
   }
+
+  if (currentUser?.email) {
+    const normalizedCurrentEmail = currentUser.email.trim().toLowerCase();
+    if (!byEmail.has(normalizedCurrentEmail)) {
+      const currentRole =
+        currentUser.role === "SUPERADMIN" || currentUser.role === "DIRETORIA"
+          ? "DIRETORIA"
+          : "ANALISTA_COMERCIAL";
+      const selfItem: UsuarioEquipeItem = {
+        id: currentUser.id || `usr_${normalizedCurrentEmail}`,
+        name: currentUser.name || "Usuário Titular",
+        email: currentUser.email,
+        role: currentRole as any,
+        ativo: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      // Coloca o próprio usuário no topo da lista
+      const existingEntries = Array.from(byEmail.entries());
+      byEmail.clear();
+      byEmail.set(normalizedCurrentEmail, selfItem);
+      for (const [k, v] of existingEntries) {
+        byEmail.set(k, v);
+      }
+    }
+  }
+
+  const usuarios = Array.from(byEmail.values());
+  return {
+    ok: true,
+    total: usuarios.length,
+    usuarios,
+  };
 }
 
 export async function criarMembroEquipe(
@@ -534,14 +711,17 @@ export async function criarMembroEquipe(
   // Verifica limite de colaboradores do plano
   if (tenantId) {
     let currentMembersCount = 0;
-    let maxAllowed = 1;
+    let maxAllowed = 2; // Regra Geral: Trial = PRO (até 2 colaboradores)
     let checkedFromDb = false;
 
     try {
       const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
       if (tenant) {
         checkedFromDb = true;
-        maxAllowed = tenant.maxUsers;
+        maxAllowed =
+          tenant.billingStatus === "TRIAL"
+            ? Math.max(tenant.maxUsers || 2, 2)
+            : tenant.maxUsers;
         currentMembersCount = await prisma.tenantUser.count({
           where: { tenantId, ativo: true },
         });
@@ -571,7 +751,10 @@ export async function criarMembroEquipe(
 
   if (actor) {
     const perm = canManageTeamMember({
-      actor,
+      actor: {
+        id: actor.id,
+        role: actor.role === "SUPERADMIN" ? "DIRETORIA" : actor.role,
+      },
       action: "create",
       newRole: validado.role,
     });
@@ -580,30 +763,109 @@ export async function criarMembroEquipe(
     }
   }
 
+  const normalizedEmail = validado.email.trim().toLowerCase();
   const passwordHash = await bcrypt.hash(validado.password, 10);
   const prismaRole = (validado.role as string) === "OPERADOR_TECNICO" ? "OPERADOR" : validado.role;
 
-  try {
-    const novo = await prisma.user.create({
-      data: {
-        name: validado.name,
-        email: validado.email,
-        passwordHash,
-        role: prismaRole as any,
-        ativo: validado.ativo,
-      },
-    });
+  // Registra imediatamente no store de autenticação em memória para login instantâneo
+  const memoria = insertInMemoryUsuario({
+    name: validado.name,
+    email: normalizedEmail,
+    role: validado.role,
+    ativo: validado.ativo,
+    tenantId: tenantId ?? null,
+  });
 
-    if (tenantId) {
-      await prisma.tenantUser.create({
+  upsertInMemoryAuthUser({
+    id: memoria.id,
+    name: validado.name,
+    email: normalizedEmail,
+    role: validado.role as any,
+    ativo: validado.ativo,
+    passwordHash,
+    activeTenantId: tenantId ?? null,
+    cnpj: null,
+    plano: "PRO",
+    tenantRole: "MEMBRO",
+  });
+
+  try {
+    let novo: any;
+    try {
+      novo = await prisma.user.create({
         data: {
-          tenantId,
-          userId: novo.id,
-          role: "MEMBRO",
+          name: validado.name,
+          email: normalizedEmail,
+          passwordHash,
+          role: prismaRole as any,
+          ativo: validado.ativo,
+        },
+      });
+    } catch (err: any) {
+      if (String(err?.message || "").includes("does not exist")) {
+        await ensureUserProfileColumns();
+      }
+      novo = await prisma.user.upsert({
+        where: { email: normalizedEmail },
+        update: {
+          name: validado.name,
+          passwordHash,
+          role: prismaRole as any,
+          ativo: validado.ativo,
+        },
+        create: {
+          name: validado.name,
+          email: normalizedEmail,
+          passwordHash,
+          role: prismaRole as any,
           ativo: validado.ativo,
         },
       });
     }
+
+    if (tenantId && novo?.id) {
+      await prisma.tenantUser
+        .upsert({
+          where: {
+            tenantId_userId: {
+              tenantId,
+              userId: novo.id,
+            },
+          },
+          update: {
+            ativo: validado.ativo,
+          },
+          create: {
+            tenantId,
+            userId: novo.id,
+            role: "MEMBRO",
+            ativo: validado.ativo,
+          },
+        })
+        .catch(() =>
+          prisma.tenantUser.create({
+            data: {
+              tenantId,
+              userId: novo.id,
+              role: "MEMBRO",
+              ativo: validado.ativo,
+            },
+          }),
+        );
+    }
+
+    upsertInMemoryAuthUser({
+      id: novo.id,
+      name: novo.name,
+      email: novo.email,
+      role: validado.role as any,
+      ativo: novo.ativo,
+      passwordHash,
+      activeTenantId: tenantId ?? null,
+      cnpj: null,
+      plano: "PRO",
+      tenantRole: "MEMBRO",
+    });
 
     await recordAuditLog({
       acao: "USUARIO_CRIADO",
@@ -624,14 +886,6 @@ export async function criarMembroEquipe(
       updatedAt: novo.updatedAt,
     };
   } catch {
-    const memoria = insertInMemoryUsuario({
-      name: validado.name,
-      email: validado.email,
-      role: validado.role,
-      ativo: validado.ativo,
-      tenantId: tenantId ?? null,
-    });
-
     await recordAuditLog({
       acao: "USUARIO_CRIADO",
       entidadeTipo: "USUARIO",

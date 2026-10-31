@@ -84,9 +84,11 @@ describe("Sprint 5 — Frontend: Declarações Oficiais A4 & Gestão de Impugna�
       expect(screen.getByText("Copiar Texto")).toBeDefined();
       expect(screen.getByText("Exportar .TXT")).toBeDefined();
 
-      // Aguarda renderização da folha A4 preview
+      // Aguarda renderização do molde inicial e atualiza a folha A4 ao clicar no botão
+      expect(screen.getByTestId("folha-a4-preview")).toBeDefined();
+      fireEvent.click(screen.getByText("Atualizar Folha A4"));
+
       await waitFor(() => {
-        expect(screen.getByTestId("folha-a4-preview")).toBeDefined();
         expect(screen.getByText("APONTA TECNOLOGIA LTDA")).toBeDefined();
         expect(screen.getByText("Cumpre plenamente todos os requisitos.")).toBeDefined();
       });

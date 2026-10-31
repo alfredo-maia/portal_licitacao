@@ -20,7 +20,12 @@ export async function GET() {
       );
     }
 
-    const perfil = await obterMeuPerfil(userId);
+    const fallbackUser = {
+      email: session?.user?.email ?? null,
+      name: session?.user?.name ?? null,
+    };
+
+    const perfil = await obterMeuPerfil(userId, fallbackUser);
     return NextResponse.json({ ok: true, perfil });
   } catch (error: any) {
     return NextResponse.json(
@@ -55,7 +60,12 @@ export async function PUT(req: Request) {
       );
     }
 
-    const resultado = await atualizarMeuPerfil(userId, parseResult.data);
+    const fallbackUser = {
+      email: session?.user?.email ?? null,
+      name: session?.user?.name ?? null,
+    };
+
+    const resultado = await atualizarMeuPerfil(userId, parseResult.data, fallbackUser);
     return NextResponse.json(resultado);
   } catch (error: any) {
     return NextResponse.json(

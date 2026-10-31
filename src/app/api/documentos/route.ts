@@ -74,10 +74,14 @@ export async function POST(request: Request) {
           // ambiente sem /data/uploads
         }
 
-        // 2. Salvar no diretório public
-        const publicDir = join(process.cwd(), "public", "uploads", "documentos");
-        await mkdir(publicDir, { recursive: true });
-        await writeFile(join(publicDir, safeName), buffer);
+        // 2. Salvar no diretório public (fallback seguro se somente-leitura)
+        try {
+          const publicDir = join(process.cwd(), "public", "uploads", "documentos");
+          await mkdir(publicDir, { recursive: true });
+          await writeFile(join(publicDir, safeName), buffer);
+        } catch {
+          // ambiente sem permissão de escrita em public/
+        }
 
         arquivoUrl = `/uploads/documentos/${safeName}`;
         arquivoNome = file.name;

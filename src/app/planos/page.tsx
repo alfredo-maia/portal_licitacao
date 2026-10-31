@@ -128,6 +128,17 @@ export default function PlanosPage() {
   };
 
   const planoAtivoId = status?.plano?.toUpperCase() || "PRO";
+  const isTrial = !status || status.billingStatus === "TRIAL";
+  const maxCnpjsDisplay = isTrial
+    ? Math.max(status?.maxCnpjs ?? 2, 2)
+    : status?.maxCnpjs ?? 2;
+  const maxUsersDisplay = isTrial
+    ? Math.max(status?.maxUsers ?? 2, 2)
+    : status?.maxUsers ?? 2;
+  const diasTrialDisplay =
+    status && typeof status.diasRestantesTrial === "number" && status.diasRestantesTrial > 0
+      ? status.diasRestantesTrial
+      : 14;
 
   return (
     <div style={{ padding: "2rem", maxWidth: "1280px", margin: "0 auto" }}>
@@ -196,26 +207,32 @@ export default function PlanosPage() {
           }}
         >
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
               <span style={{ fontSize: "1.1rem", fontWeight: 600, color: "var(--cds-text-primary)" }}>
                 Plano Atual da Empresa:
               </span>
-              <Tag type={planoAtivoId === "PRO" ? "blue" : planoAtivoId === "ENTERPRISE" ? "purple" : "teal"}>
-                {planoAtivoId}
-              </Tag>
-              {status?.billingStatus === "TRIAL" && (
-                <Tag type="cyan">
-                  {status.diasRestantesTrial > 0
-                    ? `Degustação: ${status.diasRestantesTrial} dia(s) restante(s)`
-                    : "Trial Finalizado"}
-                </Tag>
+              {isTrial ? (
+                <>
+                  <Tag type="blue">Teste Grátis</Tag>
+                  <Tag type="cyan">
+                    {status && status.diasRestantesTrial === 0 && status.inGracePeriod
+                      ? "Trial Finalizado"
+                      : `Degustação: ${diasTrialDisplay} dia(s) restante(s)`}
+                  </Tag>
+                </>
+              ) : (
+                <>
+                  <Tag type={planoAtivoId === "PRO" ? "blue" : planoAtivoId === "ENTERPRISE" ? "purple" : "teal"}>
+                    {planoAtivoId}
+                  </Tag>
+                  {status?.billingStatus === "ATIVO" && <Tag type="green">Assinatura Ativa</Tag>}
+                </>
               )}
-              {status?.billingStatus === "ATIVO" && <Tag type="green">Assinatura Ativa</Tag>}
             </div>
             <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
               {status?.razaoSocial ? `${status.razaoSocial} • ` : ""}
               {status?.cnpj ? `CNPJ: ${status.cnpj} • ` : ""}
-              Capacidade: até {status?.maxCnpjs ?? 1} CNPJ(s) e até {status?.maxUsers ?? 1} Colaborador(es).
+              Capacidade: até {maxCnpjsDisplay} CNPJ(s) e até {maxUsersDisplay} Colaborador(es).
             </p>
           </div>
 
@@ -245,7 +262,7 @@ export default function PlanosPage() {
         }}
       >
         {PLANOS_CATALOGO.map((plano) => {
-          const isPlanoAtual = plano.id === planoAtivoId;
+          const isPlanoAtual = !isTrial && plano.id === planoAtivoId;
 
           return (
             <Tile

@@ -140,9 +140,9 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
 
     render(<ConfiguracoesPage />);
 
-    // Header principal
+    // Header principal (sem o badge RBAC & Gestão Multi-CNPJ)
     expect(screen.getByText("Configurações Corporativas")).toBeDefined();
-    expect(screen.getByText("RBAC & Gestão Multi-CNPJ")).toBeDefined();
+    expect(screen.queryByText("RBAC & Gestão Multi-CNPJ")).toBeNull();
 
     // Abas Carbon
     expect(screen.getByRole("tab", { name: /Meu Perfil/i })).toBeDefined();

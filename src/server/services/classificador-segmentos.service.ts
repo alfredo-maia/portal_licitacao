@@ -86,13 +86,39 @@ export function classificarLicitacaoPorTexto(
   }
 
   // Encontra o macro-segmento com maior pontuação
-  let melhorMacro: MacroSegmento = "TECNOLOGIA_TELECOM";
+  let melhorMacro: MacroSegmento = "MATERIAIS_ESCRITORIO_SUPRIMENTOS";
   let maiorScore = 0;
 
   for (const [macroKey, data] of Object.entries(scores)) {
     if (data.scoreTotal > maiorScore) {
       maiorScore = data.scoreTotal;
       melhorMacro = macroKey as MacroSegmento;
+    }
+  }
+
+  // Fallback heurístico caso nenhuma palavra-chave exata do catálogo tenha pontuado
+  if (maiorScore === 0) {
+    if (/\b(saude|hospital|medic|farmac|ambulator|odontolog|clinica|ubs|upa|enfermag|cirurg|vacin|exame)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "SAUDE_MEDICAMENTOS_HOSPITALAR";
+      scores[melhorMacro].subcategorias.add("MATERIAIS_HOSPITALARES_DESCARTAVEIS");
+    } else if (/\b(veicul|frota|automot|combustiv|oleo|lubrific|pneu|mecan|viatur|motor|diesel|gasolin)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "AUTOMOTIVO_PECAS_FROTAS";
+      scores[melhorMacro].subcategorias.add("PECAS_AUTOMOTIVAS_ACESSORIOS");
+    } else if (/\b(obra|construc|engenhari|reforma|paviment|britag|eletric|hidraulic|asfalt|drenag|predial|terrapl)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "OBRAS_CONSTRUCAO_MANUTENCAO";
+      scores[melhorMacro].subcategorias.add("OBRAS_ENGENHARIA_PAVIMENTACAO");
+    } else if (/\b(aliment|merenda|refeic|nutric|hortifrut|cesta basica|genero|padaria|panific|cozinha)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "ALIMENTOS_MERENDA_ESCOLAR";
+      scores[melhorMacro].subcategorias.add("GENEROS_NAO_PERECIVEIS");
+    } else if (/\b(software|sistema|informatica|computador|rede|telecom|licenca|nuvem|saas|servidor|impressora|internet|fibra)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "TECNOLOGIA_TELECOM";
+      scores[melhorMacro].subcategorias.add("SOFTWARES_SAAS_LICENCAS");
+    } else if (/\b(limpez|vigilanc|portari|locacao|terceiriz|manutencao|seguranca|transporte|coleta|evento)\w*/i.test(textoNormalizado)) {
+      melhorMacro = "SERVICOS_TERCEIRIZADOS_OPERACIONAIS";
+      scores[melhorMacro].subcategorias.add("LIMPEZA_CONSERVACAO_PREDIAL");
+    } else {
+      melhorMacro = "MATERIAIS_ESCRITORIO_SUPRIMENTOS";
+      scores[melhorMacro].subcategorias.add("PAPELARIA_MATERIAL_ESCOLAR");
     }
   }
 

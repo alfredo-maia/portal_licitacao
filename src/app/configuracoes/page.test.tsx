@@ -212,13 +212,9 @@ describe("Configurações Page — Reforma Completa (Meu Perfil 3 Cards, Multi-C
       expect(screen.getByDisplayValue("APONTA TECNOLOGIA E SERVICOS LTDA")).toBeInTheDocument();
       expect(screen.getAllByDisplayValue("12.345.678/0001-90")[0]).toBeInTheDocument();
 
-      // Botão Adicionar CNPJ (desabilitado em TRIAL/BASICO)
+      // Botão Adicionar CNPJ (habilitado em TRIAL pois tem funções do PRO até 2 CNPJs)
       const btnAddCnpj = screen.getByRole("button", { name: /Adicionar CNPJ/i });
-      expect(btnAddCnpj).toBeDisabled();
-      expect(btnAddCnpj).toHaveAttribute(
-        "title",
-        expect.stringMatching(/upgrade do seu plano/i),
-      );
+      expect(btnAddCnpj).not.toBeDisabled();
 
       // Inscrição Municipal deve estar presente
       expect(screen.getByLabelText(/Inscrição Municipal/i)).toBeInTheDocument();
