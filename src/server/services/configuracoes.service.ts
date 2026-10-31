@@ -425,9 +425,15 @@ export async function obterConfiguracaoEmpresa(
     });
     if (config) return config;
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
-    const base = getInMemoryConfiguracaoEmpresa();
+    const base = getInMemoryConfiguracaoEmpresa(tenantId);
     return {
       ...base,
+      razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
+      cnpj: memTenant?.cnpj || (base as any).cnpj || "",
+      cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
+      endereco: memTenant?.endereco || (base as any).endereco || "",
+      cidade: memTenant?.cidade || (base as any).cidade || "",
+      uf: memTenant?.uf || (base as any).uf || "GO",
       segmentos: memTenant?.segmentos || (base as any).segmentos || [],
       subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
       ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
@@ -435,9 +441,15 @@ export async function obterConfiguracaoEmpresa(
     };
   } catch {
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
-    const base = getInMemoryConfiguracaoEmpresa();
+    const base = getInMemoryConfiguracaoEmpresa(tenantId);
     return {
       ...base,
+      razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
+      cnpj: memTenant?.cnpj || (base as any).cnpj || "",
+      cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
+      endereco: memTenant?.endereco || (base as any).endereco || "",
+      cidade: memTenant?.cidade || (base as any).cidade || "",
+      uf: memTenant?.uf || (base as any).uf || "GO",
       segmentos: memTenant?.segmentos || (base as any).segmentos || [],
       subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
       ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
@@ -568,7 +580,7 @@ export async function atualizarConfiguracaoEmpresa(
       inMemoryTenants.set(tenantId, memTenant);
     }
 
-    const memoria = updateInMemoryConfiguracaoEmpresa(validado);
+    const memoria = updateInMemoryConfiguracaoEmpresa(validado, tenantId);
 
     await recordAuditLog({
       acao: "CONFIGURACAO_EMPRESA_ATUALIZADA",

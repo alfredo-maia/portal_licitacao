@@ -38,6 +38,7 @@ import { getVisibleConfigTabs } from "@/lib/rbac";
 import { isValidCpf, maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
 import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 import { ESTADOS_BRASIL } from "@/config/estados";
+import { CATALOGO_CNAE } from "@/config/cnae-catalogo";
 import type {
   ConfiguracaoEmpresa,
   MeuPerfil,
@@ -252,6 +253,19 @@ export default function ConfiguracoesPage() {
     carregarEquipe();
   }, [carregarSessao, carregarPerfil, carregarTenants, carregarEmpresa, carregarEquipe]);
 
+  useEffect(() => {
+    const handleTenantChanged = (e: any) => {
+      const nextId = e?.detail?.tenantId;
+      if (nextId && nextId !== activeTenantId) {
+        setActiveTenantId(nextId);
+        carregarEmpresa(nextId);
+        carregarEquipe();
+      }
+    };
+    window.addEventListener("tenant-changed", handleTenantChanged);
+    return () => window.removeEventListener("tenant-changed", handleTenantChanged);
+  }, [activeTenantId, carregarEmpresa, carregarEquipe]);
+
   // Controle de Abas Autorizadas
   const visibleTabIds = useMemo(() => getVisibleConfigTabs(userRole), [userRole]);
   const TAB_DEFINITIONS = useMemo(
@@ -406,6 +420,11 @@ export default function ConfiguracoesPage() {
       if (res.ok && data.ok) {
         setActiveTenantId(nextTenantId);
         setNotificacao({ tipo: "success", texto: "Empresa ativa alterada com sucesso!" });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("tenant-changed", { detail: { tenantId: nextTenantId } }),
+          );
+        }
         carregarEmpresa(nextTenantId);
         carregarEquipe();
       } else {
@@ -497,14 +516,22 @@ export default function ConfiguracoesPage() {
   const handleSalvarEmpresa = async () => {
     setSalvandoEmpresa(true);
     try {
-      const res = await fetch("/api/configuracoes/empresa", {
+      const url = activeTenantId
+        ? `/api/configuracoes/empresa?tenantId=${encodeURIComponent(activeTenantId)}`
+        : "/api/configuracoes/empresa";
+      const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(empresa),
+        body: JSON.stringify({ ...empresa, tenantId: activeTenantId }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
         setNotificacao({ tipo: "success", texto: "Dados cadastrais da empresa atualizados com sucesso!" });
+        if (typeof window !== "undefined" && activeTenantId) {
+          window.dispatchEvent(
+            new CustomEvent("tenant-changed", { detail: { tenantId: activeTenantId } }),
+          );
+        }
       } else {
         setNotificacao({ tipo: "error", texto: data.error || "Falha ao salvar dados da empresa." });
       }
@@ -1071,10 +1098,19 @@ export default function ConfiguracoesPage() {
               <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
                 <TextInput
                   id="empresa-cnae"
-                  labelText="CNAE Principal"
+                  list="cnae-options-list"
+                  labelText="CNAE Principal (Catálogo IBGE)"
+                  placeholder="Pesquise por código ou atividade (ex: 4711-3/02, panificação, medicamentos)..."
                   value={empresa.cnae || ""}
                   onChange={(e) => setEmpresa({ ...empresa, cnae: e.target.value })}
                 />
+                <datalist id="cnae-options-list">
+                  {CATALOGO_CNAE.map((c) => (
+                    <option key={c.codigo} value={c.codigo}>
+                      {c.codigo} — {c.descricao}
+                    </option>
+                  ))}
+                </datalist>
               </Column>
             </Grid>
 
@@ -1536,10 +1572,11 @@ export default function ConfiguracoesPage() {
           />
           <TextInput
             id="novo-cnae"
-            labelText="CNAE Principal"
+            list="cnae-options-list"
+            labelText="CNAE Principal (Catálogo IBGE)"
             value={novoCnpjForm.cnaePrincipal}
             onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, cnaePrincipal: e.target.value })}
-            placeholder="Código CNAE"
+            placeholder="Pesquise por código ou atividade (ex: 4711-3/02, panificação, alimentos)..."
             style={{ marginBottom: "1rem" }}
           />
           <Grid style={{ padding: 0 }}>

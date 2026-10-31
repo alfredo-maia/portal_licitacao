@@ -638,18 +638,34 @@ let usuariosStore: Map<string, any> = new Map([
   ],
 ]);
 
-export function getInMemoryConfiguracaoEmpresa(): any {
+const configuracaoEmpresaPorTenant = new Map<string, any>();
+
+export function getInMemoryConfiguracaoEmpresa(tenantId?: string | null): any {
+  if (tenantId && configuracaoEmpresaPorTenant.has(tenantId)) {
+    return { ...configuracaoEmpresaPorTenant.get(tenantId) };
+  }
   return { ...configuracaoEmpresaStore };
 }
 
-export function updateInMemoryConfiguracaoEmpresa(patch: any): any {
-  configuracaoEmpresaStore = {
-    ...configuracaoEmpresaStore,
+export function updateInMemoryConfiguracaoEmpresa(patch: any, tenantId?: string | null): any {
+  const current = tenantId && configuracaoEmpresaPorTenant.has(tenantId)
+    ? configuracaoEmpresaPorTenant.get(tenantId)
+    : configuracaoEmpresaStore;
+
+  const updated = {
+    ...current,
     ...patch,
-    id: "default",
+    id: tenantId ? `cfg_${tenantId}` : "default",
+    tenantId: tenantId || null,
     atualizadoEm: new Date(),
   };
-  return { ...configuracaoEmpresaStore };
+
+  if (tenantId) {
+    configuracaoEmpresaPorTenant.set(tenantId, updated);
+  } else {
+    configuracaoEmpresaStore = updated;
+  }
+  return updated;
 }
 
 export function listInMemoryUsuarios(tenantId?: string | null): any[] {

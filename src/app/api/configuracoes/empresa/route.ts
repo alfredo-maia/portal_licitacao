@@ -52,7 +52,8 @@ export async function PUT(req: Request) {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const queryTenant = new URL(req.url).searchParams.get("tenantId");
+    const tenantId = queryTenant || body.tenantId || cookieTenant || (session?.user as any)?.activeTenantId;
     const empresa = await atualizarConfiguracaoEmpresa(
       parseResult.data,
       (session?.user as any)?.id,

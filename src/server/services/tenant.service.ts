@@ -10,6 +10,7 @@ import {
   type PlanoAssinatura,
   type TenantRole,
 } from "@/server/schemas/tenant.schema";
+import { updateInMemoryConfiguracaoEmpresa } from "./licitacoes-store";
 
 export class TenantCollisionError extends Error {
   code = "CNPJ_ALREADY_REGISTERED" as const;
@@ -199,6 +200,21 @@ export async function createTenantForUser(params: {
     criadoEm: now,
   });
 
+  updateInMemoryConfiguracaoEmpresa(
+    {
+      id: `cfg_${newTenantId}`,
+      tenantId: newTenantId,
+      razaoSocial: input.razaoSocial,
+      cnpj: cleanedCnpj,
+      cnae: input.cnaePrincipal,
+      endereco: input.endereco || "",
+      cidade: input.cidade || "",
+      uf: input.uf || "GO",
+      representanteNome: userName || "",
+    },
+    newTenantId,
+  );
+
   try {
     await prisma.tenant.create({
       data: {
@@ -221,6 +237,20 @@ export async function createTenantForUser(params: {
         },
       },
     });
+
+    await (prisma as any).configuracaoEmpresa.create({
+      data: {
+        id: `cfg_${newTenantId}`,
+        tenantId: newTenantId,
+        razaoSocial: input.razaoSocial,
+        cnpj: cleanedCnpj,
+        cnae: input.cnaePrincipal,
+        endereco: input.endereco || "",
+        cidade: input.cidade || "",
+        uf: input.uf || "GO",
+        representanteNome: userName || "",
+      },
+    }).catch(() => undefined);
   } catch {
     // Fallback gracioso para ambiente sem container PostgreSQL
   }
