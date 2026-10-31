@@ -26,7 +26,8 @@ const EXPECTED_ROUTES = [
     isPlaceholder: true,
   },
   { order: 10, path: "/notificacoes", label: "Notificações" },
-  { order: 11, path: "/configuracoes", label: "Configurações" },
+  { order: 11, path: "/planos", label: "Planos" },
+  { order: 12, path: "/configuracoes", label: "Configurações" },
 ] as const;
 
 function hasAppRouterPageForRoute(routePath: string): boolean {
@@ -59,7 +60,7 @@ function hasAppRouterPageForRoute(routePath: string): boolean {
   return false;
 }
 
-describe("Sprint 0 — Contrato das 11 Rotas Oficiais (src/config/routes.ts)", () => {
+describe("Sprint 0 & Nova Sprint — Contrato das 12 Rotas Oficiais (src/config/routes.ts)", () => {
   it("deve validar APP_ROUTES contra o schema Zod routesListSchema", () => {
     const parsed = routesListSchema.safeParse(APP_ROUTES);
     expect(parsed.success).toBe(true);
@@ -67,8 +68,8 @@ describe("Sprint 0 — Contrato das 11 Rotas Oficiais (src/config/routes.ts)", (
     expect(OFFICIAL_ROUTES).toEqual(APP_ROUTES);
   });
 
-  it("deve conter exatamente as 11 rotas na ordem especificada no PRD (§3)", () => {
-    expect(APP_ROUTES).toHaveLength(11);
+  it("deve conter exatamente as 12 rotas na ordem especificada", () => {
+    expect(APP_ROUTES).toHaveLength(12);
 
     EXPECTED_ROUTES.forEach((expected, index) => {
       const actual = APP_ROUTES[index];
@@ -88,7 +89,7 @@ describe("Sprint 0 — Contrato das 11 Rotas Oficiais (src/config/routes.ts)", (
     expect(roboRoute?.isPlaceholder).toBe(true);
   });
 
-  it("deve possuir os arquivos page.tsx no App Router para todas as 11 rotas oficiais e /login", () => {
+  it("deve possuir os arquivos page.tsx no App Router para todas as 12 rotas oficiais e /login", () => {
     const missingPages: string[] = [];
 
     for (const route of APP_ROUTES) {

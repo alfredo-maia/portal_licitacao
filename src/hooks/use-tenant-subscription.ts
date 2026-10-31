@@ -67,3 +67,4 @@ export function useTenantSubscription() {
     plano: subscription?.plano ?? "BASICO",
   };
 }
+

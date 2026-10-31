@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const routeItemSchema = z.object({
-  order: z.number().int().min(1).max(11),
+  order: z.number().int().min(1).max(12),
   id: z.string().min(1),
   path: z.string().startsWith("/"),
   href: z.string().startsWith("/"),
@@ -13,6 +13,6 @@ export const routeItemSchema = z.object({
   isPlaceholder: z.boolean().optional(),
 });
 
-export const routesListSchema = z.array(routeItemSchema).length(11);
+export const routesListSchema = z.array(routeItemSchema).length(12);
 
 export type RouteItemContract = z.infer<typeof routeItemSchema>;

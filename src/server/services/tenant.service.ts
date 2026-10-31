@@ -68,6 +68,11 @@ export interface InMemoryTenantRecord {
   cidade?: string | null;
   uf?: string | null;
   plano: PlanoAssinatura;
+  billingStatus?: string;
+  segmentos?: string[];
+  subsegmentos?: string[];
+  ufs?: string[];
+  brasilInteiro?: boolean;
   maxCnpjs: number;
   maxUsers: number;
   ativo: boolean;

@@ -17,7 +17,13 @@ function routeContext(id: string) {
 
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn().mockResolvedValue({
-    user: { id: "usr_dir_1", name: "Vítor Henrique", email: "vitor@empresa.com", role: "DIRETORIA" },
+    user: {
+      id: "usr_dir_1",
+      name: "Vítor Henrique",
+      email: "vitor@empresa.com",
+      role: "DIRETORIA",
+      activeTenantId: "tenant_default",
+    },
   }),
 }));
 

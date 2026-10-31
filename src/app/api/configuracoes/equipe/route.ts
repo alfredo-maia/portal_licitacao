@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import { prisma } from "@/lib/prisma";
 import { usuarioEquipeCriarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   criarMembroEquipe,
@@ -62,7 +63,18 @@ export async function POST(req: Request) {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const userId = (session.user as any)?.id;
+    if (!tenantId && userId) {
+      try {
+        const membership = await prisma.tenantUser.findFirst({
+          where: { userId },
+        });
+        if (membership) {
+          tenantId = membership.tenantId;
+        }
+      } catch {}
+    }
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeCriarInputSchema.safeParse(body);
 

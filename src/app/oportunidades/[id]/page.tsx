@@ -223,7 +223,7 @@ function OportunidadesDetalheContent({
   const [usuarios, setUsuarios] = React.useState<UsuarioItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [feedback, setFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
+  const [feedback, setFeedback] = React.useState<{ tipo: "success" | "error" | "warning"; msg: string } | null>(null);
 
   // Gestão de Equipe
   const [responsavelId, setResponsavelId] = React.useState<string>("");
@@ -304,7 +304,7 @@ function OportunidadesDetalheContent({
     }
   }, [id, carregarDados]);
 
-  const showNotification = (tipo: "success" | "error", msg: string) => {
+  const showNotification = (tipo: "success" | "error" | "warning", msg: string) => {
     setFeedback({ tipo, msg });
     setTimeout(() => setFeedback(null), 4000);
   };

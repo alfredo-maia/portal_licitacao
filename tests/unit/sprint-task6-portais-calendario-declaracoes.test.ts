@@ -16,6 +16,7 @@ describe("Task 6 — Ajustes em Portais, Calendário, Documentação e Declaraç
       nome: "Certidão FGTS",
       categoria: "FISCAL_TRABALHISTA",
       tipo: "CERTIDAO_FGTS",
+      semValidade: false,
       dataEmissao: new Date("2026-01-01"),
       dataVencimento: new Date("2026-02-01"),
       arquivoUrl: "https://r2.exemplo.com/fgts_v1.pdf",

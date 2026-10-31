@@ -96,3 +96,4 @@ describe("Subscription Guard — Avaliação de Acesso, Carência e Modo Somente
     expect(resultCancelado.isBlocked).toBe(true);
   });
 });
+

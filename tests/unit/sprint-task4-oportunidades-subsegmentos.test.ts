@@ -26,3 +26,4 @@ describe("Task 4 — Filtro Semântico de Sub-segmentos em Oportunidades", () =>
     expect(palavras).toEqual(["TermoInexistenteXYZ"]);
   });
 });
+

@@ -11,6 +11,7 @@ import {
   HeaderMenuButton,
   HeaderName,
   InlineNotification,
+  NotificationActionButton,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -240,12 +241,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 "Seu período de teste expirou. Escolha um plano para reativar as ações."
               }
               hideCloseButton
-              actions={
-                <Button size="sm" kind="danger" onClick={() => router.push("/planos")}>
+            >
+              <div style={{ marginTop: "0.5rem" }}>
+                <NotificationActionButton onClick={() => router.push("/planos")}>
                   Ver Planos
-                </Button>
-              }
-            />
+                </NotificationActionButton>
+              </div>
+            </InlineNotification>
           </div>
         )}
         {subStatus?.inGracePeriod && pathname !== "/planos" && (
@@ -258,12 +260,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 "Seu período de teste terminou. Você tem alguns dias de carência antes do bloqueio das ações."
               }
               hideCloseButton
-              actions={
-                <Button size="sm" kind="ghost" onClick={() => router.push("/planos")}>
+            >
+              <div style={{ marginTop: "0.5rem" }}>
+                <NotificationActionButton onClick={() => router.push("/planos")}>
                   Regularizar Plano
-                </Button>
-              }
-            />
+                </NotificationActionButton>
+              </div>
+            </InlineNotification>
           </div>
         )}
         {children}
