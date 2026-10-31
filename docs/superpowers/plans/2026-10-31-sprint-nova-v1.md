@@ -644,7 +644,7 @@ git commit -m "feat(declaracoes): preenchimento automatico completo de endereco 
     - Documentos vencendo em 30, 15, 7, 3, 1 dias.
     - Portais de compras vencendo em 30, 15, 7, 3, 1 dias.
 
-- [ ] **Step 1: Escrever teste de unidade RED em `tests/unit/sprint-nova-task7-notificacoes-alertas-30-dias.test.ts`**
+- [x] **Step 1: Escrever teste de unidade RED em `tests/unit/sprint-nova-task7-notificacoes-alertas-30-dias.test.ts`**
 
 ```typescript
 import { describe, expect, it } from "vitest";
@@ -680,12 +680,12 @@ describe("Sprint Nova Task 7 — Notificações: Alertas de Vencimento em 30 Dia
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha (RED)**
+- [x] **Step 2: Executar teste para verificar falha (RED)**
 
 Run: `npx vitest run tests/unit/sprint-nova-task7-notificacoes-alertas-30-dias.test.ts`
 Expected: FAIL (contagens 0 ou cálculo de dias não coincidindo com a janela 30).
 
-- [ ] **Step 3: Ajustar cálculo de janelas de 30 dias e entrega de notificações**
+- [x] **Step 3: Ajustar cálculo de janelas de 30 dias e entrega de notificações**
 
 1. Em `src/server/services/notificacoes.service.ts`:
    - Corrigir a comparação de dias para considerar a diferença arredondada em dias civis (`Math.round(diffMs / (1000 * 60 * 60 * 24)) === 30`).
@@ -695,12 +695,12 @@ Expected: FAIL (contagens 0 ou cálculo de dias não coincidindo com a janela 30
 3. Criar `src/app/api/notificacoes/verificar/route.ts`:
    - Rota autenticada que permite verificar alertas e disparar o job diário de forma idempotente.
 
-- [ ] **Step 4: Executar teste para verificar aprovação (GREEN)**
+- [x] **Step 4: Executar teste para verificar aprovação (GREEN)**
 
 Run: `npx vitest run tests/unit/sprint-nova-task7-notificacoes-alertas-30-dias.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/services/notificacoes.service.ts src/server/services/ingestao.service.ts src/app/api/notificacoes/verificar/route.ts tests/unit/sprint-nova-task7-notificacoes-alertas-30-dias.test.ts

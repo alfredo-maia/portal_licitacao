@@ -63,12 +63,12 @@ export const NOTIFICACAO_MATRIZ = {
   N6_VENCIMENTO_PORTAL: {
     destinatarios: "DIRETORIA_E_COMERCIAL",
     severidade: "ATENCAO",
-    antecedenciaDias: [30, 21, 14, 7, 1],
+    antecedenciaDias: [30, 21, 15, 14, 7, 3, 1],
   },
   N7_VENCIMENTO_DOCUMENTO: {
     destinatarios: "TODOS",
     severidade: "ATENCAO",
-    antecedenciaDias: [30, 14, 1],
+    antecedenciaDias: [30, 15, 14, 7, 3, 1],
   },
   N8_PRAZO_IMPUGNACAO: {
     destinatarios: "DIRETORIA",

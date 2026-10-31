@@ -150,6 +150,15 @@ export async function ingestLicitacoesV2(
   let inalterados = 0;
   const registros: LicitacaoRecord[] = [];
 
+  let allActiveUserIds: string[] = [];
+  try {
+    const users = await prisma.user.findMany({ where: { ativo: true }, select: { id: true } });
+    allActiveUserIds = users.map((u) => u.id);
+  } catch {}
+  if (allActiveUserIds.length === 0) {
+    allActiveUserIds = ["seed_vitor", "seed_alfredo"];
+  }
+
   for (const item of parsed.licitacoes) {
     const novoHash = computeHashCritico({
       dataAbertura: item.dataAbertura,
@@ -241,7 +250,7 @@ export async function ingestLicitacoesV2(
       ip: actorContext?.ip ?? null,
     });
 
-    const destN2 = [existente.responsavelId, "seed_vitor", "seed_alfredo"].filter(Boolean) as string[];
+    const destN2 = Array.from(new Set([existente.responsavelId, ...allActiveUserIds].filter(Boolean))) as string[];
     await criarNotificacao({
       tipo: "N2_LICITACAO_ATUALIZADA",
       titulo: `Edital Atualizado no PNCP: ${registro.numeroEdital}`,
@@ -286,7 +295,7 @@ export async function ingestLicitacoesV2(
       entidadeId: `lote_${parsed.executadoEm}`,
       janela: parsed.executadoEm,
     }),
-    destinatarioIds: ["seed_vitor", "seed_alfredo"],
+    destinatarioIds: allActiveUserIds,
   }).catch(() => undefined);
 
   return {

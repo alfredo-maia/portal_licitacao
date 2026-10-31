@@ -265,6 +265,12 @@ export async function marcarTodasLidas(
    5. Job Diário de Varredura (N3, N4, N5)
 ========================================================================= */
 
+function calcularDiasCivis(dataFutura: Date, dataRef: Date): number {
+  const dF = new Date(dataFutura.getFullYear(), dataFutura.getMonth(), dataFutura.getDate());
+  const dR = new Date(dataRef.getFullYear(), dataRef.getMonth(), dataRef.getDate());
+  return Math.round((dF.getTime() - dR.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export async function executarJobNotificacoesDiarias(referencia?: Date): Promise<{
   ok: true;
   criadas: Record<NotificacaoTipo, number>;
@@ -438,7 +444,7 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
 
   for (const portal of portais) {
     const dataVenc = new Date(portal.dataVencimento);
-    const diffDias = Math.ceil((dataVenc.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDias = calcularDiasCivis(dataVenc, agora);
     const janelasN6 = NOTIFICACAO_MATRIZ.N6_VENCIMENTO_PORTAL.antecedenciaDias;
 
     if (janelasN6 && (janelasN6 as readonly number[]).includes(diffDias)) {
@@ -480,7 +486,7 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
 
   for (const doc of documentos) {
     const dataVenc = new Date(doc.dataVencimento);
-    const diffDias = Math.ceil((dataVenc.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDias = calcularDiasCivis(dataVenc, agora);
     const janelasN7 = NOTIFICACAO_MATRIZ.N7_VENCIMENTO_DOCUMENTO.antecedenciaDias;
 
     if (janelasN7 && (janelasN7 as readonly number[]).includes(diffDias)) {
@@ -556,6 +562,9 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
 
   return {
     ok: true,
+    executadoEm: new Date().toISOString(),
+    dataReferencia: dataBrtStr,
+    contagens,
     criadas: contagens,
     ignoradasPorIdempotencia: ignoradas,
   };
