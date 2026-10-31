@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { usuarioEquipeCriarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
@@ -18,7 +19,12 @@ export async function GET(_req?: Request) {
         { status: 401 },
       );
     }
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
 
     const resultado = await listarEquipe(tenantId);
     return NextResponse.json(resultado);
@@ -39,7 +45,12 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeCriarInputSchema.safeParse(body);
 

@@ -131,10 +131,10 @@
 
 ### Steps (Task 2)
 
-- [ ] **Step 2.1 (RED):** Escrever testes em `src/server/services/configuracoes.service.test.ts` cobrindo: atualização de Meu Perfil (CPF, endereço, senha), bloqueio de alteração do `TITULAR` por terceiros, proibição de auto-inativação, permissão de inativação restrita ao `TITULAR`, limite de usuários por plano (`maxUsers`), e normalização de 1 Segmento + 1 UF no Plano Básico.
-- [ ] **Step 2.2 (Run RED):** Executar `npx vitest run src/server/services/configuracoes.service.test.ts` e confirmar falha.
-- [ ] **Step 2.3 (GREEN):** Atualizar `prisma/schema.prisma`, `src/config/theme.ts`, `src/server/schemas/configuracao.schema.ts`, `src/server/services/configuracoes.service.ts`, criar as rotas `/api/cep/[cep]`, `/api/configuracoes/perfil`, `/api/configuracoes/tenants` e refatorar `src/app/configuracoes/page.tsx`.
-- [ ] **Step 2.4 (Verify GREEN):** Executar `npx vitest run src/server/services/configuracoes.service.test.ts src/app/configuracoes/page.test.tsx` e confirmar todos os testes passando.
+- [x] **Step 2.1 (RED):** Escrever testes em `src/server/services/configuracoes.service.test.ts` cobrindo: atualização de Meu Perfil (CPF, endereço, senha), bloqueio de alteração do `TITULAR` por terceiros, proibição de auto-inativação, permissão de inativação restrita ao `TITULAR`, limite de usuários por plano (`maxUsers`), e normalização de 1 Segmento + 1 UF no Plano Básico.
+- [x] **Step 2.2 (Run RED):** Executar `npx vitest run src/server/services/configuracoes.service.test.ts` e confirmar falha.
+- [x] **Step 2.3 (GREEN):** Atualizar `prisma/schema.prisma`, `src/config/theme.ts`, `src/server/schemas/configuracao.schema.ts`, `src/server/services/configuracoes.service.ts`, criar as rotas `/api/cep/[cep]`, `/api/configuracoes/perfil`, `/api/configuracoes/tenants` e refatorar `src/app/configuracoes/page.tsx`.
+- [x] **Step 2.4 (Verify GREEN):** Executar `npx vitest run src/server/services/configuracoes.service.test.ts src/app/configuracoes/page.test.tsx` e confirmar todos os testes passando.
 
 ---
 

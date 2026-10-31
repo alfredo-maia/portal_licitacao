@@ -131,7 +131,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     name: "Configurações",
     title: "Configurações",
     description:
-      "Front-only: Perfil, Dados da Empresa, Equipe (Anexo 4) e aba de Logs (conectada ao DB).",
+      "Gestão da conta, dados cadastrais da empresa licitante e equipe de colaboradores.",
   },
 ] as const;
 

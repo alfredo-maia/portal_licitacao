@@ -10,7 +10,6 @@ import {
   InlineLoading,
   InlineNotification,
   Modal,
-  Pagination,
   Select,
   SelectItem,
   Tab,
@@ -22,26 +21,38 @@ import {
 } from "@carbon/react";
 import {
   Add,
-  Download,
+  Building,
   Edit,
   Enterprise,
   Group,
+  Location,
   Logout,
   Renew,
   Save,
   Security,
-  User,
-  View,
+  User as UserIcon,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { getVisibleConfigTabs } from "@/lib/rbac";
-import { maskCnpj, maskCpf } from "@/lib/masks";
+import { maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
 import type {
   ConfiguracaoEmpresa,
+  MeuPerfil,
   UsuarioEquipeItem,
   UsuarioRole,
 } from "@/server/schemas/configuracao.schema";
-import type { AuditViewerItem } from "@/server/schemas/audit-viewer.schema";
+
+interface TenantInfo {
+  id: string;
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia?: string | null;
+  plano: string;
+  billingStatus: string;
+  maxCnpjs: number;
+  maxUsers: number;
+  role?: string;
+}
 
 export default function ConfiguracoesPage() {
   const [userRole, setUserRole] = useState<string>("DIRETORIA");
@@ -52,68 +63,59 @@ export default function ConfiguracoesPage() {
     role?: string;
     cnpj?: string;
     plano?: string;
+    billingStatus?: string;
   } | null>(null);
 
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((res) => res.json())
-      .then((session) => {
-        if (session?.user) {
-          setCurrentUser(session.user);
-          if (session.user.role) {
-            setUserRole(session.user.role);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const visibleTabIds = getVisibleConfigTabs(userRole);
-
-  const TAB_DEFINITIONS = [
-    { id: 0, label: "Meu Perfil", icon: User },
-    { id: 1, label: "Dados da Empresa Licitante", icon: Enterprise },
-    { id: 2, label: "Gestão da Equipe & RBAC", icon: Group },
-    { id: 3, label: "Trilha de Auditoria (Logs)", icon: Security },
-  ];
-
-  const availableTabs = TAB_DEFINITIONS.filter((t) => visibleTabIds.includes(t.id));
-
+  // Abas e Notificação
   const [abaSelecionada, setAbaSelecionada] = useState(0);
-  const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
+  const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error" | "warning"; texto: string } | null>(null);
 
-  // Garante que o usuário permaneça em aba autorizada para seu papel
-  useEffect(() => {
-    if (!visibleTabIds.includes(abaSelecionada)) {
-      setAbaSelecionada(visibleTabIds[0] ?? 0);
-    }
-  }, [visibleTabIds, abaSelecionada]);
+  // 1. MEU PERFIL (3 Cards + Card Sessão Ativa)
+  const [perfil, setPerfil] = useState<MeuPerfil>({
+    id: "",
+    name: "",
+    email: "",
+    cpf: "",
+    telefone: "",
+    cep: "",
+    logradouro: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+  });
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState("");
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+  const [buscandoCepPerfil, setBuscandoCepPerfil] = useState(false);
 
-  // 1. Perfil do Usuário
-  const [temaAtual, setTemaAtual] = useState<string>("white");
-  useEffect(() => {
-    const saved = localStorage.getItem("pncp_theme") || "white";
-    setTemaAtual(saved);
-  }, []);
+  // 2. DADOS DA EMPRESA & MULTI-CNPJ
+  const [tenants, setTenants] = useState<TenantInfo[]>([]);
+  const [activeTenantId, setActiveTenantId] = useState<string>("");
+  const [modalNovoCnpj, setModalNovoCnpj] = useState(false);
+  const [salvandoNovoCnpj, setSalvandoNovoCnpj] = useState(false);
+  const [novoCnpjForm, setNovoCnpjForm] = useState({
+    cnpj: "",
+    razaoSocial: "",
+    nomeFantasia: "",
+    cnaePrincipal: "",
+    uf: "GO",
+    cidade: "Goiânia",
+    endereco: "",
+  });
 
-  const handleTrocarTema = (novoTema: string) => {
-    setTemaAtual(novoTema);
-    localStorage.setItem("pncp_theme", novoTema);
-    document.documentElement.setAttribute("data-carbon-theme", novoTema);
-    setNotificacao({
-      tipo: "success",
-      texto: `Tema alterado para ${novoTema === "white" ? "Claro (white)" : "Escuro (g100)"}!`,
-    });
-  };
-
-  // 2. Dados da Empresa
   const [empresa, setEmpresa] = useState<ConfiguracaoEmpresa>({
     id: "default",
     razaoSocial: "",
     cnpj: "",
     inscricaoEstadual: "",
+    inscricaoMunicipal: "",
     cnae: "",
     endereco: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
     cidade: "",
     uf: "",
     cep: "",
@@ -127,54 +129,75 @@ export default function ConfiguracoesPage() {
     chavePix: "",
   });
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
+  const [buscandoCepEmpresa, setBuscandoCepEmpresa] = useState(false);
 
-  const carregarEmpresa = useCallback(async () => {
-    try {
-      const res = await fetch("/api/configuracoes/empresa");
-      const data = await res.json();
-      if (data.ok && data.empresa) {
-        setEmpresa(data.empresa);
-      }
-    } catch {}
-  }, []);
-
-  const handleSalvarEmpresa = async () => {
-    setSalvandoEmpresa(true);
-    try {
-      const res = await fetch("/api/configuracoes/empresa", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(empresa),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setNotificacao({ tipo: "success", texto: "Dados societários da empresa atualizados com sucesso!" });
-      } else {
-        setNotificacao({ tipo: "error", texto: data.error || "Falha ao salvar dados da empresa." });
-      }
-    } catch {
-      setNotificacao({ tipo: "error", texto: "Erro na comunicação com o servidor." });
-    } finally {
-      setSalvandoEmpresa(false);
-    }
-  };
-
-  // 3. Gestão de Equipe
+  // 3. GESTÃO DA EQUIPE
   const [equipe, setEquipe] = useState<UsuarioEquipeItem[]>([]);
   const [carregandoEquipe, setCarregandoEquipe] = useState(false);
   const [modalNovoMembro, setModalNovoMembro] = useState(false);
   const [modalEditarMembro, setModalEditarMembro] = useState(false);
   const [membroSelecionado, setMembroSelecionado] = useState<UsuarioEquipeItem | null>(null);
 
-  // Form Novo Membro
   const [novoNome, setNovoNome] = useState("");
   const [novoEmail, setNovoEmail] = useState("");
   const [novoRole, setNovoRole] = useState<UsuarioRole>("ANALISTA_COMERCIAL");
-  const [novaSenha, setNovaSenha] = useState("");
+  const [novaSenhaMembro, setNovaSenhaMembro] = useState("");
 
-  // Form Editar Membro
   const [editRole, setEditRole] = useState<UsuarioRole>("ANALISTA_COMERCIAL");
   const [editAtivo, setEditAtivo] = useState(true);
+
+  // ==========================================
+  // Carregamento Inicial
+  // ==========================================
+
+  const carregarSessao = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      const data = await res.json();
+      if (data?.user) {
+        setCurrentUser(data.user);
+        if (data.user.role) setUserRole(data.user.role);
+      }
+    } catch {}
+  }, []);
+
+  const carregarPerfil = useCallback(async () => {
+    try {
+      const res = await fetch("/api/configuracoes/perfil");
+      const data = await res.json();
+      if (data.ok && data.perfil) {
+        setPerfil(data.perfil);
+      }
+    } catch {}
+  }, []);
+
+  const carregarTenants = useCallback(async () => {
+    try {
+      const res = await fetch("/api/configuracoes/tenants");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.tenants)) {
+        setTenants(data.tenants);
+        if (data.activeTenantId) {
+          setActiveTenantId(data.activeTenantId);
+        } else if (data.tenants[0]?.id) {
+          setActiveTenantId(data.tenants[0].id);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const carregarEmpresa = useCallback(async (tenantId?: string) => {
+    try {
+      const url = tenantId
+        ? `/api/configuracoes/empresa?tenantId=${tenantId}`
+        : "/api/configuracoes/empresa";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.ok && data.empresa) {
+        setEmpresa(data.empresa);
+      }
+    } catch {}
+  }, []);
 
   const carregarEquipe = useCallback(async () => {
     setCarregandoEquipe(true);
@@ -190,8 +213,233 @@ export default function ConfiguracoesPage() {
     }
   }, []);
 
+  useEffect(() => {
+    carregarSessao();
+    carregarPerfil();
+    carregarTenants();
+    carregarEmpresa();
+    carregarEquipe();
+  }, [carregarSessao, carregarPerfil, carregarTenants, carregarEmpresa, carregarEquipe]);
+
+  // Controle de Abas Autorizadas
+  const visibleTabIds = getVisibleConfigTabs(userRole);
+  const TAB_DEFINITIONS = [
+    { id: 0, label: "Meu Perfil", icon: UserIcon },
+    { id: 1, label: "Dados da Empresa Licitante", icon: Enterprise },
+    { id: 2, label: "Gestão da Equipe", icon: Group },
+  ];
+  const availableTabs = TAB_DEFINITIONS.filter((t) => visibleTabIds.includes(t.id));
+
+  useEffect(() => {
+    if (!visibleTabIds.includes(abaSelecionada)) {
+      setAbaSelecionada(visibleTabIds[0] ?? 0);
+    }
+  }, [visibleTabIds, abaSelecionada]);
+
+  // Tenant ativo resolvido
+  const currentTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0];
+  const planoAtual = currentTenant?.plano || currentUser?.plano || "BASICO";
+  const billingStatus = currentTenant?.billingStatus || (currentUser as any)?.billingStatus || "TRIAL";
+  const maxCnpjs = currentTenant?.maxCnpjs || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
+  const maxUsers = currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 15 : planoAtual === "PRO" ? 5 : 1);
+
+  // Regra do Botão Adicionar CNPJ
+  const isCnpjLimitTrialOrBasico = billingStatus === "TRIAL" || planoAtual === "BASICO" || maxCnpjs <= 1;
+  const isCnpjLimitEnterpriseReached = planoAtual === "ENTERPRISE" && tenants.length >= 5;
+  const canAddCnpj = !isCnpjLimitTrialOrBasico && !isCnpjLimitEnterpriseReached;
+
+  const tooltipAddCnpj = isCnpjLimitTrialOrBasico
+    ? "Faça upgrade do seu plano para cadastrar múltiplos CNPJs."
+    : isCnpjLimitEnterpriseReached
+    ? "Você atingiu o limite máximo de 5 CNPJs do plano Enterprise."
+    : undefined;
+
+  // Regra de limite de usuários na equipe
+  const isTeamLimitReached = equipe.length >= maxUsers;
+
+  // ==========================================
+  // Handlers Meu Perfil
+  // ==========================================
+
+  const handleConsultarCepPerfil = async (cepValue: string) => {
+    const limpo = cepValue.replace(/\D/g, "");
+    if (limpo.length !== 8) return;
+
+    setBuscandoCepPerfil(true);
+    try {
+      const res = await fetch(`/api/cep/${limpo}`);
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setPerfil((prev) => ({
+          ...prev,
+          logradouro: data.logradouro || prev.logradouro,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.cidade || prev.cidade,
+          uf: data.uf || prev.uf,
+        }));
+      }
+    } catch {}
+    finally {
+      setBuscandoCepPerfil(false);
+    }
+  };
+
+  const handleSalvarPerfil = async () => {
+    if (novaSenha && novaSenha !== confirmarNovaSenha) {
+      setNotificacao({ tipo: "error", texto: "A nova senha e a confirmação não coincidem." });
+      return;
+    }
+    if (novaSenha && novaSenha.length < 6) {
+      setNotificacao({ tipo: "error", texto: "A nova senha deve ter no mínimo 6 caracteres." });
+      return;
+    }
+
+    setSalvandoPerfil(true);
+    try {
+      const res = await fetch("/api/configuracoes/perfil", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...perfil,
+          novaSenha: novaSenha || undefined,
+          confirmarNovaSenha: confirmarNovaSenha || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setNotificacao({ tipo: "success", texto: "Seu perfil foi atualizado com sucesso!" });
+        setNovaSenha("");
+        setConfirmarNovaSenha("");
+        carregarPerfil();
+      } else {
+        setNotificacao({ tipo: "error", texto: data.error || "Erro ao salvar perfil." });
+      }
+    } catch {
+      setNotificacao({ tipo: "error", texto: "Erro na comunicação com o servidor." });
+    } finally {
+      setSalvandoPerfil(false);
+    }
+  };
+
+  // ==========================================
+  // Handlers Empresa & Multi-CNPJ
+  // ==========================================
+
+  const handleTrocarTenantAtivo = async (nextTenantId: string) => {
+    if (!nextTenantId || nextTenantId === activeTenantId) return;
+
+    try {
+      const res = await fetch("/api/configuracoes/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: nextTenantId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setActiveTenantId(nextTenantId);
+        setNotificacao({ tipo: "success", texto: "Empresa ativa alterada com sucesso!" });
+        carregarEmpresa(nextTenantId);
+        carregarEquipe();
+      } else {
+        setNotificacao({ tipo: "error", texto: data.error || "Erro ao alterar empresa ativa." });
+      }
+    } catch {
+      setNotificacao({ tipo: "error", texto: "Erro ao comunicar com o servidor." });
+    }
+  };
+
+  const handleConsultarCepEmpresa = async (cepValue: string) => {
+    const limpo = cepValue.replace(/\D/g, "");
+    if (limpo.length !== 8) return;
+
+    setBuscandoCepEmpresa(true);
+    try {
+      const res = await fetch(`/api/cep/${limpo}`);
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setEmpresa((prev) => ({
+          ...prev,
+          endereco: data.logradouro ? `${data.logradouro}` : prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.cidade || prev.cidade,
+          uf: data.uf || prev.uf,
+        }));
+      }
+    } catch {}
+    finally {
+      setBuscandoCepEmpresa(false);
+    }
+  };
+
+  const handleSalvarEmpresa = async () => {
+    setSalvandoEmpresa(true);
+    try {
+      const res = await fetch("/api/configuracoes/empresa", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(empresa),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setNotificacao({ tipo: "success", texto: "Dados cadastrais da empresa atualizados com sucesso!" });
+      } else {
+        setNotificacao({ tipo: "error", texto: data.error || "Falha ao salvar dados da empresa." });
+      }
+    } catch {
+      setNotificacao({ tipo: "error", texto: "Erro na comunicação com o servidor." });
+    } finally {
+      setSalvandoEmpresa(false);
+    }
+  };
+
+  const handleCadastrarNovoCnpj = async () => {
+    if (!novoCnpjForm.cnpj || !novoCnpjForm.razaoSocial) {
+      setNotificacao({ tipo: "error", texto: "Preencha ao menos CNPJ e Razão Social." });
+      return;
+    }
+
+    setSalvandoNovoCnpj(true);
+    try {
+      const res = await fetch("/api/configuracoes/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(novoCnpjForm),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setModalNovoCnpj(false);
+        setNovoCnpjForm({
+          cnpj: "",
+          razaoSocial: "",
+          nomeFantasia: "",
+          cnaePrincipal: "",
+          uf: "GO",
+          cidade: "Goiânia",
+          endereco: "",
+        });
+        setNotificacao({ tipo: "success", texto: "Novo CNPJ cadastrado com sucesso!" });
+        await carregarTenants();
+        if (data.activeTenantId) {
+          setActiveTenantId(data.activeTenantId);
+          carregarEmpresa(data.activeTenantId);
+          carregarEquipe();
+        }
+      } else {
+        setNotificacao({ tipo: "error", texto: data.error || "Erro ao cadastrar novo CNPJ." });
+      }
+    } catch {
+      setNotificacao({ tipo: "error", texto: "Erro na comunicação com o servidor." });
+    } finally {
+      setSalvandoNovoCnpj(false);
+    }
+  };
+
+  // ==========================================
+  // Handlers Equipe
+  // ==========================================
+
   const handleCriarMembro = async () => {
-    if (!novoNome || !novoEmail || !novaSenha) {
+    if (!novoNome || !novoEmail || !novaSenhaMembro) {
       setNotificacao({ tipo: "error", texto: "Preencha todos os campos do novo colaborador." });
       return;
     }
@@ -203,7 +451,7 @@ export default function ConfiguracoesPage() {
           name: novoNome,
           email: novoEmail,
           role: novoRole,
-          password: novaSenha,
+          password: novaSenhaMembro,
         }),
       });
       const data = await res.json();
@@ -211,7 +459,7 @@ export default function ConfiguracoesPage() {
         setModalNovoMembro(false);
         setNovoNome("");
         setNovoEmail("");
-        setNovaSenha("");
+        setNovaSenhaMembro("");
         setNotificacao({ tipo: "success", texto: `Colaborador ${data.usuario.name} criado com sucesso!` });
         carregarEquipe();
       } else {
@@ -224,6 +472,12 @@ export default function ConfiguracoesPage() {
 
   const handleSalvarEdicaoMembro = async () => {
     if (!membroSelecionado) return;
+
+    if (membroSelecionado.id === currentUser?.id && editAtivo === false) {
+      setNotificacao({ tipo: "error", texto: "O próprio usuário não pode inativar sua própria conta." });
+      return;
+    }
+
     try {
       const res = await fetch(`/api/configuracoes/equipe/${membroSelecionado.id}`, {
         method: "PATCH",
@@ -246,53 +500,6 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  // 4. Trilha de Auditoria
-  const [logs, setLogs] = useState<AuditViewerItem[]>([]);
-  const [totalLogs, setTotalLogs] = useState(0);
-  const [logPage, setLogPage] = useState(1);
-  const [logPageSize, setLogPageSize] = useState(15);
-  const [filtroEntidade, setFiltroEntidade] = useState("");
-  const [filtroAcao, setFiltroAcao] = useState("");
-  const [buscaAuditoria, setBuscaAuditoria] = useState("");
-  const [carregandoLogs, setCarregandoLogs] = useState(false);
-  const [logInspecao, setLogInspecao] = useState<AuditViewerItem | null>(null);
-
-  const carregarAuditLogs = useCallback(async () => {
-    setCarregandoLogs(true);
-    try {
-      const params = new URLSearchParams();
-      if (filtroEntidade) params.set("entidadeTipo", filtroEntidade);
-      if (filtroAcao) params.set("acao", filtroAcao);
-      if (buscaAuditoria) params.set("busca", buscaAuditoria);
-      params.set("page", String(logPage));
-      params.set("pageSize", String(logPageSize));
-
-      const res = await fetch(`/api/audit?${params.toString()}`);
-      const data = await res.json();
-      if (data.ok) {
-        setLogs(data.logs || []);
-        setTotalLogs(data.total || 0);
-      }
-    } catch {}
-    finally {
-      setCarregandoLogs(false);
-    }
-  }, [filtroEntidade, filtroAcao, buscaAuditoria, logPage, logPageSize]);
-
-  useEffect(() => {
-    carregarEmpresa();
-    carregarEquipe();
-    carregarAuditLogs();
-  }, [carregarEmpresa, carregarEquipe, carregarAuditLogs]);
-
-  const handleExportarCsv = () => {
-    const params = new URLSearchParams();
-    if (filtroEntidade) params.set("entidadeTipo", filtroEntidade);
-    if (filtroAcao) params.set("acao", filtroAcao);
-    if (buscaAuditoria) params.set("busca", buscaAuditoria);
-    window.open(`/api/audit/export-csv?${params.toString()}`, "_blank");
-  };
-
   return (
     <ModulePageShell routePath="/configuracoes">
       {/* Top Header Bar */}
@@ -301,14 +508,14 @@ export default function ConfiguracoesPage() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.25rem" }}>
               <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600 }}>
-                Configurações Corporativas & Auditoria
+                Configurações Corporativas
               </h1>
               <Tag type="high-contrast" size="md" className="pncp-mono">
-                RBAC & Trilha Imutável
+                RBAC & Gestão Multi-CNPJ
               </Tag>
             </div>
             <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-              Gestão societária da empresa licitante, controle de acesso e permissões da equipe (Anexo 4) e inspeção auditável de logs (Lei 14.133/2021).
+              Gestão de perfil de usuário, dados societários da empresa licitante e controle de membros da equipe.
             </p>
           </div>
         </div>
@@ -317,14 +524,14 @@ export default function ConfiguracoesPage() {
           <InlineNotification
             style={{ marginTop: "1rem" }}
             kind={notificacao.tipo}
-            title={notificacao.tipo === "success" ? "Sucesso" : "Atenção"}
+            title={notificacao.tipo === "success" ? "Sucesso" : notificacao.tipo === "warning" ? "Atenção" : "Erro"}
             subtitle={notificacao.texto}
             onCloseButtonClick={() => setNotificacao(null)}
           />
         )}
       </div>
 
-      {/* Tabs Principais com controle de visibilidade RBAC (Item 11.2) */}
+      {/* Tabs Principais */}
       <Tabs
         selectedIndex={Math.max(0, availableTabs.findIndex((t) => t.id === abaSelecionada))}
         onChange={({ selectedIndex }) => {
@@ -342,125 +549,336 @@ export default function ConfiguracoesPage() {
       </Tabs>
 
       <div style={{ padding: "1.5rem 0" }}>
-        {/* ABA 1: PERFIL DO USUÁRIO */}
+        {/* ========================================================
+            ABA 1: MEU PERFIL (3 Cards + Card Sessão Ativa)
+        ======================================================== */}
         {abaSelecionada === 0 && (
-            <Grid style={{ padding: 0 }}>
-              <Column lg={8} md={8} sm={4}>
+          <Grid style={{ padding: 0 }}>
+            {/* Coluna Principal: Os 3 Cards de Perfil */}
+            <Column lg={10} md={8} sm={4}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                {/* CARD 1 — DADOS PESSOAIS */}
                 <Tile style={{ padding: "1.5rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: "50%",
-                        background: "#0f62fe",
-                        color: "#ffffff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "1.25rem",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {(currentUser?.name || "Usuário")
-                        .split(" ")
-                        .filter(Boolean)
-                        .map((n) => n[0])
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase() || "US"}
-                    </div>
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600 }}>
-                        {currentUser?.name || "Usuário"}
-                      </h2>
-                      <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-                        {currentUser?.email || ""}
-                      </div>
-                      <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
-                        <Tag type="blue" size="sm">
-                          {currentUser?.role === "SUPERADMIN"
-                            ? "SUPERADMIN (Acesso Global)"
-                            : currentUser?.role === "DIRETORIA"
-                            ? "DIRETORIA (Acesso Total)"
-                            : currentUser?.role === "ANALISTA_COMERCIAL"
-                            ? "ANALISTA COMERCIAL"
-                            : currentUser?.role || "OPERADOR"}
-                        </Tag>
-                        {currentUser?.plano && (
-                          <Tag type="green" size="sm">
-                            PLANO {currentUser.plano}
-                          </Tag>
-                        )}
-                        {currentUser?.cnpj && (
-                          <Tag type="cool-gray" size="sm">
-                            {maskCnpj(currentUser.cnpj)}
-                          </Tag>
-                        )}
-                      </div>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                    <UserIcon size={20} />
+                    <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
+                      Card 1 — Dados Pessoais
+                    </h2>
                   </div>
-
-                  <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-                    Preferência de Visualização do Tema
-                  </h3>
-                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-                    Escolha o tema da interface visual para o IBM Carbon Design System:
+                  <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                    Informações cadastrais do seu usuário no Portal de Licitações.
                   </p>
-                  <div style={{ display: "flex", gap: "0.75rem" }}>
-                    <Button
-                      kind={temaAtual === "white" ? "primary" : "tertiary"}
-                      size="md"
-                      onClick={() => handleTrocarTema("white")}
-                      id="btn-tema-claro"
-                    >
-                      Tema Claro (White)
-                    </Button>
-                    <Button
-                      kind={temaAtual === "g100" ? "primary" : "tertiary"}
-                      size="md"
-                      onClick={() => handleTrocarTema("g100")}
-                      id="btn-tema-escuro"
-                    >
-                      Tema Escuro (g100)
-                    </Button>
-                  </div>
 
-                  <div style={{ marginTop: "1.5rem", paddingTop: "1.5rem", borderTop: "1px solid var(--cds-border-subtle)" }}>
-                    <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-                      Sessão Ativa
-                    </h3>
-                    <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-                      Encerre a sessão atual para entrar com outra conta de usuário ou empresa.
-                    </p>
-                    <Button
-                      kind="danger--ghost"
-                      size="md"
-                      renderIcon={Logout}
-                      onClick={() => signOut({ callbackUrl: "/login" })}
-                      id="btn-logout-perfil"
-                      data-testid="btn-logout-perfil"
-                    >
-                      Sair da Conta
-                    </Button>
-                  </div>
+                  <Grid style={{ padding: 0 }}>
+                    <Column lg={8} md={4} sm={4} style={{ marginBottom: "1rem" }}>
+                      <TextInput
+                        id="perfil-nome"
+                        labelText="Nome Completo *"
+                        value={perfil.name}
+                        onChange={(e) => setPerfil({ ...perfil, name: e.target.value })}
+                        placeholder="Seu nome completo"
+                      />
+                    </Column>
+                    <Column lg={8} md={4} sm={4} style={{ marginBottom: "1rem" }}>
+                      <TextInput
+                        id="perfil-email"
+                        labelText="E-mail (Não pode ser alterado)"
+                        value={perfil.email}
+                        disabled
+                        helperText="Identificador único da sua conta"
+                      />
+                    </Column>
+                    <Column lg={8} md={4} sm={4}>
+                      <TextInput
+                        id="perfil-cpf"
+                        labelText="CPF"
+                        value={perfil.cpf || ""}
+                        onChange={(e) => setPerfil({ ...perfil, cpf: maskCpf(e.target.value) })}
+                        placeholder="000.000.000-00"
+                      />
+                    </Column>
+                    <Column lg={8} md={4} sm={4}>
+                      <TextInput
+                        id="perfil-telefone"
+                        labelText="Telefone / WhatsApp"
+                        value={perfil.telefone || ""}
+                        onChange={(e) => setPerfil({ ...perfil, telefone: maskPhone(e.target.value) })}
+                        placeholder="(00) 00000-0000"
+                      />
+                    </Column>
+                  </Grid>
                 </Tile>
-              </Column>
-            </Grid>
+
+                {/* CARD 2 — ENDEREÇO */}
+                <Tile style={{ padding: "1.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                    <Location size={20} />
+                    <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
+                      Card 2 — Endereço Residencial
+                    </h2>
+                  </div>
+                  <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                    Digite seu CEP de 8 dígitos para preenchimento automático via ViaCEP.
+                  </p>
+
+                  <Grid style={{ padding: 0 }}>
+                    <Column lg={4} md={3} sm={4} style={{ marginBottom: "1rem" }}>
+                      <TextInput
+                        id="perfil-cep"
+                        labelText="CEP"
+                        value={perfil.cep || ""}
+                        onChange={(e) => {
+                          const v = maskCep(e.target.value);
+                          setPerfil({ ...perfil, cep: v });
+                          if (v.replace(/\D/g, "").length === 8) {
+                            handleConsultarCepPerfil(v);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (perfil.cep) handleConsultarCepPerfil(perfil.cep);
+                        }}
+                        placeholder="00000-000"
+                        helperText={buscandoCepPerfil ? "Buscando endereço..." : "Auto-busca ao digitar 8 dígitos"}
+                      />
+                    </Column>
+                    <Column lg={9} md={5} sm={4} style={{ marginBottom: "1rem" }}>
+                      <TextInput
+                        id="perfil-logradouro"
+                        labelText="Rua / Logradouro"
+                        value={perfil.logradouro || ""}
+                        onChange={(e) => setPerfil({ ...perfil, logradouro: e.target.value })}
+                        placeholder="Ex: Rua das Flores"
+                      />
+                    </Column>
+                    <Column lg={3} md={2} sm={4} style={{ marginBottom: "1rem" }}>
+                      <TextInput
+                        id="perfil-numero"
+                        labelText="Número"
+                        value={perfil.numero || ""}
+                        onChange={(e) => setPerfil({ ...perfil, numero: e.target.value })}
+                        placeholder="123"
+                      />
+                    </Column>
+                    <Column lg={5} md={3} sm={4}>
+                      <TextInput
+                        id="perfil-complemento"
+                        labelText="Complemento"
+                        value={perfil.complemento || ""}
+                        onChange={(e) => setPerfil({ ...perfil, complemento: e.target.value })}
+                        placeholder="Apto, Sala, Bloco..."
+                      />
+                    </Column>
+                    <Column lg={5} md={3} sm={4}>
+                      <TextInput
+                        id="perfil-bairro"
+                        labelText="Bairro"
+                        value={perfil.bairro || ""}
+                        onChange={(e) => setPerfil({ ...perfil, bairro: e.target.value })}
+                        placeholder="Bairro"
+                      />
+                    </Column>
+                    <Column lg={4} md={3} sm={3}>
+                      <TextInput
+                        id="perfil-cidade"
+                        labelText="Cidade"
+                        value={perfil.cidade || ""}
+                        onChange={(e) => setPerfil({ ...perfil, cidade: e.target.value })}
+                        placeholder="Cidade"
+                      />
+                    </Column>
+                    <Column lg={2} md={1} sm={1}>
+                      <TextInput
+                        id="perfil-uf"
+                        labelText="Estado (UF)"
+                        value={perfil.uf || ""}
+                        onChange={(e) => setPerfil({ ...perfil, uf: e.target.value.toUpperCase().slice(0, 2) })}
+                        placeholder="UF"
+                      />
+                    </Column>
+                  </Grid>
+                </Tile>
+
+                {/* CARD 3 — SEGURANÇA */}
+                <Tile style={{ padding: "1.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                    <Security size={20} />
+                    <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
+                      Card 3 — Segurança & Alteração de Senha
+                    </h2>
+                  </div>
+                  <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                    Deixe os campos abaixo em branco caso não queira alterar sua senha atual.
+                  </p>
+
+                  <Grid style={{ padding: 0 }}>
+                    <Column lg={8} md={4} sm={4}>
+                      <TextInput
+                        id="perfil-nova-senha"
+                        type="password"
+                        labelText="Nova Senha"
+                        value={novaSenha}
+                        onChange={(e) => setNovaSenha(e.target.value)}
+                        placeholder="Digite para alterar a senha"
+                        helperText="Mínimo de 6 caracteres"
+                      />
+                    </Column>
+                    <Column lg={8} md={4} sm={4}>
+                      <TextInput
+                        id="perfil-confirmar-senha"
+                        type="password"
+                        labelText="Confirmar Nova Senha"
+                        value={confirmarNovaSenha}
+                        onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                        placeholder="Confirme a nova senha"
+                      />
+                    </Column>
+                  </Grid>
+                </Tile>
+
+                {/* BOTÃO SALVAR MEU PERFIL (Inferior Direito) */}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <Button
+                    kind="primary"
+                    size="lg"
+                    renderIcon={Save}
+                    onClick={handleSalvarPerfil}
+                    disabled={salvandoPerfil}
+                    id="btn-salvar-meu-perfil"
+                  >
+                    {salvandoPerfil ? <InlineLoading description="Salvando..." /> : "Salvar Meu Perfil"}
+                  </Button>
+                </div>
+              </div>
+            </Column>
+
+            {/* Coluna Lateral: Card Sessão Ativa */}
+            <Column lg={6} md={8} sm={4}>
+              <Tile style={{ padding: "1.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1.5rem" }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: "50%",
+                      background: "#0f62fe",
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "1.25rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {(perfil.name || currentUser?.name || "Usuário")
+                      .split(" ")
+                      .filter(Boolean)
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "US"}
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
+                      {perfil.name || currentUser?.name || "Usuário"}
+                    </h3>
+                    <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
+                      {perfil.email || currentUser?.email || ""}
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
+                      <Tag type="blue" size="sm">
+                        {userRole === "SUPERADMIN"
+                          ? "SUPERADMIN"
+                          : userRole === "DIRETORIA"
+                          ? "DIRETORIA (Titular)"
+                          : "ANALISTA COMERCIAL"}
+                      </Tag>
+                      <Tag type="green" size="sm">
+                        PLANO {planoAtual}
+                      </Tag>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--cds-border-subtle)" }}>
+                  <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    Sessão Ativa
+                  </h4>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                    Encerre a sessão atual para sair com segurança da conta.
+                  </p>
+                  <Button
+                    kind="danger--ghost"
+                    size="md"
+                    renderIcon={Logout}
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    id="btn-logout-perfil"
+                    data-testid="btn-logout-perfil"
+                  >
+                    Sair da Conta
+                  </Button>
+                </div>
+              </Tile>
+            </Column>
+          </Grid>
         )}
 
-        {/* ABA 2: DADOS DA EMPRESA LICITANTE */}
+        {/* ========================================================
+            ABA 2: DADOS DA EMPRESA LICITANTE & MULTI-CNPJ
+        ======================================================== */}
         {abaSelecionada === 1 && (
-            <Tile style={{ padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
-                    Dados Cadastrais da Empresa Licitante
-                  </h2>
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                    Fonte única da verdade utilizada no auto-preenchimento das 8 Declarações Oficiais e Impugnações.
-                  </p>
-                </div>
+          <Tile style={{ padding: "1.5rem" }}>
+            {/* Topo da Aba: Seletor Multi-CNPJ e Botão Adicionar CNPJ */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                marginBottom: "1.5rem",
+                paddingBottom: "1.5rem",
+                borderBottom: "1px solid var(--cds-border-subtle)",
+                flexWrap: "wrap",
+                gap: "1rem",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: "280px", maxWidth: "550px" }}>
+                <Select
+                  id="seletor-multi-cnpj"
+                  labelText="Empresa Ativa (CNPJ) *"
+                  value={activeTenantId}
+                  onChange={(e) => handleTrocarTenantAtivo(e.target.value)}
+                  helperText="Alterne entre as empresas cadastradas sob seu acesso corporativo"
+                >
+                  {tenants.map((t) => (
+                    <SelectItem
+                      key={t.id}
+                      value={t.id}
+                      text={`${t.razaoSocial} — ${maskCnpj(t.cnpj)} (${t.plano})`}
+                    />
+                  ))}
+                  {tenants.length === 0 && (
+                    <SelectItem
+                      value={activeTenantId || "default"}
+                      text={`${empresa.razaoSocial || "Empresa Padrão"} — ${maskCnpj(empresa.cnpj || "12.345.678/0001-90")}`}
+                    />
+                  )}
+                </Select>
+              </div>
+
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                <span title={tooltipAddCnpj}>
+                  <Button
+                    kind="secondary"
+                    size="md"
+                    renderIcon={Add}
+                    onClick={() => setModalNovoCnpj(true)}
+                    disabled={!canAddCnpj}
+                    id="btn-adicionar-cnpj"
+                    title={tooltipAddCnpj}
+                  >
+                    Adicionar CNPJ
+                  </Button>
+                </span>
+
                 <Button
                   kind="primary"
                   size="md"
@@ -472,201 +890,269 @@ export default function ConfiguracoesPage() {
                   {salvandoEmpresa ? <InlineLoading description="Salvando..." /> : "Salvar Alterações"}
                 </Button>
               </div>
+            </div>
 
-              <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
-                1. Identificação Societária
-              </h3>
-              <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
-                <Column lg={8} md={4} sm={4}>
-                  <TextInput
-                    id="empresa-razao"
-                    labelText="Razão Social da Empresa *"
-                    value={empresa.razaoSocial}
-                    onChange={(e) => setEmpresa({ ...empresa, razaoSocial: e.target.value })}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-cnpj"
-                    labelText="CNPJ *"
-                    value={empresa.cnpj}
-                    onChange={(e) => setEmpresa({ ...empresa, cnpj: maskCnpj(e.target.value) })}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-ie"
-                    labelText="Inscrição Estadual"
-                    value={empresa.inscricaoEstadual || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, inscricaoEstadual: e.target.value })}
-                  />
-                </Column>
-                <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
-                  <TextInput
-                    id="empresa-cnae"
-                    labelText="CNAE Principal"
-                    value={empresa.cnae || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, cnae: e.target.value })}
-                  />
-                </Column>
-              </Grid>
+            {/* Aviso Regra de Plano Básico (1 UF / 1 Segmento) */}
+            {planoAtual === "BASICO" && billingStatus !== "TRIAL" && (
+              <InlineNotification
+                kind="warning"
+                title="Plano Básico Ativo — Escopo Limitado a 1 Segmento e 1 UF"
+                subtitle="O seu plano atual monitora exclusivamente a UF da sede da empresa e o 1º segmento cadastrado. Faça upgrade para o Plano Pro ou Enterprise para monitorar múltiplos segmentos e todo o Brasil."
+                style={{ marginBottom: "1.5rem" }}
+              />
+            )}
 
-              <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
-                2. Endereço da Sede
-              </h3>
-              <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
-                <Column lg={8} md={4} sm={4}>
-                  <TextInput
-                    id="empresa-endereco"
-                    labelText="Logradouro / Número / Bairro *"
-                    value={empresa.endereco}
-                    onChange={(e) => setEmpresa({ ...empresa, endereco: e.target.value })}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-cidade"
-                    labelText="Cidade *"
-                    value={empresa.cidade}
-                    onChange={(e) => setEmpresa({ ...empresa, cidade: e.target.value })}
-                  />
-                </Column>
-                <Column lg={2} md={1} sm={2}>
-                  <TextInput
-                    id="empresa-uf"
-                    labelText="UF *"
-                    value={empresa.uf}
-                    onChange={(e) => setEmpresa({ ...empresa, uf: e.target.value })}
-                  />
-                </Column>
-                <Column lg={2} md={1} sm={2}>
-                  <TextInput
-                    id="empresa-cep"
-                    labelText="CEP *"
-                    value={empresa.cep}
-                    onChange={(e) => setEmpresa({ ...empresa, cep: e.target.value })}
-                  />
-                </Column>
-              </Grid>
+            {/* SEÇÃO 1: IDENTIFICAÇÃO SOCIETÁRIA & CNPJ */}
+            <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
+              1. Identificação Societária & Dados do CNPJ
+            </h3>
+            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+              <Column lg={6} md={4} sm={4}>
+                <TextInput
+                  id="empresa-razao"
+                  labelText="Razão Social da Empresa *"
+                  value={empresa.razaoSocial}
+                  onChange={(e) => setEmpresa({ ...empresa, razaoSocial: e.target.value })}
+                />
+              </Column>
+              <Column lg={4} md={2} sm={4}>
+                <TextInput
+                  id="empresa-cnpj"
+                  labelText="CNPJ *"
+                  value={empresa.cnpj}
+                  onChange={(e) => setEmpresa({ ...empresa, cnpj: maskCnpj(e.target.value) })}
+                />
+              </Column>
+              <Column lg={3} md={2} sm={4}>
+                <TextInput
+                  id="empresa-ie"
+                  labelText="Inscrição Estadual"
+                  value={empresa.inscricaoEstadual || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, inscricaoEstadual: e.target.value })}
+                />
+              </Column>
+              <Column lg={3} md={2} sm={4}>
+                <TextInput
+                  id="empresa-im"
+                  labelText="Inscrição Municipal"
+                  value={empresa.inscricaoMunicipal || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, inscricaoMunicipal: e.target.value })}
+                  placeholder="Número de Inscrição Municipal"
+                />
+              </Column>
+              <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
+                <TextInput
+                  id="empresa-cnae"
+                  labelText="CNAE Principal"
+                  value={empresa.cnae || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, cnae: e.target.value })}
+                />
+              </Column>
+            </Grid>
 
-              <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
-                3. Representante Legal (Assinante Padrão)
-              </h3>
-              <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
-                <Column lg={6} md={3} sm={4}>
-                  <TextInput
-                    id="empresa-rep-nome"
-                    labelText="Nome Completo *"
-                    value={empresa.representanteNome}
-                    onChange={(e) => setEmpresa({ ...empresa, representanteNome: e.target.value })}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-rep-cpf"
-                    labelText="CPF *"
-                    value={empresa.representanteCpf}
-                    onChange={(e) => setEmpresa({ ...empresa, representanteCpf: maskCpf(e.target.value) })}
-                  />
-                </Column>
-                <Column lg={3} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-rep-rg"
-                    labelText="RG"
-                    value={empresa.representanteRg || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, representanteRg: e.target.value })}
-                  />
-                </Column>
-                <Column lg={3} md={1} sm={4}>
-                  <TextInput
-                    id="empresa-rep-cargo"
-                    labelText="Cargo *"
-                    value={empresa.representanteCargo}
-                    onChange={(e) => setEmpresa({ ...empresa, representanteCargo: e.target.value })}
-                  />
-                </Column>
-              </Grid>
+            {/* SEÇÃO 2: ENDEREÇO DA SEDE COM VIACEP */}
+            <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
+              2. Endereço da Sede Corporativa
+            </h3>
+            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+              <Column lg={3} md={2} sm={4}>
+                <TextInput
+                  id="empresa-cep"
+                  labelText="CEP *"
+                  value={empresa.cep}
+                  onChange={(e) => {
+                    const v = maskCep(e.target.value);
+                    setEmpresa({ ...empresa, cep: v });
+                    if (v.replace(/\D/g, "").length === 8) {
+                      handleConsultarCepEmpresa(v);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (empresa.cep) handleConsultarCepEmpresa(empresa.cep);
+                  }}
+                  helperText={buscandoCepEmpresa ? "Buscando ViaCEP..." : "Auto-busca ao digitar 8 dígitos"}
+                />
+              </Column>
+              <Column lg={7} md={4} sm={4}>
+                <TextInput
+                  id="empresa-endereco"
+                  labelText="Logradouro / Rua *"
+                  value={empresa.endereco}
+                  onChange={(e) => setEmpresa({ ...empresa, endereco: e.target.value })}
+                />
+              </Column>
+              <Column lg={2} md={1} sm={2}>
+                <TextInput
+                  id="empresa-numero"
+                  labelText="Número"
+                  value={empresa.numero || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, numero: e.target.value })}
+                />
+              </Column>
+              <Column lg={4} md={2} sm={2}>
+                <TextInput
+                  id="empresa-complemento"
+                  labelText="Complemento"
+                  value={empresa.complemento || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, complemento: e.target.value })}
+                />
+              </Column>
+              <Column lg={6} md={3} sm={4} style={{ marginTop: "0.75rem" }}>
+                <TextInput
+                  id="empresa-bairro"
+                  labelText="Bairro"
+                  value={empresa.bairro || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, bairro: e.target.value })}
+                />
+              </Column>
+              <Column lg={6} md={3} sm={4} style={{ marginTop: "0.75rem" }}>
+                <TextInput
+                  id="empresa-cidade"
+                  labelText="Cidade *"
+                  value={empresa.cidade}
+                  onChange={(e) => setEmpresa({ ...empresa, cidade: e.target.value })}
+                />
+              </Column>
+              <Column lg={4} md={2} sm={4} style={{ marginTop: "0.75rem" }}>
+                <TextInput
+                  id="empresa-uf"
+                  labelText="UF *"
+                  value={empresa.uf}
+                  onChange={(e) => setEmpresa({ ...empresa, uf: e.target.value.toUpperCase().slice(0, 2) })}
+                />
+              </Column>
+            </Grid>
 
-              <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
-                4. Dados Bancários Padrão para Propostas
-              </h3>
-              <Grid style={{ padding: 0 }}>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-banco"
-                    labelText="Instituição Bancária"
-                    value={empresa.bancoNome || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, bancoNome: e.target.value })}
-                  />
-                </Column>
-                <Column lg={3} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-agencia"
-                    labelText="Agência"
-                    value={empresa.agencia || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, agencia: e.target.value })}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-conta"
-                    labelText="Conta Corrente"
-                    value={empresa.contaCorrente || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, contaCorrente: e.target.value })}
-                  />
-                </Column>
-                <Column lg={5} md={2} sm={4}>
-                  <TextInput
-                    id="empresa-pix"
-                    labelText="Chave Pix"
-                    value={empresa.chavePix || ""}
-                    onChange={(e) => setEmpresa({ ...empresa, chavePix: e.target.value })}
-                  />
-                </Column>
-              </Grid>
-            </Tile>
+            {/* SEÇÃO 3: REPRESENTANTE LEGAL */}
+            <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
+              3. Representante Legal (Assinante Padrão)
+            </h3>
+            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+              <Column lg={6} md={3} sm={4}>
+                <TextInput
+                  id="empresa-rep-nome"
+                  labelText="Nome Completo *"
+                  value={empresa.representanteNome}
+                  onChange={(e) => setEmpresa({ ...empresa, representanteNome: e.target.value })}
+                />
+              </Column>
+              <Column lg={4} md={2} sm={4}>
+                <TextInput
+                  id="empresa-rep-cpf"
+                  labelText="CPF *"
+                  value={empresa.representanteCpf}
+                  onChange={(e) => setEmpresa({ ...empresa, representanteCpf: maskCpf(e.target.value) })}
+                />
+              </Column>
+              <Column lg={3} md={2} sm={4}>
+                <TextInput
+                  id="empresa-rep-rg"
+                  labelText="RG"
+                  value={empresa.representanteRg || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, representanteRg: e.target.value })}
+                />
+              </Column>
+              <Column lg={3} md={1} sm={4}>
+                <TextInput
+                  id="empresa-rep-cargo"
+                  labelText="Cargo *"
+                  value={empresa.representanteCargo}
+                  onChange={(e) => setEmpresa({ ...empresa, representanteCargo: e.target.value })}
+                />
+              </Column>
+            </Grid>
+
+            {/* SEÇÃO 4: DADOS BANCÁRIOS */}
+            <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
+              4. Dados Bancários Padrão para Propostas
+            </h3>
+            <Grid style={{ padding: 0 }}>
+              <Column lg={4} md={2} sm={4}>
+                <TextInput
+                  id="empresa-banco"
+                  labelText="Instituição Bancária"
+                  value={empresa.bancoNome || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, bancoNome: e.target.value })}
+                />
+              </Column>
+              <Column lg={3} md={2} sm={4}>
+                <TextInput
+                  id="empresa-agencia"
+                  labelText="Agência"
+                  value={empresa.agencia || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, agencia: e.target.value })}
+                />
+              </Column>
+              <Column lg={4} md={2} sm={4}>
+                <TextInput
+                  id="empresa-conta"
+                  labelText="Conta Corrente"
+                  value={empresa.contaCorrente || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, contaCorrente: e.target.value })}
+                />
+              </Column>
+              <Column lg={5} md={2} sm={4}>
+                <TextInput
+                  id="empresa-pix"
+                  labelText="Chave Pix"
+                  value={empresa.chavePix || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, chavePix: e.target.value })}
+                />
+              </Column>
+            </Grid>
+          </Tile>
         )}
 
-        {/* ABA 3: GESTÃO DA EQUIPE & RBAC */}
+        {/* ========================================================
+            ABA 3: GESTÃO DA EQUIPE
+        ======================================================== */}
         {abaSelecionada === 2 && (
-            <Tile style={{ padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
-                    Equipe de Colaboradores & Matriz de Papéis (Anexo 4)
-                  </h2>
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                    Diretoria, Analistas Comerciais e Operadores Técnicos com segregação de funções.
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+          <Tile style={{ padding: "1.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
+                  Gestão da Equipe
+                </h2>
+                <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
+                  Colaboradores vinculados ao CNPJ ativo ({equipe.length}/{maxUsers} assentos ocupados).
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <span title={isTeamLimitReached ? "Limite de colaboradores do seu plano atingido. Faça upgrade para adicionar mais assentos." : undefined}>
                   <Button
                     kind="primary"
                     size="md"
                     renderIcon={Add}
                     onClick={() => setModalNovoMembro(true)}
+                    disabled={isTeamLimitReached}
                     id="btn-novo-colaborador"
+                    title={isTeamLimitReached ? "Limite de colaboradores do seu plano atingido. Faça upgrade para adicionar mais assentos." : undefined}
                   >
                     Novo Colaborador
                   </Button>
-                  <Button
-                    kind="ghost"
-                    size="md"
-                    renderIcon={Renew}
-                    onClick={carregarEquipe}
-                  >
-                    Atualizar
-                  </Button>
-                </div>
+                </span>
+                <Button
+                  kind="ghost"
+                  size="md"
+                  renderIcon={Renew}
+                  onClick={carregarEquipe}
+                >
+                  Atualizar
+                </Button>
               </div>
+            </div>
 
-              {carregandoEquipe ? (
-                <div style={{ padding: "3rem", textAlign: "center" }}>
-                  <InlineLoading description="Carregando colaboradores..." />
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {equipe.map((membro) => (
+            {carregandoEquipe ? (
+              <div style={{ padding: "3rem", textAlign: "center" }}>
+                <InlineLoading description="Carregando colaboradores..." />
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {equipe.map((membro, index) => {
+                  const isTitularMembro = index === 0 && userRole === "DIRETORIA";
+                  const isCurrentUser = membro.id === currentUser?.id;
+
+                  return (
                     <div
                       key={membro.id}
                       style={{
@@ -685,27 +1171,26 @@ export default function ConfiguracoesPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                           <span style={{ fontWeight: 600, fontSize: "1rem" }}>{membro.name}</span>
                           <Tag
-                            type={
-                              membro.role === "DIRETORIA"
-                                ? "purple"
-                                : membro.role === "ANALISTA_COMERCIAL"
-                                ? "blue"
-                                : "cool-gray"
-                            }
+                            type={membro.role === "DIRETORIA" ? "purple" : "blue"}
                             size="sm"
                           >
-                            {membro.role === "OPERADOR" ? "OPERADOR_TECNICO" : membro.role}
+                            {membro.role === "DIRETORIA" ? "DIRETORIA (Titular)" : "ANALISTA COMERCIAL"}
                           </Tag>
                           <Tag type={membro.ativo ? "green" : "red"} size="sm">
                             {membro.ativo ? "ATIVO" : "INATIVO"}
                           </Tag>
+                          {isCurrentUser && (
+                            <Tag type="cool-gray" size="sm">
+                              Você
+                            </Tag>
+                          )}
                         </div>
                         <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
                           {membro.email} • Cadastrado em {new Date(membro.createdAt).toLocaleDateString("pt-BR")}
                         </div>
                       </div>
 
-                      {/* Apenas Diretoria pode alterar cargo ou desativar colaborador (Item 11.3) */}
+                      {/* Apenas Diretoria pode alterar membros da equipe */}
                       {userRole === "DIRETORIA" && (
                         <Button
                           kind="ghost"
@@ -723,166 +1208,89 @@ export default function ConfiguracoesPage() {
                         </Button>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </Tile>
-        )}
-
-        {/* ABA 4: TRILHA DE AUDITORIA CORPORATIVA */}
-        {abaSelecionada === 3 && (
-            <Tile style={{ padding: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>
-                    Trilha Imutável de Auditoria Corporativa (`audit_log`)
-                  </h2>
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                    Rastreamento de todas as deliberações de Participação ("Participar / Não Participar"), mutações no Kanban, declarações e documentos (Art. 7º Lei 14.133).
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <Button
-                    kind="secondary"
-                    size="md"
-                    renderIcon={Download}
-                    onClick={handleExportarCsv}
-                    id="btn-exportar-csv"
-                  >
-                    Exportar Relatório CSV
-                  </Button>
-                  <Button
-                    kind="ghost"
-                    size="md"
-                    renderIcon={Renew}
-                    onClick={carregarAuditLogs}
-                  >
-                    Atualizar
-                  </Button>
-                </div>
+                  );
+                })}
               </div>
-
-              {/* Filtros da Trilha */}
-              <Grid style={{ padding: 0, marginBottom: "1rem" }}>
-                <Column lg={6} md={3} sm={4}>
-                  <TextInput
-                    id="busca-audit"
-                    labelText="Buscar nos registros"
-                    value={buscaAuditoria}
-                    onChange={(e) => setBuscaAuditoria(e.target.value)}
-                    placeholder="Ação, Entidade, ID ou Usuário..."
-                  />
-                </Column>
-                <Column lg={5} md={3} sm={4}>
-                  <Select
-                    id="filtro-entidade-audit"
-                    labelText="Tipo de Entidade"
-                    value={filtroEntidade}
-                    onChange={(e) => setFiltroEntidade(e.target.value)}
-                  >
-                    <SelectItem value="" text="Todas as Entidades" />
-                    <SelectItem value="LICITACAO" text="LICITACAO" />
-                    <SelectItem value="PORTAL" text="PORTAL" />
-                    <SelectItem value="DOCUMENTO" text="DOCUMENTO" />
-                    <SelectItem value="DECLARACAO" text="DECLARACAO" />
-                    <SelectItem value="IMPUGNACAO" text="IMPUGNACAO" />
-                    <SelectItem value="CONFIGURACAO" text="CONFIGURACAO" />
-                    <SelectItem value="USUARIO" text="USUARIO" />
-                  </Select>
-                </Column>
-                <Column lg={5} md={2} sm={4}>
-                  <Select
-                    id="filtro-acao-audit"
-                    labelText="Ação Realizada"
-                    value={filtroAcao}
-                    onChange={(e) => setFiltroAcao(e.target.value)}
-                  >
-                    <SelectItem value="" text="Todas as Ações" />
-                    <SelectItem value="DECIDE_GO_NOGO" text="DECIDE_GO_NOGO" />
-                    <SelectItem value="MOVE_KANBAN" text="MOVE_KANBAN" />
-                    <SelectItem value="DECLARACAO_GERADA" text="DECLARACAO_GERADA" />
-                    <SelectItem value="IMPUGNACAO_CRIADA" text="IMPUGNACAO_CRIADA" />
-                    <SelectItem value="DOCUMENTO_CRIADO" text="DOCUMENTO_CRIADO" />
-                    <SelectItem value="PORTAL_CRIADO" text="PORTAL_CRIADO" />
-                    <SelectItem value="CONFIGURACAO_EMPRESA_ATUALIZADA" text="CONFIGURACAO_ATUALIZADA" />
-                    <SelectItem value="USUARIO_CRIADO" text="USUARIO_CRIADO" />
-                  </Select>
-                </Column>
-              </Grid>
-
-              {carregandoLogs ? (
-                <div style={{ padding: "3rem", textAlign: "center" }}>
-                  <InlineLoading description="Carregando trilha de auditoria..." />
-                </div>
-              ) : logs.length === 0 ? (
-                <div style={{ padding: "3rem", textAlign: "center", color: "var(--cds-text-secondary)" }}>
-                  Nenhum registro de auditoria encontrado com os filtros selecionados.
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {logs.map((log) => (
-                    <div
-                      key={log.id}
-                      style={{
-                        padding: "0.75rem 1rem",
-                        background: "var(--cds-layer-02)",
-                        borderRadius: "2px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: "0.8125rem",
-                        flexWrap: "wrap",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <span style={{ color: "var(--cds-text-secondary)" }} className="pncp-mono">
-                          {new Date(log.ocorridoEm).toLocaleString("pt-BR")}
-                        </span>
-                        <Tag type="blue" size="sm" className="pncp-mono">{log.acao}</Tag>
-                        <Tag type="cool-gray" size="sm">{log.entidadeTipo}:{log.entidadeId.substring(0, 14)}</Tag>
-                        <span>{log.usuarioNome || log.usuarioId || "Sistema"}</span>
-                      </div>
-
-                      <Button
-                        kind="ghost"
-                        size="sm"
-                        renderIcon={View}
-                        onClick={() => setLogInspecao(log)}
-                        id={`btn-inspecionar-${log.id}`}
-                      >
-                        Ver Diff JSON
-                      </Button>
-                    </div>
-                  ))}
-
-                  {totalLogs > logPageSize && (
-                    <Pagination
-                      backwardText="Página anterior"
-                      forwardText="Próxima página"
-                      itemsPerPageText="Itens por página:"
-                      page={logPage}
-                      pageNumberText="Página"
-                      pageSize={logPageSize}
-                      pageSizes={[15, 30, 50]}
-                      totalItems={totalLogs}
-                      onChange={(e) => {
-                        setLogPage(e.page);
-                        setLogPageSize(e.pageSize);
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-            </Tile>
+            )}
+          </Tile>
         )}
       </div>
 
-      {/* MODAL: Novo Colaborador */}
+      {/* ========================================================
+          MODAL: Adicionar Novo CNPJ
+      ======================================================== */}
+      <Modal
+        open={modalNovoCnpj}
+        onRequestClose={() => setModalNovoCnpj(false)}
+        modalHeading="Cadastrar Novo CNPJ Vinculado"
+        primaryButtonText={salvandoNovoCnpj ? "Cadastrando..." : "Cadastrar CNPJ"}
+        secondaryButtonText="Cancelar"
+        primaryButtonDisabled={salvandoNovoCnpj}
+        onRequestSubmit={handleCadastrarNovoCnpj}
+      >
+        <div style={{ padding: "0.5rem 0" }}>
+          <TextInput
+            id="novo-cnpj"
+            labelText="CNPJ *"
+            value={novoCnpjForm.cnpj}
+            onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, cnpj: maskCnpj(e.target.value) })}
+            placeholder="00.000.000/0000-00"
+            style={{ marginBottom: "1rem" }}
+          />
+          <TextInput
+            id="novo-razao"
+            labelText="Razão Social *"
+            value={novoCnpjForm.razaoSocial}
+            onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, razaoSocial: e.target.value })}
+            placeholder="Nome oficial da empresa"
+            style={{ marginBottom: "1rem" }}
+          />
+          <TextInput
+            id="novo-fantasia"
+            labelText="Nome Fantasia"
+            value={novoCnpjForm.nomeFantasia}
+            onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, nomeFantasia: e.target.value })}
+            placeholder="Nome fantasia comercial"
+            style={{ marginBottom: "1rem" }}
+          />
+          <TextInput
+            id="novo-cnae"
+            labelText="CNAE Principal"
+            value={novoCnpjForm.cnaePrincipal}
+            onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, cnaePrincipal: e.target.value })}
+            placeholder="Código CNAE"
+            style={{ marginBottom: "1rem" }}
+          />
+          <Grid style={{ padding: 0 }}>
+            <Column lg={12} md={6} sm={4}>
+              <TextInput
+                id="novo-cidade"
+                labelText="Cidade"
+                value={novoCnpjForm.cidade}
+                onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, cidade: e.target.value })}
+                placeholder="Goiânia"
+              />
+            </Column>
+            <Column lg={4} md={2} sm={4}>
+              <TextInput
+                id="novo-uf"
+                labelText="UF"
+                value={novoCnpjForm.uf}
+                onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, uf: e.target.value.toUpperCase().slice(0, 2) })}
+                placeholder="GO"
+              />
+            </Column>
+          </Grid>
+        </div>
+      </Modal>
+
+      {/* ========================================================
+          MODAL: Novo Colaborador
+      ======================================================== */}
       <Modal
         open={modalNovoMembro}
         onRequestClose={() => setModalNovoMembro(false)}
-        modalHeading="Cadastrar Novo Colaborador (RBAC)"
+        modalHeading="Cadastrar Novo Colaborador"
         primaryButtonText="Criar Usuário"
         secondaryButtonText="Cancelar"
         onRequestSubmit={handleCriarMembro}
@@ -904,27 +1312,28 @@ export default function ConfiguracoesPage() {
           />
           <Select
             id="novo-role"
-            labelText="Papel no Sistema (Perfil de Acesso) *"
+            labelText="Papel no Sistema *"
             value={novoRole}
             onChange={(e) => setNovoRole(e.target.value as UsuarioRole)}
             style={{ marginBottom: "1rem" }}
           >
-            <SelectItem value="DIRETORIA" text="DIRETORIA (Acesso irrestrito a aprovações e finanças)" />
-            <SelectItem value="ANALISTA_COMERCIAL" text="ANALISTA COMERCIAL (Lances, credenciamentos e petições)" />
-            <SelectItem value="OPERADOR_TECNICO" text="OPERADOR TÉCNICO (Análise de TR, atestados e minutas)" />
+            <SelectItem disabled value="DIRETORIA" text="Diretoria (Apenas Titular)" />
+            <SelectItem value="ANALISTA_COMERCIAL" text="Analista Comercial (Lances, propostas e certidões)" />
           </Select>
           <TextInput
             id="nova-senha"
             type="password"
             labelText="Senha Provisória *"
-            value={novaSenha}
-            onChange={(e) => setNovaSenha(e.target.value)}
+            value={novaSenhaMembro}
+            onChange={(e) => setNovaSenhaMembro(e.target.value)}
             helperText="Mínimo de 6 caracteres"
           />
         </div>
       </Modal>
 
-      {/* MODAL: Editar Colaborador */}
+      {/* ========================================================
+          MODAL: Editar Colaborador
+      ======================================================== */}
       <Modal
         open={modalEditarMembro}
         onRequestClose={() => setModalEditarMembro(false)}
@@ -941,9 +1350,10 @@ export default function ConfiguracoesPage() {
             onChange={(e) => setEditRole(e.target.value as UsuarioRole)}
             style={{ marginBottom: "1rem" }}
           >
-            <SelectItem value="DIRETORIA" text="DIRETORIA" />
+            {membroSelecionado?.role === "DIRETORIA" && (
+              <SelectItem value="DIRETORIA" text="DIRETORIA (Titular)" />
+            )}
             <SelectItem value="ANALISTA_COMERCIAL" text="ANALISTA COMERCIAL" />
-            <SelectItem value="OPERADOR_TECNICO" text="OPERADOR TÉCNICO" />
           </Select>
 
           <Select
@@ -951,47 +1361,17 @@ export default function ConfiguracoesPage() {
             labelText="Status do Usuário"
             value={editAtivo ? "true" : "false"}
             onChange={(e) => setEditAtivo(e.target.value === "true")}
+            disabled={membroSelecionado?.id === currentUser?.id}
+            helperText={
+              membroSelecionado?.id === currentUser?.id
+                ? "Você não pode inativar sua própria conta."
+                : undefined
+            }
           >
             <SelectItem value="true" text="Ativo (Pode efetuar login)" />
             <SelectItem value="false" text="Inativo (Bloqueado)" />
           </Select>
         </div>
-      </Modal>
-
-      {/* MODAL: Inspeção de Auditoria (Diff JSON) */}
-      <Modal
-        open={Boolean(logInspecao)}
-        onRequestClose={() => setLogInspecao(null)}
-        modalHeading="Inspeção de Auditoria — Detalhes do Registro"
-        passiveModal
-        size="lg"
-      >
-        {logInspecao && (
-          <div style={{ padding: "0.5rem 0", fontSize: "0.875rem" }}>
-            <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-              <div><strong>Ação:</strong> <Tag type="blue" size="sm">{logInspecao.acao}</Tag></div>
-              <div><strong>Entidade:</strong> {logInspecao.entidadeTipo} ({logInspecao.entidadeId})</div>
-              <div><strong>Data:</strong> {new Date(logInspecao.ocorridoEm).toLocaleString("pt-BR")}</div>
-              <div><strong>Responsável:</strong> {logInspecao.usuarioNome || logInspecao.usuarioId || "Sistema"}</div>
-            </div>
-
-            <div style={{ marginBottom: "1rem" }}>
-              <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Estado Posterior (Depois):</div>
-              <pre style={{ background: "var(--cds-layer-02)", padding: "1rem", borderRadius: "2px", overflowX: "auto", fontSize: "0.75rem" }}>
-                {JSON.stringify(logInspecao.depois, null, 2)}
-              </pre>
-            </div>
-
-            {logInspecao.antes && (
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Estado Anterior (Antes):</div>
-                <pre style={{ background: "var(--cds-layer-02)", padding: "1rem", borderRadius: "2px", overflowX: "auto", fontSize: "0.75rem" }}>
-                  {JSON.stringify(logInspecao.antes, null, 2)}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
       </Modal>
     </ModulePageShell>
   );

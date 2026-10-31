@@ -204,6 +204,9 @@ export function canManageTeamMember(params: CanManageUserParams): { allowed: boo
 
   // 4. Cadastro de novo colaborador
   if (params.action === "create") {
+    if (params.newRole === "OPERADOR" || params.newRole === "OPERADOR_TECNICO") {
+      return { allowed: false, reason: "O perfil Operador Técnico não é mais suportado. Cadastre como Analista Comercial." };
+    }
     if (params.actor.role === "ANALISTA_COMERCIAL" && params.newRole === "DIRETORIA") {
       return { allowed: false, reason: "Analista Comercial não pode cadastrar um usuário com perfil de Diretoria." };
     }
@@ -213,6 +216,16 @@ export function canManageTeamMember(params: CanManageUserParams): { allowed: boo
   // 5. Edição ou Inativação de colaborador existente
   if (params.targetUser) {
     const targetLevel = getRoleHierarchyLevel(params.targetUser.role);
+
+    // Inativação restrita ao Titular / Diretoria
+    if (params.action === "toggle_ativo" && params.newAtivo === false) {
+      if (params.actor.role !== "DIRETORIA" && params.actor.role !== "SUPERADMIN") {
+        return {
+          allowed: false,
+          reason: "Apenas o Usuário Principal (Titular) pode inativar colaboradores.",
+        };
+      }
+    }
 
     // Restrições específicas de Analista Comercial (Sprint 7 — Item 11.3)
     if (params.actor.role === "ANALISTA_COMERCIAL") {
@@ -240,13 +253,14 @@ export function canManageTeamMember(params: CanManageUserParams): { allowed: boo
 }
 
 /**
- * Abas visíveis em /configuracoes por papel (Sprint 7 — Item 11.2):
- * - Diretoria: Tem acesso a ver as 4 abas (0: Meu Perfil, 1: Empresa, 2: Equipe, 3: Auditoria)
+ * Abas visíveis em /configuracoes por papel (Task 2):
+ * - Diretoria: Tem acesso a 3 abas (0: Meu Perfil, 1: Empresa, 2: Equipe)
  * - Analista Comercial: Tem acesso a Meu Perfil (0) e Gestão de Equipe (2)
  * - Operador Técnico: Tem acesso apenas ao Meu Perfil (0)
+ * (A 4ª aba de Auditoria foi removida para todos os clientes)
  */
 export function getVisibleConfigTabs(role: string): number[] {
-  if (role === "DIRETORIA") return [0, 1, 2, 3];
+  if (role === "DIRETORIA") return [0, 1, 2];
   if (role === "ANALISTA_COMERCIAL") return [0, 2];
   return [0];
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { configuracaoEmpresaAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
@@ -9,10 +10,16 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req?: Request) {
+export async function GET(req?: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req ? new URL(req.url).searchParams.get("tenantId") : null;
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.activeTenantId;
     const empresa = await obterConfiguracaoEmpresa(tenantId);
     return NextResponse.json({ ok: true, empresa });
   } catch (error: any) {
@@ -40,7 +47,12 @@ export async function PUT(req: Request) {
       );
     }
 
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
     const empresa = await atualizarConfiguracaoEmpresa(
       parseResult.data,
       (session?.user as any)?.id,

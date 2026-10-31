@@ -107,6 +107,15 @@ model User {
   role                       Role                       @default(OPERADOR)
   ativo                      Boolean                    @default(true)
   isSuperAdmin               Boolean                    @default(false)
+  cpf                        String?
+  telefone                   String?
+  cep                        String?
+  logradouro                 String?
+  numero                     String?
+  complemento                String?
+  bairro                     String?
+  cidade                     String?
+  uf                         String?
   createdAt                  DateTime                   @default(now())
   updatedAt                  DateTime                   @updatedAt
   accounts                   Account[]
@@ -469,8 +478,12 @@ model ConfiguracaoEmpresa {
   razaoSocial        String   @default("APONTA TECNOLOGIA E SERVICOS LTDA")
   cnpj               String   @default("12.345.678/0001-90")
   inscricaoEstadual  String?
+  inscricaoMunicipal String?
   cnae               String?
   endereco           String   @default("Av. República do Líbano, 1200, Setor Oeste")
+  numero             String?
+  complemento        String?
+  bairro             String?
   cidade             String   @default("Goiânia")
   uf                 String   @default("GO")
   cep                String   @default("74115-030")
