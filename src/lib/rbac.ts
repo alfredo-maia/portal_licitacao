@@ -260,7 +260,7 @@ export function canManageTeamMember(params: CanManageUserParams): { allowed: boo
  * (A 4ª aba de Auditoria foi removida para todos os clientes)
  */
 export function getVisibleConfigTabs(role: string): number[] {
-  if (role === "DIRETORIA") return [0, 1, 2];
+  if (role === "SUPERADMIN" || role === "DIRETORIA") return [0, 1, 2];
   if (role === "ANALISTA_COMERCIAL") return [0, 2];
   return [0];
 }

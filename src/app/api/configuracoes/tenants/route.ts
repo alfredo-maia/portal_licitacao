@@ -51,6 +51,10 @@ export async function GET(req: Request) {
           maxCnpjs: m.tenant.maxCnpjs,
           maxUsers: m.tenant.maxUsers,
           role: m.role,
+          segmentos: m.tenant.segmentos || [],
+          subsegmentos: m.tenant.subsegmentos || [],
+          ufs: m.tenant.ufs || [],
+          brasilInteiro: m.tenant.brasilInteiro ?? true,
         }));
     } catch {
       const inMemList = await listTenantsForUser(userId);
@@ -64,6 +68,10 @@ export async function GET(req: Request) {
         maxCnpjs: m.tenant.maxCnpjs,
         maxUsers: m.tenant.maxUsers,
         role: m.role,
+        segmentos: m.tenant.segmentos || [],
+        subsegmentos: m.tenant.subsegmentos || [],
+        ufs: m.tenant.ufs || [],
+        brasilInteiro: m.tenant.brasilInteiro ?? true,
       }));
     }
 

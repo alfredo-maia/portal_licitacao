@@ -39,9 +39,9 @@ describe("Sprint 6 - Task 3: Tela de Login Multi-Step", () => {
       screen.getByRole("button", { name: /Cadastrar Novo Usuário/i }),
     ).toBeInTheDocument();
 
-    // Não deve conter campo de senha nem link "Esqueceu a senha?" no Passo 1
+    // Não deve conter campo de senha nem link "Esqueci minha senha" no Passo 1
     expect(screen.queryByLabelText(/^Senha/i)).toBeNull();
-    expect(screen.queryByText(/Esqueceu a senha\?/i)).toBeNull();
+    expect(screen.queryByText(/Esquec(i|eu) (a|minha) senha/i)).toBeNull();
   });
 
   it("deve avançar para o Passo 2 ('Como deseja entrar?') com as 3 opções de login", async () => {
@@ -72,7 +72,7 @@ describe("Sprint 6 - Task 3: Tela de Login Multi-Step", () => {
     ).toBeInTheDocument();
 
     // Link esqueceu a senha não deve aparecer no Passo 2
-    expect(screen.queryByText(/Esqueceu a senha\?/i)).toBeNull();
+    expect(screen.queryByText(/Esquec(i|eu) (a|minha) senha/i)).toBeNull();
   });
 
   it("deve abrir o Passo 3A ('Digite sua senha') com 'Esqueceu a senha?' apenas nele", async () => {
@@ -92,8 +92,8 @@ describe("Sprint 6 - Task 3: Tela de Login Multi-Step", () => {
     await waitFor(() => {
       expect(screen.getByText(/Digite sua senha/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/^Senha/i)).toBeInTheDocument();
-      // O link Esqueceu a senha? deve aparecer exclusivamente aqui
-      expect(screen.getByText(/Esqueceu a senha\?/i)).toBeInTheDocument();
+      // O link Esqueci minha senha deve aparecer exclusivamente aqui
+      expect(screen.getByText(/Esqueci minha senha/i)).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: /Escolher outro método de entrada/i }),
       ).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("Sprint 6 - Task 3: Tela de Login Multi-Step", () => {
       expect(
         screen.getByText(/Código enviado para o seu e-mail/i),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/Esqueceu a senha\?/i)).toBeNull();
+      expect(screen.queryByText(/Esquec(i|eu) (a|minha) senha/i)).toBeNull();
       expect(
         screen.getByRole("button", { name: /Escolher outro método de entrada/i }),
       ).toBeInTheDocument();
@@ -159,7 +159,7 @@ describe("Sprint 6 - Task 3: Tela de Login Multi-Step", () => {
       expect(
         screen.getByText(/Código enviado para o seu WhatsApp/i),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/Esqueceu a senha\?/i)).toBeNull();
+      expect(screen.queryByText(/Esquec(i|eu) (a|minha) senha/i)).toBeNull();
       expect(
         screen.getByRole("button", { name: /Escolher outro método de entrada/i }),
       ).toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { usuarioEquipeAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import { atualizarMembroEquipe } from "@/server/services/configuracoes.service";
@@ -21,7 +22,12 @@ export async function GET(
         { status: 401 },
       );
     }
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
 
     if (tenantId) {
       let membership: any;
@@ -93,7 +99,12 @@ export async function PATCH(
         { status: 401 },
       );
     }
-    const tenantId = (session?.user as any)?.activeTenantId;
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeAtualizarInputSchema.safeParse(body);
 
@@ -133,7 +144,8 @@ export async function PATCH(
       error.message?.includes("não pode") ||
       error.message?.includes("Não é permitido") ||
       error.message?.includes("não possui permissão") ||
-      error.message?.includes("não pertence");
+      error.message?.includes("não pertence") ||
+      error.message?.toLowerCase().includes("apenas o usuário principal");
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao atualizar usuário" },
       { status: isPermissionError ? 403 : 500 },

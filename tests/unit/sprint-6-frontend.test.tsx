@@ -81,6 +81,41 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
           }),
         });
       }
+      if (url.includes("/api/configuracoes/perfil")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            perfil: {
+              id: "usr_1",
+              name: "Vítor Henrique",
+              email: "vitorhenrique018@gmail.com",
+              cpf: "123.456.789-00",
+              telefone: "(62) 99999-9999",
+              cidade: "Goiânia",
+              uf: "GO",
+            },
+          }),
+        });
+      }
+      if (url.includes("/api/configuracoes/tenants")) {
+        return Promise.resolve({
+          ok: true,
+          tenants: [
+            {
+              id: "tenant_1",
+              cnpj: "12.345.678/0001-90",
+              razaoSocial: "APONTA TECNOLOGIA E SERVICOS LTDA",
+              plano: "TRIAL",
+              billingStatus: "TRIAL",
+              maxCnpjs: 1,
+              maxUsers: 5,
+              role: "TITULAR",
+            },
+          ],
+          activeTenantId: "tenant_1",
+        });
+      }
       if (url.includes("/api/configuracoes/empresa")) {
         return Promise.resolve({
           ok: true,
@@ -106,22 +141,21 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
     render(<ConfiguracoesPage />);
 
     // Header principal
-    expect(screen.getByText("Configurações Corporativas & Auditoria")).toBeDefined();
-    expect(screen.getByText("RBAC & Trilha Imutável")).toBeDefined();
+    expect(screen.getByText("Configurações Corporativas")).toBeDefined();
+    expect(screen.getByText("RBAC & Gestão Multi-CNPJ")).toBeDefined();
 
     // Abas Carbon
     expect(screen.getByRole("tab", { name: /Meu Perfil/i })).toBeDefined();
     expect(screen.getByRole("tab", { name: /Dados da Empresa/i })).toBeDefined();
     expect(screen.getByRole("tab", { name: /Gestão da Equipe/i })).toBeDefined();
-    expect(screen.getByRole("tab", { name: /Trilha de Auditoria/i })).toBeDefined();
+    // A aba de Auditoria não existe para clientes comuns (apenas superadmin/internos)
+    expect(screen.queryByRole("tab", { name: /Trilha de Auditoria/i })).toBeNull();
 
     // Perfil do Usuário
     await waitFor(() => {
       expect(screen.getByText("Vítor Henrique")).toBeDefined();
-      expect(screen.getByText("DIRETORIA (Acesso Total)")).toBeDefined();
+      expect(screen.getByText("DIRETORIA (Titular)")).toBeDefined();
     });
-    expect(screen.getByRole("button", { name: /Tema Claro/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: /Tema Escuro/i })).toBeDefined();
 
     // Troca para Aba 2 (Dados da Empresa)
     const tabEmpresa = screen.getByRole("tab", { name: /Dados da Empresa/i });
@@ -140,15 +174,6 @@ describe("Sprint 6 — Frontend: Configurações Corporativas, Equipe RBAC & Aud
     await waitFor(() => {
       expect(screen.getByText(/mariana@aponta.cloud/i)).toBeDefined();
       expect(screen.getByRole("button", { name: /Novo Colaborador/i })).toBeDefined();
-    });
-
-    // Troca para Aba 4 (Trilha de Auditoria)
-    const tabAuditoria = screen.getByRole("tab", { name: /Trilha de Auditoria/i });
-    fireEvent.click(tabAuditoria);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("DECIDE_GO_NOGO").length).toBeGreaterThan(0);
-      expect(screen.getByRole("button", { name: /Exportar Relatório CSV/i })).toBeDefined();
     });
   });
 });

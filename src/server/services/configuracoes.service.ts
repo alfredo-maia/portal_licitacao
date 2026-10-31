@@ -249,15 +249,23 @@ export async function obterConfiguracaoEmpresa(
 ): Promise<ConfiguracaoEmpresa> {
   try {
     if (tenantId) {
-      const config = await (prisma as any).configuracaoEmpresa.findFirst({
-        where: { tenantId },
-      });
-      if (config) return config;
-
-      // Se o tenant existe mas ainda não possui configuracao_empresa salva, sintetiza a partir do tenant
       const tenant = await (prisma as any).tenant.findUnique({
         where: { id: tenantId },
       });
+      const config = await (prisma as any).configuracaoEmpresa.findFirst({
+        where: { tenantId },
+      });
+      if (config) {
+        return {
+          ...config,
+          segmentos: tenant?.segmentos || [],
+          subsegmentos: tenant?.subsegmentos || [],
+          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
+          brasilInteiro: tenant?.brasilInteiro ?? true,
+        };
+      }
+
+      // Se o tenant existe mas ainda não possui configuracao_empresa salva, sintetiza a partir do tenant
       if (tenant) {
         return {
           id: `cfg_${tenant.id}`,
@@ -281,6 +289,10 @@ export async function obterConfiguracaoEmpresa(
           agencia: "",
           contaCorrente: "",
           chavePix: tenant.cnpj,
+          segmentos: tenant.segmentos || [],
+          subsegmentos: tenant.subsegmentos || [],
+          ufs: tenant.ufs || (tenant.uf ? [tenant.uf] : ["GO"]),
+          brasilInteiro: tenant.brasilInteiro ?? true,
         };
       }
     }
@@ -289,9 +301,25 @@ export async function obterConfiguracaoEmpresa(
       where: { id: "default" },
     });
     if (config) return config;
-    return getInMemoryConfiguracaoEmpresa();
+    const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
+    const base = getInMemoryConfiguracaoEmpresa();
+    return {
+      ...base,
+      segmentos: memTenant?.segmentos || (base as any).segmentos || [],
+      subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
+      ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
+      brasilInteiro: memTenant?.brasilInteiro ?? (base as any).brasilInteiro ?? true,
+    };
   } catch {
-    return getInMemoryConfiguracaoEmpresa();
+    const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
+    const base = getInMemoryConfiguracaoEmpresa();
+    return {
+      ...base,
+      segmentos: memTenant?.segmentos || (base as any).segmentos || [],
+      subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
+      ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
+      brasilInteiro: memTenant?.brasilInteiro ?? (base as any).brasilInteiro ?? true,
+    };
   }
 }
 
@@ -301,17 +329,45 @@ export async function atualizarConfiguracaoEmpresa(
   tenantId?: string | null,
 ): Promise<ConfiguracaoEmpresa> {
   const validado = configuracaoEmpresaAtualizarInputSchema.parse(data);
+  const { segmentos, subsegmentos, ufs, brasilInteiro, ...configData } = validado;
 
   try {
     if (tenantId) {
+      let plano = "BASICO";
+      let billingStatus = "TRIAL";
+      try {
+        const tenant = await (prisma as any).tenant.findUnique({
+          where: { id: tenantId },
+        });
+        if (tenant) {
+          plano = tenant.plano;
+          billingStatus = tenant.billingStatus;
+        }
+      } catch {
+        const memTenant = inMemoryTenants.get(tenantId);
+        if (memTenant) {
+          plano = memTenant.plano || "BASICO";
+          billingStatus = memTenant.billingStatus || "TRIAL";
+        }
+      }
+
+      const escopo = normalizarEscopoPlano({
+        plano,
+        billingStatus,
+        segmentos,
+        ufs,
+        ufSede: validado.uf,
+        brasilInteiro,
+      });
+
       const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
         where: { tenantId },
         create: {
-          ...validado,
+          ...configData,
           id: `cfg_${tenantId}`,
           tenantId,
         },
-        update: validado,
+        update: configData,
       });
 
       await (prisma as any).tenant.update({
@@ -322,6 +378,10 @@ export async function atualizarConfiguracaoEmpresa(
           ...(validado.uf ? { uf: validado.uf } : {}),
           ...(validado.cidade ? { cidade: validado.cidade } : {}),
           ...(validado.endereco ? { endereco: validado.endereco } : {}),
+          segmentos: escopo.segmentos,
+          subsegmentos: subsegmentos || [],
+          ufs: escopo.ufs,
+          brasilInteiro: escopo.brasilInteiro,
         },
       }).catch(() => undefined);
 
@@ -333,13 +393,19 @@ export async function atualizarConfiguracaoEmpresa(
         depois: validado as any,
       });
 
-      return atualizado;
+      return {
+        ...atualizado,
+        segmentos: escopo.segmentos,
+        subsegmentos: subsegmentos || [],
+        ufs: escopo.ufs,
+        brasilInteiro: escopo.brasilInteiro,
+      };
     }
 
     const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
       where: { id: "default" },
-      create: { ...validado, id: "default" },
-      update: validado,
+      create: { ...configData, id: "default" },
+      update: configData,
     });
 
     await recordAuditLog({
@@ -350,8 +416,35 @@ export async function atualizarConfiguracaoEmpresa(
       depois: validado as any,
     });
 
-    return atualizado;
+    return {
+      ...atualizado,
+      segmentos: segmentos || [],
+      subsegmentos: subsegmentos || [],
+      ufs: ufs || [],
+      brasilInteiro: brasilInteiro ?? true,
+    };
   } catch {
+    if (tenantId && inMemoryTenants.has(tenantId)) {
+      const memTenant = inMemoryTenants.get(tenantId)!;
+      const escopo = normalizarEscopoPlano({
+        plano: memTenant.plano || "BASICO",
+        billingStatus: memTenant.billingStatus || "TRIAL",
+        segmentos,
+        ufs,
+        ufSede: validado.uf,
+        brasilInteiro,
+      });
+      memTenant.segmentos = escopo.segmentos;
+      memTenant.subsegmentos = subsegmentos || [];
+      memTenant.ufs = escopo.ufs;
+      memTenant.brasilInteiro = escopo.brasilInteiro;
+      if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
+      if (validado.cnpj) memTenant.cnpj = validado.cnpj;
+      if (validado.cidade) memTenant.cidade = validado.cidade;
+      if (validado.uf) memTenant.uf = validado.uf;
+      inMemoryTenants.set(tenantId, memTenant);
+    }
+
     const memoria = updateInMemoryConfiguracaoEmpresa(validado);
 
     await recordAuditLog({
@@ -362,7 +455,13 @@ export async function atualizarConfiguracaoEmpresa(
       depois: validado as any,
     });
 
-    return memoria;
+    return {
+      ...memoria,
+      segmentos: validado.segmentos || [],
+      subsegmentos: validado.subsegmentos || [],
+      ufs: validado.ufs || [],
+      brasilInteiro: validado.brasilInteiro ?? true,
+    };
   }
 }
 
@@ -396,31 +495,11 @@ export async function listarEquipe(
       };
     }
 
-    const usuarios = await prisma.user.findMany({
-      orderBy: [{ role: "asc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        ativo: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
+    // Se tenantId for nulo/indefinido, NUNCA expor todos os usuários do banco (Prevenção estrita de vazamento Multi-Tenant)
     return {
       ok: true,
-      total: usuarios.length,
-      usuarios: usuarios.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        role: (u.role === "OPERADOR" ? "ANALISTA_COMERCIAL" : u.role) as any,
-        ativo: u.ativo,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
-      })),
+      total: 0,
+      usuarios: [],
     };
   } catch {
     const usuarios = listInMemoryUsuarios(tenantId);
@@ -446,11 +525,11 @@ export async function criarMembroEquipe(
   actor?: { id: string; role: string },
   tenantId?: string | null,
 ): Promise<UsuarioEquipeItem> {
-  const validado = usuarioEquipeCriarInputSchema.parse(data);
-
-  if (validado.role === "OPERADOR" || validado.role === "OPERADOR_TECNICO") {
-    throw new Error("O perfil Operador Técnico não é mais suportado. Cadastre como Analista Comercial.");
+  const roleInput = (data as any)?.role;
+  if (roleInput === "OPERADOR" || roleInput === "OPERADOR_TECNICO") {
+    throw new Error("Perfil não permitido. O perfil Operador Técnico foi descontinuado. Cadastre como Analista Comercial.");
   }
+  const validado = usuarioEquipeCriarInputSchema.parse(data);
 
   // Verifica limite de colaboradores do plano
   if (tenantId) {
@@ -576,10 +655,45 @@ export async function atualizarMembroEquipe(
 ): Promise<UsuarioEquipeItem | null> {
   const validado = usuarioEquipeAtualizarInputSchema.parse(data);
 
+  let titularUserId = options?.titularUserId;
+  let actorTenantRole = options?.actorTenantRole;
+
+  if (tenantId) {
+    try {
+      const titularMembership = await prisma.tenantUser.findFirst({
+        where: { tenantId, role: "TITULAR" },
+      });
+      if (titularMembership) {
+        titularUserId = titularMembership.userId;
+      }
+      if (actor && !actorTenantRole) {
+        const actorMembership = await prisma.tenantUser.findUnique({
+          where: { tenantId_userId: { tenantId, userId: actor.id } },
+        });
+        if (actorMembership) {
+          actorTenantRole = actorMembership.role;
+        }
+      }
+    } catch {
+      const inMemTitular = inMemoryTenantUsers.find(
+        (tu) => tu.tenantId === tenantId && tu.role === "TITULAR",
+      );
+      if (inMemTitular) {
+        titularUserId = inMemTitular.userId;
+      }
+      if (actor && !actorTenantRole) {
+        const inMemActor = inMemoryTenantUsers.find(
+          (tu) => tu.tenantId === tenantId && tu.userId === actor.id,
+        );
+        if (inMemActor) {
+          actorTenantRole = inMemActor.role;
+        }
+      }
+    }
+  }
+
   // 1. O titular da conta não pode ser alterado por terceiros nem inativado
-  const isTitular =
-    options?.titularUserId === id ||
-    id.includes("titular");
+  const isTitular = titularUserId ? titularUserId === id : false;
 
   if (isTitular) {
     if (actor && actor.id !== id) {
@@ -595,12 +709,14 @@ export async function atualizarMembroEquipe(
     throw new Error("O próprio usuário não pode inativar sua própria conta.");
   }
 
-  // 3. Apenas o Usuário Principal (Titular / Diretoria) pode inativar colaboradores
+  // 3. Apenas o Usuário Principal (Titular) pode inativar colaboradores
   if (validado.ativo === false) {
-    if (options?.actorTenantRole && options.actorTenantRole !== "TITULAR") {
-      throw new Error("Apenas o Usuário Principal (Titular) pode inativar colaboradores.");
-    }
-    if (actor && actor.role !== "DIRETORIA" && actor.role !== "SUPERADMIN") {
+    const isActorTitular =
+      actorTenantRole === "TITULAR" ||
+      (titularUserId ? actor?.id === titularUserId : false) ||
+      (!tenantId && (actor?.role === "DIRETORIA" || actor?.role === "SUPERADMIN"));
+
+    if (!isActorTitular) {
       throw new Error("Apenas o Usuário Principal (Titular) pode inativar colaboradores.");
     }
   }
@@ -619,12 +735,14 @@ export async function atualizarMembroEquipe(
       pertenceAoTenant = Boolean(membership);
     } catch {
       const memUser = getInMemoryUsuario(id);
-      pertenceAoTenant = Boolean(
-        memUser && (!memUser.tenantId || memUser.tenantId === tenantId),
-      ) || id.startsWith("usr_");
+      if (memUser && memUser.tenantId && memUser.tenantId !== tenantId) {
+        pertenceAoTenant = false;
+      } else {
+        pertenceAoTenant = Boolean(memUser) || id.startsWith("usr_");
+      }
     }
 
-    if (!pertenceAoTenant && !id.startsWith("usr_")) {
+    if (!pertenceAoTenant) {
       throw new Error("Colaborador não pertence à sua organização.");
     }
   }

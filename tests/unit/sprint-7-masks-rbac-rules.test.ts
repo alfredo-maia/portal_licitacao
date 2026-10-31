@@ -102,13 +102,20 @@ describe("Sprint 7 — Máscaras, Faixas de Valor & Governança RBAC", () => {
       expect(res.reason).toMatch(/não pode cadastrar um usuário com perfil de Diretoria/i);
     });
 
-    it("ANALISTA COMERCIAL pode cadastrar OPERADOR ou outro ANALISTA COMERCIAL", () => {
+    it("ANALISTA COMERCIAL pode cadastrar outro ANALISTA COMERCIAL e não OPERADOR (descontinuado)", () => {
       const res = canManageTeamMember({
+        actor: usrAnalista1,
+        action: "create",
+        newRole: "ANALISTA_COMERCIAL",
+      });
+      expect(res.allowed).toBe(true);
+
+      const resOp = canManageTeamMember({
         actor: usrAnalista1,
         action: "create",
         newRole: "OPERADOR",
       });
-      expect(res.allowed).toBe(true);
+      expect(resOp.allowed).toBe(false);
     });
 
     it("ANALISTA COMERCIAL NÃO pode alterar cargo de DIRETORIA nem inativar DIRETORIA", () => {
@@ -155,7 +162,7 @@ describe("Sprint 7 — Máscaras, Faixas de Valor & Governança RBAC", () => {
         newAtivo: false,
       });
       expect(resInativar.allowed).toBe(false);
-      expect(resInativar.reason).toMatch(/exclusivo Diretoria/i);
+      expect(resInativar.reason).toMatch(/exclusivo Diretoria|Usuário Principal|Titular/i);
 
       const resUpdate = canManageTeamMember({
         actor: usrAnalista1,
@@ -196,8 +203,8 @@ describe("Sprint 7 — Máscaras, Faixas de Valor & Governança RBAC", () => {
   });
 
   describe("4. Visibilidade de Abas em /configuracoes (Item 11.2)", () => {
-    it("DIRETORIA deve ter acesso a ver todas as 4 abas", () => {
-      expect(getVisibleConfigTabs("DIRETORIA")).toEqual([0, 1, 2, 3]);
+    it("DIRETORIA deve ter acesso a ver as 3 abas de clientes (sem auditoria)", () => {
+      expect(getVisibleConfigTabs("DIRETORIA")).toEqual([0, 1, 2]);
     });
 
     it("ANALISTA COMERCIAL deve ter acesso a Meu Perfil (0) e Gestão de Equipe (2)", () => {

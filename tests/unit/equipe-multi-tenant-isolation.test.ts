@@ -59,6 +59,11 @@ describe("Sprint 6 / SaaS Multi-Tenant [TDD RED] — Isolamento de Equipe e Audi
       const emailsB = equipeB.usuarios.map((u) => u.email);
       expect(emailsB).toContain("carlos@construtora.com");
       expect(emailsB).not.toContain("valeria@padaria.com");
+
+      // Consulta sem tenantId (ou null) JAMAIS deve vazar usuários globais
+      const equipeSemTenant = await listarEquipe(null);
+      expect(equipeSemTenant.ok).toBe(true);
+      expect(equipeSemTenant.usuarios.length).toBe(0);
     });
   });
 
@@ -82,7 +87,7 @@ describe("Sprint 6 / SaaS Multi-Tenant [TDD RED] — Isolamento de Equipe e Audi
       await expect(
         atualizarMembroEquipe(
           membroA.id,
-          { role: "OPERADOR_TECNICO" },
+          { role: "ANALISTA_COMERCIAL" },
           "user_b",
           { id: "user_b", role: "DIRETORIA" },
           tenantB,
@@ -144,7 +149,7 @@ describe("Sprint 6 / SaaS Multi-Tenant [TDD RED] — Isolamento de Equipe e Audi
         body: JSON.stringify({
           name: "Padeiro Chefe",
           email: "padeiro.chefe@padaria.com",
-          role: "OPERADOR_TECNICO",
+          role: "ANALISTA_COMERCIAL",
           password: "SenhaPadaria2026!",
         }),
       });

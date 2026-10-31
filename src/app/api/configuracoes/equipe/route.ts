@@ -24,7 +24,19 @@ export async function GET(_req?: Request) {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+
+    const userId = (session.user as any)?.id;
+    if (!tenantId && userId) {
+      try {
+        const membership = await prisma.tenantUser.findFirst({
+          where: { userId },
+        });
+        if (membership) {
+          tenantId = membership.tenantId;
+        }
+      } catch {}
+    }
 
     const resultado = await listarEquipe(tenantId);
     return NextResponse.json(resultado);

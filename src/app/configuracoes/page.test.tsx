@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import ConfiguracoesPage from "./page";
 
 vi.mock("next-auth/react", () => ({
@@ -27,7 +27,7 @@ vi.mock("next/navigation", () => ({
 
 describe("Configurações Page — Reforma Completa (Meu Perfil 3 Cards, Multi-CNPJ & Equipe)", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
 
     global.fetch = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/auth/session")) {
@@ -198,13 +198,19 @@ describe("Configurações Page — Reforma Completa (Meu Perfil 3 Cards, Multi-C
   it("Aba Dados da Empresa deve conter seletor Multi-CNPJ e botão Adicionar CNPJ com regra de plano", async () => {
     render(<ConfiguracoesPage />);
 
-    // Clica na Aba Dados da Empresa
-    const empresaTab = screen.getByRole("tab", { name: /Dados da Empresa Licitante/i });
-    fireEvent.click(empresaTab);
+    await waitFor(() => {
+      expect(screen.getByText("Vítor Henrique")).toBeInTheDocument();
+      expect(screen.getByText("DIRETORIA (Titular)")).toBeInTheDocument();
+    });
+
+    const tabs = screen.getAllByRole("tab");
+    console.log("TABS FOUND:", tabs.map(t => t.textContent));
+    fireEvent.click(tabs[1]);
 
     await waitFor(() => {
-      // Seletor Multi-CNPJ
-      expect(screen.getByLabelText(/Empresa Ativa \(CNPJ\)/i)).toBeInTheDocument();
+      // Dados da Empresa na Aba 2
+      expect(screen.getByDisplayValue("APONTA TECNOLOGIA E SERVICOS LTDA")).toBeInTheDocument();
+      expect(screen.getAllByDisplayValue("12.345.678/0001-90")[0]).toBeInTheDocument();
 
       // Botão Adicionar CNPJ (desabilitado em TRIAL/BASICO)
       const btnAddCnpj = screen.getByRole("button", { name: /Adicionar CNPJ/i });
@@ -221,6 +227,12 @@ describe("Configurações Page — Reforma Completa (Meu Perfil 3 Cards, Multi-C
       expect(
         screen.queryByText(/Fonte única da verdade utilizada no auto-preenchimento/i),
       ).not.toBeInTheDocument();
+
+      // Seção 5: Triagem & Escopo de Licitações
+      expect(screen.getByText(/5\. Triagem & Escopo de Licitações/i)).toBeInTheDocument();
+      expect(screen.getByText(/Saúde, Medicamentos & Hospitalar/i)).toBeInTheDocument();
+      expect(screen.getByText(/Tecnologia.*Telecom/i)).toBeInTheDocument();
+      expect(screen.getByText(/Brasil Inteiro/i)).toBeInTheDocument();
     });
   });
 

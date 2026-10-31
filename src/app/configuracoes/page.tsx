@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import {
   Button,
+  Checkbox,
   Column,
   FormGroup,
   Grid,
@@ -35,6 +36,8 @@ import {
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { getVisibleConfigTabs } from "@/lib/rbac";
 import { maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
+import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
+import { ESTADOS_BRASIL } from "@/config/estados";
 import type {
   ConfiguracaoEmpresa,
   MeuPerfil,
@@ -127,6 +130,10 @@ export default function ConfiguracoesPage() {
     agencia: "",
     contaCorrente: "",
     chavePix: "",
+    segmentos: [],
+    subsegmentos: [],
+    ufs: [],
+    brasilInteiro: true,
   });
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
   const [buscandoCepEmpresa, setBuscandoCepEmpresa] = useState(false);
@@ -194,7 +201,13 @@ export default function ConfiguracoesPage() {
       const res = await fetch(url);
       const data = await res.json();
       if (data.ok && data.empresa) {
-        setEmpresa(data.empresa);
+        setEmpresa({
+          ...data.empresa,
+          segmentos: data.empresa.segmentos || [],
+          subsegmentos: data.empresa.subsegmentos || [],
+          ufs: data.empresa.ufs || [],
+          brasilInteiro: data.empresa.brasilInteiro ?? true,
+        });
       }
     } catch {}
   }, []);
@@ -222,13 +235,19 @@ export default function ConfiguracoesPage() {
   }, [carregarSessao, carregarPerfil, carregarTenants, carregarEmpresa, carregarEquipe]);
 
   // Controle de Abas Autorizadas
-  const visibleTabIds = getVisibleConfigTabs(userRole);
-  const TAB_DEFINITIONS = [
-    { id: 0, label: "Meu Perfil", icon: UserIcon },
-    { id: 1, label: "Dados da Empresa Licitante", icon: Enterprise },
-    { id: 2, label: "Gestão da Equipe", icon: Group },
-  ];
-  const availableTabs = TAB_DEFINITIONS.filter((t) => visibleTabIds.includes(t.id));
+  const visibleTabIds = useMemo(() => getVisibleConfigTabs(userRole), [userRole]);
+  const TAB_DEFINITIONS = useMemo(
+    () => [
+      { id: 0, label: "Meu Perfil", icon: UserIcon },
+      { id: 1, label: "Dados da Empresa Licitante", icon: Enterprise },
+      { id: 2, label: "Gestão da Equipe", icon: Group },
+    ],
+    [],
+  );
+  const availableTabs = useMemo(
+    () => TAB_DEFINITIONS.filter((t) => visibleTabIds.includes(t.id)),
+    [TAB_DEFINITIONS, visibleTabIds],
+  );
 
   useEffect(() => {
     if (!visibleTabIds.includes(abaSelecionada)) {
@@ -242,6 +261,7 @@ export default function ConfiguracoesPage() {
   const billingStatus = currentTenant?.billingStatus || (currentUser as any)?.billingStatus || "TRIAL";
   const maxCnpjs = currentTenant?.maxCnpjs || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
   const maxUsers = currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 15 : planoAtual === "PRO" ? 5 : 1);
+  const isBasicoAtivo = planoAtual === "BASICO" && billingStatus !== "TRIAL";
 
   // Regra do Botão Adicionar CNPJ
   const isCnpjLimitTrialOrBasico = billingStatus === "TRIAL" || planoAtual === "BASICO" || maxCnpjs <= 1;
@@ -369,6 +389,61 @@ export default function ConfiguracoesPage() {
     finally {
       setBuscandoCepEmpresa(false);
     }
+  };
+
+  const handleToggleMacroSegmento = (codigoMacro: string) => {
+    const macroDef = CATALOGO_MACRO_SEGMENTOS[codigoMacro as MacroSegmento];
+    const subCodigos = (macroDef?.subcategorias || []).map((s) => s.codigo);
+
+    setEmpresa((prev) => {
+      const currentSegmentos = prev.segmentos || [];
+      const currentSub = prev.subsegmentos || [];
+
+      if (currentSegmentos.includes(codigoMacro)) {
+        return {
+          ...prev,
+          segmentos: currentSegmentos.filter((c) => c !== codigoMacro),
+          subsegmentos: currentSub.filter((sub) => !subCodigos.includes(sub)),
+        };
+      }
+
+      if (isBasicoAtivo) {
+        return {
+          ...prev,
+          segmentos: [codigoMacro],
+          subsegmentos: subCodigos,
+        };
+      }
+
+      return {
+        ...prev,
+        segmentos: [...currentSegmentos, codigoMacro],
+        subsegmentos: Array.from(new Set([...currentSub, ...subCodigos])),
+      };
+    });
+  };
+
+  const handleToggleSubsegmento = (codigoSub: string) => {
+    setEmpresa((prev) => {
+      const current = prev.subsegmentos || [];
+      const updated = current.includes(codigoSub)
+        ? current.filter((s) => s !== codigoSub)
+        : [...current, codigoSub];
+      return { ...prev, subsegmentos: updated };
+    });
+  };
+
+  const handleToggleUf = (sigla: string) => {
+    setEmpresa((prev) => {
+      if (isBasicoAtivo) {
+        return { ...prev, ufs: [sigla], brasilInteiro: false };
+      }
+      const current = prev.ufs || [];
+      const updated = current.includes(sigla)
+        ? current.filter((u) => u !== sigla)
+        : [...current, sigla];
+      return { ...prev, ufs: updated };
+    });
   };
 
   const handleSalvarEmpresa = async () => {
@@ -535,13 +610,21 @@ export default function ConfiguracoesPage() {
       <Tabs
         selectedIndex={Math.max(0, availableTabs.findIndex((t) => t.id === abaSelecionada))}
         onChange={({ selectedIndex }) => {
+          console.log("[DEBUG] Tabs onChange:", selectedIndex);
           const target = availableTabs[selectedIndex];
           if (target) setAbaSelecionada(target.id);
         }}
       >
         <TabList aria-label="Abas de Configurações" contained>
           {availableTabs.map((tab) => (
-            <Tab key={tab.id} renderIcon={tab.icon} onClick={() => setAbaSelecionada(tab.id)}>
+            <Tab
+              key={tab.id}
+              renderIcon={tab.icon}
+              onClick={() => {
+                console.log("[DEBUG] Tab onClick:", tab.id);
+                setAbaSelecionada(tab.id);
+              }}
+            >
               {tab.label}
             </Tab>
           ))}
@@ -1100,6 +1183,159 @@ export default function ConfiguracoesPage() {
                 />
               </Column>
             </Grid>
+
+            {/* SEÇÃO 5: TRIAGEM & ESCOPO DE LICITAÇÕES */}
+            <div style={{ marginTop: "2rem", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                <div>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
+                    5. Triagem & Escopo de Licitações (Segmentos, Sub-segmentos e UF)
+                  </h3>
+                  <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.8125rem" }}>
+                    As informações abaixo são de extrema importância para o sistema: Segmento, SubSegmento, UF. De acordo com o que o cliente preencher aqui é que o sistema vai buscar as licitações para ele.
+                  </p>
+                </div>
+                {isBasicoAtivo && (
+                  <Tag type="warm-gray" size="sm">
+                    Plano Básico: 1 Segmento & 1 UF
+                  </Tag>
+                )}
+              </div>
+
+              {/* Alerta Básico Ativo caso exceda limite de 1 segmento ou 1 UF */}
+              {isBasicoAtivo && ((empresa.segmentos && empresa.segmentos.length > 1) || (empresa.ufs && empresa.ufs.length > 1) || empresa.brasilInteiro) && (
+                <InlineNotification
+                  kind="warning"
+                  title="Ajuste de Escopo do Plano Básico"
+                  subtitle="Sua conta possuía múltiplos segmentos ou regiões configuradas anteriormente. No Plano Básico ativo, apenas o 1º segmento e 1 UF são monitorados. Ajuste abaixo ou faça upgrade para o Plano Pro ou Enterprise para monitorar múltiplos segmentos e todo o Brasil."
+                  style={{ marginBottom: "1rem" }}
+                />
+              )}
+
+              {/* Segmentos & Sub-segmentos de Atuação */}
+              <div style={{ marginTop: "1rem", marginBottom: "1.5rem" }}>
+                <h4 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  Segmentos & Sub-segmentos de Atuação
+                </h4>
+                <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                  {isBasicoAtivo
+                    ? "Selecione o segmento principal de atuação da sua empresa (máximo de 1 segmento no Plano Básico ativo)."
+                    : "Selecione os segmentos de atuação. Ao marcar um segmento, suas subcategorias vêm selecionadas por padrão."}
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => {
+                    const isChecked = (empresa.segmentos || []).includes(macro.codigo);
+                    return (
+                      <div
+                        key={macro.codigo}
+                        style={{
+                          border: "1px solid var(--cds-border-subtle)",
+                          borderRadius: "4px",
+                          padding: "0.875rem 1rem",
+                          backgroundColor: isChecked
+                            ? "var(--cds-layer-accent-01, rgba(69, 137, 255, 0.05))"
+                            : "var(--cds-layer-02)",
+                        }}
+                      >
+                        <Checkbox
+                          id={`config-macro-${macro.codigo}`}
+                          labelText={macro.nome}
+                          checked={isChecked}
+                          onChange={() => handleToggleMacroSegmento(macro.codigo)}
+                        />
+                        {isChecked && (
+                          <div
+                            style={{
+                              marginTop: "0.5rem",
+                              paddingLeft: "1.75rem",
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                              gap: "0.35rem",
+                            }}
+                          >
+                            {macro.subcategorias.map((sub) => (
+                              <Checkbox
+                                key={sub.codigo}
+                                id={`config-sub-${sub.codigo}`}
+                                labelText={sub.nome}
+                                checked={(empresa.subsegmentos || []).includes(sub.codigo)}
+                                onChange={() => handleToggleSubsegmento(sub.codigo)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Região e UFs de Monitoramento */}
+              <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1rem" }}>
+                <h4 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                  Região & UFs de Monitoramento
+                </h4>
+                <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                  Indique os estados da federação onde o robô deve rastrear licitações para a sua empresa.
+                </p>
+
+                {isBasicoAtivo ? (
+                  <div style={{ maxWidth: "320px", marginTop: "0.5rem" }}>
+                    <Select
+                      id="config-uf-unica-basico"
+                      labelText="UF Monitorada (Plano Básico) *"
+                      value={(empresa.ufs && empresa.ufs[0]) || empresa.uf || "GO"}
+                      onChange={(e) => handleToggleUf(e.target.value)}
+                      helperText="O Plano Básico monitora exatamente 1 UF"
+                    >
+                      {ESTADOS_BRASIL.map((uf) => (
+                        <SelectItem key={uf.sigla} value={uf.sigla} text={`${uf.sigla} — ${uf.nome}`} />
+                      ))}
+                    </Select>
+                  </div>
+                ) : (
+                  <div>
+                    <Checkbox
+                      id="config-brasil-inteiro"
+                      labelText="Brasil Inteiro (Todas as 27 UFs)"
+                      checked={Boolean(empresa.brasilInteiro)}
+                      onChange={(_, { checked }) => setEmpresa((prev) => ({ ...prev, brasilInteiro: checked }))}
+                    />
+
+                    {!empresa.brasilInteiro && (
+                      <div style={{ marginTop: "0.75rem" }}>
+                        <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginBottom: "0.5rem" }}>
+                          Selecione as UFs prioritárias para monitoramento:
+                        </p>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fill, minmax(70px, 1fr))",
+                            gap: "0.35rem",
+                            maxHeight: "160px",
+                            overflowY: "auto",
+                            padding: "0.75rem",
+                            border: "1px solid var(--cds-border-subtle)",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {ESTADOS_BRASIL.map((uf) => (
+                            <Checkbox
+                              key={uf.sigla}
+                              id={`config-uf-${uf.sigla}`}
+                              labelText={uf.sigla}
+                              checked={(empresa.ufs || []).includes(uf.sigla)}
+                              onChange={() => handleToggleUf(uf.sigla)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </Tile>
         )}
 

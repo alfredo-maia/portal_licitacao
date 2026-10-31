@@ -25,6 +25,10 @@ export const configuracaoEmpresaSchema = z.object({
   agencia: z.string().trim().max(20).optional().nullable(),
   contaCorrente: z.string().trim().max(30).optional().nullable(),
   chavePix: z.string().trim().max(100).optional().nullable(),
+  segmentos: z.array(z.string()).optional().default([]),
+  subsegmentos: z.array(z.string()).optional().default([]),
+  ufs: z.array(z.string()).optional().default([]),
+  brasilInteiro: z.boolean().optional().default(true),
   atualizadoEm: z.coerce.date().optional(),
 });
 
@@ -96,7 +100,9 @@ export const usuarioEquipeItemSchema = z.object({
 export const usuarioEquipeCriarInputSchema = z.object({
   name: z.string().trim().min(2, "Nome deve ter no mínimo 2 caracteres"),
   email: z.string().trim().email("E-mail corporativo inválido"),
-  role: z.enum(["DIRETORIA", "ANALISTA_COMERCIAL", "OPERADOR", "OPERADOR_TECNICO"]).default("ANALISTA_COMERCIAL"),
+  role: z.enum(["DIRETORIA", "ANALISTA_COMERCIAL"], {
+    errorMap: () => ({ message: "Perfil não permitido. Cadastre como Analista Comercial." }),
+  }).default("ANALISTA_COMERCIAL"),
   password: z.string().min(6, "Senha provisória deve ter no mínimo 6 caracteres"),
   ativo: z.boolean().default(true),
 });

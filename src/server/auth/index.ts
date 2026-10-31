@@ -123,7 +123,19 @@ export async function authorizeCredentials(
     }
 
     if (dbUser) {
-      const primaryMembership = dbUser.tenantMemberships?.[0];
+      let primaryMembership = dbUser.tenantMemberships?.[0];
+      if (!primaryMembership) {
+        try {
+          const directMembership = await prisma.tenantUser.findFirst({
+            where: { userId: dbUser.id },
+            include: { tenant: true },
+          });
+          if (directMembership) {
+            primaryMembership = directMembership;
+          }
+        } catch {}
+      }
+
       const isSuper =
         Boolean((dbUser as any).isSuperAdmin) ||
         dbUser.role === "SUPERADMIN" ||
