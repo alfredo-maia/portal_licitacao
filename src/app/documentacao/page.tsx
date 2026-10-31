@@ -34,6 +34,7 @@ import {
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
+import { formatarDataSemOffset } from "@/lib/date-utils";
 
 interface DocumentoItem {
   id: string;
@@ -524,13 +525,13 @@ function DocumentacaoContent() {
                               <strong>Órgão Emissor:</strong> {doc.orgaoEmissor}
                             </div>
                           )}
-                          {dataEmiss && (
+                          {doc.dataEmissao && (
                             <div>
                               <strong>Emissão:</strong>{" "}
-                              <span className="pncp-mono">{dataEmiss.toLocaleDateString("pt-BR")}</span>
+                              <span className="pncp-mono">{formatarDataSemOffset(doc.dataEmissao)}</span>
                             </div>
                           )}
-                          {dataVenc && (
+                          {doc.dataVencimento && (
                             <div
                               style={{
                                 color: doc.alertaVencimento ? "var(--cds-support-error, #da1e28)" : undefined,
@@ -538,7 +539,7 @@ function DocumentacaoContent() {
                               }}
                             >
                               <strong>Vencimento:</strong>{" "}
-                              <span className="pncp-mono">{dataVenc.toLocaleDateString("pt-BR")}</span>
+                              <span className="pncp-mono">{formatarDataSemOffset(doc.dataVencimento)}</span>
                             </div>
                           )}
                           {doc.arquivoNome && (
@@ -719,11 +720,11 @@ function DocumentacaoContent() {
         </Form>
       </Modal>
 
-      {/* Modal Nova Versão */}
+      {/* Modal Atualizar Documento */}
       <Modal
         open={modalVersaoAberto}
-        modalHeading={`Adicionar Nova Versão — ${docAlvoVersao?.nome || ""}`}
-        primaryButtonText={salvando ? "Arquivando anterior & Salvando..." : "Salvar Nova Versão"}
+        modalHeading={`Atualizar Documento — ${docAlvoVersao?.nome || ""}`}
+        primaryButtonText={salvando ? "Atualizando..." : "Atualizar Documento"}
         secondaryButtonText="Cancelar"
         primaryButtonDisabled={salvando}
         onRequestClose={() => setModalVersaoAberto(false)}
@@ -753,7 +754,7 @@ function DocumentacaoContent() {
               fontSize: "0.8125rem",
             }}
           >
-            Ao salvar, a versão atual (v{docAlvoVersao?.versao}) será arquivada no histórico de auditoria e a nova versão (v{(docAlvoVersao?.versao || 1) + 1}) assumirá a vigência ativa do documento.
+            Ao salvar, o documento e suas datas de validade serão atualizados diretamente, substituindo o arquivo atual sem criar registros duplicados.
           </div>
 
           <Grid fullWidth style={{ padding: 0 }}>

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
-import { criarNovaVersao } from "@/server/services/documentos.service";
+import { atualizarDocumento } from "@/server/services/documentos.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -68,19 +68,19 @@ export async function POST(request: Request, { params }: RouteParams) {
         mimeType,
       };
 
-      const doc = await criarNovaVersao(id, payload, user.id);
+      const doc = await atualizarDocumento(id, payload, user.id);
       if (!doc) {
         return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
       }
-      return NextResponse.json({ ok: true, documento: doc }, { status: 201 });
+      return NextResponse.json({ ok: true, documento: doc }, { status: 200 });
     }
 
     const body = await request.json();
-    const doc = await criarNovaVersao(id, body, user.id);
+    const doc = await atualizarDocumento(id, body, user.id);
     if (!doc) {
       return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, documento: doc }, { status: 201 });
+    return NextResponse.json({ ok: true, documento: doc }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: "VALIDATION_ERROR", message: error?.message },
