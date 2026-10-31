@@ -39,6 +39,7 @@ import {
   type CarbonIconType,
 } from "@carbon/icons-react";
 import { NotificationsBell } from "./notifications-bell";
+import { TenantHeaderSelector } from "./tenant-header-selector";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
 import { useAppTheme } from "@/providers/theme-provider";
@@ -145,6 +146,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <HeaderName href="/dashboard" prefix="">
           <span>{APP_CONFIG.brandName}</span>
         </HeaderName>
+
+        <TenantHeaderSelector />
 
         <HeaderGlobalBar>
           <NotificationsBell />
