@@ -99,6 +99,8 @@ function OportunidadesContent() {
   const [showManualModal, setShowManualModal] = React.useState(false);
   const [showImportModal, setShowImportModal] = React.useState(false);
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
+  const [loadingModalOpen, setLoadingModalOpen] = React.useState(false);
+  const [loadingModalMsg, setLoadingModalMsg] = React.useState("Processando deliberação...");
   const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
   const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
@@ -267,6 +269,8 @@ function OportunidadesContent() {
 
   const handleAceitarClick = async (id: string) => {
     setDeliberandoId(id);
+    setLoadingModalMsg("Processando participação na licitação...");
+    setLoadingModalOpen(true);
     try {
       const response = await fetch(`/api/oportunidades/${id}/decisao`, {
         method: "POST",
@@ -285,6 +289,7 @@ function OportunidadesContent() {
       alert(err instanceof Error ? err.message : "Erro ao aceitar oportunidade. Tente novamente.");
     } finally {
       setDeliberandoId(null);
+      setLoadingModalOpen(false);
     }
   };
 
@@ -296,6 +301,9 @@ function OportunidadesContent() {
         ? (recusaMotivoCustom.trim() || "Outro motivo não especificado")
         : recusaMotivoGenerico;
 
+    setShowRecusarModal(false);
+    setLoadingModalMsg("Registrando recusa da oportunidade...");
+    setLoadingModalOpen(true);
     setDeliberandoId(recusaId);
     try {
       const response = await fetch(`/api/oportunidades/${recusaId}/decisao`, {
@@ -310,7 +318,6 @@ function OportunidadesContent() {
       // Remoção otimista local mantendo todos os filtros ativos sem recarregar a janela
       setOportunidades((prev) => prev.filter((o) => o.id !== recusaId));
       setTotal((prev) => Math.max(0, prev - 1));
-      setShowRecusarModal(false);
       setRecusaMotivoCustom("");
       setSelectedOpportunityId(null);
     } catch (err) {
@@ -318,6 +325,7 @@ function OportunidadesContent() {
       alert(err instanceof Error ? err.message : "Erro ao recusar oportunidade. Tente novamente.");
     } finally {
       setDeliberandoId(null);
+      setLoadingModalOpen(false);
     }
   };
 
@@ -657,7 +665,7 @@ function OportunidadesContent() {
           })()}
 
           {/* UF: MultiSelect com checkbox quando o cliente escolheu 2+ estados específicos na Seção 5 */}
-          {preferencias && !preferencias.brasilInteiro && preferencias.ufs.length >= 2 ? (
+          {preferencias && !preferencias.brasilInteiro && (preferencias.ufs?.length ?? 0) >= 2 ? (
             <div style={{ minWidth: "220px" }} data-testid="filter-uf-multiselect-wrapper">
               <MultiSelect
                 id="filter-uf"
@@ -1240,7 +1248,7 @@ function OportunidadesContent() {
            setShowRecusarModal(false);
            setRecusaMotivoCustom("");
          }}
-         data-testid="modal-recusar-licitacao"
+         data-testid="modal-recusar-oportunidade"
        >
          <p style={{ marginBottom: "1rem" }}>
            Selecione um motivo genérico para a recusa ou escolha &quot;Outro&quot; para especificar:
@@ -1271,6 +1279,31 @@ function OportunidadesContent() {
            </div>
          )}
        </Modal>
-     </ModulePageShell>
+
+      {/* Modal de Carregamento da Deliberação */}
+      {loadingModalOpen && (
+        <Modal
+          passiveModal
+          open
+          modalHeading="Processando Deliberação"
+          onRequestClose={() => {}}
+          preventCloseOnClickOutside
+          data-testid="modal-deliberacao-loading"
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "2rem 1rem",
+              gap: "1rem",
+            }}
+          >
+            <InlineLoading status="active" description={loadingModalMsg} />
+          </div>
+        </Modal>
+      )}
+    </ModulePageShell>
    );
  }

@@ -258,6 +258,8 @@ function OportunidadesDetalheContent({
 
   // Modal Recusa GO/No-GO
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
+  const [loadingModalOpen, setLoadingModalOpen] = React.useState(false);
+  const [loadingModalMsg, setLoadingModalMsg] = React.useState("Processando deliberação...");
   const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
   const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [salvandoStatusPipeline, setSalvandoStatusPipeline] = React.useState(false);
@@ -539,6 +541,12 @@ function OportunidadesDetalheContent({
     );
     setShowRecusarModal(false);
     setRecusaMotivoCustom("");
+    setLoadingModalMsg(
+      decisao === "GO"
+        ? "Registrando participação na licitação..."
+        : "Registrando recusa da oportunidade..."
+    );
+    setLoadingModalOpen(true);
 
     try {
       const res = await fetch(`/api/oportunidades/${id}/decisao`, {
@@ -560,6 +568,8 @@ function OportunidadesDetalheContent({
       showNotification("error", err instanceof Error ? err.message : "Erro na deliberação.");
       // Em caso de erro, recarrega o estado real
       await carregarDados(id);
+    } finally {
+      setLoadingModalOpen(false);
     }
   };
 
@@ -1519,6 +1529,31 @@ Realize uma análise profunda estruturada em 4 dimensões:
           )}
         </div>
       </Modal>
+
+      {/* Modal de Carregamento da Deliberação do Dossiê */}
+      {loadingModalOpen && (
+        <Modal
+          passiveModal
+          open
+          modalHeading="Processando Deliberação"
+          onRequestClose={() => {}}
+          preventCloseOnClickOutside
+          data-testid="modal-dossie-deliberacao-loading"
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "2rem 1rem",
+              gap: "1rem",
+            }}
+          >
+            <InlineLoading status="active" description={loadingModalMsg} />
+          </div>
+        </Modal>
+      )}
     </ModulePageShell>
   );
 }
