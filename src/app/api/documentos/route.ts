@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
+import { parseDataCivil } from "@/lib/date-utils";
 import {
   criarDocumento,
   listarDocumentos,
@@ -99,8 +100,8 @@ export async function POST(request: Request) {
         tipo: (formData.get("tipo") as string) || null,
         orgaoEmissor: (formData.get("orgaoEmissor") as string) || null,
         semValidade,
-        dataEmissao: dataEmissaoRaw ? new Date(dataEmissaoRaw) : null,
-        dataVencimento: semValidade || !dataVencimentoRaw ? null : new Date(dataVencimentoRaw),
+        dataEmissao: parseDataCivil(dataEmissaoRaw),
+        dataVencimento: semValidade || !dataVencimentoRaw ? null : parseDataCivil(dataVencimentoRaw),
         arquivoUrl: arquivoUrl || (formData.get("arquivoUrl") as string) || null,
         arquivoNome: arquivoNome || (formData.get("arquivoNome") as string) || null,
         arquivoTamanho,

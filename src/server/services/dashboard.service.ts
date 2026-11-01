@@ -43,8 +43,17 @@ export async function getDashboardData(
   let licitacoes: LicitacaoRecord[] = [];
   let historico: StatusHistoricoRecord[] = [];
 
+  const { segmentosTenantAtivo } = query;
+
   try {
-    licitacoes = await prisma.licitacao.findMany();
+    const whereClause: any = {};
+    if (segmentosTenantAtivo && segmentosTenantAtivo.length > 0) {
+      whereClause.OR = [
+        { segmentoMacro: { in: segmentosTenantAtivo } },
+        { tipoSistemaCodigo: { in: segmentosTenantAtivo as any } },
+      ];
+    }
+    licitacoes = await prisma.licitacao.findMany({ where: whereClause });
     historico = await prisma.licitacaoStatusHistorico.findMany();
   } catch (err) {
     console.error("[getDashboardData] Erro ao buscar no banco:", err);
@@ -53,10 +62,25 @@ export async function getDashboardData(
       await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
       await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
       await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
-      licitacoes = await prisma.licitacao.findMany();
+      const whereClause: any = {};
+      if (segmentosTenantAtivo && segmentosTenantAtivo.length > 0) {
+        whereClause.OR = [
+          { segmentoMacro: { in: segmentosTenantAtivo } },
+          { tipoSistemaCodigo: { in: segmentosTenantAtivo as any } },
+        ];
+      }
+      licitacoes = await prisma.licitacao.findMany({ where: whereClause });
       historico = await prisma.licitacaoStatusHistorico.findMany();
     } catch {
-      licitacoes = listInMemoryLicitacoes();
+      licitacoes = listInMemoryLicitacoes().filter((l) => {
+        if (!segmentosTenantAtivo || segmentosTenantAtivo.length === 0) return true;
+        const macro = (l as any).segmentoMacro;
+        const tipo = l.tipoSistemaCodigo;
+        return (
+          (macro && segmentosTenantAtivo.includes(macro)) ||
+          (tipo && segmentosTenantAtivo.includes(tipo as any))
+        );
+      });
       historico = listInMemoryStatusHistorico();
     }
   }

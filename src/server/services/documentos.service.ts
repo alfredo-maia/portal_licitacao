@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
+import { extrairDiaCivil } from "@/lib/date-utils";
 import {
   type DocumentoCriarInput,
   type DocumentoAtualizarInput,
@@ -477,13 +478,7 @@ export async function buscarDocumentosVencendoNoMes(
     });
 
     return docs.map((d) => {
-      const dataVenc = new Date(d.dataVencimento!);
-      // Resolver dia em America/Sao_Paulo
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/Sao_Paulo",
-        day: "numeric",
-      });
-      const dia = parseInt(formatter.format(dataVenc), 10);
+      const dia = extrairDiaCivil(d.dataVencimento);
 
       return {
         documentoId: d.id,
@@ -502,8 +497,7 @@ export async function buscarDocumentosVencendoNoMes(
     });
 
     return docsFiltrados.map((d) => {
-      const dataVenc = new Date(d.dataVencimento);
-      const dia = dataVenc.getDate();
+      const dia = extrairDiaCivil(d.dataVencimento);
       return {
         documentoId: d.id,
         titulo: d.nome,

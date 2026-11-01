@@ -197,25 +197,10 @@ export default function ConfiguracoesPage() {
     } catch {}
   }, []);
 
-  const carregarTenants = useCallback(async () => {
-    try {
-      const res = await fetch("/api/configuracoes/tenants");
-      const data = await res.json();
-      if (data.ok && Array.isArray(data.tenants)) {
-        setTenants(data.tenants);
-        if (data.activeTenantId) {
-          setActiveTenantId(data.activeTenantId);
-        } else if (data.tenants[0]?.id) {
-          setActiveTenantId(data.tenants[0].id);
-        }
-      }
-    } catch {}
-  }, []);
-
   const carregarEmpresa = useCallback(async (tenantId?: string) => {
     try {
       const url = tenantId
-        ? `/api/configuracoes/empresa?tenantId=${tenantId}`
+        ? `/api/configuracoes/empresa?tenantId=${encodeURIComponent(tenantId)}`
         : "/api/configuracoes/empresa";
       const res = await fetch(url);
       const data = await res.json();
@@ -227,9 +212,33 @@ export default function ConfiguracoesPage() {
           ufs: data.empresa.ufs || [],
           brasilInteiro: data.empresa.brasilInteiro ?? true,
         });
+        if (data.activeTenantId && !tenantId) {
+          setActiveTenantId(data.activeTenantId);
+        }
       }
     } catch {}
   }, []);
+
+  const carregarTenants = useCallback(async () => {
+    try {
+      const res = await fetch("/api/configuracoes/tenants");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.tenants)) {
+        setTenants(data.tenants);
+        const resolvedId = data.activeTenantId || data.tenants[0]?.id;
+        if (resolvedId) {
+          setActiveTenantId(resolvedId);
+          carregarEmpresa(resolvedId);
+        } else {
+          carregarEmpresa();
+        }
+      } else {
+        carregarEmpresa();
+      }
+    } catch {
+      carregarEmpresa();
+    }
+  }, [carregarEmpresa]);
 
   const carregarEquipe = useCallback(async () => {
     setCarregandoEquipe(true);
@@ -249,14 +258,13 @@ export default function ConfiguracoesPage() {
     carregarSessao();
     carregarPerfil();
     carregarTenants();
-    carregarEmpresa();
     carregarEquipe();
-  }, [carregarSessao, carregarPerfil, carregarTenants, carregarEmpresa, carregarEquipe]);
+  }, [carregarSessao, carregarPerfil, carregarTenants, carregarEquipe]);
 
   useEffect(() => {
     const handleTenantChanged = (e: any) => {
       const nextId = e?.detail?.tenantId;
-      if (nextId && nextId !== activeTenantId) {
+      if (nextId) {
         setActiveTenantId(nextId);
         carregarEmpresa(nextId);
         carregarEquipe();
@@ -264,7 +272,7 @@ export default function ConfiguracoesPage() {
     };
     window.addEventListener("tenant-changed", handleTenantChanged);
     return () => window.removeEventListener("tenant-changed", handleTenantChanged);
-  }, [activeTenantId, carregarEmpresa, carregarEquipe]);
+  }, [carregarEmpresa, carregarEquipe]);
 
   // Controle de Abas Autorizadas
   const visibleTabIds = useMemo(() => getVisibleConfigTabs(userRole), [userRole]);
@@ -527,6 +535,16 @@ export default function ConfiguracoesPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         setNotificacao({ tipo: "success", texto: "Dados cadastrais da empresa atualizados com sucesso!" });
+        if (data.empresa) {
+          setEmpresa((prev) => ({
+            ...prev,
+            ...data.empresa,
+            segmentos: data.empresa.segmentos || prev.segmentos || [],
+            subsegmentos: data.empresa.subsegmentos || prev.subsegmentos || [],
+            ufs: data.empresa.ufs || prev.ufs || [],
+            brasilInteiro: data.empresa.brasilInteiro ?? prev.brasilInteiro ?? true,
+          }));
+        }
         if (typeof window !== "undefined" && activeTenantId) {
           window.dispatchEvent(
             new CustomEvent("tenant-changed", { detail: { tenantId: activeTenantId } }),

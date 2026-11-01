@@ -147,9 +147,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span>{APP_CONFIG.brandName}</span>
         </HeaderName>
 
-        <TenantHeaderSelector />
-
         <HeaderGlobalBar>
+          <TenantHeaderSelector />
           <NotificationsBell />
 
           <HeaderGlobalAction

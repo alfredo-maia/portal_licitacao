@@ -25,6 +25,7 @@ import {
   Document,
   DocumentUnknown,
   Download,
+  Edit,
   Renew,
   Search,
   TrashCan,
@@ -112,6 +113,17 @@ function DocumentacaoContent() {
   const [versaoDataVencimento, setVersaoDataVencimento] = useState("");
   const [versaoArquivoNome, setVersaoArquivoNome] = useState("");
   const [versaoArquivoFile, setVersaoArquivoFile] = useState<File | null>(null);
+
+  // Modal Editar Documento
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [docAlvoEditar, setDocAlvoEditar] = useState<DocumentoItem | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editCategoria, setEditCategoria] = useState("FISCAL_TRABALHISTA");
+  const [editTipo, setEditTipo] = useState("");
+  const [editOrgaoEmissor, setEditOrgaoEmissor] = useState("");
+  const [editSemValidade, setEditSemValidade] = useState(false);
+  const [editDataEmissao, setEditDataEmissao] = useState("");
+  const [editDataVencimento, setEditDataVencimento] = useState("");
 
   const handleBaixarDocumento = (doc: DocumentoItem) => {
     const a = document.createElement("a");
@@ -258,6 +270,66 @@ function DocumentacaoContent() {
       }
     } catch {
       setFormErro("Erro de rede ao salvar nova versão.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const abrirModalEditar = (doc: DocumentoItem) => {
+    setDocAlvoEditar(doc);
+    setEditNome(doc.nome || "");
+    setEditCategoria(doc.categoria || "FISCAL_TRABALHISTA");
+    setEditTipo(doc.tipo || "");
+    setEditOrgaoEmissor(doc.orgaoEmissor || "");
+    setEditSemValidade(Boolean(doc.semValidade));
+    setEditDataEmissao(
+      doc.dataEmissao ? new Date(doc.dataEmissao).toISOString().split("T")[0] : "",
+    );
+    setEditDataVencimento(
+      doc.dataVencimento ? new Date(doc.dataVencimento).toISOString().split("T")[0] : "",
+    );
+    setFormErro(null);
+    setModalEditarAberto(true);
+  };
+
+  const salvarEdicaoDocumento = async () => {
+    if (!docAlvoEditar) return;
+    if (!editNome.trim()) {
+      setFormErro("Nome do documento é obrigatório.");
+      return;
+    }
+    if (!editSemValidade && !editDataVencimento) {
+      setFormErro("Data de vencimento é obrigatória para documentos com validade determinada.");
+      return;
+    }
+    setSalvando(true);
+    setFormErro(null);
+
+    try {
+      const res = await fetch(`/api/documentos/${docAlvoEditar.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: editNome.trim(),
+          categoria: editCategoria,
+          tipo: editTipo.trim() || null,
+          orgaoEmissor: editOrgaoEmissor.trim() || null,
+          semValidade: editSemValidade,
+          dataEmissao: editDataEmissao || null,
+          dataVencimento: editSemValidade || !editDataVencimento ? null : editDataVencimento,
+        }),
+      });
+
+      if (res.ok) {
+        setModalEditarAberto(false);
+        setDocAlvoEditar(null);
+        await carregarDocumentos();
+      } else {
+        const err = await res.json().catch(() => null);
+        setFormErro(err?.message || "Erro ao editar documento.");
+      }
+    } catch {
+      setFormErro("Erro de rede ao salvar alterações.");
     } finally {
       setSalvando(false);
     }
@@ -563,6 +635,15 @@ function DocumentacaoContent() {
                           Baixar
                         </Button>
                         <Button
+                          kind="ghost"
+                          size="sm"
+                          renderIcon={Edit}
+                          data-testid={`btn-editar-doc-${doc.id}`}
+                          onClick={() => abrirModalEditar(doc)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
                           kind="tertiary"
                           size="sm"
                           data-testid={`btn-nova-versao-${doc.id}`}
@@ -796,6 +877,122 @@ function DocumentacaoContent() {
                   dataTestId="dropzone-versao-upload"
                 />
               </div>
+            </Column>
+          </Grid>
+        </Form>
+      </Modal>
+
+      {/* Modal Editar Documento */}
+      <Modal
+        open={modalEditarAberto}
+        modalHeading={`Editar: ${docAlvoEditar?.nome || "Documento"}`}
+        primaryButtonText={salvando ? "Salvando..." : "Salvar Alterações"}
+        secondaryButtonText="Cancelar"
+        primaryButtonDisabled={salvando}
+        onRequestClose={() => {
+          if (!salvando) {
+            setModalEditarAberto(false);
+            setDocAlvoEditar(null);
+          }
+        }}
+        onRequestSubmit={salvarEdicaoDocumento}
+        data-testid="modal-editar-documento"
+      >
+        <Form onSubmit={(e) => { e.preventDefault(); salvarEdicaoDocumento(); }}>
+          {formErro && (
+            <div
+              style={{
+                marginBottom: "1rem",
+                padding: "0.75rem",
+                backgroundColor: "var(--cds-layer-accent-01, rgba(218, 30, 40, 0.1))",
+                borderLeft: "4px solid var(--cds-support-error, #da1e28)",
+                fontSize: "0.875rem",
+                color: "var(--cds-text-error, #da1e28)",
+              }}
+              data-testid="edit-doc-form-error"
+            >
+              {formErro}
+            </div>
+          )}
+
+          <Grid fullWidth style={{ padding: 0 }}>
+            <Column lg={16} md={8} sm={4}>
+              <TextInput
+                id="edit-doc-nome"
+                labelText="Nome do Documento *"
+                value={editNome}
+                onChange={(e) => setEditNome(e.target.value)}
+                placeholder="Ex: Certidão Negativa de Débitos Federais (CND)"
+                data-testid="input-edit-doc-nome"
+              />
+            </Column>
+
+            <Column lg={8} md={4} sm={4}>
+              <Select
+                id="edit-doc-categoria"
+                labelText="Categoria"
+                value={editCategoria}
+                onChange={(e) => setEditCategoria(e.target.value)}
+                data-testid="select-edit-doc-categoria"
+              >
+                {CATEGORIAS.filter((c) => c.id).map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id} text={cat.rotulo} />
+                ))}
+              </Select>
+            </Column>
+
+            <Column lg={8} md={4} sm={4}>
+              <TextInput
+                id="edit-doc-tipo"
+                labelText="Tipo / Subtipo"
+                value={editTipo}
+                onChange={(e) => setEditTipo(e.target.value)}
+                placeholder="Ex: CND Trabalhista, Balanço 2025"
+                data-testid="input-edit-doc-tipo"
+              />
+            </Column>
+
+            <Column lg={16} md={8} sm={4}>
+              <TextInput
+                id="edit-doc-orgao"
+                labelText="Órgão Emissor"
+                value={editOrgaoEmissor}
+                onChange={(e) => setEditOrgaoEmissor(e.target.value)}
+                placeholder="Ex: Receita Federal, Caixa Econômica, TJ-SP"
+                data-testid="input-edit-doc-orgao"
+              />
+            </Column>
+
+            <Column lg={16} md={8} sm={4}>
+              <Checkbox
+                id="edit-doc-sem-validade"
+                labelText="Documento permanente (Sem prazo de validade — ex: Diplomas, Contrato Social, Atestados)"
+                checked={editSemValidade}
+                onChange={(_, { checked }) => setEditSemValidade(checked)}
+                data-testid="checkbox-edit-sem-validade"
+              />
+            </Column>
+
+            <Column lg={8} md={4} sm={4}>
+              <TextInput
+                id="edit-doc-emissao"
+                type="date"
+                labelText="Data de Emissão"
+                value={editDataEmissao}
+                onChange={(e) => setEditDataEmissao(e.target.value)}
+                data-testid="input-edit-doc-emissao"
+              />
+            </Column>
+            <Column lg={8} md={4} sm={4}>
+              <TextInput
+                id="edit-doc-vencimento"
+                type="date"
+                labelText={editSemValidade ? "Data de Vencimento (Dispensada)" : "Data de Vencimento *"}
+                disabled={editSemValidade}
+                value={editDataVencimento}
+                onChange={(e) => setEditDataVencimento(e.target.value)}
+                data-testid="input-edit-doc-vencimento"
+              />
             </Column>
           </Grid>
         </Form>

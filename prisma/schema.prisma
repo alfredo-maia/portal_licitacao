@@ -276,8 +276,9 @@ model LicitacaoAtribuido {
 }
 
 model Arquivo {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   licitacaoId String?
+  tenantId    String?
   nome        String
   tamanho     Int
   mimeType    String
@@ -285,11 +286,13 @@ model Arquivo {
   r2Key       String?
   r2Url       String?
   cachedAt    DateTime?
-  criadoEm    DateTime @default(now())
+  criadoEm    DateTime  @default(now())
 
   licitacao Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
+  @@index([tenantId])
   @@index([r2Key])
   @@map("arquivo")
 }
@@ -543,6 +546,7 @@ model Tenant {
   licitacoes    TenantLicitacao[]
   convites      TenantConvite[]
   documentos    Documento[]
+  arquivos      Arquivo[]
   configuracao  ConfiguracaoEmpresa?
   auditLogs     AuditLog[]
 

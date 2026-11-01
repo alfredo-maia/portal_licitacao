@@ -551,7 +551,7 @@ async function resolveUserSummary(userId: string | null | undefined): Promise<{
   };
 }
 
-async function hydrateDossieRelations(base: any): Promise<any> {
+async function hydrateDossieRelations(base: any, tenantId?: string | null): Promise<any> {
   const realId = base.id;
   const memEquipe = getInMemoryLicitacaoEquipe(realId);
 
@@ -592,6 +592,11 @@ async function hydrateDossieRelations(base: any): Promise<any> {
     }
   }
 
+  const arquivosFiltrados = Array.from(arquivosMap.values()).filter((arq: any) => {
+    if (!arq.tenantId) return true;
+    return tenantId ? arq.tenantId === tenantId : false;
+  });
+
   const dbRepos: any[] = Array.isArray(base.repositoriosSimilares) ? base.repositoriosSimilares : [];
   const memRepos = listInMemoryLicitacaoRepositorios(realId);
   const reposMap = new Map<string, any>();
@@ -615,7 +620,7 @@ async function hydrateDossieRelations(base: any): Promise<any> {
     responsavelId,
     responsavel,
     atribuidos,
-    arquivos: Array.from(arquivosMap.values()),
+    arquivos: arquivosFiltrados,
     repositoriosSimilares: Array.from(reposMap.values()),
     analisesIA: Array.from(analisesMap.values()),
   };
@@ -623,6 +628,7 @@ async function hydrateDossieRelations(base: any): Promise<any> {
 
 export async function getOportunidadeById(
   id: string,
+  tenantId?: string | null,
 ): Promise<any> {
   try {
     const found = await prisma.licitacao.findFirst({
@@ -642,7 +648,7 @@ export async function getOportunidadeById(
       },
     });
     if (found) {
-      return hydrateDossieRelations(found);
+      return hydrateDossieRelations(found, tenantId);
     }
   } catch (err) {
     try {
@@ -665,7 +671,7 @@ export async function getOportunidadeById(
         },
       });
       if (retryFound) {
-        return hydrateDossieRelations(retryFound);
+        return hydrateDossieRelations(retryFound, tenantId);
       }
     } catch {}
 
@@ -696,7 +702,7 @@ export async function getOportunidadeById(
           repositoriosSimilares,
           arquivos,
           analisesIA,
-        });
+        }, tenantId);
       }
     } catch {
       // PostgreSQL indisponível: fallback em memória
@@ -712,7 +718,7 @@ export async function getOportunidadeById(
       repositoriosSimilares: [],
       arquivos: [],
       analisesIA: [],
-    });
+    }, tenantId);
   }
 
   throw new OportunidadesServiceError(
@@ -986,18 +992,21 @@ export async function adicionarArquivoEdital(
     r2Key?: string | null;
     r2Url?: string | null;
     cachedAt?: Date | null;
+    tenantId?: string | null;
   },
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
-  const oportunidade = await getOportunidadeById(licitacaoId);
+  const oportunidade = await getOportunidadeById(licitacaoId, dadosArquivo.tenantId);
   const realId = oportunidade.id;
 
   let criado: any;
   try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`).catch(() => undefined);
     criado = await prisma.arquivo.create({
       data: {
         licitacaoId: realId,
+        tenantId: dadosArquivo.tenantId ?? null,
         nome: dadosArquivo.nome,
         tamanho: dadosArquivo.tamanho,
         mimeType: dadosArquivo.mimeType,

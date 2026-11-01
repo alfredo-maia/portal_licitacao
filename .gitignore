@@ -25,3 +25,5 @@ playwright/.cache/
 next-env.d.ts
 *.log
 .DS_Store
+.superpowers/
+

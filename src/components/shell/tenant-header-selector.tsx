@@ -166,12 +166,14 @@ export function TenantHeaderSelector() {
           display: "flex",
           alignItems: "center",
           gap: "0.5rem",
-          marginLeft: "1rem",
+          marginRight: "0.5rem",
           padding: "0.25rem 0.625rem",
           borderRadius: "4px",
           backgroundColor: "var(--cds-layer-02, rgba(255, 255, 255, 0.08))",
           fontSize: "0.8125rem",
           color: "var(--cds-text-primary, #ffffff)",
+          height: "calc(100% - 0.5rem)",
+          alignSelf: "center",
         }}
       >
         {isSwitching ? (

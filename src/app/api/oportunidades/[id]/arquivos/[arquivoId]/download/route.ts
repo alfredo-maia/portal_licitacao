@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { cookies } from "next/headers";
+import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { listInMemoryLicitacaoArquivos } from "@/server/services/licitacoes-store";
 import { obterObjetoR2 } from "@/server/storage/r2-storage.service";
@@ -35,6 +38,25 @@ export async function GET(_request: Request, context: RouteContext) {
       { ok: false, error: "Arquivo não encontrado." },
       { status: 404 },
     );
+  }
+
+  // Isolamento Multi-Empresa: Arquivos com tenantId são restritos à respectiva empresa
+  if (arquivo.tenantId) {
+    const session = await getServerSession(authOptions).catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const userTenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const isSuperAdmin = (session?.user as any)?.role === "SUPERADMIN";
+
+    if (!isSuperAdmin && userTenantId !== arquivo.tenantId) {
+      return NextResponse.json(
+        { ok: false, error: "Acesso restrito. Este arquivo pertence a outra empresa." },
+        { status: 403 },
+      );
+    }
   }
 
   // 1. Se for URL externa pública oficial (ex: PNCP gov.br), redireciona

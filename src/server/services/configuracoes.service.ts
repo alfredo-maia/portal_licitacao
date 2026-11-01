@@ -48,6 +48,30 @@ async function ensureUserProfileColumns(): Promise<void> {
   }
 }
 
+async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
+  const queries = [
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "inscricaoMunicipal" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "configuracao_empresa_tenantId_key" ON "configuracao_empresa"("tenantId");`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cnaePrincipal" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "endereco" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cidade" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "uf" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cep" TEXT;`,
+  ];
+  for (const sql of queries) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {}
+  }
+}
+
 // ==========================================
 // 1. MEU PERFIL (Dados Pessoais, Endereço, Senha)
 // ==========================================
@@ -370,6 +394,7 @@ export function normalizarEscopoPlano(params: NormalizarEscopoPlanoParams): {
 export async function obterConfiguracaoEmpresa(
   tenantId?: string | null,
 ): Promise<ConfiguracaoEmpresa> {
+  await ensureConfiguracaoEmpresaColumns().catch(() => undefined);
   try {
     if (tenantId) {
       const tenant = await (prisma as any).tenant.findUnique({
@@ -381,6 +406,16 @@ export async function obterConfiguracaoEmpresa(
       if (config) {
         return {
           ...config,
+          razaoSocial: config.razaoSocial || tenant?.razaoSocial || "EMPRESA LTDA",
+          cnpj: config.cnpj || tenant?.cnpj || "",
+          cnae: config.cnae || tenant?.cnaePrincipal || "",
+          endereco: config.endereco || tenant?.endereco || "",
+          numero: config.numero || tenant?.numero || "",
+          complemento: config.complemento || tenant?.complemento || "",
+          bairro: config.bairro || tenant?.bairro || "",
+          cidade: config.cidade || tenant?.cidade || "",
+          uf: config.uf || tenant?.uf || "GO",
+          cep: config.cep || tenant?.cep || "",
           segmentos: tenant?.segmentos || [],
           subsegmentos: tenant?.subsegmentos || [],
           ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
@@ -398,12 +433,12 @@ export async function obterConfiguracaoEmpresa(
           inscricaoMunicipal: "",
           cnae: tenant.cnaePrincipal || "",
           endereco: tenant.endereco || "",
-          numero: "",
-          complemento: "",
-          bairro: "",
+          numero: tenant.numero || "",
+          complemento: tenant.complemento || "",
+          bairro: tenant.bairro || "",
           cidade: tenant.cidade || "",
           uf: tenant.uf || (Array.isArray(tenant.ufs) ? tenant.ufs[0] : "") || "GO",
-          cep: "",
+          cep: tenant.cep || "",
           representanteNome: "",
           representanteCpf: "",
           representanteRg: "",
@@ -432,8 +467,12 @@ export async function obterConfiguracaoEmpresa(
       cnpj: memTenant?.cnpj || (base as any).cnpj || "",
       cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
       endereco: memTenant?.endereco || (base as any).endereco || "",
+      numero: (memTenant as any)?.numero || (base as any).numero || "",
+      complemento: (memTenant as any)?.complemento || (base as any).complemento || "",
+      bairro: (memTenant as any)?.bairro || (base as any).bairro || "",
       cidade: memTenant?.cidade || (base as any).cidade || "",
       uf: memTenant?.uf || (base as any).uf || "GO",
+      cep: (memTenant as any)?.cep || (base as any).cep || "",
       segmentos: memTenant?.segmentos || (base as any).segmentos || [],
       subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
       ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
@@ -448,8 +487,12 @@ export async function obterConfiguracaoEmpresa(
       cnpj: memTenant?.cnpj || (base as any).cnpj || "",
       cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
       endereco: memTenant?.endereco || (base as any).endereco || "",
+      numero: (memTenant as any)?.numero || (base as any).numero || "",
+      complemento: (memTenant as any)?.complemento || (base as any).complemento || "",
+      bairro: (memTenant as any)?.bairro || (base as any).bairro || "",
       cidade: memTenant?.cidade || (base as any).cidade || "",
       uf: memTenant?.uf || (base as any).uf || "GO",
+      cep: (memTenant as any)?.cep || (base as any).cep || "",
       segmentos: memTenant?.segmentos || (base as any).segmentos || [],
       subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
       ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
@@ -465,6 +508,8 @@ export async function atualizarConfiguracaoEmpresa(
 ): Promise<ConfiguracaoEmpresa> {
   const validado = configuracaoEmpresaAtualizarInputSchema.parse(data);
   const { segmentos, subsegmentos, ufs, brasilInteiro, ...configData } = validado;
+
+  await ensureConfiguracaoEmpresaColumns().catch(() => undefined);
 
   try {
     if (tenantId) {
@@ -495,14 +540,18 @@ export async function atualizarConfiguracaoEmpresa(
         brasilInteiro,
       });
 
+      const configId = `cfg_${tenantId}`;
       const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
         where: { tenantId },
         create: {
           ...configData,
-          id: `cfg_${tenantId}`,
+          id: configId,
           tenantId,
         },
-        update: configData,
+        update: {
+          ...configData,
+          atualizadoEm: new Date(),
+        },
       });
 
       await (prisma as any).tenant.update({
@@ -513,12 +562,28 @@ export async function atualizarConfiguracaoEmpresa(
           ...(validado.uf ? { uf: validado.uf } : {}),
           ...(validado.cidade ? { cidade: validado.cidade } : {}),
           ...(validado.endereco ? { endereco: validado.endereco } : {}),
+          ...(validado.numero ? { numero: validado.numero } : {}),
+          ...(validado.complemento ? { complemento: validado.complemento } : {}),
+          ...(validado.bairro ? { bairro: validado.bairro } : {}),
+          ...(validado.cep ? { cep: validado.cep } : {}),
+          ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
           segmentos: escopo.segmentos,
           subsegmentos: subsegmentos || [],
           ufs: escopo.ufs,
           brasilInteiro: escopo.brasilInteiro,
         },
       }).catch(() => undefined);
+
+      updateInMemoryConfiguracaoEmpresa(
+        {
+          ...atualizado,
+          segmentos: escopo.segmentos,
+          subsegmentos: subsegmentos || [],
+          ufs: escopo.ufs,
+          brasilInteiro: escopo.brasilInteiro,
+        },
+        tenantId,
+      );
 
       await recordAuditLog({
         acao: "CONFIGURACAO_EMPRESA_ATUALIZADA",

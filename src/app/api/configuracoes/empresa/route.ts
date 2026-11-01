@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import { prisma } from "@/lib/prisma";
 import { configuracaoEmpresaAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   atualizarConfiguracaoEmpresa,
@@ -19,9 +20,22 @@ export async function GET(req?: Request) {
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
     const headerTenant = req ? new URL(req.url).searchParams.get("tenantId") : null;
-    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.activeTenantId;
+    let tenantId = headerTenant || cookieTenant || (session?.user as any)?.activeTenantId;
+
+    if (!tenantId && (session?.user as any)?.id) {
+      try {
+        const membership = await prisma.tenantUser.findFirst({
+          where: { userId: (session?.user as any).id, ativo: true },
+          orderBy: { criadoEm: "asc" },
+        });
+        if (membership?.tenantId) {
+          tenantId = membership.tenantId;
+        }
+      } catch {}
+    }
+
     const empresa = await obterConfiguracaoEmpresa(tenantId);
-    return NextResponse.json({ ok: true, empresa });
+    return NextResponse.json({ ok: true, empresa, activeTenantId: tenantId });
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao obter configurações da empresa" },
@@ -53,14 +67,27 @@ export async function PUT(req: Request) {
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
     const queryTenant = new URL(req.url).searchParams.get("tenantId");
-    const tenantId = queryTenant || body.tenantId || cookieTenant || (session?.user as any)?.activeTenantId;
+    let tenantId = queryTenant || body.tenantId || cookieTenant || (session?.user as any)?.activeTenantId;
+
+    if (!tenantId && (session?.user as any)?.id) {
+      try {
+        const membership = await prisma.tenantUser.findFirst({
+          where: { userId: (session?.user as any).id, ativo: true },
+          orderBy: { criadoEm: "asc" },
+        });
+        if (membership?.tenantId) {
+          tenantId = membership.tenantId;
+        }
+      } catch {}
+    }
+
     const empresa = await atualizarConfiguracaoEmpresa(
       parseResult.data,
       (session?.user as any)?.id,
       tenantId,
     );
 
-    return NextResponse.json({ ok: true, empresa });
+    return NextResponse.json({ ok: true, empresa, activeTenantId: tenantId });
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao atualizar dados da empresa" },

@@ -556,43 +556,58 @@ function OportunidadesContent() {
           )}
 
           {/* Sub-segmento dinâmico (restrito ao que o cliente escolheu na Seção 5 de Configurações) */}
-          <Dropdown
-            id="filter-subsegmento"
-            data-testid="filter-subsegmento"
-            titleText="Sub-segmento"
-            label={filtroSegmento ? "Todos os Sub-segmentos" : "Selecione um segmento primeiro"}
-            disabled={!filtroSegmento}
-            items={
-              filtroSegmento && CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]
-                ? [
-                    { id: "", text: "Todos os Sub-segmentos" },
-                    ...CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento].subcategorias
-                      .filter(
-                        (sub) =>
-                          !preferencias?.subsegmentos ||
-                          preferencias.subsegmentos.length === 0 ||
-                          preferencias.subsegmentos.includes(sub.codigo),
-                      )
-                      .map((sub) => ({ id: sub.codigo, text: sub.nome })),
-                  ]
-                : [{ id: "", text: "Selecione um segmento primeiro" }]
-            }
-            itemToString={(item) => (item ? item.text : "")}
-            selectedItem={
-              filtroSubsegmento && filtroSegmento
-                ? {
-                    id: filtroSubsegmento,
-                    text:
-                      CATALOGO_MACRO_SEGMENTOS[
-                        filtroSegmento as MacroSegmento
-                      ]?.subcategorias.find((s) => s.codigo === filtroSubsegmento)?.nome ||
-                      filtroSubsegmento,
-                  }
-                : null
-            }
-            onChange={({ selectedItem }) => handleFilterChange("subsegmento", selectedItem?.id || "")}
-            style={{ minWidth: "220px" }}
-          />
+          {(() => {
+            const isMultiplosSegmentos = filtroSegmento.includes(",");
+            return (
+              <Dropdown
+                id="filter-subsegmento"
+                data-testid="filter-subsegmento"
+                titleText="Sub-segmento"
+                label={
+                  isMultiplosSegmentos
+                    ? "Todos os sub-segmentos"
+                    : filtroSegmento
+                    ? "Todos os Sub-segmentos"
+                    : "Selecione um segmento primeiro"
+                }
+                disabled={!filtroSegmento || isMultiplosSegmentos}
+                items={
+                  isMultiplosSegmentos
+                    ? [{ id: "", text: "Todos os sub-segmentos" }]
+                    : filtroSegmento && CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento]
+                    ? [
+                        { id: "", text: "Todos os Sub-segmentos" },
+                        ...CATALOGO_MACRO_SEGMENTOS[filtroSegmento as MacroSegmento].subcategorias
+                          .filter(
+                            (sub) =>
+                              !preferencias?.subsegmentos ||
+                              preferencias.subsegmentos.length === 0 ||
+                              preferencias.subsegmentos.includes(sub.codigo),
+                          )
+                          .map((sub) => ({ id: sub.codigo, text: sub.nome })),
+                      ]
+                    : [{ id: "", text: "Selecione um segmento primeiro" }]
+                }
+                itemToString={(item) => (item ? item.text : "")}
+                selectedItem={
+                  isMultiplosSegmentos
+                    ? { id: "", text: "Todos os sub-segmentos" }
+                    : filtroSubsegmento && filtroSegmento
+                    ? {
+                        id: filtroSubsegmento,
+                        text:
+                          CATALOGO_MACRO_SEGMENTOS[
+                            filtroSegmento as MacroSegmento
+                          ]?.subcategorias.find((s) => s.codigo === filtroSubsegmento)?.nome ||
+                          filtroSubsegmento,
+                      }
+                    : null
+                }
+                onChange={({ selectedItem }) => handleFilterChange("subsegmento", selectedItem?.id || "")}
+                style={{ minWidth: "220px" }}
+              />
+            );
+          })()}
 
           {/* UF: MultiSelect com checkbox quando o cliente escolheu 2+ estados específicos na Seção 5 */}
           {preferencias && !preferencias.brasilInteiro && preferencias.ufs.length >= 2 ? (

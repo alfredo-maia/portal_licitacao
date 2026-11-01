@@ -483,6 +483,8 @@ async function bootstrapDatabase() {
       `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "r2Key" TEXT;`,
       `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "r2Url" TEXT;`,
       `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "cachedAt" TIMESTAMP(3);`,
+      `ALTER TABLE "arquivo" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "arquivo_tenantId_idx" ON "arquivo"("tenantId");`,
       `CREATE TABLE IF NOT EXISTS "whatsapp_mensagem" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "tenantId" TEXT,

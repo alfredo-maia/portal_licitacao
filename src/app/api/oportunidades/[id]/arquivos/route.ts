@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import {
@@ -23,6 +24,13 @@ export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const session = await getServerSession(authOptions);
   const user = session?.user as RbacUser | undefined;
+
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const tenantId = cookieTenant || (user as any)?.activeTenantId || null;
 
   let formData: FormData;
   try {
@@ -83,6 +91,7 @@ export async function POST(request: Request, context: RouteContext) {
         r2Key: uploadResult.chave,
         r2Url: uploadResult.url,
         cachedAt: new Date(),
+        tenantId,
       },
       user,
       {

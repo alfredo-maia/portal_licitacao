@@ -22,6 +22,8 @@ import { tipoSistemaCodigoSchema } from "./tipos-sistema.schema";
 export const dashboardQuerySchema = z.object({
   mes: z.coerce.number().int().min(1).max(12).optional(),
   ano: z.coerce.number().int().min(2024).max(2100).optional(),
+  tenantId: z.string().optional(),
+  segmentosTenantAtivo: z.array(z.string()).optional(),
 });
 
 const contagemSchema = z.object({ total: z.number().int().nonnegative() });

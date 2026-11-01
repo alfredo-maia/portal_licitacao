@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
+import { parseDataCivil } from "@/lib/date-utils";
 import { atualizarDocumento } from "@/server/services/documentos.service";
 
 interface RouteParams {
@@ -60,8 +61,8 @@ export async function POST(request: Request, { params }: RouteParams) {
       const dataVencimentoRaw = formData.get("dataVencimento") as string | null;
 
       const payload = {
-        dataEmissao: dataEmissaoRaw ? new Date(dataEmissaoRaw) : undefined,
-        dataVencimento: dataVencimentoRaw ? new Date(dataVencimentoRaw) : undefined,
+        dataEmissao: dataEmissaoRaw ? (parseDataCivil(dataEmissaoRaw) ?? undefined) : undefined,
+        dataVencimento: dataVencimentoRaw ? (parseDataCivil(dataVencimentoRaw) ?? undefined) : undefined,
         arquivoUrl: arquivoUrl || (formData.get("arquivoUrl") as string) || undefined,
         arquivoNome: arquivoNome || (formData.get("arquivoNome") as string) || undefined,
         arquivoTamanho,

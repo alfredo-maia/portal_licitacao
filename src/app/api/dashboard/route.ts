@@ -1,7 +1,9 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { authOptions, DIRECTORS_SEED } from "@/server/auth";
 import { getDashboardData } from "@/server/services/dashboard.service";
+import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
@@ -17,10 +19,30 @@ export async function GET(request: Request) {
   const mesParam = searchParams.get("mes");
   const anoParam = searchParams.get("ano");
 
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const headerTenant = searchParams.get("tenantId");
+  const tenantId = headerTenant || cookieTenant || (user as any)?.activeTenantId;
+
+  let segmentosTenantAtivo: string[] | undefined;
+  if (tenantId) {
+    try {
+      const cfg = await obterConfiguracaoEmpresa(tenantId);
+      if (cfg?.segmentos && cfg.segmentos.length > 0) {
+        segmentosTenantAtivo = cfg.segmentos;
+      }
+    } catch {}
+  }
+
   try {
     const data = await getDashboardData({
       mes: mesParam ? parseInt(mesParam, 10) : undefined,
       ano: anoParam ? parseInt(anoParam, 10) : undefined,
+      tenantId,
+      segmentosTenantAtivo,
     });
     return NextResponse.json(data, { status: 200 });
   } catch (error: any) {
