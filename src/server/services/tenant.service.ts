@@ -116,6 +116,58 @@ export function resetInMemoryTenantStorage(): void {
 }
 
 /**
+ * Resolve com segurança o tenantId ativo do usuário autenticado.
+ * Se um preferredTenantId (ex: cookie ou query param) for fornecido, valida se o usuário
+ * de fato possui membresia ativa naquele tenant. Em caso negativo, faz fallback exclusivo
+ * para o primeiro tenant ao qual o usuário pertence. Se não pertencer a nenhum, retorna null.
+ */
+export async function resolveUserActiveTenantId(
+  userId: string,
+  preferredTenantId?: string | null,
+): Promise<string | null> {
+  if (!userId) return null;
+
+  // 1. Se o preferredTenantId foi informado, valida se o usuário pertence a ele
+  if (preferredTenantId) {
+    const memBelongs = inMemoryTenantUsers.some(
+      (tu) => tu.userId === userId && tu.tenantId === preferredTenantId && tu.ativo,
+    );
+    if (memBelongs) {
+      return preferredTenantId;
+    }
+
+    try {
+      const dbBelongs = await prisma.tenantUser.findFirst({
+        where: { userId, tenantId: preferredTenantId, ativo: true },
+      });
+      if (dbBelongs) {
+        return preferredTenantId;
+      }
+    } catch {}
+  }
+
+  // 2. Se o usuário não pertence ao preferredTenantId, busca o primeiro tenant válido do usuário
+  const memFirst = inMemoryTenantUsers.find(
+    (tu) => tu.userId === userId && tu.ativo,
+  );
+  if (memFirst) {
+    return memFirst.tenantId;
+  }
+
+  try {
+    const dbFirst = await prisma.tenantUser.findFirst({
+      where: { userId, ativo: true },
+      orderBy: { criadoEm: "asc" },
+    });
+    if (dbFirst) {
+      return dbFirst.tenantId;
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
  * Cria um novo Tenant para o usuário autenticado, respeitando limites de plano e unicidade de CNPJ
  */
 export async function createTenantForUser(params: {

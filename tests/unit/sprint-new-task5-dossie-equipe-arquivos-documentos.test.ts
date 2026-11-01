@@ -139,8 +139,14 @@ describe("Sprint New - Task 5: Dossiê (Equipe & Arquivos) e Salvamento de Docum
     });
     expect(upload.nome).toBe("Proposta_Comercial.pdf");
 
-    // Simula sincronização PNCP (usando fallback quando fetch externo falha)
-    vi.spyOn(global, "fetch").mockRejectedValueOnce(new Error("Offline"));
+    // Simula sincronização PNCP com sucesso retornando arquivos oficiais
+    vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => [
+        { titulo: "Termo_de_Referencia.pdf", url: "https://pncp.gov.br/editais/tr.pdf", tamanho: 204800 },
+        { titulo: "Edital_Completo.pdf", url: "https://pncp.gov.br/editais/edital.pdf", tamanho: 409600 },
+      ],
+    } as any);
     const syncRes = await buscarESincronizarArquivosEditalPncp(lic.id);
     expect(syncRes.ok).toBe(true);
     expect(syncRes.sincronizados).toBeGreaterThanOrEqual(2);
@@ -148,6 +154,13 @@ describe("Sprint New - Task 5: Dossiê (Equipe & Arquivos) e Salvamento de Docum
     const dossie = await getOportunidadeById(lic.id);
     expect(dossie.arquivos.length).toBeGreaterThanOrEqual(3);
     expect(dossie.arquivos.map((a: any) => a.nome)).toContain("Proposta_Comercial.pdf");
+
+    // Simula resiliência e mensagem clara quando conexão falhar (Ajustes.pdf)
+    vi.spyOn(global, "fetch").mockRejectedValueOnce(new Error("Offline"));
+    const offlineRes = await buscarESincronizarArquivosEditalPncp(lic.id);
+    expect(offlineRes.ok).toBe(false);
+    expect(offlineRes.erroConexao).toBe(true);
+    expect(offlineRes.mensagem).toBe("Não foi possível conectar ao portal do PNCP no momento.");
 
     // Remove o arquivo enviado
     await removerArquivoEdital(lic.id, upload.id);

@@ -3,6 +3,7 @@
 import React, { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ActionableNotification,
   Tag,
   Tile,
   DataTable,
@@ -100,6 +101,8 @@ function OportunidadesContent() {
   const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
   const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
+  const [loadingPreferencias, setLoadingPreferencias] = React.useState(true);
+  const [configuracaoPendente, setConfiguracaoPendente] = React.useState(false);
   const [preferencias, setPreferencias] = React.useState<{
     segmentos: string[];
     subsegmentos: string[];
@@ -160,6 +163,11 @@ function OportunidadesContent() {
         throw new Error("Erro ao carregar oportunidades");
       }
       const data = await response.json();
+      if (data.configuracaoPendente) {
+        setConfiguracaoPendente(true);
+      } else {
+        setConfiguracaoPendente(false);
+      }
       const mappedOportunidades = (data.oportunidades || []).map((dto: any) => {
         const rawDate = dto.dataEncerramentoProposta || dto.dataAbertura;
         const d = new Date(rawDate);
@@ -194,14 +202,19 @@ function OportunidadesContent() {
 
   // Carrega preferências do Tenant
   const carregarPreferencias = React.useCallback(() => {
+    setLoadingPreferencias(true);
     fetch("/api/tenant/preferencias")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.ok) {
           setPreferencias(data);
+          if (!data.segmentos || data.segmentos.length === 0) {
+            setConfiguracaoPendente(true);
+          }
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setLoadingPreferencias(false));
   }, []);
 
   React.useEffect(() => {
@@ -480,6 +493,20 @@ function OportunidadesContent() {
           </div>
         </div>
 
+        {configuracaoPendente && (
+          <div style={{ marginBottom: "1.5rem" }} data-testid="banner-configuracao-pendente">
+            <ActionableNotification
+              kind="warning"
+              title="Configuração de Segmentos Pendente"
+              subtitle="Este CNPJ ainda não possui segmentos ou estados (UFs) de atuação configurados. Para visualizar as oportunidades capturadas pelo robô, defina suas preferências de mercado em Configurações."
+              actionButtonLabel="Configurar Agora"
+              onActionButtonClick={() => router.push("/configuracoes")}
+              hideCloseButton
+              style={{ maxWidth: "100%" }}
+            />
+          </div>
+        )}
+
         <div data-testid="oportunidades-filters" style={{ marginBottom: "1rem", display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
           {/* Segmento / Ramo: MultiSelect quando a empresa possui múltiplos segmentos cadastrados */}
           {preferencias?.segmentos && preferencias.segmentos.length >= 2 ? (
@@ -488,7 +515,8 @@ function OportunidadesContent() {
                 id="filter-segmento"
                 data-testid="filter-segmento"
                 titleText="Segmentos da Empresa"
-                label="Todos os seus segmentos"
+                label={loadingPreferencias ? "Carregando preferências..." : "Todos os seus segmentos"}
+                disabled={loading || loadingPreferencias}
                 items={preferencias.segmentos.map((code) => ({
                   id: code,
                   text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
@@ -520,19 +548,24 @@ function OportunidadesContent() {
               id="filter-segmento"
               data-testid="filter-segmento"
               titleText="Segmento / Ramo"
-              label="Todos os Segmentos da Empresa"
-              items={[
-                { id: "", text: "Todos os Segmentos da Empresa" },
-                ...(preferencias?.segmentos && preferencias.segmentos.length > 0
-                  ? preferencias.segmentos.map((code) => ({
-                      id: code,
-                      text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
-                    }))
-                  : Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => ({
-                      id: macro.codigo,
-                      text: macro.nome,
-                    }))),
-              ]}
+              label={loadingPreferencias ? "Carregando preferências..." : "Todos os Segmentos da Empresa"}
+              disabled={loading || loadingPreferencias}
+              items={
+                loadingPreferencias
+                  ? [{ id: "", text: "Carregando preferências..." }]
+                  : [
+                      { id: "", text: "Todos os Segmentos da Empresa" },
+                      ...(preferencias?.segmentos && preferencias.segmentos.length > 0
+                        ? preferencias.segmentos.map((code) => ({
+                            id: code,
+                            text: CATALOGO_MACRO_SEGMENTOS[code as MacroSegmento]?.nome || code,
+                          }))
+                        : Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => ({
+                            id: macro.codigo,
+                            text: macro.nome,
+                          }))),
+                    ]
+              }
               itemToString={(item) => (item ? item.text : "")}
               selectedItem={
                 filtroSegmento
@@ -570,7 +603,7 @@ function OportunidadesContent() {
                     ? "Todos os Sub-segmentos"
                     : "Selecione um segmento primeiro"
                 }
-                disabled={!filtroSegmento || isMultiplosSegmentos}
+                disabled={loading || loadingPreferencias || !filtroSegmento || isMultiplosSegmentos}
                 items={
                   isMultiplosSegmentos
                     ? [{ id: "", text: "Todos os sub-segmentos" }]
@@ -616,6 +649,7 @@ function OportunidadesContent() {
                 id="filter-uf"
                 titleText="UF (Múltiplos Estados)"
                 label="Selecione os estados"
+                disabled={loading || loadingPreferencias}
                 items={ESTADOS_BRASIL.filter((e) => preferencias.ufs.includes(e.sigla)).map((e) => ({
                   id: e.sigla,
                   text: `${e.nome} (${e.sigla})`,
@@ -643,6 +677,7 @@ function OportunidadesContent() {
               data-testid="filter-uf"
               titleText="UF"
               label="Todas as UFs"
+              disabled={loading || loadingPreferencias}
               items={[
                 { id: "", text: "Todas as UFs" },
                 ...(preferencias && !preferencias.brasilInteiro && preferencias.ufs.length > 0
@@ -675,6 +710,7 @@ function OportunidadesContent() {
             data-testid="filter-faixa-valor"
             titleText="Faixa de Valor"
             label="Selecione uma faixa"
+            disabled={loading || loadingPreferencias}
             items={FAIXAS_VALOR_SPRINT7.map((f) => ({ id: f.id, text: f.label }))}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={
@@ -695,6 +731,7 @@ function OportunidadesContent() {
             data-testid="filter-status"
             titleText="Status"
             label="Pendente (Padrão)"
+            disabled={loading || loadingPreferencias}
             items={[
               { id: "", text: "Pendente (Padrão)" },
               { id: "ACEITA", text: "Aceita" },
@@ -722,6 +759,7 @@ function OportunidadesContent() {
               data-testid="filter-busca"
               labelText="Busca por palavra-chave"
               placeholder="Digite o termo e clique em buscar..."
+              disabled={loading || loadingPreferencias}
               value={filtroBusca}
               onChange={(e) => setFiltroBusca(e.target.value)}
               onKeyDown={(e) => {
@@ -736,6 +774,7 @@ function OportunidadesContent() {
               size="md"
               renderIcon={Search}
               id="btn-executar-busca-oportunidades"
+              disabled={loading || loadingPreferencias}
               onClick={() => handleFilterChange("busca", filtroBusca)}
             >
               Buscar
@@ -747,9 +786,20 @@ function OportunidadesContent() {
         {error && <p style={{ color: "red" }}>Erro: {error}</p>}
 
         {!loading && !error && (
-          <>
-            <DataTable
-              rows={oportunidades}
+          configuracaoPendente ? (
+            <Tile style={{ padding: "3rem", textAlign: "center", marginTop: "1rem" }} data-testid="empty-configuracao-pendente">
+              <h3 style={{ marginBottom: "0.5rem" }}>Nenhuma oportunidade disponível</h3>
+              <p style={{ color: "var(--cds-text-secondary)", marginBottom: "1.5rem" }}>
+                Para que o robô localize oportunidades relevantes, configure os segmentos e estados (UFs) de atuação deste CNPJ.
+              </p>
+              <Button kind="primary" onClick={() => router.push("/configuracoes")}>
+                Ir para Configurações da Empresa
+              </Button>
+            </Tile>
+          ) : (
+            <>
+              <DataTable
+                rows={oportunidades}
               headers={headers}
               isSortable
               sortRow={(
@@ -979,6 +1029,7 @@ function OportunidadesContent() {
             data-testid="oportunidades-pagination"
           />
         </>
+          )
         )}
        </Tile>
 

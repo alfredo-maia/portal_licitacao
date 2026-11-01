@@ -231,18 +231,24 @@ function buildPrismaWhere(filters: ParsedFilters): Prisma.LicitacaoWhereInput {
 }
 
 function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
+  const storedMacro = (record as any).segmentoMacro;
+  const storedSubs = Array.isArray((record as any).subcategorias)
+    ? (record as any).subcategorias
+    : [];
+
+  // Otimização de Performance: se já possui segmentoMacro e subcategorias válidos, não reprocessar NLP
+  if (storedMacro && storedSubs.length > 0 && storedMacro !== "TECNOLOGIA_TELECOM") {
+    return record;
+  }
+
   const classif = classificarLicitacaoPorTexto(
     record.resumo || (record as any).objeto || "",
     record.miniResumo || "",
   );
-  const storedMacro = (record as any).segmentoMacro;
   const effectiveMacro =
     !storedMacro || (storedMacro === "TECNOLOGIA_TELECOM" && classif.macro !== "TECNOLOGIA_TELECOM")
       ? classif.macro
       : storedMacro;
-  const storedSubs = Array.isArray((record as any).subcategorias)
-    ? (record as any).subcategorias
-    : [];
   const effectiveSubs = Array.from(new Set([...storedSubs, ...classif.subcategorias]));
   return {
     ...record,
@@ -252,7 +258,7 @@ function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
 }
 
 function matchesFilters(record: LicitacaoRecord, filters: ParsedFilters): boolean {
-  const enriched = enrichRecordSegment(record);
+  const enriched = record.segmentoMacro ? record : enrichRecordSegment(record);
 
   if (filters.tipoSistema && enriched.tipoSistemaCodigo !== filters.tipoSistema) {
     return false;
@@ -1319,7 +1325,7 @@ export async function buscarESincronizarArquivosEditalPncp(
   licitacaoId: string,
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
-): Promise<{ ok: boolean; sincronizados: number; arquivos: any[] }> {
+): Promise<{ ok: boolean; sincronizados: number; arquivos: any[]; erroConexao?: boolean; mensagem?: string }> {
   const oportunidade = await getOportunidadeById(licitacaoId);
   const idPncp = oportunidade.idPncp || "";
 
@@ -1336,10 +1342,14 @@ export async function buscarESincronizarArquivosEditalPncp(
   }
 
   let arquivosEncontrados: Array<{ nome: string; url: string; tamanho?: number }> = [];
+  let erroConexao = false;
 
   try {
     const pncpUrl = `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/arquivos`;
-    const res = await fetch(pncpUrl, { headers: { accept: "*/*" } });
+    const res = await fetch(pncpUrl, {
+      headers: { accept: "*/*" },
+      signal: AbortSignal.timeout(8000),
+    });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -1351,23 +1361,8 @@ export async function buscarESincronizarArquivosEditalPncp(
       }
     }
   } catch (err) {
+    erroConexao = true;
     console.warn("[buscarESincronizarArquivosEditalPncp] Falha ao consultar API PNCP:", err);
-  }
-
-  // Fallback caso a API do PNCP não responda ou não tenha arquivos públicos indexados ainda
-  if (arquivosEncontrados.length === 0) {
-    arquivosEncontrados = [
-      {
-        nome: `Edital_Oficial_${oportunidade.numeroEdital.replace(/\s+/g, "_")}.pdf`,
-        url: oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${idPncp}`,
-        tamanho: 2450000,
-      },
-      {
-        nome: `Termo_de_Referencia_TR_${oportunidade.numeroEdital.replace(/\s+/g, "_")}.pdf`,
-        url: oportunidade.linkPncp || `https://pncp.gov.br/app/editais?q=${idPncp}`,
-        tamanho: 1850000,
-      },
-    ];
   }
 
   const sincronizados: any[] = [];
@@ -1403,10 +1398,21 @@ export async function buscarESincronizarArquivosEditalPncp(
     ip: actorContext?.ip ?? null,
   });
 
+  let mensagem: string;
+  if (erroConexao) {
+    mensagem = "Não foi possível conectar ao portal do PNCP no momento.";
+  } else if (sincronizados.length > 0) {
+    mensagem = `${sincronizados.length} arquivo(s) oficial(is) sincronizado(s) com sucesso!`;
+  } else {
+    mensagem = "Nenhum arquivo disponibilizado pelo órgão no PNCP para esta contratação.";
+  }
+
   return {
-    ok: true,
+    ok: !erroConexao,
+    erroConexao,
     sincronizados: sincronizados.length,
     arquivos: sincronizados,
+    mensagem,
   };
 }
 

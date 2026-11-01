@@ -66,6 +66,7 @@ export const portalCriarInputSchema = z.object({
 export const portalAtualizarInputSchema = portalCriarInputSchema.partial();
 
 export const portalListQuerySchema = z.object({
+  tenantId: z.string().trim().optional(),
   status: portalStatusSchema.optional(),
   busca: z.string().trim().optional(),
   apenasVencendoEmDias: z.coerce.number().int().positive().optional(),

@@ -1,13 +1,24 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import { parseDataCivil } from "@/lib/date-utils";
 import { criarPortal, listarPortais } from "@/server/services/portais.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
   if (!session?.user) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
+
+  const userId = (session.user as any)?.id || "";
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant || (session.user as any)?.activeTenantId);
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || undefined;
@@ -18,6 +29,7 @@ export async function GET(request: Request) {
 
   try {
     const data = await listarPortais({
+      tenantId: tenantId || undefined,
       status: status as any,
       busca,
       apenasVencendoEmDias: apenasVencendo ? parseInt(apenasVencendo, 10) : undefined,
@@ -40,9 +52,19 @@ export async function POST(request: Request) {
   }
   const userId = (session.user as any)?.id || "usr_sistema";
 
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant || (session.user as any)?.activeTenantId);
+
   try {
     const body = await request.json();
-    const portal = await criarPortal(body, userId);
+    if (body.dataVencimento) {
+      body.dataVencimento = parseDataCivil(body.dataVencimento);
+    }
+    const portal = await criarPortal(body, userId, tenantId);
     return NextResponse.json({ ok: true, portal }, { status: 201 });
   } catch (error: any) {
     const errorMsg = error?.errors?.[0]?.message || error?.message || "Erro de validação ao salvar portal.";

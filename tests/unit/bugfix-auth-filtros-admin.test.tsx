@@ -116,9 +116,11 @@ describe("Bugfix Hotfix — Multi-Tenant Auth, Filtros de Oportunidades e Acesso
       global.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/api/tenant/preferencias")) {
           return Promise.resolve({
+            ok: true,
             json: () =>
               Promise.resolve({
-                segmentos: ["ALIMENTOS_MERENDA_ESCOLAR", "SAUDE_MEDICAMENTOS_HOSPITALAR"],
+                ok: true,
+                segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
                 subsegmentos: [],
                 ufs: ["GO"],
               }),
@@ -147,6 +149,7 @@ describe("Bugfix Hotfix — Multi-Tenant Auth, Filtros de Oportunidades e Acesso
       expect(segmentoDropdown).toBeDefined();
 
       const combobox = segmentoDropdown.querySelector("button") || segmentoDropdown;
+      await waitFor(() => expect(combobox).not.toBeDisabled());
       fireEvent.click(combobox);
 
       const opcaoAlimentacao = await screen.findByText(/Alimentos & Merenda/i);

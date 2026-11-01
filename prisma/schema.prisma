@@ -397,11 +397,14 @@ model Portal {
   exigeCertificadoDigital Boolean             @default(false)
   suporteContato          String?
   observacoes             String?             @db.Text
+  tenantId                String?
+  tenant                  Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   criadoEm                DateTime            @default(now())
   atualizadoEm            DateTime            @updatedAt
 
   @@index([status])
   @@index([dataVencimento])
+  @@index([tenantId])
   @@map("portal")
 }
 
@@ -479,6 +482,7 @@ model Impugnacao {
 model ConfiguracaoEmpresa {
   id                 String   @id @default("default")
   razaoSocial        String   @default("APONTA TECNOLOGIA E SERVICOS LTDA")
+  nomeFantasia       String?
   cnpj               String   @default("12.345.678/0001-90")
   inscricaoEstadual  String?
   inscricaoMunicipal String?
@@ -546,6 +550,7 @@ model Tenant {
   licitacoes    TenantLicitacao[]
   convites      TenantConvite[]
   documentos    Documento[]
+  portais       Portal[]
   arquivos      Arquivo[]
   configuracao  ConfiguracaoEmpresa?
   auditLogs     AuditLog[]

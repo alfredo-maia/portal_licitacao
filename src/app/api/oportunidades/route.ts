@@ -10,6 +10,7 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 /**
  * `GET /api/oportunidades` (sprint-2-spec §2.2): listagem paginada ordenada por
@@ -21,26 +22,49 @@ export async function GET(request: Request) {
   );
 
   try {
+    const session = await getServerSession(authOptions).catch(() => null);
+    const userId = (session?.user as any)?.id || "";
+
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const session = await getServerSession(authOptions).catch(() => null);
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const preferredTenant = cookieTenant || (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, preferredTenant);
+
+    let configuracaoPendente = false;
     if (tenantId && !params.segmentosTenantAtivo) {
       try {
         const cfg = await obterConfiguracaoEmpresa(tenantId);
-        if (cfg?.segmentos && cfg.segmentos.length > 0) {
+        if (!cfg?.segmentos || cfg.segmentos.length === 0) {
+          configuracaoPendente = true;
+        } else {
           params.segmentosTenantAtivo = cfg.segmentos;
         }
       } catch {}
+    }
+
+    if (configuracaoPendente) {
+      return NextResponse.json(
+        {
+          ok: true,
+          configuracaoPendente: true,
+          total: 0,
+          page: 1,
+          pageSize: 10,
+          totalPages: 0,
+          oportunidades: [],
+        },
+        { status: 200 },
+      );
     }
 
     const result = await listOportunidadesPaginadas(params);
     return NextResponse.json(
       {
         ok: true,
+        configuracaoPendente: false,
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,

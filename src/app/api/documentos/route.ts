@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
@@ -8,6 +9,7 @@ import {
   criarDocumento,
   listarDocumentos,
 } from "@/server/services/documentos.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
@@ -15,6 +17,13 @@ export async function GET(request: Request) {
   if (!user?.id) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
+
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant || (session?.user as any)?.activeTenantId);
 
   const { searchParams } = new URL(request.url);
   const categoria = searchParams.get("categoria") || undefined;
@@ -26,6 +35,7 @@ export async function GET(request: Request) {
 
   try {
     const data = await listarDocumentos({
+      tenantId: tenantId || undefined,
       categoria: categoria as any,
       status: status as any,
       busca,
@@ -48,6 +58,13 @@ export async function POST(request: Request) {
   if (!user?.id) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
+
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant || (session?.user as any)?.activeTenantId);
 
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -108,13 +125,13 @@ export async function POST(request: Request) {
         mimeType,
       };
 
-      const doc = await criarDocumento(payload, user.id);
+      const doc = await criarDocumento(payload, user.id, tenantId);
       return NextResponse.json({ ok: true, documento: doc }, { status: 201 });
     }
 
     // Fluxo JSON padrão
     const body = await request.json();
-    const doc = await criarDocumento(body, user.id);
+    const doc = await criarDocumento(body, user.id, tenantId);
     return NextResponse.json({ ok: true, documento: doc }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(

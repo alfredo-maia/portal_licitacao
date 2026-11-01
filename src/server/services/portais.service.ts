@@ -25,6 +25,9 @@ export async function listarPortais(
 
   try {
     const where: any = {};
+    if (query.tenantId) {
+      where.tenantId = query.tenantId;
+    }
     if (query.status) {
       where.status = query.status;
     }
@@ -81,6 +84,9 @@ export async function listarPortais(
   } catch {
     // Fallback resiliente em memória
     let memoria = listInMemoryPortais();
+    if (query.tenantId) {
+      memoria = memoria.filter((p) => (p as any).tenantId === query.tenantId);
+    }
     if (query.status) {
       memoria = memoria.filter((p) => p.status === query.status);
     }
@@ -142,6 +148,7 @@ export async function obterPortal(id: string): Promise<PortalItem | null> {
 export async function criarPortal(
   data: PortalCriarInput,
   usuarioId?: string,
+  tenantId?: string | null,
 ): Promise<PortalItem> {
   const validado = portalCriarInputSchema.parse(data);
 
@@ -162,7 +169,13 @@ export async function criarPortal(
         exigeCertificadoDigital: validado.exigeCertificadoDigital,
         suporteContato: validado.suporteContato || null,
         observacoes: validado.observacoes || null,
+        tenantId: tenantId || null,
       },
+    });
+
+    insertInMemoryPortal({
+      ...p,
+      tenantId: tenantId || null,
     });
 
     await recordAuditLog({
@@ -170,6 +183,7 @@ export async function criarPortal(
       entidadeTipo: "PORTAL",
       entidadeId: p.id,
       usuarioId,
+      tenantId: tenantId || null,
       depois: { nome: p.nome, url: p.url, status: p.status },
     });
 
@@ -193,7 +207,10 @@ export async function criarPortal(
       atualizadoEm: p.atualizadoEm,
     };
   } catch {
-    const memoria = insertInMemoryPortal(validado);
+    const memoria = insertInMemoryPortal({
+      ...validado,
+      tenantId: tenantId || null,
+    });
     return memoria;
   }
 }

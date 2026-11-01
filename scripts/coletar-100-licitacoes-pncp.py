@@ -222,3 +222,4 @@ if busca_st == 200 and isinstance(busca_resp, dict):
     print("\nProcesso concluído com êxito!")
 else:
     print(f"Erro ao consultar busca: {busca_st} {busca_resp}")
+

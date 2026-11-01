@@ -239,6 +239,9 @@ function OportunidadesDetalheContent({
   const [enviandoArquivo, setEnviandoArquivo] = React.useState(false);
   const [arquivosSelecionados, setArquivosSelecionados] = React.useState<string[]>([]);
   const [buscandoPncp, setBuscandoPncp] = React.useState(false);
+  const [pncpSyncStatus, setPncpSyncStatus] = React.useState<"buscando" | "concluido">("buscando");
+  const [pncpSyncMensagem, setPncpSyncMensagem] = React.useState("");
+  const [pncpSyncTipo, setPncpSyncTipo] = React.useState<"info" | "success" | "warning" | "error">("info");
 
   // Aba 3: Repositórios Similares
   const [repNome, setRepNome] = React.useState("");
@@ -404,35 +407,46 @@ function OportunidadesDetalheContent({
   const handleBuscarEditalPncp = async () => {
     if (!id) return;
     setBuscandoPncp(true);
+    setPncpSyncStatus("buscando");
+    setPncpSyncMensagem("Buscando arquivos e editais oficiais no PNCP...");
+    setPncpSyncTipo("info");
+
     try {
       const res = await fetch(`/api/oportunidades/${id}/arquivos/sync-pncp`, {
         method: "POST",
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ok) {
-        throw new Error(
-          data?.mensagem || data?.error || "Falha de comunicação com o portal do PNCP ao baixar arquivos.",
-        );
-      }
-      if (data.sincronizados > 0) {
-        showNotification(
-          "success",
-          `${data.sincronizados} arquivos sincronizados com sucesso do PNCP.`,
-        );
+
+      let msg = "";
+      let tipo: "success" | "warning" | "error" = "info" as any;
+
+      if (!res.ok || data?.erroConexao || data?.ok === false) {
+        msg = data?.mensagem || "Não foi possível conectar ao portal do PNCP no momento.";
+        tipo = "error";
+      } else if (data?.sincronizados > 0) {
+        msg = `${data.sincronizados} arquivo(s) oficial(is) sincronizado(s) com sucesso!`;
+        tipo = "success";
       } else {
-        showNotification(
-          "warning",
-          "Nenhum arquivo ou edital foi disponibilizado pelo órgão no PNCP para esta licitação.",
-        );
+        msg = "Nenhum arquivo disponibilizado pelo órgão no PNCP para esta contratação.";
+        tipo = "warning";
       }
+
+      setPncpSyncStatus("concluido");
+      setPncpSyncMensagem(msg);
+      setPncpSyncTipo(tipo);
+
+      // Mantém a mensagem visível por exatamente 2 segundos
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       await carregarDados(id);
-    } catch (err) {
-      showNotification(
-        "error",
-        err instanceof Error ? err.message : "Falha de comunicação com o portal do PNCP ao baixar arquivos.",
-      );
+    } catch {
+      setPncpSyncStatus("concluido");
+      setPncpSyncMensagem("Não foi possível conectar ao portal do PNCP no momento.");
+      setPncpSyncTipo("error");
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     } finally {
       setBuscandoPncp(false);
+      setPncpSyncStatus("buscando");
+      setPncpSyncMensagem("");
     }
   };
 
@@ -1438,13 +1452,51 @@ Realize uma análise profunda estruturada em 4 dimensões:
           }}
           data-testid="modal-loading-pncp"
         >
-          <Loading withOverlay={false} description="Buscando no PNCP..." />
-          <p style={{ fontWeight: 600, color: "var(--cds-text-primary)", textAlign: "center", margin: 0 }}>
-            Buscando arquivos e editais oficiais no PNCP...
-          </p>
-          <span style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", textAlign: "center" }}>
-            Aguarde enquanto os anexos públicos são sincronizados com o dossiê da licitação.
-          </span>
+          {pncpSyncStatus === "buscando" ? (
+            <>
+              <Loading withOverlay={false} description="Buscando no PNCP..." />
+              <p style={{ fontWeight: 600, color: "var(--cds-text-primary)", textAlign: "center", margin: 0 }}>
+                Buscando arquivos e editais oficiais no PNCP...
+              </p>
+              <span style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", textAlign: "center" }}>
+                Aguarde enquanto os anexos públicos são sincronizados com o dossiê da licitação.
+              </span>
+            </>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "0.75rem",
+                textAlign: "center",
+              }}
+              data-testid="pncp-sync-result-message"
+            >
+              {pncpSyncTipo === "success" && (
+                <CheckmarkOutline size={32} style={{ color: "var(--cds-support-success, #24a148)" }} />
+              )}
+              {pncpSyncTipo === "warning" && (
+                <WarningAlt size={32} style={{ color: "var(--cds-support-warning, #f1c21b)" }} />
+              )}
+              {pncpSyncTipo === "error" && (
+                <CloseOutline size={32} style={{ color: "var(--cds-support-error, #da1e28)" }} />
+              )}
+              <p
+                style={{
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  color: "var(--cds-text-primary)",
+                  margin: 0,
+                }}
+              >
+                {pncpSyncMensagem}
+              </p>
+              <span style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
+                Atualizando os dados da tela...
+              </span>
+            </div>
+          )}
         </div>
       </Modal>
     </ModulePageShell>

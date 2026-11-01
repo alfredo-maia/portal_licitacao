@@ -112,6 +112,7 @@ export default function ConfiguracoesPage() {
   const [empresa, setEmpresa] = useState<ConfiguracaoEmpresa>({
     id: "default",
     razaoSocial: "",
+    nomeFantasia: "",
     cnpj: "",
     inscricaoEstadual: "",
     inscricaoMunicipal: "",
@@ -1086,6 +1087,15 @@ export default function ConfiguracoesPage() {
                   labelText="Razão Social da Empresa *"
                   value={empresa.razaoSocial}
                   onChange={(e) => setEmpresa({ ...empresa, razaoSocial: e.target.value })}
+                />
+              </Column>
+              <Column lg={6} md={4} sm={4}>
+                <TextInput
+                  id="empresa-fantasia"
+                  labelText="Nome Fantasia"
+                  placeholder="Nome Fantasia da Empresa"
+                  value={empresa.nomeFantasia || ""}
+                  onChange={(e) => setEmpresa({ ...empresa, nomeFantasia: e.target.value })}
                 />
               </Column>
               <Column lg={4} md={2} sm={4}>

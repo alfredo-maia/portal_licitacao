@@ -57,3 +57,4 @@ describe("Ingestão — Limpeza de Oportunidades (#25)", () => {
     expect(listagem.total).toBe(0);
   });
 });
+

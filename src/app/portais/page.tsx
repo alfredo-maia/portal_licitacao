@@ -30,6 +30,7 @@ import {
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { maskCnpj } from "@/lib/masks";
+import { formatarDataSemOffset } from "@/lib/date-utils";
 
 interface PortalItem {
   id: string;
@@ -199,7 +200,7 @@ export default function PortaisPage() {
       usuario: usuario.trim() || null,
       valorAssinatura: valorAssinatura ? parseFloat(valorAssinatura) : null,
       periodicidade,
-      dataVencimento: dataVencimento ? new Date(dataVencimento).toISOString() : null,
+      dataVencimento: dataVencimento || null,
       aceitaRobo,
       exigeCertificadoDigital,
       suporteContato: suporteContato.trim() || null,
@@ -455,7 +456,7 @@ export default function PortaisPage() {
                             <div style={{ marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                               <span style={{ color: "var(--cds-text-secondary)" }}>Expiração:</span>
                               <span className="pncp-mono">
-                                {dataVenc.toLocaleDateString("pt-BR")}
+                                {formatarDataSemOffset(p.dataVencimento)}
                               </span>
                               {isVencendo && (
                                 <Tag

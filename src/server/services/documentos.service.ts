@@ -76,6 +76,9 @@ function mapToDocumentoItem(doc: any): DocumentoItem {
 
 function filterInMemoryDocs(query: DocumentoListQuery): any[] {
   let memoria = listInMemoryDocumentos();
+  if (query.tenantId) {
+    memoria = memoria.filter((d) => (d as any).tenantId === query.tenantId);
+  }
   if (query.categoria) {
     memoria = memoria.filter((d) => d.categoria === query.categoria);
   }
@@ -111,6 +114,9 @@ export async function listarDocumentos(
 
   try {
     const where: any = {};
+    if (query.tenantId) {
+      where.tenantId = query.tenantId;
+    }
     if (query.categoria) {
       where.categoria = query.categoria;
     }
@@ -225,6 +231,7 @@ export async function obterDocumento(
 export async function criarDocumento(
   data: DocumentoCriarInput,
   usuarioId?: string,
+  tenantId?: string | null,
 ): Promise<DocumentoItem> {
   const validado = documentoCriarInputSchema.parse(data);
 
@@ -242,6 +249,7 @@ export async function criarDocumento(
     mimeType: validado.mimeType || null,
     versao: 1,
     status: "ATIVO" as const,
+    tenantId: tenantId || null,
   };
 
   try {
@@ -268,6 +276,7 @@ export async function criarDocumento(
 
     insertInMemoryDocumento({
       ...doc,
+      tenantId: tenantId || null,
     });
 
     await recordAuditLog({
@@ -275,6 +284,7 @@ export async function criarDocumento(
       entidadeTipo: "DOCUMENTO",
       entidadeId: doc.id,
       usuarioId,
+      tenantId: tenantId || null,
       depois: { nome: doc.nome, categoria: doc.categoria, dataVencimento: doc.dataVencimento },
     });
 
@@ -285,6 +295,7 @@ export async function criarDocumento(
       versao: 1,
       status: "ATIVO",
       criadoPorId: usuarioId || null,
+      tenantId: tenantId || null,
     });
     return mapToDocumentoItem(memoria);
   }

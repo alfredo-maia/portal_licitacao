@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
-import { prisma } from "@/lib/prisma";
 import { listarEquipe } from "@/server/services/configuracoes.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  let session: any = null;
   try {
-    const session = await getServerSession(authOptions).catch(() => null);
+    session = await getServerSession(authOptions).catch(() => null);
     if (!session?.user) {
       return NextResponse.json(
         { ok: false, error: "Não autorizado" },
@@ -17,25 +18,17 @@ export async function GET() {
       );
     }
 
+    const userId = (session.user as any)?.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
 
-    let tenantId = cookieTenant || (session.user as any)?.activeTenantId;
-    const userId = (session.user as any)?.id;
-
-    if (!tenantId && userId) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: { userId },
-        });
-        if (membership) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const tenantId = await resolveUserActiveTenantId(
+      userId,
+      cookieTenant || (session.user as any)?.activeTenantId,
+    );
 
     const equipe = await listarEquipe(tenantId || null, {
       id: userId,
@@ -55,17 +48,20 @@ export async function GET() {
 
     return NextResponse.json({ ok: true, usuarios }, { status: 200 });
   } catch {
+    const fallbackUser = session?.user
+      ? [
+          {
+            id: (session.user as any)?.id || "usr_titular",
+            name: session.user.name || "Usuário",
+            email: session.user.email || "usuario@empresa.com.br",
+            role: "DIRETORIA",
+          },
+        ]
+      : [];
     return NextResponse.json(
       {
         ok: true,
-        usuarios: [
-          {
-            id: "usr_vitor",
-            name: "Vítor Henrique",
-            email: "vitorhenrique018@gmail.com",
-            role: "DIRETORIA",
-          },
-        ],
+        usuarios: fallbackUser,
       },
       { status: 200 },
     );

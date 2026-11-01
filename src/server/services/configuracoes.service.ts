@@ -28,7 +28,16 @@ import { canManageTeamMember } from "@/lib/rbac";
 import { isValidCpf } from "@/lib/validations/cpf";
 import { getInMemoryAuthUserByEmail, upsertInMemoryAuthUser } from "@/server/auth";
 
+let userProfileColumnsChecked = false;
+let configuracaoEmpresaColumnsChecked = false;
+
+export function resetDdlCheckedFlagsForTesting(): void {
+  userProfileColumnsChecked = false;
+  configuracaoEmpresaColumnsChecked = false;
+}
+
 async function ensureUserProfileColumns(): Promise<void> {
+  if (userProfileColumnsChecked) return;
   const queries = [
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "cpf" TEXT`,
     `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "telefone" TEXT`,
@@ -46,9 +55,11 @@ async function ensureUserProfileColumns(): Promise<void> {
       await prisma.$executeRawUnsafe(sql);
     } catch {}
   }
+  userProfileColumnsChecked = true;
 }
 
 async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
+  if (configuracaoEmpresaColumnsChecked) return;
   const queries = [
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "inscricaoMunicipal" TEXT;`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
@@ -70,6 +81,7 @@ async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
       await prisma.$executeRawUnsafe(sql);
     } catch {}
   }
+  configuracaoEmpresaColumnsChecked = true;
 }
 
 // ==========================================
@@ -407,6 +419,7 @@ export async function obterConfiguracaoEmpresa(
         return {
           ...config,
           razaoSocial: config.razaoSocial || tenant?.razaoSocial || "EMPRESA LTDA",
+          nomeFantasia: config.nomeFantasia || tenant?.nomeFantasia || "",
           cnpj: config.cnpj || tenant?.cnpj || "",
           cnae: config.cnae || tenant?.cnaePrincipal || "",
           endereco: config.endereco || tenant?.endereco || "",
@@ -428,6 +441,7 @@ export async function obterConfiguracaoEmpresa(
         return {
           id: `cfg_${tenant.id}`,
           razaoSocial: tenant.razaoSocial,
+          nomeFantasia: tenant.nomeFantasia || "",
           cnpj: tenant.cnpj,
           inscricaoEstadual: "",
           inscricaoMunicipal: "",
@@ -464,6 +478,7 @@ export async function obterConfiguracaoEmpresa(
     return {
       ...base,
       razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
+      nomeFantasia: (memTenant as any)?.nomeFantasia || (base as any).nomeFantasia || "",
       cnpj: memTenant?.cnpj || (base as any).cnpj || "",
       cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
       endereco: memTenant?.endereco || (base as any).endereco || "",
@@ -484,6 +499,7 @@ export async function obterConfiguracaoEmpresa(
     return {
       ...base,
       razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
+      nomeFantasia: (memTenant as any)?.nomeFantasia || (base as any).nomeFantasia || "",
       cnpj: memTenant?.cnpj || (base as any).cnpj || "",
       cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
       endereco: memTenant?.endereco || (base as any).endereco || "",
@@ -558,6 +574,7 @@ export async function atualizarConfiguracaoEmpresa(
         where: { id: tenantId },
         data: {
           ...(validado.razaoSocial ? { razaoSocial: validado.razaoSocial } : {}),
+          ...(validado.nomeFantasia !== undefined ? { nomeFantasia: validado.nomeFantasia } : {}),
           ...(validado.cnpj ? { cnpj: validado.cnpj } : {}),
           ...(validado.uf ? { uf: validado.uf } : {}),
           ...(validado.cidade ? { cidade: validado.cidade } : {}),
@@ -639,6 +656,7 @@ export async function atualizarConfiguracaoEmpresa(
       memTenant.ufs = escopo.ufs;
       memTenant.brasilInteiro = escopo.brasilInteiro;
       if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
+      if (validado.nomeFantasia !== undefined) memTenant.nomeFantasia = validado.nomeFantasia;
       if (validado.cnpj) memTenant.cnpj = validado.cnpj;
       if (validado.cidade) memTenant.cidade = validado.cidade;
       if (validado.uf) memTenant.uf = validado.uf;

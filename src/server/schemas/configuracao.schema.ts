@@ -6,6 +6,7 @@ import { z } from "zod";
 export const configuracaoEmpresaSchema = z.object({
   id: z.string().default("default"),
   razaoSocial: z.string().trim().min(2, "Razão Social é obrigatória").max(255),
+  nomeFantasia: z.string().trim().max(255).optional().nullable(),
   cnpj: z.string().trim().min(14, "CNPJ é obrigatório").max(20),
   inscricaoEstadual: z.string().trim().max(50).optional().nullable(),
   inscricaoMunicipal: z.string().trim().max(50).optional().nullable(),
@@ -34,6 +35,7 @@ export const configuracaoEmpresaSchema = z.object({
 
 export const configuracaoEmpresaAtualizarInputSchema = z.object({
   razaoSocial: z.string().trim().min(2, "Razão Social é obrigatória").max(255).optional(),
+  nomeFantasia: z.string().trim().max(255).optional().nullable(),
   cnpj: z.string().trim().min(14, "CNPJ é obrigatório").max(20).optional(),
   inscricaoEstadual: z.string().trim().max(50).optional().nullable(),
   inscricaoMunicipal: z.string().trim().max(50).optional().nullable(),

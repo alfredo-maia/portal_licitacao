@@ -74,6 +74,7 @@ export const documentoNovaVersaoInputSchema = z.object({
 });
 
 export const documentoListQuerySchema = z.object({
+  tenantId: z.string().trim().optional(),
   categoria: documentoCategoriaSchema.optional(),
   status: documentoStatusSchema.default("ATIVO").optional(),
   busca: z.string().trim().optional(),

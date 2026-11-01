@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ActionableNotification,
   ClickableTile,
   Column,
   Grid,
@@ -68,6 +69,7 @@ interface DashboardData {
     nome: string;
     total: number;
   }>;
+  configuracaoPendente?: boolean;
 }
 
 function formatarMoeda(valor: number): string {
@@ -164,6 +166,20 @@ export default function DashboardPage() {
   return (
     <ModulePageShell routePath="/dashboard">
       <Grid fullWidth>
+        {dados?.configuracaoPendente && (
+          <Column lg={16} md={8} sm={4} style={{ marginBottom: "1.5rem" }}>
+            <ActionableNotification
+              kind="warning"
+              title="Configuração de Segmentos Pendente"
+              subtitle="Este CNPJ ainda não possui segmentos ou estados (UFs) de atuação configurados. Para visualizar as oportunidades capturadas pelo robô, defina suas preferências de mercado."
+              actionButtonLabel="Configurar Agora"
+              onActionButtonClick={() => router.push("/configuracoes")}
+              hideCloseButton
+              style={{ maxWidth: "100%" }}
+            />
+          </Column>
+        )}
+
         {/* Seletor de Período Temporal */}
         <Column lg={16} md={8} sm={4} style={{ marginBottom: "1.5rem" }}>
           <Tile

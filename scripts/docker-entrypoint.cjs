@@ -455,6 +455,11 @@ async function bootstrapDatabase() {
       `DO $$ BEGIN ALTER TABLE "configuracao_empresa" ADD CONSTRAINT "configuracao_empresa_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
       `DO $$ BEGIN ALTER TABLE "documento" ADD CONSTRAINT "documento_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `CREATE INDEX IF NOT EXISTS "documento_tenantId_idx" ON "documento"("tenantId");`,
+      `ALTER TABLE "portal" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "portal_tenantId_idx" ON "portal"("tenantId");`,
+      `DO $$ BEGIN ALTER TABLE "portal" ADD CONSTRAINT "portal_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "nomeFantasia" TEXT;`,
       `CREATE TABLE IF NOT EXISTS "audit_log" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "ocorridoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
+import { parseDataCivil } from "@/lib/date-utils";
 import {
   atualizarPortal,
   excluirPortal,
@@ -37,6 +38,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const { id } = await params;
   try {
     const body = await request.json();
+    if (body.dataVencimento) {
+      body.dataVencimento = parseDataCivil(body.dataVencimento);
+    }
     const portal = await atualizarPortal(id, body, user.id);
     if (!portal) {
       return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });

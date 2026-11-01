@@ -158,7 +158,7 @@ export function insertInMemoryLicitacao(
   const agora = new Date();
   const record: LicitacaoRecord = {
     ...data,
-    id: `lic_${randomUUID()}`,
+    id: (data as any).id || `lic_${randomUUID()}`,
     createdAt: agora,
     updatedAt: agora,
   };
