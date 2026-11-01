@@ -325,6 +325,56 @@ export function marcarTodasInMemoryNotificacoesLidas(usuarioId: string): number 
 let portaisStore: Map<string, any> = new Map();
 let documentosStore: Map<string, any> = new Map();
 let impugnacoesStore: Map<string, any> = new Map();
+
+export interface TenantLicitacaoRecord {
+  id: string;
+  tenantId: string;
+  licitacaoId: string;
+  statusKanban: string;
+  tags?: string[];
+  notas?: string | null;
+  lanceMinimo?: number | null;
+  motivoRecusa?: string | null;
+  dataDecisao?: Date | null;
+  responsavelId?: string | null;
+}
+
+const tenantLicitacoesStore = new Map<string, TenantLicitacaoRecord>();
+
+export function getTenantLicitacaoKey(tenantId: string, licitacaoId: string): string {
+  return `${tenantId}__${licitacaoId}`;
+}
+
+export function getInMemoryTenantLicitacao(tenantId: string, licitacaoId: string): TenantLicitacaoRecord | null {
+  return tenantLicitacoesStore.get(getTenantLicitacaoKey(tenantId, licitacaoId)) || null;
+}
+
+export function setInMemoryTenantLicitacao(
+  tenantId: string,
+  licitacaoId: string,
+  data: Partial<TenantLicitacaoRecord>,
+): TenantLicitacaoRecord {
+  const key = getTenantLicitacaoKey(tenantId, licitacaoId);
+  const existing = tenantLicitacoesStore.get(key);
+  const record: TenantLicitacaoRecord = {
+    id: existing?.id || `tl_${randomUUID()}`,
+    tenantId,
+    licitacaoId,
+    statusKanban: data.statusKanban || existing?.statusKanban || "PENDENTE",
+    tags: data.tags ?? existing?.tags ?? [],
+    notas: data.notas ?? existing?.notas ?? null,
+    lanceMinimo: data.lanceMinimo ?? existing?.lanceMinimo ?? null,
+    motivoRecusa: data.motivoRecusa ?? existing?.motivoRecusa ?? null,
+    dataDecisao: data.dataDecisao ?? existing?.dataDecisao ?? new Date(),
+    responsavelId: data.responsavelId ?? existing?.responsavelId ?? null,
+  };
+  tenantLicitacoesStore.set(key, record);
+  return record;
+}
+
+export function listInMemoryTenantLicitacoes(tenantId: string): TenantLicitacaoRecord[] {
+  return Array.from(tenantLicitacoesStore.values()).filter((tl) => tl.tenantId === tenantId);
+}
 let licitacaoEquipeStore: Map<string, { responsavelId: string | null; atribuidoIds: string[] }> = new Map();
 let licitacaoArquivosStore: Map<string, any[]> = new Map();
 let licitacaoRepositoriosStore: Map<string, any[]> = new Map();
@@ -799,6 +849,7 @@ export function resetInMemoryLicitacoes(): void {
   licitacaoArquivosStore.clear();
   licitacaoRepositoriosStore.clear();
   licitacaoAnalisesIAStore.clear();
+  tenantLicitacoesStore.clear();
 }
 
 /** Limpa completamente todas as licitações em memória (sem recriar seeds). */
@@ -810,5 +861,6 @@ export function clearInMemoryLicitacoes(): void {
   licitacaoArquivosStore.clear();
   licitacaoRepositoriosStore.clear();
   licitacaoAnalisesIAStore.clear();
+  tenantLicitacoesStore.clear();
 }
 

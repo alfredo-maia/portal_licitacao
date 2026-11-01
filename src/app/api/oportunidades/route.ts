@@ -33,8 +33,13 @@ export async function GET(request: Request) {
     const preferredTenant = cookieTenant || (session?.user as any)?.activeTenantId;
     const tenantId = await resolveUserActiveTenantId(userId, preferredTenant);
 
+    const isKanban =
+      params.status === "MINHAS" ||
+      params.status === "TODOS" ||
+      params.status === "TODAS";
+
     let configuracaoPendente = false;
-    if (tenantId && !params.segmentosTenantAtivo) {
+    if (!isKanban && tenantId && !params.segmentosTenantAtivo) {
       try {
         const cfg = await obterConfiguracaoEmpresa(tenantId);
         if (!cfg?.segmentos || cfg.segmentos.length === 0) {
@@ -60,7 +65,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const result = await listOportunidadesPaginadas(params);
+    const result = await listOportunidadesPaginadas(params, tenantId);
     return NextResponse.json(
       {
         ok: true,

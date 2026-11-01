@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions, DIRECTORS_SEED } from "@/server/auth";
@@ -7,6 +8,7 @@ import {
   atualizarKanbanStatus,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -29,12 +31,30 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
   }
 
+  let cookieTenant: string | undefined;
   try {
-    const atualizado = await atualizarKanbanStatus(id, body, user, {
-      ip: request.headers.get("x-forwarded-for"),
-      usuarioId: user?.id,
-      usuarioNome: user?.name,
-    });
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const sessionTenant = (user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(
+    user?.id || "",
+    cookieTenant,
+    sessionTenant,
+  );
+
+  try {
+    const atualizado = await atualizarKanbanStatus(
+      id,
+      body,
+      user,
+      {
+        ip: request.headers.get("x-forwarded-for"),
+        usuarioId: user?.id,
+        usuarioNome: user?.name,
+      },
+      tenantId,
+    );
     return NextResponse.json({ ok: true, oportunidade: atualizado }, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {

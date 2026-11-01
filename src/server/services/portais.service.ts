@@ -296,6 +296,7 @@ export async function excluirPortal(
 export async function buscarPortaisVencendoNoMes(
   ano: number,
   mes: number,
+  tenantId?: string | null,
 ): Promise<
   Array<{
     portalId: string;
@@ -309,13 +310,18 @@ export async function buscarPortaisVencendoNoMes(
   const fimMes = new Date(Date.UTC(ano, mes, 1, 2, 59, 59, 999));
 
   try {
-    const portais = await prisma.portal.findMany({
-      where: {
-        dataVencimento: {
-          gte: inicioMes,
-          lte: fimMes,
-        },
+    const where: any = {
+      dataVencimento: {
+        gte: inicioMes,
+        lte: fimMes,
       },
+    };
+    if (tenantId) {
+      where.tenantId = tenantId;
+    }
+
+    const portais = await prisma.portal.findMany({
+      where,
       orderBy: { dataVencimento: "asc" },
     });
 
@@ -339,6 +345,7 @@ export async function buscarPortaisVencendoNoMes(
   } catch {
     return listInMemoryPortais()
       .filter((p) => {
+        if (tenantId && (p as any).tenantId !== tenantId) return false;
         if (!p.dataVencimento) return false;
         const d = new Date(p.dataVencimento);
         return d >= inicioMes && d <= fimMes;

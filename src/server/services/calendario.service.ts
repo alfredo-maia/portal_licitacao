@@ -12,6 +12,7 @@ import {
 } from "@/server/schemas/calendario.schema";
 import {
   listInMemoryLicitacoes,
+  listInMemoryTenantLicitacoes,
   type LicitacaoRecord,
 } from "./licitacoes-store";
 
@@ -20,6 +21,7 @@ import { buscarPortaisVencendoNoMes } from "./portais.service";
 
 export async function getCalendarioData(
   rawQuery?: CalendarioQuery,
+  tenantId?: string | null,
 ): Promise<CalendarioResponse> {
   const query = calendarioQuerySchema.parse(rawQuery ?? {});
 
@@ -40,10 +42,79 @@ export async function getCalendarioData(
   const inicioUtc = new Date(Date.UTC(ano, mes - 1, 1, 3, 0, 0, 0));
   const fimUtc = new Date(Date.UTC(ano, mes, 1, 3, 0, 0, 0));
 
+  // 1. Mapeamento de certames ativos para o tenant especificado (SaaS Multi-Tenant)
+  const tenantActiveMap = new Map<string, string>();
+  if (tenantId) {
+    try {
+      const dbTenantLic = await prisma.tenantLicitacao.findMany({
+        where: {
+          tenantId,
+          statusKanban: { notIn: ["PENDENTE", "RECUSADA"] },
+        },
+      });
+      for (const tl of dbTenantLic) {
+        tenantActiveMap.set(tl.licitacaoId, tl.statusKanban);
+      }
+    } catch {}
+
+    const memTenantLic = listInMemoryTenantLicitacoes(tenantId);
+    for (const tl of memTenantLic) {
+      if (tl.statusKanban !== "PENDENTE" && tl.statusKanban !== "RECUSADA") {
+        tenantActiveMap.set(tl.licitacaoId, tl.statusKanban);
+      }
+    }
+
+    // Se o tenant ativo não possui nenhuma licitação aceita/ativa, o calendário vem 100% limpo
+    if (tenantActiveMap.size === 0) {
+      const alertasDocumentais = await buscarDocumentosVencendoNoMes(ano, mes, tenantId);
+      const alertasPortais = await buscarPortaisVencendoNoMes(ano, mes, tenantId);
+      return {
+        ok: true,
+        mes,
+        ano,
+        chips: [],
+        alertasDocumentais,
+        alertasPortais,
+      };
+    }
+  }
+
   let licitacoes: LicitacaoRecord[] = [];
   try {
+    const baseWhere: any = {
+      OR: [
+        {
+          dataEncerramentoProposta: {
+            gte: inicioUtc,
+            lt: fimUtc,
+          },
+        },
+        {
+          dataEncerramentoProposta: null,
+          dataAbertura: {
+            gte: inicioUtc,
+            lt: fimUtc,
+          },
+        },
+      ],
+    };
+    if (tenantId && tenantActiveMap.size > 0) {
+      baseWhere.id = { in: Array.from(tenantActiveMap.keys()) };
+    }
+
     licitacoes = await prisma.licitacao.findMany({
-      where: {
+      where: baseWhere,
+      orderBy: { dataAbertura: "asc" },
+    });
+  } catch (err) {
+    console.error("[getCalendarioMensal] Erro ao buscar no banco:", err);
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      
+      const retryWhere: any = {
         OR: [
           {
             dataEncerramentoProposta: {
@@ -59,39 +130,19 @@ export async function getCalendarioData(
             },
           },
         ],
-      },
-      orderBy: { dataAbertura: "asc" },
-    });
-  } catch (err) {
-    console.error("[getCalendarioMensal] Erro ao buscar no banco:", err);
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "Licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
-      await prisma.$executeRawUnsafe(`ALTER TABLE "licitacao" ADD COLUMN IF NOT EXISTS "dataEncerramentoProposta" TIMESTAMP(3);`).catch(() => undefined);
-      await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
-      await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
+      };
+      if (tenantId && tenantActiveMap.size > 0) {
+        retryWhere.id = { in: Array.from(tenantActiveMap.keys()) };
+      }
+
       licitacoes = await prisma.licitacao.findMany({
-        where: {
-          OR: [
-            {
-              dataEncerramentoProposta: {
-                gte: inicioUtc,
-                lt: fimUtc,
-              },
-            },
-            {
-              dataEncerramentoProposta: null,
-              dataAbertura: {
-                gte: inicioUtc,
-                lt: fimUtc,
-              },
-            },
-          ],
-        },
+        where: retryWhere,
         orderBy: { dataAbertura: "asc" },
       });
     } catch {
       licitacoes = listInMemoryLicitacoes().filter(
         (l) => {
+          if (tenantId && !tenantActiveMap.has(l.id)) return false;
           const d = l.dataEncerramentoProposta ?? l.dataAbertura;
           return d >= inicioUtc && d < fimUtc;
         },
@@ -101,6 +152,10 @@ export async function getCalendarioData(
 
   // Filtra fora status que não poluem o calendário (PENDENTE e RECUSADA)
   const chips: CalendarioChip[] = licitacoes
+    .map((l) => {
+      const effectiveStatus = tenantId ? (tenantActiveMap.get(l.id) || l.status) : l.status;
+      return { ...l, status: effectiveStatus as any };
+    })
     .filter(
       (l) =>
         !(STATUS_FORA_DO_CALENDARIO as readonly string[]).includes(l.status),
@@ -137,8 +192,8 @@ export async function getCalendarioData(
     })
     .sort((a, b) => a.dia - b.dia);
 
-  const alertasDocumentais = await buscarDocumentosVencendoNoMes(ano, mes);
-  const alertasPortais = await buscarPortaisVencendoNoMes(ano, mes);
+  const alertasDocumentais = await buscarDocumentosVencendoNoMes(ano, mes, tenantId);
+  const alertasPortais = await buscarPortaisVencendoNoMes(ano, mes, tenantId);
 
   return {
     ok: true,

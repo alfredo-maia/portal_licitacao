@@ -463,6 +463,7 @@ export async function excluirDocumento(
 export async function buscarDocumentosVencendoNoMes(
   ano: number,
   mes: number,
+  tenantId?: string | null,
 ): Promise<
   Array<{
     documentoId: string;
@@ -476,15 +477,20 @@ export async function buscarDocumentosVencendoNoMes(
   const fimMes = new Date(Date.UTC(ano, mes, 1, 2, 59, 59, 999)); // 23:59:59 BRT
 
   try {
-    const docs = await prisma.documento.findMany({
-      where: {
-        status: "ATIVO",
-        semValidade: false,
-        dataVencimento: {
-          gte: inicioMes,
-          lte: fimMes,
-        },
+    const where: any = {
+      status: "ATIVO",
+      semValidade: false,
+      dataVencimento: {
+        gte: inicioMes,
+        lte: fimMes,
       },
+    };
+    if (tenantId) {
+      where.tenantId = tenantId;
+    }
+
+    const docs = await prisma.documento.findMany({
+      where,
       orderBy: { dataVencimento: "asc" },
     });
 
@@ -502,6 +508,7 @@ export async function buscarDocumentosVencendoNoMes(
   } catch {
     const memoria = listInMemoryDocumentos();
     const docsFiltrados = memoria.filter((d) => {
+      if (tenantId && (d as any).tenantId !== tenantId) return false;
       if (d.status !== "ATIVO" || d.semValidade || !d.dataVencimento) return false;
       const t = new Date(d.dataVencimento).getTime();
       return t >= inicioMes.getTime() && t <= fimMes.getTime();
