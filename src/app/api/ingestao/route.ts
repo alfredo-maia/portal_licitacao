@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { ingestLicitacoesV2 } from "@/server/services/ingestao.service";
+import {
+  ingestLicitacoesV2,
+  limparTodasLicitacoes,
+} from "@/server/services/ingestao.service";
 
 /**
  * `POST /api/ingestao` (PRD §8 / sprint-1-spec §2.2): recebe o payload
@@ -34,6 +37,22 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(
       { ok: false, error: "INTERNAL_ERROR" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * `DELETE /api/ingestao`: remove todas as licitações e dados relacionados
+ * do sistema (PostgreSQL + Store em memória).
+ */
+export async function DELETE(_request?: Request) {
+  try {
+    const resultado = await limparTodasLicitacoes();
+    return NextResponse.json(resultado, { status: 200 });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, error: (error as Error).message },
       { status: 500 },
     );
   }
