@@ -25,6 +25,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           port: 2000
+          timeout: 60s
+          command_timeout: 30m
           script: |
             set -e
             echo "Iniciando Deploy do ambiente de Staging (portal_licitacao_staging)..."
