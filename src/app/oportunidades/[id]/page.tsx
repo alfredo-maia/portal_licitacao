@@ -526,6 +526,20 @@ function OportunidadesDetalheContent({
   // Deliberação Rápida GO / No-GO
   const handleDecisao = async (decisao: "GO" | "NO_GO", motivo?: string) => {
     if (!id) return;
+    const novoStatus = decisao === "GO" ? "ACEITA" : "RECUSADA";
+    // Atualização otimista imediata para ocultar os botões e exibir o select do funil
+    setOportunidade((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: novoStatus,
+            motivoRecusa: motivo || (decisao === "NO_GO" ? "Recusada via Dossiê" : null),
+          }
+        : null,
+    );
+    setShowRecusarModal(false);
+    setRecusaMotivoCustom("");
+
     try {
       const res = await fetch(`/api/oportunidades/${id}/decisao`, {
         method: "POST",
@@ -536,12 +550,16 @@ function OportunidadesDetalheContent({
         const errJson = await res.json().catch(() => null);
         throw new Error(errJson?.message || errJson?.error || "Erro ao registrar deliberação.");
       }
+      const data = await res.json().catch(() => null);
+      if (data?.oportunidade) {
+        setOportunidade(data.oportunidade);
+      }
       showNotification("success", `Licitação deliberada como ${decisao}!`);
-      setShowRecusarModal(false);
-      setRecusaMotivoCustom("");
-      carregarDados(id);
+      await carregarDados(id);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro na deliberação.");
+      // Em caso de erro, recarrega o estado real
+      await carregarDados(id);
     }
   };
 

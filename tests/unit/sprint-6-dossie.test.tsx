@@ -133,4 +133,24 @@ describe("Sprint 6 - Task 7: Dossiê da Oportunidade e Sincronização PNCP", ()
       );
     });
   });
+
+  it("ao deliberar 'Participar', os botões iniciais somem e o select de pipeline do Kanban aparece", async () => {
+    render(<OportunidadesDetalhePage params={{ id: "opp_123" }} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("btn-dossie-aceitar")).toBeInTheDocument();
+      expect(screen.getByTestId("btn-dossie-recusar")).toBeInTheDocument();
+      expect(screen.queryByTestId("select-pipeline-status")).toBeNull();
+    });
+
+    // Clica em 'Participar'
+    fireEvent.click(screen.getByTestId("btn-dossie-aceitar"));
+
+    // Imediatamente os botões somem e o select aparece
+    await waitFor(() => {
+      expect(screen.queryByTestId("btn-dossie-aceitar")).toBeNull();
+      expect(screen.queryByTestId("btn-dossie-recusar")).toBeNull();
+      expect(screen.getByTestId("select-pipeline-status")).toBeInTheDocument();
+    });
+  });
 });
