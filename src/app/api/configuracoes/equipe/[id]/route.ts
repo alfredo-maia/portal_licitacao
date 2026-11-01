@@ -5,6 +5,7 @@ import { authOptions } from "@/server/auth";
 import { usuarioEquipeAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import { atualizarMembroEquipe } from "@/server/services/configuracoes.service";
 import { getInMemoryUsuario } from "@/server/services/licitacoes-store";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,14 @@ export async function GET(
         { status: 401 },
       );
     }
+    const userId = (session.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const preferredTenant = cookieTenant || (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, preferredTenant);
 
     if (tenantId) {
       let membership: any;
@@ -99,12 +102,14 @@ export async function PATCH(
         { status: 401 },
       );
     }
+    const userId = (session.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
+    const preferredTenant = cookieTenant || (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, preferredTenant);
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeAtualizarInputSchema.safeParse(body);
 

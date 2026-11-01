@@ -18,7 +18,8 @@ export async function GET(request: Request) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant || (session.user as any)?.activeTenantId);
+  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || undefined;
@@ -57,7 +58,8 @@ export async function POST(request: Request) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant || (session.user as any)?.activeTenantId);
+  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
   try {
     const body = await request.json();

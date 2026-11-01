@@ -110,17 +110,30 @@ export async function GET(req: Request) {
       }));
     }
 
-    const activeTenantId =
-      cookieActiveTenant ||
-      sessionActiveTenant ||
-      tenants[0]?.id ||
-      null;
+    const validTenantMatch = cookieActiveTenant && tenants.find((t) => t.id === cookieActiveTenant);
+    const activeTenantId = validTenantMatch
+      ? validTenantMatch.id
+      : (sessionActiveTenant && tenants.find((t) => t.id === sessionActiveTenant)?.id) ||
+        tenants[0]?.id ||
+        null;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
       tenants,
       activeTenantId,
     });
+
+    if (activeTenantId && cookieActiveTenant !== activeTenantId) {
+      response.cookies.set("portal_licitacao_active_tenant", activeTenantId, {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    }
+
+    return response;
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error.message || "Erro ao listar empresas do usuário" },

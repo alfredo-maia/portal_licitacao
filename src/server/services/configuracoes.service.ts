@@ -469,50 +469,53 @@ export async function obterConfiguracaoEmpresa(
       }
     }
 
-    const config = await (prisma as any).configuracaoEmpresa.findUnique({
-      where: { id: "default" },
-    });
-    if (config) return config;
+    if (!tenantId) {
+      const config = await (prisma as any).configuracaoEmpresa.findUnique({
+        where: { id: "default" },
+      });
+      if (config) return config;
+    }
+
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
     const base = getInMemoryConfiguracaoEmpresa(tenantId);
     return {
       ...base,
-      razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
-      nomeFantasia: (memTenant as any)?.nomeFantasia || (base as any).nomeFantasia || "",
-      cnpj: memTenant?.cnpj || (base as any).cnpj || "",
-      cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
-      endereco: memTenant?.endereco || (base as any).endereco || "",
-      numero: (memTenant as any)?.numero || (base as any).numero || "",
-      complemento: (memTenant as any)?.complemento || (base as any).complemento || "",
-      bairro: (memTenant as any)?.bairro || (base as any).bairro || "",
-      cidade: memTenant?.cidade || (base as any).cidade || "",
-      uf: memTenant?.uf || (base as any).uf || "GO",
-      cep: (memTenant as any)?.cep || (base as any).cep || "",
-      segmentos: memTenant?.segmentos || (base as any).segmentos || [],
-      subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
-      ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
-      brasilInteiro: memTenant?.brasilInteiro ?? (base as any).brasilInteiro ?? true,
+      razaoSocial: base?.razaoSocial || memTenant?.razaoSocial || (tenantId ? "" : "EMPRESA LTDA"),
+      nomeFantasia: base?.nomeFantasia || (memTenant as any)?.nomeFantasia || "",
+      cnpj: base?.cnpj || memTenant?.cnpj || "",
+      cnae: base?.cnae || memTenant?.cnaePrincipal || "",
+      endereco: base?.endereco || memTenant?.endereco || "",
+      numero: base?.numero || (memTenant as any)?.numero || "",
+      complemento: base?.complemento || (memTenant as any)?.complemento || "",
+      bairro: base?.bairro || (memTenant as any)?.bairro || "",
+      cidade: base?.cidade || memTenant?.cidade || "",
+      uf: base?.uf || memTenant?.uf || "GO",
+      cep: base?.cep || (memTenant as any)?.cep || "",
+      segmentos: base?.segmentos || memTenant?.segmentos || [],
+      subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
+      ufs: base?.ufs || memTenant?.ufs || ["GO"],
+      brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
     };
   } catch {
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
     const base = getInMemoryConfiguracaoEmpresa(tenantId);
     return {
       ...base,
-      razaoSocial: memTenant?.razaoSocial || (base as any).razaoSocial || "EMPRESA LTDA",
-      nomeFantasia: (memTenant as any)?.nomeFantasia || (base as any).nomeFantasia || "",
-      cnpj: memTenant?.cnpj || (base as any).cnpj || "",
-      cnae: memTenant?.cnaePrincipal || (base as any).cnae || "",
-      endereco: memTenant?.endereco || (base as any).endereco || "",
-      numero: (memTenant as any)?.numero || (base as any).numero || "",
-      complemento: (memTenant as any)?.complemento || (base as any).complemento || "",
-      bairro: (memTenant as any)?.bairro || (base as any).bairro || "",
-      cidade: memTenant?.cidade || (base as any).cidade || "",
-      uf: memTenant?.uf || (base as any).uf || "GO",
-      cep: (memTenant as any)?.cep || (base as any).cep || "",
-      segmentos: memTenant?.segmentos || (base as any).segmentos || [],
-      subsegmentos: memTenant?.subsegmentos || (base as any).subsegmentos || [],
-      ufs: memTenant?.ufs || (base as any).ufs || ["GO"],
-      brasilInteiro: memTenant?.brasilInteiro ?? (base as any).brasilInteiro ?? true,
+      razaoSocial: base?.razaoSocial || memTenant?.razaoSocial || (tenantId ? "" : "EMPRESA LTDA"),
+      nomeFantasia: base?.nomeFantasia || (memTenant as any)?.nomeFantasia || "",
+      cnpj: base?.cnpj || memTenant?.cnpj || "",
+      cnae: base?.cnae || memTenant?.cnaePrincipal || "",
+      endereco: base?.endereco || memTenant?.endereco || "",
+      numero: base?.numero || (memTenant as any)?.numero || "",
+      complemento: base?.complemento || (memTenant as any)?.complemento || "",
+      bairro: base?.bairro || (memTenant as any)?.bairro || "",
+      cidade: base?.cidade || memTenant?.cidade || "",
+      uf: base?.uf || memTenant?.uf || "GO",
+      cep: base?.cep || (memTenant as any)?.cep || "",
+      segmentos: base?.segmentos || memTenant?.segmentos || [],
+      subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
+      ufs: base?.ufs || memTenant?.ufs || ["GO"],
+      brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
     };
   }
 }

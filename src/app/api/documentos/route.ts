@@ -23,7 +23,8 @@ export async function GET(request: Request) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant || (session?.user as any)?.activeTenantId);
+  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant, sessionTenant);
 
   const { searchParams } = new URL(request.url);
   const categoria = searchParams.get("categoria") || undefined;
@@ -64,7 +65,8 @@ export async function POST(request: Request) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant || (session?.user as any)?.activeTenantId);
+  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant, sessionTenant);
 
   try {
     const contentType = request.headers.get("content-type") || "";

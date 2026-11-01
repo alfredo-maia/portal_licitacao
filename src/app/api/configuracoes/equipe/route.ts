@@ -8,6 +8,7 @@ import {
   criarMembroEquipe,
   listarEquipe,
 } from "@/server/services/configuracoes.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
@@ -20,30 +21,17 @@ export async function GET(_req?: Request) {
         { status: 401 },
       );
     }
+    const userId = (session.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
-
-    const userId = (session.user as any)?.id;
-    const userEmail = session.user.email?.trim().toLowerCase();
-    if (!tenantId && (userId || userEmail)) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: userId
-            ? { userId }
-            : { user: { email: userEmail } },
-        });
-        if (membership) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
     const currentUser = {
-      id: userId ?? null,
+      id: userId || null,
       name: session.user.name ?? null,
       email: session.user.email ?? null,
       role: (session.user as any)?.role ?? "DIRETORIA",
@@ -68,23 +56,14 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+    const userId = (session.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
-    const userId = (session.user as any)?.id;
-    if (!tenantId && userId) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: { userId },
-        });
-        if (membership) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
     const body = await req.json().catch(() => ({}));
     const parseResult = usuarioEquipeCriarInputSchema.safeParse(body);
 

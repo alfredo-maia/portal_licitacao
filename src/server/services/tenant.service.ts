@@ -119,13 +119,31 @@ export function resetInMemoryTenantStorage(): void {
  * Resolve com segurança o tenantId ativo do usuário autenticado.
  * Se um preferredTenantId (ex: cookie ou query param) for fornecido, valida se o usuário
  * de fato possui membresia ativa naquele tenant. Em caso negativo, faz fallback exclusivo
- * para o primeiro tenant ao qual o usuário pertence. Se não pertencer a nenhum, retorna null.
+ * para o sessionTenantId ou o primeiro tenant ao qual o usuário pertence. Se não pertencer a nenhum, retorna null.
  */
 export async function resolveUserActiveTenantId(
   userId: string,
   preferredTenantId?: string | null,
+  sessionTenantId?: string | null,
 ): Promise<string | null> {
   if (!userId) return null;
+
+  // Se preferredTenantId for idêntico ao sessionTenantId (ou se preferred não foi informado, mas sessionTenantId existe):
+  if (preferredTenantId && sessionTenantId && preferredTenantId === sessionTenantId) {
+    return sessionTenantId;
+  }
+  if (!preferredTenantId && sessionTenantId) {
+    return sessionTenantId;
+  }
+
+  // Helper para fail-fast se o Prisma travar tentando conectar no Postgres offline
+  const withTimeout = <T>(promise: Promise<T>, ms = 1500): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("DB timeout")), ms),
+      ),
+    ]);
 
   // 1. Se o preferredTenantId foi informado, valida se o usuário pertence a ele
   if (preferredTenantId) {
@@ -137,16 +155,23 @@ export async function resolveUserActiveTenantId(
     }
 
     try {
-      const dbBelongs = await prisma.tenantUser.findFirst({
-        where: { userId, tenantId: preferredTenantId, ativo: true },
-      });
+      const dbBelongs = await withTimeout(
+        prisma.tenantUser.findFirst({
+          where: { userId, tenantId: preferredTenantId, ativo: true },
+        }),
+      );
       if (dbBelongs) {
         return preferredTenantId;
       }
     } catch {}
   }
 
-  // 2. Se o usuário não pertence ao preferredTenantId, busca o primeiro tenant válido do usuário
+  // 2. Se o usuário não pertence ao preferredTenantId, tenta o sessionTenantId legítimo
+  if (sessionTenantId) {
+    return sessionTenantId;
+  }
+
+  // 3. Fallback: busca o primeiro tenant válido do usuário
   const memFirst = inMemoryTenantUsers.find(
     (tu) => tu.userId === userId && tu.ativo,
   );
@@ -155,10 +180,12 @@ export async function resolveUserActiveTenantId(
   }
 
   try {
-    const dbFirst = await prisma.tenantUser.findFirst({
-      where: { userId, ativo: true },
-      orderBy: { criadoEm: "asc" },
-    });
+    const dbFirst = await withTimeout(
+      prisma.tenantUser.findFirst({
+        where: { userId, ativo: true },
+        orderBy: { criadoEm: "asc" },
+      }),
+    );
     if (dbFirst) {
       return dbFirst.tenantId;
     }

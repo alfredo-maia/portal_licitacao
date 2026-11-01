@@ -9,7 +9,18 @@ export async function POST(req: NextRequest) {
     const rawBody = await req.json();
     const resultado = await realizarCadastroConta(rawBody);
 
-    return NextResponse.json(resultado, { status: 201 });
+    const res = NextResponse.json(resultado, { status: 201 });
+    if (resultado.tenantId) {
+      res.cookies.set("portal_licitacao_active_tenant", resultado.tenantId, {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 30 * 24 * 60 * 60, // 30 dias
+      });
+    }
+
+    return res;
   } catch (error: any) {
     console.error("[Cadastro Error]:", error);
 

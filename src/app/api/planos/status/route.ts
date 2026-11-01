@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { evaluateTenantAccess } from "@/lib/subscription-guard";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
@@ -17,25 +18,15 @@ export async function GET() {
       );
     }
 
+    const userId = (session.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
 
-    let tenantId = cookieTenant || (session.user as any)?.activeTenantId;
-    const userId = (session.user as any)?.id;
-
-    if (!tenantId && userId) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: { userId },
-        });
-        if (membership) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const sessionTenant = (session.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
     let tenantData: any = null;
     if (tenantId) {

@@ -8,31 +8,23 @@ import {
   atualizarConfiguracaoEmpresa,
   obterConfiguracaoEmpresa,
 } from "@/server/services/configuracoes.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req?: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
+    const userId = (session?.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
     const headerTenant = req ? new URL(req.url).searchParams.get("tenantId") : null;
-    let tenantId = headerTenant || cookieTenant || (session?.user as any)?.activeTenantId;
-
-    if (!tenantId && (session?.user as any)?.id) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: { userId: (session?.user as any).id, ativo: true },
-          orderBy: { criadoEm: "asc" },
-        });
-        if (membership?.tenantId) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const requestedTenant = headerTenant || cookieTenant;
+    const tenantId = await resolveUserActiveTenantId(userId, requestedTenant, sessionTenant);
 
     const empresa = await obterConfiguracaoEmpresa(tenantId);
     return NextResponse.json({ ok: true, empresa, activeTenantId: tenantId });
@@ -67,19 +59,10 @@ export async function PUT(req: Request) {
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
     const queryTenant = new URL(req.url).searchParams.get("tenantId");
-    let tenantId = queryTenant || body.tenantId || cookieTenant || (session?.user as any)?.activeTenantId;
-
-    if (!tenantId && (session?.user as any)?.id) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: { userId: (session?.user as any).id, ativo: true },
-          orderBy: { criadoEm: "asc" },
-        });
-        if (membership?.tenantId) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const userId = (session?.user as any)?.id || "";
+    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const requestedTenant = queryTenant || body.tenantId || cookieTenant;
+    const tenantId = await resolveUserActiveTenantId(userId, requestedTenant, sessionTenant);
 
     const empresa = await atualizarConfiguracaoEmpresa(
       parseResult.data,

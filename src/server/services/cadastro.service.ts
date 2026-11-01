@@ -5,6 +5,8 @@ import { recordAuditLog } from "@/server/audit";
 import { CadastroInput, cadastroContaSchema } from "@/server/schemas/cadastro.schema";
 import { enfileirarMensagemWhatsApp } from "@/server/services/whatsapp.service";
 import { upsertInMemoryAuthUser } from "@/server/auth";
+import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
+import { updateInMemoryConfiguracaoEmpresa } from "@/server/services/licitacoes-store";
 
 export interface ResultadoCadastro {
   ok: boolean;
@@ -160,6 +162,53 @@ export async function realizarCadastroConta(
     // Em ambiente de teste unitário sem banco, permite fallback em memória
     if (process.env.VITEST || process.env.NODE_ENV === "test") {
       console.warn("[Cadastro Service] Fallback em memória para teste:", err?.message);
+      inMemoryTenants.set(tenantId, {
+        id: tenantId,
+        cnpj: input.cnpj,
+        razaoSocial: input.razaoSocial,
+        nomeFantasia: null,
+        plano: "PRO",
+        billingStatus: "TRIAL",
+        maxCnpjs: 2,
+        maxUsers: 2,
+        ativo: true,
+        segmentos: input.segmentos,
+        subsegmentos: input.subsegmentos,
+        ufs: input.ufs,
+        brasilInteiro: input.brasilInteiro,
+        criadoEm: agora,
+        updatedAt: agora,
+      });
+
+      inMemoryTenantUsers.push({
+        id: `tu_${randomUUID().slice(0, 8)}`,
+        tenantId,
+        userId,
+        userEmail: normalizedEmail,
+        userName: nomeFinal,
+        role: "TITULAR",
+        ativo: true,
+        criadoEm: agora,
+      });
+
+      updateInMemoryConfiguracaoEmpresa(
+        {
+          id: `cfg_${tenantId}`,
+          tenantId,
+          razaoSocial: input.razaoSocial,
+          cnpj: input.cnpj,
+          representanteNome: nomeFinal,
+          endereco: "",
+          cidade: "",
+          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "GO",
+          cep: "",
+          segmentos: input.segmentos,
+          subsegmentos: input.subsegmentos,
+          ufs: input.ufs,
+          brasilInteiro: input.brasilInteiro,
+        },
+        tenantId,
+      );
     } else {
       console.error("[Cadastro Service] Erro crítico ao persistir no PostgreSQL:", err);
       throw new Error(`Falha ao registrar conta no banco de dados: ${err?.message || "Erro de banco de dados"}`);

@@ -984,7 +984,16 @@ export default function ConfiguracoesPage() {
                     kind="danger--ghost"
                     size="md"
                     renderIcon={Logout}
-                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        document.cookie = "portal_licitacao_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        document.cookie = "portal_licitacao_active_tenant=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+                      }
+                      signOut({ callbackUrl: "/login" });
+                    }}
                     id="btn-logout-perfil"
                     data-testid="btn-logout-perfil"
                   >

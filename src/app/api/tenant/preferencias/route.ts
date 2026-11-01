@@ -5,32 +5,22 @@ import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
+    const userId = (session?.user as any)?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
 
-    let tenantId = cookieTenant || (session?.user as any)?.activeTenantId;
-    const userId = (session?.user as any)?.id;
-    const userEmail = session?.user?.email?.trim().toLowerCase();
-
-    if (!tenantId && (userId || userEmail)) {
-      try {
-        const membership = await prisma.tenantUser.findFirst({
-          where: userId ? { userId } : { user: { email: userEmail } },
-        });
-        if (membership) {
-          tenantId = membership.tenantId;
-        }
-      } catch {}
-    }
+    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
     const config = await obterConfiguracaoEmpresa(tenantId);
     const hasCustomSegments = Array.isArray(config.segmentos) && config.segmentos.length > 0;

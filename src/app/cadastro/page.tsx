@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -55,6 +55,14 @@ export default function CadastroPage() {
   const [errosEtapa1, setErrosEtapa1] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Ao acessar a tela de cadastro, limpa resquícios de sessões anteriores
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      document.cookie = "portal_licitacao_active_tenant=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      sessionStorage.removeItem("portal_licitacao_tenant_switched");
+    }
+  }, []);
 
   // Máscara dinâmica para CNPJ (00.000.000/0000-00)
   const formatarCnpj = (valor: string) => {
@@ -182,6 +190,10 @@ export default function CadastroPage() {
         setErrorMessage(data.error || "Erro ao realizar cadastro.");
         setIsSubmitting(false);
         return;
+      }
+
+      if (typeof window !== "undefined" && data.tenantId) {
+        document.cookie = `portal_licitacao_active_tenant=${data.tenantId}; path=/; max-age=2592000; SameSite=Lax`;
       }
 
       // Login automático após cadastro

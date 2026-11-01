@@ -94,6 +94,7 @@ export interface DeliberarOportunidadeInput {
   motivoRecusa?: string;
   user: RbacUser | null | undefined;
   actorContext?: OportunidadesActorContext;
+  tenantId?: string | null;
 }
 
 const LIMITE_ATE_500K = 500_000;
@@ -1145,6 +1146,33 @@ export async function deliberarOportunidade(
     status: novoStatus,
     motivoRecusa,
   });
+
+  if (input.tenantId) {
+    try {
+      await prisma.tenantLicitacao.upsert({
+        where: {
+          tenantId_licitacaoId: {
+            tenantId: input.tenantId,
+            licitacaoId: existente.id,
+          },
+        },
+        update: {
+          statusKanban: novoStatus,
+          motivoRecusa,
+          dataDecisao: new Date(),
+          responsavelId: input.user?.id ?? null,
+        },
+        create: {
+          tenantId: input.tenantId,
+          licitacaoId: existente.id,
+          statusKanban: novoStatus,
+          motivoRecusa,
+          dataDecisao: new Date(),
+          responsavelId: input.user?.id ?? null,
+        },
+      });
+    } catch {}
+  }
 
   await recordAuditLog({
     acao: parsed.decisao === "GO" ? "DECISAO_GO" : "DECISAO_NO_GO",

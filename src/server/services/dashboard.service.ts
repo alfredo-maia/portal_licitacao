@@ -45,6 +45,25 @@ export async function getDashboardData(
 
   const { segmentosTenantAtivo } = query;
 
+  const tenantDeliberacoes = new Map<string, string>();
+  if (query.tenantId) {
+    try {
+      const records = await prisma.tenantLicitacao.findMany({
+        where: { tenantId: query.tenantId },
+      });
+      for (const r of records) {
+        tenantDeliberacoes.set(r.licitacaoId, r.statusKanban);
+      }
+    } catch {}
+  }
+
+  const getLicitacaoStatus = (l: LicitacaoRecord): string => {
+    if (query.tenantId) {
+      return tenantDeliberacoes.get(l.id) || "PENDENTE";
+    }
+    return l.status;
+  };
+
   try {
     const whereClause: any = {};
     if (segmentosTenantAtivo && segmentosTenantAtivo.length > 0) {
@@ -92,11 +111,11 @@ export async function getDashboardData(
   ).length;
 
   // Backlog total aguardando decisão (independente de data)
-  const pendentesTotal = licitacoes.filter((l) => l.status === "PENDENTE").length;
+  const pendentesTotal = licitacoes.filter((l) => getLicitacaoStatus(l) === "PENDENTE").length;
   // Recebidas no mês que estão pendentes
   const pendentesNoMes = licitacoes.filter(
     (l) =>
-      l.status === "PENDENTE" &&
+      getLicitacaoStatus(l) === "PENDENTE" &&
       l.createdAt >= inicioUtc &&
       l.createdAt < fimUtc,
   ).length;
@@ -115,7 +134,8 @@ export async function getDashboardData(
 
   // Em Precificação: atualmente em STATUS_EM_PRECIFICACAO e teve transição para ACEITA no mês
   const emPrecificacaoTotal = licitacoes.filter((l) => {
-    if (!(STATUS_EM_PRECIFICACAO as readonly string[]).includes(l.status)) {
+    const st = getLicitacaoStatus(l);
+    if (!(STATUS_EM_PRECIFICACAO as readonly string[]).includes(st)) {
       return false;
     }
     return (
@@ -126,7 +146,8 @@ export async function getDashboardData(
 
   // Recusadas no mês
   const recusadasTotal = licitacoes.filter((l) => {
-    if (l.status !== "RECUSADA") return false;
+    const st = getLicitacaoStatus(l);
+    if (st !== "RECUSADA") return false;
     return (
       teveTransicaoNoMes(l.id, "RECUSADA") ||
       (l.createdAt >= inicioUtc && l.createdAt < fimUtc)
@@ -135,7 +156,8 @@ export async function getDashboardData(
 
   // 2. Linha 2 — Painel de Desfecho
   const contempladas = licitacoes.filter((l) => {
-    if (l.status !== "CONTEMPLADA") return false;
+    const st = getLicitacaoStatus(l);
+    if (st !== "CONTEMPLADA") return false;
     return (
       teveTransicaoNoMes(l.id, "CONTEMPLADA") ||
       (l.createdAt >= inicioUtc && l.createdAt < fimUtc)
@@ -149,28 +171,28 @@ export async function getDashboardData(
 
   const perdidasPrecoTotal = licitacoes.filter(
     (l) =>
-      l.status === "NAO_CONTEMPLADA_PRECO" &&
+      getLicitacaoStatus(l) === "NAO_CONTEMPLADA_PRECO" &&
       (teveTransicaoNoMes(l.id, "NAO_CONTEMPLADA_PRECO") ||
         (l.createdAt >= inicioUtc && l.createdAt < fimUtc)),
   ).length;
 
   const perdidasDocTotal = licitacoes.filter(
     (l) =>
-      l.status === "NAO_CONTEMPLADA_DOCUMENTACAO" &&
+      getLicitacaoStatus(l) === "NAO_CONTEMPLADA_DOCUMENTACAO" &&
       (teveTransicaoNoMes(l.id, "NAO_CONTEMPLADA_DOCUMENTACAO") ||
         (l.createdAt >= inicioUtc && l.createdAt < fimUtc)),
   ).length;
 
   const desistenciasTotal = licitacoes.filter(
     (l) =>
-      l.status === "NAO_CONTEMPLADA_DESISTENCIA" &&
+      getLicitacaoStatus(l) === "NAO_CONTEMPLADA_DESISTENCIA" &&
       (teveTransicaoNoMes(l.id, "NAO_CONTEMPLADA_DESISTENCIA") ||
         (l.createdAt >= inicioUtc && l.createdAt < fimUtc)),
   ).length;
 
   const impugnadasTotal = licitacoes.filter(
     (l) =>
-      l.status === "IMPUGNADA" &&
+      getLicitacaoStatus(l) === "IMPUGNADA" &&
       (teveTransicaoNoMes(l.id, "IMPUGNADA") ||
         (l.createdAt >= inicioUtc && l.createdAt < fimUtc)),
   ).length;
@@ -184,7 +206,7 @@ export async function getDashboardData(
 
   // 3. Linha 3 — Indicadores Operacionais e Financeiros
   const volumeEmDisputa = licitacoes
-    .filter((l) => (STATUS_PIPELINE_ATIVO as readonly string[]).includes(l.status))
+    .filter((l) => (STATUS_PIPELINE_ATIVO as readonly string[]).includes(getLicitacaoStatus(l)))
     .reduce((sum, l) => sum + (l.valorEstimado ?? 0), 0);
 
   const totalAnalisadas = licitacoes.filter((l) => l.parecerIA !== null).length;

@@ -641,8 +641,36 @@ let usuariosStore: Map<string, any> = new Map([
 const configuracaoEmpresaPorTenant = new Map<string, any>();
 
 export function getInMemoryConfiguracaoEmpresa(tenantId?: string | null): any {
-  if (tenantId && configuracaoEmpresaPorTenant.has(tenantId)) {
-    return { ...configuracaoEmpresaPorTenant.get(tenantId) };
+  if (tenantId) {
+    if (configuracaoEmpresaPorTenant.has(tenantId)) {
+      return { ...configuracaoEmpresaPorTenant.get(tenantId) };
+    }
+    return {
+      id: `cfg_${tenantId}`,
+      tenantId,
+      razaoSocial: "",
+      nomeFantasia: "",
+      cnpj: "",
+      cnae: "",
+      inscricaoEstadual: "",
+      inscricaoMunicipal: "",
+      endereco: "",
+      numero: "",
+      complemento: "",
+      bairro: "",
+      cidade: "",
+      uf: "GO",
+      cep: "",
+      representanteNome: "",
+      representanteCpf: "",
+      representanteRg: "",
+      representanteCargo: "",
+      segmentos: [],
+      subsegmentos: [],
+      ufs: ["GO"],
+      brasilInteiro: true,
+      atualizadoEm: new Date(),
+    };
   }
   return { ...configuracaoEmpresaStore };
 }

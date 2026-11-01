@@ -20,6 +20,11 @@ export async function POST() {
     maxAge: 0,
     secure: true,
   });
+  response.cookies.set("portal_licitacao_active_tenant", "", {
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  });
 
   return response;
 }

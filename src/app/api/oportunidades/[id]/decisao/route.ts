@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions, DIRECTORS_SEED } from "@/server/auth";
@@ -7,6 +8,7 @@ import {
   deliberarOportunidade,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -49,6 +51,18 @@ export async function POST(request: Request, context: RouteContext) {
 
   const payload = (body ?? {}) as { decisao?: unknown; motivoRecusa?: unknown };
 
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const sessionTenant = (user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(
+    user?.id || "",
+    cookieTenant,
+    sessionTenant,
+  );
+
   try {
     const oportunidade = await deliberarOportunidade({
       id,
@@ -59,6 +73,7 @@ export async function POST(request: Request, context: RouteContext) {
           : undefined,
       user,
       actorContext: { ip: request.headers.get("x-forwarded-for") },
+      tenantId,
     });
     return NextResponse.json({ ok: true, oportunidade }, { status: 200 });
   } catch (error) {
