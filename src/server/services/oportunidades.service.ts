@@ -484,7 +484,10 @@ export async function listOportunidades(
     filters.status === "TODOS" ||
     (filters.status as string) === "TODAS";
 
-  if (tenantId && isKanbanFetch) {
+  if (isKanbanFetch) {
+    if (!tenantId) {
+      return [];
+    }
     const activeIds = Array.from(tenantStatusMap.entries())
       .filter(([_, v]) => v.statusKanban !== "PENDENTE" && v.statusKanban !== "RECUSADA")
       .map(([id]) => id);
@@ -493,7 +496,10 @@ export async function listOportunidades(
     }
   }
 
-  if (tenantId && filters.status && filters.status !== "PENDENTE" && !isKanbanFetch) {
+  if (filters.status && filters.status !== "PENDENTE" && !isKanbanFetch) {
+    if (!tenantId) {
+      return [];
+    }
     const matchingIds = Array.from(tenantStatusMap.entries())
       .filter(([_, v]) => v.statusKanban === filters.status)
       .map(([id]) => id);

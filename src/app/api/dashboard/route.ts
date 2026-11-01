@@ -44,30 +44,17 @@ export async function GET(request: Request) {
   }
 
   if (configuracaoPendente) {
-    return NextResponse.json(
-      {
-        configuracaoPendente: true,
-        cards: {
-          totalRecebidas: 0,
-          triagemPendente: 0,
-          emParticipacao: 0,
-          vencendoHoje: 0,
-          taxaConversao: 0,
-          valorTotalGanho: 0,
-          oportunidadesNovasHoje: 0,
-        },
-        kanban: {
-          triagem: [],
-          emAnalise: [],
-          emDisputa: [],
-          homologada: [],
-        },
-        alertasValidade: [],
-        graficoPizza: [],
-        graficoBarras: [],
-      },
-      { status: 200 },
-    );
+    try {
+      const data = await getDashboardData({
+        mes: mesParam ? parseInt(mesParam, 10) : undefined,
+        ano: anoParam ? parseInt(anoParam, 10) : undefined,
+        tenantId: tenantId || undefined,
+        segmentosTenantAtivo: [],
+      });
+      return NextResponse.json({ ...data, configuracaoPendente: true }, { status: 200 });
+    } catch {
+      // Fallback seguro caso falhe
+    }
   }
 
   try {

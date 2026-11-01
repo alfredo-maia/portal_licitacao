@@ -582,10 +582,6 @@ export async function atualizarConfiguracaoEmpresa(
           ...(validado.uf ? { uf: validado.uf } : {}),
           ...(validado.cidade ? { cidade: validado.cidade } : {}),
           ...(validado.endereco ? { endereco: validado.endereco } : {}),
-          ...(validado.numero ? { numero: validado.numero } : {}),
-          ...(validado.complemento ? { complemento: validado.complemento } : {}),
-          ...(validado.bairro ? { bairro: validado.bairro } : {}),
-          ...(validado.cep ? { cep: validado.cep } : {}),
           ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
           segmentos: escopo.segmentos,
           subsegmentos: subsegmentos || [],
@@ -593,6 +589,17 @@ export async function atualizarConfiguracaoEmpresa(
           brasilInteiro: escopo.brasilInteiro,
         },
       }).catch(() => undefined);
+
+      const memTenant = inMemoryTenants.get(tenantId);
+      if (memTenant) {
+        memTenant.segmentos = escopo.segmentos;
+        memTenant.subsegmentos = subsegmentos || [];
+        memTenant.ufs = escopo.ufs;
+        memTenant.brasilInteiro = escopo.brasilInteiro;
+        if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
+        if (validado.nomeFantasia !== undefined) (memTenant as any).nomeFantasia = validado.nomeFantasia;
+        if (validado.cnpj) memTenant.cnpj = validado.cnpj;
+      }
 
       updateInMemoryConfiguracaoEmpresa(
         {

@@ -77,6 +77,16 @@ export async function getCalendarioData(
         alertasPortais,
       };
     }
+  } else {
+    // Sem tenant ativo identificado, calendário deve vir 100% limpo para evitar vazamento entre empresas
+    return {
+      ok: true,
+      mes,
+      ano,
+      chips: [],
+      alertasDocumentais: [],
+      alertasPortais: [],
+    };
   }
 
   let licitacoes: LicitacaoRecord[] = [];

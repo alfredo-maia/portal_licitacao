@@ -427,7 +427,7 @@ async function bootstrapDatabase() {
       `CREATE TABLE IF NOT EXISTS "tenant_licitacao" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "tenantId" TEXT NOT NULL REFERENCES "tenant"("id") ON DELETE CASCADE,
-        "licitacaoId" TEXT NOT NULL REFERENCES "Licitacao"("id") ON DELETE CASCADE,
+        "licitacaoId" TEXT NOT NULL,
         "statusKanban" "LicitacaoStatus" NOT NULL DEFAULT 'PENDENTE',
         "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
         "notas" TEXT,
@@ -526,6 +526,11 @@ async function bootstrapDatabase() {
         console.warn("[entrypoint] Aviso DDL SaaS:", err.message);
       });
     }
+
+    // Garante que o catálogo global de licitações permaneça com status PENDENTE padrão,
+    // ficando as deliberações (ACEITA, RECUSADA, etc.) isoladas exclusivamente por tenant na tabela tenant_licitacao
+    await prisma.$executeRawUnsafe(`UPDATE "Licitacao" SET "status" = 'PENDENTE' WHERE "status" != 'PENDENTE';`).catch(() => undefined);
+    await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "status" = 'PENDENTE' WHERE "status" != 'PENDENTE';`).catch(() => undefined);
 
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";

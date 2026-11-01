@@ -137,7 +137,11 @@ export function can(
     return true;
   }
 
-  const role = user.role as Role;
+  let role = user.role as Role;
+  if ((role as string) === "TITULAR" || (user as any).tenantRole === "TITULAR" || (role as string) === "ADMINISTRADOR") {
+    role = "DIRETORIA";
+  }
+
   const allowedActions = ROLE_PERMISSIONS_CONTRACT[role];
   if (!allowedActions) {
     return false;
