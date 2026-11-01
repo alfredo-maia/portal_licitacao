@@ -1493,7 +1493,9 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 {pncpSyncMensagem}
               </p>
               <span style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)" }}>
-                Atualizando os dados da tela...
+                {pncpSyncTipo === "success"
+                  ? "Atualizando os dados da tela..."
+                  : "Consulte o portal de origem para verificar anexos complementares."}
               </span>
             </div>
           )}

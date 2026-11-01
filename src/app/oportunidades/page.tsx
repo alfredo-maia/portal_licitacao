@@ -27,6 +27,7 @@ import {
   Modal,
   Pagination,
   Tooltip,
+  InlineLoading,
 } from "@carbon/react";
 import { Checkmark, Close, CheckmarkOutline, CloseOutline, WarningAlt, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
@@ -255,6 +256,8 @@ function OportunidadesContent() {
     handleFiltersChange({ [filterName]: value });
   };
 
+  const [deliberandoId, setDeliberandoId] = React.useState<string | null>(null);
+
   const handleRecusarClick = (id: string) => {
     setSelectedOpportunityId(id);
     setRecusaMotivoGenerico(MOTIVOS_RECUSA_GENERICOS[0]);
@@ -263,6 +266,7 @@ function OportunidadesContent() {
   };
 
   const handleAceitarClick = async (id: string) => {
+    setDeliberandoId(id);
     try {
       const response = await fetch(`/api/oportunidades/${id}/decisao`, {
         method: "POST",
@@ -273,22 +277,28 @@ function OportunidadesContent() {
         const errorData = await response.json().catch(() => null);
         throw new Error(errorData?.message || errorData?.error || "Erro ao aceitar oportunidade");
       }
-      await fetchOportunidades();
+      // Remoção otimista local mantendo todos os filtros ativos sem recarregar a janela
+      setOportunidades((prev) => prev.filter((o) => o.id !== id));
+      setTotal((prev) => Math.max(0, prev - 1));
     } catch (err) {
       console.error("Erro ao aceitar oportunidade:", err);
       alert(err instanceof Error ? err.message : "Erro ao aceitar oportunidade. Tente novamente.");
+    } finally {
+      setDeliberandoId(null);
     }
   };
 
   const handleConfirmRecusa = async () => {
     if (!selectedOpportunityId) return;
+    const recusaId = selectedOpportunityId;
     const motivoFinal =
       recusaMotivoGenerico === "Outro"
         ? (recusaMotivoCustom.trim() || "Outro motivo não especificado")
         : recusaMotivoGenerico;
 
+    setDeliberandoId(recusaId);
     try {
-      const response = await fetch(`/api/oportunidades/${selectedOpportunityId}/decisao`, {
+      const response = await fetch(`/api/oportunidades/${recusaId}/decisao`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisao: "NO_GO", motivoRecusa: motivoFinal }),
@@ -297,13 +307,17 @@ function OportunidadesContent() {
         const errorData = await response.json().catch(() => null);
         throw new Error(errorData?.message || errorData?.error || "Erro ao recusar oportunidade");
       }
-      await fetchOportunidades();
+      // Remoção otimista local mantendo todos os filtros ativos sem recarregar a janela
+      setOportunidades((prev) => prev.filter((o) => o.id !== recusaId));
+      setTotal((prev) => Math.max(0, prev - 1));
       setShowRecusarModal(false);
       setRecusaMotivoCustom("");
       setSelectedOpportunityId(null);
     } catch (err) {
       console.error("Erro ao recusar oportunidade:", err);
       alert(err instanceof Error ? err.message : "Erro ao recusar oportunidade. Tente novamente.");
+    } finally {
+      setDeliberandoId(null);
     }
   };
 
@@ -946,54 +960,32 @@ function OportunidadesContent() {
                                 >
                                   <button
                                     type="button"
+                                    className="btn-action-go"
                                     data-testid={`btn-aceitar-${row.id}`}
                                     title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Participar"}
                                     aria-label="Participar"
-                                    disabled={isReadOnly}
+                                    disabled={isReadOnly || deliberandoId === row.id}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (!isReadOnly) handleAceitarClick(row.id);
                                     }}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      width: "30px",
-                                      height: "30px",
-                                      borderRadius: "4px",
-                                      border: "1px solid rgba(36, 161, 72, 0.3)",
-                                      background: "rgba(36, 161, 72, 0.08)",
-                                      color: "#24a148",
-                                      cursor: isReadOnly ? "not-allowed" : "pointer",
-                                      opacity: isReadOnly ? 0.4 : 1,
-                                      transition: "all 0.15s ease",
-                                    }}
                                   >
-                                    <Checkmark size={18} />
+                                    {deliberandoId === row.id ? (
+                                      <InlineLoading status="active" style={{ width: "16px", height: "16px" }} />
+                                    ) : (
+                                      <Checkmark size={18} />
+                                    )}
                                   </button>
                                   <button
                                     type="button"
+                                    className="btn-action-no-go"
                                     data-testid={`btn-recusar-${row.id}`}
                                     title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Não Participar"}
                                     aria-label="Não Participar"
-                                    disabled={isReadOnly}
+                                    disabled={isReadOnly || deliberandoId === row.id}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (!isReadOnly) handleRecusarClick(row.id);
-                                    }}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      width: "30px",
-                                      height: "30px",
-                                      borderRadius: "4px",
-                                      border: "1px solid rgba(218, 30, 40, 0.3)",
-                                      background: "rgba(218, 30, 40, 0.08)",
-                                      color: "#da1e28",
-                                      cursor: isReadOnly ? "not-allowed" : "pointer",
-                                      opacity: isReadOnly ? 0.4 : 1,
-                                      transition: "all 0.15s ease",
                                     }}
                                   >
                                     <Close size={18} />

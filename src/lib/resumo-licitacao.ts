@@ -228,12 +228,12 @@ export function sintetizarMiniResumo(
   texto = texto.replace(/\s+/g, " ").trim();
 
   const palavras = texto.split(" ").filter(Boolean);
-  if (palavras.length >= 3) {
-    const maxP = Math.min(9, palavras.length);
+  if (palavras.length >= 2) {
+    const maxP = Math.min(10, palavras.length);
     const selecionadas = palavras.slice(0, maxP);
 
     while (
-      selecionadas.length > 4 &&
+      selecionadas.length > 3 &&
       STOPWORDS_CONECTIVAS.has(selecionadas[selecionadas.length - 1].toLowerCase())
     ) {
       selecionadas.pop();
@@ -250,10 +250,15 @@ export function sintetizarMiniResumo(
     return formatadas.join(" ");
   }
 
-  if (tipoSistema && tipoSistema !== "OUTROS") {
-    const tipoNome = tipoSistema.replace(/_/g, " ").toLowerCase();
-    return `Sistema de ${tipoNome}`;
+  if (palavras.length === 1 && palavras[0].length > 2) {
+    const w = palavras[0];
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   }
 
-  return "Solução de Tecnologia da Informação e Software";
+  if (tipoSistema && tipoSistema !== "OUTROS") {
+    const tipoNome = tipoSistema.replace(/_/g, " ").toLowerCase();
+    return `Aquisição e Serviços de ${tipoNome}`;
+  }
+
+  return "Aquisição e Contratação Pública";
 }

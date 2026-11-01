@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import {
@@ -723,10 +724,33 @@ export async function listarEquipe(
     }
   };
 
-  if (tenantId) {
+  const targetTenants = new Set<string>();
+  if (tenantId) targetTenants.add(tenantId);
+  const currentUserId = currentUser?.id;
+  const currentUserEmail = currentUser?.email?.trim().toLowerCase();
+  if (currentUserId || currentUserEmail) {
+    for (const tu of inMemoryTenantUsers) {
+      if ((tu.userId === currentUserId || tu.userEmail === currentUserEmail) && tu.ativo) {
+        targetTenants.add(tu.tenantId);
+      }
+    }
+    try {
+      if (currentUserId) {
+        const dbTitularTenants = await prisma.tenantUser.findMany({
+          where: { userId: currentUserId, ativo: true },
+          select: { tenantId: true },
+        });
+        for (const t of dbTitularTenants) {
+          targetTenants.add(t.tenantId);
+        }
+      }
+    } catch {}
+  }
+
+  if (targetTenants.size > 0) {
     try {
       const memberships = await prisma.tenantUser.findMany({
-        where: { tenantId },
+        where: { tenantId: { in: Array.from(targetTenants) } },
         include: { user: true },
         orderBy: { criadoEm: "asc" },
       });
@@ -749,21 +773,23 @@ export async function listarEquipe(
       }
     } catch {}
 
-    const memUsers = listInMemoryUsuarios(tenantId);
-    for (const u of memUsers) {
-      addUnique({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        role: (u.role === "OPERADOR" || u.role === "OPERADOR_TECNICO"
-          ? "ANALISTA_COMERCIAL"
-          : u.role === "SUPERADMIN"
-          ? "DIRETORIA"
-          : u.role) as any,
-        ativo: u.ativo,
-        createdAt: u.createdAt || new Date(),
-        updatedAt: u.updatedAt || new Date(),
-      });
+    for (const tId of targetTenants) {
+      const memUsers = listInMemoryUsuarios(tId);
+      for (const u of memUsers) {
+        addUnique({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: (u.role === "OPERADOR" || u.role === "OPERADOR_TECNICO"
+            ? "ANALISTA_COMERCIAL"
+            : u.role === "SUPERADMIN"
+            ? "DIRETORIA"
+            : u.role) as any,
+          ativo: u.ativo,
+          createdAt: u.createdAt || new Date(),
+          updatedAt: u.updatedAt || new Date(),
+        });
+      }
     }
   }
 
@@ -872,6 +898,29 @@ export async function criarMembroEquipe(
   const passwordHash = await bcrypt.hash(validado.password, 10);
   const prismaRole = (validado.role as string) === "OPERADOR_TECNICO" ? "OPERADOR" : validado.role;
 
+  // Identifica todos os tenants do titular para garantir que a equipe seja visível em todos os CNPJs
+  const allTitularTenants = new Set<string>();
+  if (tenantId) {
+    allTitularTenants.add(tenantId);
+  }
+  const titularId = usuarioId || actor?.id;
+  if (titularId) {
+    for (const tu of inMemoryTenantUsers) {
+      if ((tu.userId === titularId || tu.userEmail === actor?.id) && tu.ativo) {
+        allTitularTenants.add(tu.tenantId);
+      }
+    }
+    try {
+      const dbMemberships = await prisma.tenantUser.findMany({
+        where: { userId: titularId, ativo: true },
+        select: { tenantId: true },
+      });
+      for (const m of dbMemberships) {
+        allTitularTenants.add(m.tenantId);
+      }
+    } catch {}
+  }
+
   // Registra imediatamente no store de autenticação em memória para login instantâneo
   const memoria = insertInMemoryUsuario({
     name: validado.name,
@@ -880,6 +929,29 @@ export async function criarMembroEquipe(
     ativo: validado.ativo,
     tenantId: tenantId ?? null,
   });
+
+  // Replica em memória para todos os tenants do titular
+  for (const tId of allTitularTenants) {
+    if (tId !== tenantId) {
+      insertInMemoryUsuario({
+        name: validado.name,
+        email: normalizedEmail,
+        role: validado.role,
+        ativo: validado.ativo,
+        tenantId: tId,
+      });
+    }
+    inMemoryTenantUsers.push({
+      id: `tu_${randomUUID().slice(0, 8)}`,
+      tenantId: tId,
+      userId: memoria.id,
+      userEmail: normalizedEmail,
+      userName: validado.name,
+      role: "MEMBRO",
+      ativo: validado.ativo,
+      criadoEm: new Date(),
+    });
+  }
 
   upsertInMemoryAuthUser({
     id: memoria.id,
@@ -928,35 +1000,38 @@ export async function criarMembroEquipe(
       });
     }
 
-    if (tenantId && novo?.id) {
-      await prisma.tenantUser
-        .upsert({
-          where: {
-            tenantId_userId: {
-              tenantId,
-              userId: novo.id,
+    if (allTitularTenants.size > 0 && novo?.id) {
+      for (const tId of allTitularTenants) {
+        await prisma.tenantUser
+          .upsert({
+            where: {
+              tenantId_userId: {
+                tenantId: tId,
+                userId: novo.id,
+              },
             },
-          },
-          update: {
-            ativo: validado.ativo,
-          },
-          create: {
-            tenantId,
-            userId: novo.id,
-            role: "MEMBRO",
-            ativo: validado.ativo,
-          },
-        })
-        .catch(() =>
-          prisma.tenantUser.create({
-            data: {
-              tenantId,
+            update: {
+              ativo: validado.ativo,
+            },
+            create: {
+              tenantId: tId,
               userId: novo.id,
               role: "MEMBRO",
               ativo: validado.ativo,
             },
-          }),
-        );
+          })
+          .catch(() =>
+            prisma.tenantUser.create({
+              data: {
+                tenantId: tId,
+                userId: novo.id,
+                role: "MEMBRO",
+                ativo: validado.ativo,
+              },
+            }),
+          )
+          .catch(() => undefined);
+      }
     }
 
     upsertInMemoryAuthUser({

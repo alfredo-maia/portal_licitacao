@@ -667,23 +667,65 @@ async function resolveUserSummary(userId: string | null | undefined): Promise<{
 
 async function hydrateDossieRelations(base: any, tenantId?: string | null): Promise<any> {
   const realId = base.id;
-  const memEquipe = getInMemoryLicitacaoEquipe(realId);
 
-  const responsavelId =
-    memEquipe !== null ? memEquipe.responsavelId : (base.responsavelId ?? null);
+  let statusKanban = base.status || "PENDENTE";
+  let motivoRecusa = base.motivoRecusa ?? null;
+  let tenantLic = tenantId ? getInMemoryTenantLicitacao(tenantId, realId) : null;
+  if (tenantId && !tenantLic) {
+    try {
+      const dbTenantLic = await prisma.tenantLicitacao.findUnique({
+        where: {
+          tenantId_licitacaoId: { tenantId, licitacaoId: realId },
+        },
+      });
+      if (dbTenantLic) {
+        tenantLic = {
+          id: dbTenantLic.id,
+          tenantId: dbTenantLic.tenantId,
+          licitacaoId: dbTenantLic.licitacaoId,
+          statusKanban: dbTenantLic.statusKanban,
+          motivoRecusa: dbTenantLic.motivoRecusa,
+          responsavelId: dbTenantLic.responsavelId,
+        };
+      }
+    } catch {}
+  }
+
+  if (tenantId) {
+    if (tenantLic) {
+      statusKanban = tenantLic.statusKanban;
+      motivoRecusa = tenantLic.motivoRecusa;
+    } else {
+      statusKanban = "PENDENTE";
+      motivoRecusa = null;
+    }
+  }
+
+  const memEquipe = getInMemoryLicitacaoEquipe(realId, tenantId);
+
+  let responsavelId: string | null = null;
+  if (tenantId) {
+    if (memEquipe !== null) {
+      responsavelId = memEquipe.responsavelId;
+    } else if (tenantLic) {
+      responsavelId = tenantLic.responsavelId ?? null;
+    } else {
+      responsavelId = null;
+    }
+  } else {
+    responsavelId = memEquipe !== null ? memEquipe.responsavelId : (base.responsavelId ?? null);
+  }
+
   const responsavel =
     base.responsavel && base.responsavel.id === responsavelId
       ? base.responsavel
       : await resolveUserSummary(responsavelId);
 
-  let atribuidos: any[] = Array.isArray(base.atribuidos) ? [...base.atribuidos] : [];
-  if (memEquipe !== null) {
-    const resolvedAtribuidos: any[] = [];
-    for (const uid of memEquipe.atribuidoIds) {
-      const existing = atribuidos.find((a) => a.usuarioId === uid);
-      if (existing) {
-        resolvedAtribuidos.push(existing);
-      } else {
+  let atribuidos: any[] = [];
+  if (tenantId) {
+    if (memEquipe !== null) {
+      const resolvedAtribuidos: any[] = [];
+      for (const uid of memEquipe.atribuidoIds) {
         const u = await resolveUserSummary(uid);
         resolvedAtribuidos.push({
           id: `atrib_${realId}_${uid}`,
@@ -693,8 +735,44 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
           criadoEm: new Date(),
         });
       }
+      atribuidos = resolvedAtribuidos;
+    } else if (tenantLic && (tenantLic as any).membrosEquipeIds && (tenantLic as any).membrosEquipeIds.length > 0) {
+      const resolvedAtribuidos: any[] = [];
+      for (const uid of (tenantLic as any).membrosEquipeIds) {
+        const u = await resolveUserSummary(uid);
+        resolvedAtribuidos.push({
+          id: `atrib_${realId}_${uid}`,
+          licitacaoId: realId,
+          usuarioId: uid,
+          usuario: u,
+          criadoEm: new Date(),
+        });
+      }
+      atribuidos = resolvedAtribuidos;
+    } else {
+      atribuidos = [];
     }
-    atribuidos = resolvedAtribuidos;
+  } else {
+    atribuidos = Array.isArray(base.atribuidos) ? [...base.atribuidos] : [];
+    if (memEquipe !== null) {
+      const resolvedAtribuidos: any[] = [];
+      for (const uid of memEquipe.atribuidoIds) {
+        const existing = atribuidos.find((a) => a.usuarioId === uid);
+        if (existing) {
+          resolvedAtribuidos.push(existing);
+        } else {
+          const u = await resolveUserSummary(uid);
+          resolvedAtribuidos.push({
+            id: `atrib_${realId}_${uid}`,
+            licitacaoId: realId,
+            usuarioId: uid,
+            usuario: u,
+            criadoEm: new Date(),
+          });
+        }
+      }
+      atribuidos = resolvedAtribuidos;
+    }
   }
 
   const dbArquivos: any[] = Array.isArray(base.arquivos) ? base.arquivos : [];
@@ -731,6 +809,8 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
 
   return {
     ...base,
+    status: statusKanban,
+    motivoRecusa,
     responsavelId,
     responsavel,
     atribuidos,
@@ -949,42 +1029,71 @@ export async function atualizarEquipe(
   rawInput: unknown,
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
+  tenantId?: string | null,
 ): Promise<any> {
   const input = equipeUpdateSchema.parse(rawInput);
-  const oportunidade = await getOportunidadeById(id);
+  const oportunidade = await getOportunidadeById(id, tenantId);
   const realId = oportunidade.id;
 
-  setInMemoryLicitacaoEquipe(realId, {
-    responsavelId: input.responsavelId ?? null,
-    atribuidoIds: input.atribuidoIds ?? [],
-  });
+  setInMemoryLicitacaoEquipe(
+    realId,
+    {
+      responsavelId: input.responsavelId ?? null,
+      atribuidoIds: input.atribuidoIds ?? [],
+    },
+    tenantId,
+  );
 
-  try {
-    await prisma.licitacao
-      .update({
-        where: { id: realId },
-        data: { responsavelId: input.responsavelId },
-      })
-      .catch(() => undefined);
-
-    await prisma.licitacaoAtribuido.deleteMany({ where: { licitacaoId: realId } });
-    if (input.atribuidoIds.length > 0) {
-      await prisma.licitacaoAtribuido.createMany({
-        data: input.atribuidoIds.map((uid) => ({
+  if (tenantId) {
+    setInMemoryTenantLicitacao(tenantId, realId, {
+      responsavelId: input.responsavelId ?? null,
+      membrosEquipeIds: input.atribuidoIds ?? [],
+    });
+    try {
+      await prisma.tenantLicitacao.upsert({
+        where: {
+          tenantId_licitacaoId: { tenantId, licitacaoId: realId },
+        },
+        update: {
+          responsavelId: input.responsavelId ?? null,
+        },
+        create: {
+          tenantId,
           licitacaoId: realId,
-          usuarioId: uid,
-        })),
-        skipDuplicates: true,
+          statusKanban: "PENDENTE",
+          responsavelId: input.responsavelId ?? null,
+        },
       });
+    } catch {}
+  } else {
+    try {
+      await prisma.licitacao
+        .update({
+          where: { id: realId },
+          data: { responsavelId: input.responsavelId },
+        })
+        .catch(() => undefined);
+
+      await prisma.licitacaoAtribuido.deleteMany({ where: { licitacaoId: realId } });
+      if (input.atribuidoIds.length > 0) {
+        await prisma.licitacaoAtribuido.createMany({
+          data: input.atribuidoIds.map((uid) => ({
+            licitacaoId: realId,
+            usuarioId: uid,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    } catch {
+      // In-memory fallback already persisted above
     }
-  } catch {
-    // In-memory fallback already persisted above
   }
 
   await recordAuditLog({
     acao: "EQUIPE_UPDATE",
     entidadeTipo: "LICITACAO",
     entidadeId: realId,
+    tenantId: tenantId ?? null,
     antes: { responsavelId: oportunidade.responsavelId },
     depois: { responsavelId: input.responsavelId, atribuidoIds: input.atribuidoIds },
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
@@ -992,7 +1101,7 @@ export async function atualizarEquipe(
     ip: actorContext?.ip ?? null,
   });
 
-  return getOportunidadeById(realId);
+  return getOportunidadeById(realId, tenantId);
 }
 
 /**

@@ -337,6 +337,7 @@ export interface TenantLicitacaoRecord {
   motivoRecusa?: string | null;
   dataDecisao?: Date | null;
   responsavelId?: string | null;
+  membrosEquipeIds?: string[];
 }
 
 const tenantLicitacoesStore = new Map<string, TenantLicitacaoRecord>();
@@ -367,6 +368,7 @@ export function setInMemoryTenantLicitacao(
     motivoRecusa: data.motivoRecusa ?? existing?.motivoRecusa ?? null,
     dataDecisao: data.dataDecisao ?? existing?.dataDecisao ?? new Date(),
     responsavelId: data.responsavelId ?? existing?.responsavelId ?? null,
+    membrosEquipeIds: data.membrosEquipeIds ?? existing?.membrosEquipeIds ?? [],
   };
   tenantLicitacoesStore.set(key, record);
   return record;
@@ -383,17 +385,30 @@ let licitacaoAnalisesIAStore: Map<string, any[]> = new Map();
 export function setInMemoryLicitacaoEquipe(
   licitacaoId: string,
   data: { responsavelId: string | null; atribuidoIds: string[] },
+  tenantId?: string | null,
 ): void {
-  licitacaoEquipeStore.set(licitacaoId, {
+  const payload = {
     responsavelId: data.responsavelId ?? null,
     atribuidoIds: Array.from(new Set(data.atribuidoIds || [])),
-  });
+  };
+  if (tenantId) {
+    licitacaoEquipeStore.set(`${tenantId}__${licitacaoId}`, payload);
+  }
+  licitacaoEquipeStore.set(licitacaoId, payload);
   updateInMemoryLicitacao(licitacaoId, { responsavelId: data.responsavelId ?? null });
 }
 
 export function getInMemoryLicitacaoEquipe(
   licitacaoId: string,
+  tenantId?: string | null,
 ): { responsavelId: string | null; atribuidoIds: string[] } | null {
+  if (tenantId) {
+    const key = `${tenantId}__${licitacaoId}`;
+    if (licitacaoEquipeStore.has(key)) {
+      return licitacaoEquipeStore.get(key) || null;
+    }
+    return null;
+  }
   return licitacaoEquipeStore.get(licitacaoId) || null;
 }
 
