@@ -1,63 +1,62 @@
-# Governança da Squad Paperclip, Ciclo TDD Estrito & Padrões de Projeto
+# Governança da Squad Paperclip, Fluxo Enxuto (`av-fluxo-enxuto`) & Padrões de Projeto
 
-> **Documento Mestre do Projeto:** [`docs/PRD.md`](file:///docs/PRD.md) (§11 e §12)  
+> **Documento Mestre do Produto:** [`docs/PRD.md`](file:///docs/PRD.md) (histórico original nas seções §11 e §12)  
 > **Projeto no Paperclip:** `Portal de Licitações` (`83891ed1-1820-4cc8-9b40-2d3fd6840e03`)  
+> **Workspace Oficial:** `08185a70-af0a-4f1b-94a6-198a2917ed19` (`/home/hermes/apps/portal_licitacao`)  
 > **Rotina PNCP no Paperclip:** `Coleta PNCP (terça e sexta)` (`ac972837-0b35-4c18-9bd7-bb23d6ad7904`)  
 > **Aplicação desta Regra:** Obrigatória e ativa (`always on`) para todas as interações no repositório `portal_licitacao`.
 
 ---
 
-## 1. Mapeamento da Squad Autônoma no Paperclip (Matriz de Agentes & Skills)
+## 1. Mapeamento da Squad no Paperclip (Matriz de Agentes & Comandos)
 
-Toda tarefa ou ciclo de implementação executado neste projeto deve assumir estritamente o papel, as responsabilidades e as skills dos agentes oficiais da Squad:
+As demandas deste repositório são conduzidas pela squad no Paperclip conforme o roteamento canônico em `docs/agents/skill-routing.json`:
 
-| Papel | Agente no Paperclip | ID do Agente | Skills Vinculadas (`skills.sh`) | Responsabilidade Técnica |
+| Papel | Agente no Paperclip | ID do Agente | Comandos / Skills Principais | Responsabilidade no Fluxo |
 | :--- | :--- | :--- | :--- | :--- |
-| **Diretoria / Estratégia** | `CEO_ag` / `Você` | `fb74c3c0-1788-4a50-b4eb-a52183921a8c` | N/A | Validação de escopo, aprovação de checkpoints e destravamento de marcos. |
-| **Gerente de Projeto** *(Orquestrador Ágil)* | `Gerente de Projeto_ag` | `e4709d94-3d4d-43c4-8f62-98629e785c12` | `agile-sprint-orchestration`<br>`paperclip-converting-plans-to-tasks`<br>`definition-of-done-governance`<br>`paperclip-board`<br>`git-workflow-conventional-commits`<br>`paperclip` | Criação e rastreabilidade de Issues no GitHub, fatiamento com links em `docs/`, controle de DoR/DoD e relatórios executivos. |
-| **Arquiteto de Software** *(Tech Lead)* | `Arquiteto de Software_ag` | `6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a` | `improve-codebase-architecture`<br>`schema-first-contracts`<br>`definition-of-done-governance`<br>`paperclip-converting-plans-to-tasks`<br>`paperclip` | Modelagem profunda de domínios, design de schemas Zod/Prisma, ADRs (`docs/adr/`), autorização `can()`, integridade de auditoria e code review. |
-| **Desenvolvedor Frontend** | `Desenvolvedor Frontend_ag` | `21130286-4f7f-4bee-959b-1e606787a2a3` | `carbon-design-system-react`<br>`nextjs-app-router-best-practices`<br>`frontend-tdd-green-workflow`<br>`paperclip` | Componentes Carbon UI Shell, Grid, acessibilidade WCAG 2.1 AA, temas Claro/Escuro e resolução dos testes do QA (**Fase GREEN**). |
-| **Desenvolvedor Backend** | `Desenvolvedor Backend_ag` | `ae82a9b4-e510-4dce-b63d-5600b3e40fb7` | `backend-tdd-green-workflow`<br>`nodejs-api-best-practices`<br>`postgres-prisma-patterns`<br>`paperclip` | APIs Next.js App Router, queries Prisma seguras, serviços de domínio, validação Zod e audit log (**Fase GREEN**). |
-| **QA / Tester** | `QA_ag` | `545f6e57-8c2d-49ce-8dd7-32eba8795c0b` | `qa-tdd-red-workflow`<br>`playwright-e2e-best-practices`<br>`vitest-unit-and-contracts`<br>`paperclip` | **TDD Estrito:** criação antecipada de testes automatizados no Vitest/Playwright que falham (**Fase RED**), validação final e blindagem contra regressão. |
-| **DevOps** | `DevOps_ag` | `68ab23bf-fb6c-410a-8a76-7f0a54a17f54` | `docker-nextjs-production`<br>`ci-cd-github-actions-automation`<br>`git-workflow-conventional-commits`<br>`paperclip` | Docker Compose, Postgres VPS (porta 15434), Caddy, pipeline GitHub Actions CI/CD e builds de produção. |
+| **Direção Humana / Apoio Executivo** | Alfredo e Vítor (`Mr. Goku` como apoio executivo) | `fb74c3c0-1788-4a50-b4eb-a52183921a8c` | `GOVERNANCE.md` | Alçadas de escopo, merge, produção e compromissos externos (`Mr. Goku` não substitui aprovação humana). |
+| **Entrada e Acompanhamento (PM)** | `Mr. Shikamaru` | `e4709d94-3d4d-43c4-8f62-98629e785c12` | `/triage`, `/to-tickets`, `/wayfinder`, `/to-questionnaire`, `/handoff` | Porta de entrada e dono de acompanhamento das demandas, triagem no Paperclip e organização de capacidade. |
+| **Dono Técnico / Tech Lead** | `Mr. Kakashi` | `6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a` | `/setup-matt-pocock-skills`, `/ask-matt`, `/wayfinder`, `/domain-modeling`, `/codebase-design`, `/to-spec`, `/to-tickets`, `/implement-spec`, `/code-review`, `/pr`, `/diagnosing-bugs`, `/improve-codebase-architecture`, `/retro`, `/handoff` | Condução técnica proporcional, contratos Zod/Prisma, ADRs (`docs/adr/`), autorização `can()`, revisão de Standards e orquestração técnica. |
+| **Negócios e Requisitos** | `Ms. Hinata` / `Mr. Neji` | `c5761c8a-8b63-43ad-9545-462019f8ba01` / `d4ff6330-89d3-4476-bb7b-6301a4dc9ae6` | `/grill-with-docs`, `/grill-me`, `/grilling`, `/domain-modeling`, `/to-spec`, `/to-questionnaire`, `/ui-ux-pro-max` (Hinata), `/handoff` | Esclarecimento de decisões abertas de requisitos, modelagem de domínio (`GLOSSARY.md`) e síntese de especificações (`SPEC` / `AC`). |
+| **Desenvolvedor Backend** | `Mr. Vegeta` | `ae82a9b4-e510-4dce-b63d-5600b3e40fb7` | `/implement`, `/tdd`, `/codebase-design`, `/pr`, `/diagnosing-bugs`, `/handoff` | Implementação backend em fatias verticais com TDD (`RED` $\rightarrow$ `GREEN`), APIs Next.js App Router, Prisma ORM, serviços de domínio, validação Zod e `audit_log`. |
+| **Desenvolvedor Frontend** | `Mr. Sasuke` | `21130286-4f7f-4bee-959b-1e606787a2a3` | `/implement`, `/tdd`, `/codebase-design`, `/ui-ux-pro-max`, `/frontend-design`, `/impeccable`, `/web-design-guidelines`, `/pr`, `/diagnosing-bugs`, `/handoff` | Implementação frontend em fatias verticais com TDD (`RED` $\rightarrow$ `GREEN`), IBM Carbon Design System, UI Shell, Grid, acessibilidade WCAG 2.1 AA e temas Claro/Escuro. |
+| **QA Independente** | `Ms. Sakura` | `545f6e57-8c2d-49ce-8dd7-32eba8795c0b` | `/code-review`, `/diagnosing-bugs`, `/impeccable`, `/web-design-guidelines`, `/handoff` | Revisão independente de Spec/QA no SHA final, conferindo pedido, critérios de aceitação (`SPEC`/`AC`), regressão (`npm test`) e acessibilidade. |
+| **Infraestrutura / DevOps** | `Mr. Piccolo` (apoio: `Mr. Krillin`) | `68ab23bf-fb6c-410a-8a76-7f0a54a17f54` (`b2948725-00d1-43f6-844d-2e152c7269c8`) | `/diagnosing-bugs`, `/handoff`, `docker-nextjs-production`, `ci-cd-github-actions-automation` | Containers Docker, PostgreSQL, Caddy, pipelines GitHub Actions CI/CD, builds de produção e diagnóstico operacional quando acionado. |
 
 ---
 
-## 2. O Ciclo de Engenharia em 7 Etapas Rigorosas (PRD §11.3)
+## 2. Fluxo de Desenvolvimento Proporcional (`av-fluxo-enxuto` & TDD)
 
-Qualquer entrega deve obrigatoriamente percorrer as 7 etapas abaixo:
+O projeto adota o **`av-fluxo-enxuto`** integrado ao **Paperclip** (único rastreador de tarefas, especificações, documentos e dependências; o GitHub hospeda apenas código e PRs):
 
-1. **Etapa 1 — Fatiamento & Issue no GitHub (`Gerente de Projeto_ag`):**
-   - Criação da Issue no GitHub via `gh issue create` com o template oficial (`Contexto`, `Comportamento Atual`, `Comportamento Esperado`, `Critérios de Aceite`).
-   - Toda referência documental deve usar links relativos para arquivos em `docs/`.
-2. **Etapa 2 — Arquitetura, Schemas & Contratos (`Arquiteto de Software_ag`):**
-   - Modelagem de dados no Prisma (`prisma/schema.prisma`) e contratos em runtime com Zod (`src/server/schemas/*.schema.ts`).
-   - Definição de ADR caso haja decisão de arquitetura estrutural em `docs/adr/`.
-3. **Etapa 3 — Especificação de Testes RED (`QA_ag`):**
-   - O código de produção **NÃO** pode ser iniciado sem que os testes automatizados correspondentes estejam criados em `tests/unit/` (Vitest) ou `tests/e2e/` (Playwright).
-   - Execução do teste comprovando a falha intencional (**Estado RED**).
-4. **Etapa 4 — Implementação GREEN (`Dev Frontend & Backend`):**
-   - Escrita estrita do código necessário e suficiente para transformar os testes de RED para **GREEN**.
-   - Aderência total aos padrões de projeto da seção 3.
-5. **Etapa 5 — Code Review Técnico (`Arquiteto de Software_ag`):**
-   - Revisão de código validando: ausência de hardcode da marca (uso exclusivo de `src/config/brand.ts`), tipagem estrita (`strict: true`, zero `any`), autorização centralizada via `can()` e uso de tokens Carbon.
-6. **Etapa 6 — Validação Completa de Regressão (`QA_ag`):**
-   - Execução da suíte completa de testes (`npm test`), garantindo 100% de aprovação (zero regressões).
-7. **Etapa 7 — Validação de Build & DoD (`DevOps_ag` & `Gerente de Projeto_ag`):**
-   - Execução do build de produção (`npm run build`) com validação de tipos e rotas.
-   - Commit convencional referenciando a issue (ex: `feat(#X): ...` ou `fix(#X): ...`).
-   - Atualização dos critérios `[x]` na Issue do GitHub e fechamento com comentário técnico de entrega.
+1. **Rastreabilidade no Paperclip (`docs/agents/issue-tracker.md`):**
+   - Não crie nem exija GitHub Issues (`gh issue create`). Toda tarefa, subtarefa (`parentId`), bloqueio (`blockedByIssueIds`) e documento (`spec`, `plan`) vive no Paperclip sob o `projectId` `83891ed1-1820-4cc8-9b40-2d3fd6840e03`.
+2. **Rota Proporcional ao Risco:**
+   - `Mr. Shikamaru` é a porta de entrada e o dono de acompanhamento; `Mr. Kakashi` é o dono técnico e escolhe a menor rota suficiente. PM, arquitetura e DevOps não são etapas obrigatórias em toda tarefa.
+   - Demanda grande ou nebulosa demais para uma única SPEC $\rightarrow$ `/wayfinder` antes de `/to-spec`.
+   - Decisões de requisitos abertas $\rightarrow$ `Ms. Hinata` / `Mr. Neji` com `/grill-with-docs`.
+   - Requisitos fechados $\rightarrow$ `/to-spec` (sintetizando problema, solução, contratos, fronteiras de teste e exclusões).
+   - Múltiplas entregas verticais $\rightarrow$ `/to-tickets` (com `Mr. Shikamaru` e `Mr. Kakashi`) ou `/implement-spec` conduzido por `Mr. Kakashi`.
+   - Correção pequena e clara $\rightarrow$ direto para implementação com TDD e revisão.
+3. **Ciclo TDD pelo Desenvolvedor (`/implement` e `/tdd`):**
+   - Antes de implementar, o desenvolvedor executa o preflight `python3 scripts/check_agent_setup.py --command implement`.
+   - O próprio desenvolvedor (`Mr. Vegeta` no backend, `Mr. Sasuke` no frontend) conduz o ciclo **RED $\rightarrow$ GREEN $\rightarrow$ REFACTOR** um comportamento por vez: escreve o teste automatizado (Vitest/Playwright) nas interfaces públicas/fronteiras acordadas, confirma a falha pelo motivo esperado (**RED**) e escreve o código mínimo de produção para passar (**GREEN**).
+4. **Revisão Dupla no SHA Fixado (`/code-review`):**
+   - **`Mr. Kakashi` (Standards):** revisa conformidade arquitetural, padrões obrigatórios da seção 3, tipagem estrita e fronteiras de módulo.
+   - **`Ms. Sakura` (Spec / QA Independente):** em tarefa separada no mesmo SHA final, compara pedido, `SPEC`/`AC` e implementação, validando a suíte de testes e ausência de regressões. Autorrevisão do desenvolvedor não substitui o QA independente.
+5. **Governança de Merge e Deploy (`GOVERNANCE.md`):**
+   - Concluir implementação ou QA não autoriza push, PR, merge ou deploy automaticamente; ações de publicação seguem as alçadas humanas vigentes.
 
 ---
 
 ## 3. Padrões de Projeto e Diretrizes de Arquitetura de Software
 
-O código deve obedecer aos seguintes padrões arquiteturais consolidados:
+O código deve obedecer rigorosamente aos seguintes padrões arquiteturais consolidados:
 
 ### 3.1. Schema-First Design Pattern (Contratos Fortes em Runtime)
 - Toda entrada de dados em APIs (`src/app/api/`) e formulários deve ser validada por schemas Zod (`src/server/schemas/`).
 - Tipos TypeScript devem ser inferidos diretamente dos schemas Zod (`z.infer<typeof schema>`), garantindo sincronia total entre tipagem em tempo de compilação e validação em tempo de execução.
-- Tipagem estrita: Proibido o uso de `any` em novos códigos.
+- Tipagem estrita: Proibido o uso de `any` em novos códigos (`strict: true`).
 
 ### 3.2. Layered Architecture (Separação Limpa de Camadas)
 - **Rotas e Controladores (`src/app/api/*`):** Atuam exclusivamente como portas de entrada HTTP leves: autenticam via sessão, validam payload com schema Zod, verificam autorização com `can(user, action, resource)` e delegam para a camada de serviço.
@@ -71,7 +70,7 @@ O código deve obedecer aos seguintes padrões arquiteturais consolidados:
 
 ### 3.4. Isolamento Estrito de Marca (Single Source of Truth Pattern)
 - Nenhuma string referente ao nome da marca/produto pode ser escrita diretamente no código fora de `src/config/brand.ts`.
-- Consumir sempre `APP_CONFIG.brandName`, `APP_CONFIG.shortName` e `APP_CONFIG.tagline`. Testes do QA varrem o repositório e quebram caso encontrem nomes hardcoded.
+- Consumir sempre `APP_CONFIG.brandName`, `APP_CONFIG.shortName` e `APP_CONFIG.tagline`. Testes automatizados (`tests/unit/brand.test.ts`) varrem o repositório e falham caso encontrem nomes hardcoded.
 
 ### 3.5. Trilha de Auditoria Imutável (Audit Trail Pattern)
 - Todas as mutações de dados críticas (cadastro, edição, inativação, deliberações GO/No-GO, alteração de status no Kanban) devem emitir registro de auditoria na tabela `audit_log` (`src/server/audit.ts`).

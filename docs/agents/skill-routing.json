@@ -1,0 +1,386 @@
+{
+  "projectId": "83891ed1-1820-4cc8-9b40-2d3fd6840e03",
+  "agents": {
+    "21130286-4f7f-4bee-959b-1e606787a2a3": "Mr. Sasuke",
+    "68ab23bf-fb6c-410a-8a76-7f0a54a17f54": "Mr. Piccolo",
+    "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6": "Mr. Neji",
+    "b2948725-00d1-43f6-844d-2e152c7269c8": "Mr. Krillin",
+    "c5761c8a-8b63-43ad-9545-462019f8ba01": "Ms. Hinata",
+    "ae82a9b4-e510-4dce-b63d-5600b3e40fb7": "Mr. Vegeta",
+    "545f6e57-8c2d-49ce-8dd7-32eba8795c0b": "Ms. Sakura",
+    "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a": "Mr. Kakashi",
+    "e4709d94-3d4d-43c4-8f62-98629e785c12": "Mr. Shikamaru"
+  },
+  "commands": {
+    "setup-matt-pocock-skills": {
+      "skill": "matt-setup-project",
+      "owners": [
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-setup-project",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "grill-with-docs": {
+      "skill": "matt-grill-with-docs",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-grill-with-docs",
+      "assignedAgentIds": [
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6"
+      ]
+    },
+    "grill-me": {
+      "skill": "matt-grill-me",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-grill-me",
+      "assignedAgentIds": [
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6"
+      ]
+    },
+    "grilling": {
+      "skill": "matt-grilling",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-grilling",
+      "assignedAgentIds": [
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6"
+      ]
+    },
+    "domain-modeling": {
+      "skill": "matt-domain-modeling",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-domain-modeling",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6"
+      ]
+    },
+    "codebase-design": {
+      "skill": "matt-codebase-design",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Vegeta",
+        "Mr. Sasuke"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-codebase-design",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7"
+      ]
+    },
+    "to-spec": {
+      "skill": "matt-to-spec",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-to-spec",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6"
+      ]
+    },
+    "to-tickets": {
+      "skill": "matt-to-tickets",
+      "owners": [
+        "Mr. Shikamaru",
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-to-tickets",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "implement": {
+      "skill": "matt-implement",
+      "owners": [
+        "Mr. Vegeta",
+        "Mr. Sasuke"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-implement",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7"
+      ]
+    },
+    "tdd": {
+      "skill": "matt-tdd",
+      "owners": [
+        "Mr. Vegeta",
+        "Mr. Sasuke"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-tdd",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7"
+      ]
+    },
+    "implement-spec": {
+      "skill": "matt-implement-spec",
+      "owners": [
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-implement-spec",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "code-review": {
+      "skill": "matt-code-review",
+      "owners": [
+        "Mr. Kakashi",
+        "Ms. Sakura"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-code-review",
+      "assignedAgentIds": [
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "pr": {
+      "skill": "matt-pr",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Vegeta",
+        "Mr. Sasuke"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-pr",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7"
+      ]
+    },
+    "ask-matt": {
+      "skill": "matt-ask-matt",
+      "owners": [
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-ask-matt",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "diagnosing-bugs": {
+      "skill": "matt-diagnosing-bugs",
+      "owners": [
+        "Mr. Vegeta",
+        "Mr. Sasuke",
+        "Ms. Sakura",
+        "Mr. Piccolo",
+        "Mr. Krillin",
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-diagnosing-bugs",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b",
+        "68ab23bf-fb6c-410a-8a76-7f0a54a17f54",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7",
+        "b2948725-00d1-43f6-844d-2e152c7269c8"
+      ]
+    },
+    "improve-codebase-architecture": {
+      "skill": "matt-improve-codebase-architecture",
+      "owners": [
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-improve-codebase-architecture",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "triage": {
+      "skill": "matt-triage",
+      "owners": [
+        "Mr. Shikamaru"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-triage",
+      "assignedAgentIds": [
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "handoff": {
+      "skill": "matt-handoff",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Shikamaru",
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Vegeta",
+        "Mr. Sasuke",
+        "Ms. Sakura",
+        "Mr. Piccolo",
+        "Mr. Krillin"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-handoff",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b",
+        "68ab23bf-fb6c-410a-8a76-7f0a54a17f54",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7",
+        "b2948725-00d1-43f6-844d-2e152c7269c8",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "ui-ux-pro-max": {
+      "skill": "ui-ux-pro-max",
+      "owners": [
+        "Mr. Sasuke",
+        "Ms. Hinata"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/ui-ux-pro-max",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01"
+      ]
+    },
+    "frontend-design": {
+      "skill": "frontend-design",
+      "owners": [
+        "Mr. Sasuke"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/frontend-design",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3"
+      ]
+    },
+    "impeccable": {
+      "skill": "impeccable",
+      "owners": [
+        "Mr. Sasuke",
+        "Ms. Sakura"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/impeccable",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b"
+      ]
+    },
+    "web-design-guidelines": {
+      "skill": "web-design-guidelines",
+      "owners": [
+        "Mr. Sasuke",
+        "Ms. Sakura"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/web-design-guidelines",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b"
+      ]
+    },
+    "wayfinder": {
+      "skill": "matt-wayfinder",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Shikamaru"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-wayfinder",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "retro": {
+      "skill": "matt-retro",
+      "owners": [
+        "Mr. Kakashi"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-retro",
+      "assignedAgentIds": [
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a"
+      ]
+    },
+    "teach": {
+      "skill": "matt-teach",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Shikamaru",
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Vegeta",
+        "Mr. Sasuke",
+        "Ms. Sakura",
+        "Mr. Piccolo",
+        "Mr. Krillin"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-teach",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b",
+        "68ab23bf-fb6c-410a-8a76-7f0a54a17f54",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7",
+        "b2948725-00d1-43f6-844d-2e152c7269c8",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "to-questionnaire": {
+      "skill": "matt-to-questionnaire",
+      "owners": [
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Shikamaru"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-to-questionnaire",
+      "assignedAgentIds": [
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    },
+    "wait-what": {
+      "skill": "matt-wait-what",
+      "owners": [
+        "Mr. Kakashi",
+        "Mr. Shikamaru",
+        "Ms. Hinata",
+        "Mr. Neji",
+        "Mr. Vegeta",
+        "Mr. Sasuke",
+        "Ms. Sakura",
+        "Mr. Piccolo",
+        "Mr. Krillin"
+      ],
+      "source": "/home/hermes/apps/paperclip-test/data/instances/default/skills/672fabb1-8461-437d-ad7b-6a7bd33df05c/matt-wait-what",
+      "assignedAgentIds": [
+        "21130286-4f7f-4bee-959b-1e606787a2a3",
+        "545f6e57-8c2d-49ce-8dd7-32eba8795c0b",
+        "68ab23bf-fb6c-410a-8a76-7f0a54a17f54",
+        "6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a",
+        "ae82a9b4-e510-4dce-b63d-5600b3e40fb7",
+        "b2948725-00d1-43f6-844d-2e152c7269c8",
+        "c5761c8a-8b63-43ad-9545-462019f8ba01",
+        "d4ff6330-89d3-4476-bb7b-6301a4dc9ae6",
+        "e4709d94-3d4d-43c4-8f62-98629e785c12"
+      ]
+    }
+  }
+}
