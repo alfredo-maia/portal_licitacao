@@ -54,6 +54,7 @@ import {
 import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
 import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
 import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
+import { inMemoryTenants } from "@/server/services/tenant.service";
 
 export function obterPalavrasChaveSubsegmento(subsegmento: string): string[] {
   const norm = subsegmento.toLowerCase().trim();
@@ -113,7 +114,7 @@ function mesCorrente(agora: Date = new Date()): { inicio: Date; fim: Date } {
 
 function buildPrismaWhere(
   filters: ParsedFilters,
-  options?: { targetIds?: string[]; excludedIds?: string[] },
+  options?: { targetIds?: string[]; excludedIds?: string[]; tenantCriadoEm?: Date | null },
 ): Prisma.LicitacaoWhereInput {
   const and: Prisma.LicitacaoWhereInput[] = [];
 
@@ -231,6 +232,49 @@ function buildPrismaWhere(
     });
   }
 
+  const dataIniStr = filters.dataLimiteInicio || filters.dataInicio;
+  const dataFimStr = filters.dataLimiteFim || filters.dataFim;
+  if (dataIniStr || dataFimStr) {
+    const range: any = {};
+    if (dataIniStr) {
+      const d = new Date(dataIniStr);
+      d.setHours(0, 0, 0, 0);
+      range.gte = d;
+    }
+    if (dataFimStr) {
+      const d = new Date(dataFimStr);
+      d.setHours(23, 59, 59, 999);
+      range.lte = d;
+    }
+    and.push({
+      OR: [
+        { dataEncerramentoProposta: range },
+        {
+          AND: [
+            { dataEncerramentoProposta: null },
+            { dataAbertura: range },
+          ],
+        },
+      ],
+    });
+  }
+
+  if (options?.tenantCriadoEm) {
+    const trintaDiasAtras = new Date(options.tenantCriadoEm.getTime() - 30 * 24 * 60 * 60 * 1000);
+    and.push({
+      OR: [
+        { createdAt: { gte: trintaDiasAtras } },
+        { dataEncerramentoProposta: { gte: options.tenantCriadoEm } },
+        {
+          AND: [
+            { dataEncerramentoProposta: null },
+            { dataAbertura: { gte: options.tenantCriadoEm } },
+          ],
+        },
+      ],
+    });
+  }
+
   if (filters.busca) {
     const busca = filters.busca;
     and.push({
@@ -277,6 +321,7 @@ function matchesFilters(
   record: LicitacaoRecord,
   filters: ParsedFilters,
   hasTenantContext: boolean = false,
+  tenantCriadoEm?: Date | null,
 ): boolean {
   const enriched = record.segmentoMacro ? record : enrichRecordSegment(record);
 
@@ -409,6 +454,43 @@ function matchesFilters(
     }
   }
 
+  const dataIniStr = filters.dataLimiteInicio || filters.dataInicio;
+  const dataFimStr = filters.dataLimiteFim || filters.dataFim;
+  if (dataIniStr || dataFimStr) {
+    const dataLimite = record.dataEncerramentoProposta
+      ? new Date(record.dataEncerramentoProposta)
+      : new Date(record.dataAbertura);
+    if (dataIniStr) {
+      const ini = new Date(dataIniStr);
+      ini.setHours(0, 0, 0, 0);
+      if (dataLimite.getTime() < ini.getTime()) {
+        return false;
+      }
+    }
+    if (dataFimStr) {
+      const fim = new Date(dataFimStr);
+      fim.setHours(23, 59, 59, 999);
+      if (dataLimite.getTime() > fim.getTime()) {
+        return false;
+      }
+    }
+  }
+
+  if (tenantCriadoEm) {
+    const trintaDiasAtras = new Date(tenantCriadoEm.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const recCreatedAt = record.createdAt ? new Date(record.createdAt) : new Date();
+    const dentroJanela30d = recCreatedAt.getTime() >= trintaDiasAtras.getTime();
+
+    const dataLimite = record.dataEncerramentoProposta
+      ? new Date(record.dataEncerramentoProposta)
+      : new Date(record.dataAbertura);
+    const vigenteNoCadastro = dataLimite.getTime() >= tenantCriadoEm.getTime();
+
+    if (!dentroJanela30d && !vigenteNoCadastro) {
+      return false;
+    }
+  }
+
   if (filters.busca) {
     const busca = filters.busca.toLowerCase();
     const alvo = [
@@ -443,13 +525,37 @@ function compareByDataAberturaAsc(
   return a.idPncp.localeCompare(b.idPncp);
 }
 
+function compareByDataLimiteDesc(
+  a: LicitacaoRecord,
+  b: LicitacaoRecord,
+): number {
+  const dateA = a.dataEncerramentoProposta ? new Date(a.dataEncerramentoProposta).getTime() : a.dataAbertura.getTime();
+  const dateB = b.dataEncerramentoProposta ? new Date(b.dataEncerramentoProposta).getTime() : b.dataAbertura.getTime();
+  const diff = dateB - dateA;
+  if (diff !== 0) {
+    return diff;
+  }
+  return a.idPncp.localeCompare(b.idPncp);
+}
+
+function sortOportunidades(
+  a: LicitacaoRecord,
+  b: LicitacaoRecord,
+  ordenacao?: "dataLimiteDesc" | "dataAberturaAsc",
+): number {
+  if (ordenacao === "dataLimiteDesc") {
+    return compareByDataLimiteDesc(a, b);
+  }
+  return compareByDataAberturaAsc(a, b);
+}
+
 /**
- * Listagem da Central de Oportunidades (PRD §4.4 / sprint-1-spec §2.3):
- * sempre ordenada por `dataAbertura ASC` (mais próxima primeiro) e com todos
+ * Listagem da Central de Oportunidades (PRD §4.4 / sprint-1-spec §2.3 / Semana 02):
+ * sempre ordenada por Data Limite DESC (mais distante primeiro) e com todos
  * os filtros operacionais (`tipoSistema`, `uf`, `faixaValor`, `valorMin/Max`,
- * `status`, `parecerIA`, `periodo`, `busca`). Lê o PostgreSQL e mescla com o
- * fallback em memória (deduplicado por `idPncp`, banco prevalece), garantindo
- * dados ricos mesmo sem banco acessível.
+ * `status`, `parecerIA`, `periodo`, `dataLimiteInicio`, `dataLimiteFim`, `busca`).
+ * Lê o PostgreSQL e mescla com o fallback em memória (deduplicado por `idPncp`,
+ * banco prevalece), garantindo dados ricos mesmo sem banco acessível.
  */
 export async function listOportunidades(
   rawFilters: unknown = {},
@@ -457,8 +563,24 @@ export async function listOportunidades(
 ): Promise<LicitacaoRecord[]> {
   const filters = oportunidadesFilterSchema.parse(rawFilters ?? {});
 
+  let tenantCriadoEm: Date | null = null;
   const tenantStatusMap = new Map<string, { statusKanban: string; motivoRecusa?: string | null }>();
   if (tenantId) {
+    const memTenant = inMemoryTenants.get(tenantId);
+    if (memTenant) {
+      tenantCriadoEm = (memTenant as any).criadoEm ? new Date((memTenant as any).criadoEm) : null;
+    } else {
+      try {
+        const dbTenant = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { criadoEm: true },
+        });
+        if (dbTenant?.criadoEm) {
+          tenantCriadoEm = dbTenant.criadoEm;
+        }
+      } catch {}
+    }
+
     try {
       const dbTenantRecords = await prisma.tenantLicitacao.findMany({
         where: { tenantId },
@@ -522,29 +644,30 @@ export async function listOportunidades(
 
   for (const rawRecord of listInMemoryLicitacoes()) {
     const record = applyTenantOverride(enrichRecordSegment(rawRecord));
-    if (matchesFilters(record, filters, !!tenantId)) {
+    if (matchesFilters(record, filters, !!tenantId, tenantCriadoEm)) {
       mergedByIdPncp.set(record.idPncp, record);
     }
   }
 
-  let prismaOptions: { targetIds?: string[]; excludedIds?: string[] } | undefined;
+  let prismaOptions: { targetIds?: string[]; excludedIds?: string[]; tenantCriadoEm?: Date | null } | undefined;
   if (tenantId) {
+    prismaOptions = { tenantCriadoEm };
     if (isKanbanFetch) {
       const activeIds = Array.from(tenantStatusMap.entries())
         .filter(([_, v]) => v.statusKanban !== "PENDENTE" && v.statusKanban !== "RECUSADA")
         .map(([id]) => id);
-      prismaOptions = { targetIds: activeIds };
+      prismaOptions.targetIds = activeIds;
     } else if (filters.status && filters.status !== "PENDENTE") {
       const matchingIds = Array.from(tenantStatusMap.entries())
         .filter(([_, v]) => v.statusKanban === filters.status)
         .map(([id]) => id);
-      prismaOptions = { targetIds: matchingIds };
+      prismaOptions.targetIds = matchingIds;
     } else if (!filters.status || filters.status === "PENDENTE") {
       const deliberatedIds = Array.from(tenantStatusMap.entries())
         .filter(([_, v]) => v.statusKanban !== "PENDENTE")
         .map(([id]) => id);
       if (deliberatedIds.length > 0) {
-        prismaOptions = { excludedIds: deliberatedIds };
+        prismaOptions.excludedIds = deliberatedIds;
       }
     }
   }
@@ -552,11 +675,11 @@ export async function listOportunidades(
   try {
     const dbRecords = await prisma.licitacao.findMany({
       where: buildPrismaWhere(filters, prismaOptions),
-      orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
+      orderBy: [{ dataEncerramentoProposta: "desc" }, { dataAbertura: "desc" }],
     });
     for (const rawRecord of dbRecords) {
       const record = applyTenantOverride(enrichRecordSegment(rawRecord));
-      if (matchesFilters(record, filters, !!tenantId)) {
+      if (matchesFilters(record, filters, !!tenantId, tenantCriadoEm)) {
         mergedByIdPncp.set(record.idPncp, record);
       }
     }
@@ -569,11 +692,11 @@ export async function listOportunidades(
       await prisma.$executeRawUnsafe(`UPDATE "licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`).catch(() => undefined);
       const retryRecords = await prisma.licitacao.findMany({
         where: buildPrismaWhere(filters, prismaOptions),
-        orderBy: [{ dataEncerramentoProposta: "asc" }, { dataAbertura: "asc" }],
+        orderBy: [{ dataEncerramentoProposta: "desc" }, { dataAbertura: "desc" }],
       });
       for (const rawRecord of retryRecords) {
         const record = applyTenantOverride(enrichRecordSegment(rawRecord));
-        if (matchesFilters(record, filters, !!tenantId)) {
+        if (matchesFilters(record, filters, !!tenantId, tenantCriadoEm)) {
           mergedByIdPncp.set(record.idPncp, record);
         }
       }
@@ -582,7 +705,7 @@ export async function listOportunidades(
     }
   }
 
-  return [...mergedByIdPncp.values()].sort(compareByDataAberturaAsc);
+  return [...mergedByIdPncp.values()].sort((a, b) => sortOportunidades(a, b, filters.ordenacao));
 }
 
 export interface PaginatedOportunidadesResult {
@@ -686,6 +809,9 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
           statusKanban: dbTenantLic.statusKanban,
           motivoRecusa: dbTenantLic.motivoRecusa,
           responsavelId: dbTenantLic.responsavelId,
+          lanceMinimo: dbTenantLic.lanceMinimo,
+          valorProposta: (dbTenantLic as any).valorProposta ?? null,
+          valorHomologado: (dbTenantLic as any).valorHomologado ?? null,
         };
       }
     } catch {}
@@ -811,6 +937,9 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
     ...base,
     status: statusKanban,
     motivoRecusa,
+    lanceMinimo: tenantLic?.lanceMinimo ?? base.lanceMinimo ?? null,
+    valorProposta: tenantLic?.valorProposta ?? (base as any).valorProposta ?? null,
+    valorHomologado: tenantLic?.valorHomologado ?? (base as any).valorHomologado ?? base.valorArrematado ?? null,
     responsavelId,
     responsavel,
     atribuidos,
@@ -935,6 +1064,10 @@ export async function atualizarKanbanStatus(
   const input = kanbanStatusUpdateSchema.parse(rawInput);
   const oportunidade = await getOportunidadeById(id, tenantId);
 
+  const finalLanceMinimo = input.lanceMinimo ?? input.valorMinimo ?? input.valorArrematado ?? (oportunidade as any).lanceMinimo ?? null;
+  const finalValorProposta = input.valorProposta ?? (oportunidade as any).valorProposta ?? null;
+  const finalValorHomologado = input.valorHomologado ?? input.valorArrematado ?? (oportunidade as any).valorHomologado ?? null;
+
   let atualizado: any;
   if (tenantId) {
     setInMemoryTenantLicitacao(tenantId, oportunidade.id, {
@@ -942,12 +1075,19 @@ export async function atualizarKanbanStatus(
       licitacaoId: oportunidade.id,
       statusKanban: input.status,
       motivoRecusa: input.motivoPerda ?? null,
-      lanceMinimo: input.valorArrematado,
+      lanceMinimo: finalLanceMinimo,
+      valorProposta: finalValorProposta,
+      valorHomologado: finalValorHomologado,
       dataDecisao: new Date(),
       responsavelId: user?.id ?? null,
     });
 
     try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "tenant_licitacao" ADD COLUMN IF NOT EXISTS "valorProposta" DOUBLE PRECISION;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "tenant_licitacao" ADD COLUMN IF NOT EXISTS "valorHomologado" DOUBLE PRECISION;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "TenantLicitacao" ADD COLUMN IF NOT EXISTS "valorProposta" DOUBLE PRECISION;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "TenantLicitacao" ADD COLUMN IF NOT EXISTS "valorHomologado" DOUBLE PRECISION;`).catch(() => undefined);
+
       await prisma.tenantLicitacao.upsert({
         where: {
           tenantId_licitacaoId: {
@@ -958,7 +1098,9 @@ export async function atualizarKanbanStatus(
         update: {
           statusKanban: input.status,
           ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
-          ...(input.valorArrematado !== undefined ? { lanceMinimo: input.valorArrematado } : {}),
+          ...(finalLanceMinimo !== null ? { lanceMinimo: finalLanceMinimo } : {}),
+          ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
+          ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
           dataDecisao: new Date(),
           responsavelId: user?.id ?? null,
         },
@@ -967,7 +1109,9 @@ export async function atualizarKanbanStatus(
           licitacaoId: oportunidade.id,
           statusKanban: input.status,
           ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
-          ...(input.valorArrematado !== undefined ? { lanceMinimo: input.valorArrematado } : {}),
+          ...(finalLanceMinimo !== null ? { lanceMinimo: finalLanceMinimo } : {}),
+          ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
+          ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
           dataDecisao: new Date(),
           responsavelId: user?.id ?? null,
         },
@@ -977,6 +1121,9 @@ export async function atualizarKanbanStatus(
     atualizado = {
       ...oportunidade,
       status: input.status,
+      lanceMinimo: finalLanceMinimo,
+      valorProposta: finalValorProposta,
+      valorHomologado: finalValorHomologado,
       ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
       ...(input.valorArrematado !== undefined ? { valorArrematado: input.valorArrematado } : {}),
     };
@@ -997,6 +1144,12 @@ export async function atualizarKanbanStatus(
         ...(input.valorArrematado !== undefined ? { valorArrematado: input.valorArrematado } : {}),
       });
     }
+    atualizado = {
+      ...atualizado,
+      lanceMinimo: finalLanceMinimo,
+      valorProposta: finalValorProposta,
+      valorHomologado: finalValorHomologado,
+    };
   }
 
   await recordAuditLog({
@@ -1645,7 +1798,8 @@ export async function buscarESincronizarArquivosEditalPncp(
 
   if (partes[2]) {
     const sub = partes[2].split("/");
-    sequencial = sub[0] || "1";
+    const parsedSeq = parseInt(sub[0], 10);
+    sequencial = isNaN(parsedSeq) ? "1" : parsedSeq.toString();
     ano = parseInt(sub[1], 10) || ano;
   }
 
@@ -1660,13 +1814,19 @@ export async function buscarESincronizarArquivosEditalPncp(
     });
     if (res.ok) {
       const data = await res.json();
+      let list: any[] = [];
       if (Array.isArray(data)) {
-        arquivosEncontrados = data.map((item: any) => ({
-          nome: item.titulo || item.nome || `Edital_${sequencial}.pdf`,
-          url: item.url || item.uri || `https://pncp.gov.br/app/editais/${idPncp}`,
-          tamanho: item.tamanho || 1048576,
-        }));
+        list = data;
+      } else if (Array.isArray(data?.documentos)) {
+        list = data.documentos;
+      } else if (Array.isArray(data?.data)) {
+        list = data.data;
       }
+      arquivosEncontrados = list.map((item: any) => ({
+        nome: item.titulo || item.nome || `Edital_${sequencial}.pdf`,
+        url: item.url || item.uri || `https://pncp.gov.br/app/editais/${idPncp}`,
+        tamanho: item.tamanho || 1048576,
+      }));
     }
   } catch (err) {
     erroConexao = true;

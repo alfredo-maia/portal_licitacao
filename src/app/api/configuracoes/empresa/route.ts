@@ -72,9 +72,10 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ ok: true, empresa, activeTenantId: tenantId });
   } catch (error: any) {
+    const status = error.statusCode || 500;
     return NextResponse.json(
-      { ok: false, error: error.message || "Erro ao atualizar dados da empresa" },
-      { status: 500 },
+      { ok: false, error: error.message || "Erro ao atualizar dados da empresa", diasRestantes: error.diasRestantes },
+      { status },
     );
   }
 }

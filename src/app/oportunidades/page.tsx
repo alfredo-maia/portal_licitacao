@@ -117,6 +117,8 @@ function OportunidadesContent() {
   const [filtroUf, setFiltroUf] = React.useState('');
   const [filtroFaixaValor, setFiltroFaixaValor] = React.useState('');
   const [filtroStatus, setFiltroStatus] = React.useState('');
+  const [filtroDataInicio, setFiltroDataInicio] = React.useState('');
+  const [filtroDataFim, setFiltroDataFim] = React.useState('');
   const [filtroBusca, setFiltroBusca] = React.useState('');
 
   const [manualNumeroEdital, setManualNumeroEdital] = React.useState("");
@@ -160,8 +162,11 @@ function OportunidadesContent() {
     setLoading(true);
     setError(null);
     try {
-      const query = new URLSearchParams(searchParams.toString()).toString();
-      const response = await fetch(`/api/oportunidades?${query}`);
+      const currentParams = new URLSearchParams(searchParams.toString());
+      if (!currentParams.has("ordenacao")) {
+        currentParams.set("ordenacao", "dataLimiteDesc");
+      }
+      const response = await fetch(`/api/oportunidades?${currentParams.toString()}`);
       if (!response.ok) {
         throw new Error("Erro ao carregar oportunidades");
       }
@@ -238,6 +243,8 @@ function OportunidadesContent() {
     setFiltroUf(searchParams.get("uf") || "");
     setFiltroFaixaValor(searchParams.get("faixaValor") || "");
     setFiltroStatus(searchParams.get("status") || "");
+    setFiltroDataInicio(searchParams.get("dataLimiteInicio") || searchParams.get("dataInicio") || "");
+    setFiltroDataFim(searchParams.get("dataLimiteFim") || searchParams.get("dataFim") || "");
     setFiltroBusca(searchParams.get("busca") || "");
   }, [searchParams]);
 
@@ -775,6 +782,39 @@ function OportunidadesContent() {
             onChange={({ selectedItem }) => handleFilterChange("status", selectedItem?.id || "")}
             style={{ minWidth: "170px" }}
           />
+
+          {/* Filtro Data Limite Inicial */}
+          <TextInput
+            id="filter-data-inicio"
+            data-testid="filter-data-inicio"
+            type="date"
+            labelText="Data Limite (De)"
+            disabled={loading || loadingPreferencias}
+            value={filtroDataInicio}
+            onChange={(e) => {
+              const val = e.target.value;
+              setFiltroDataInicio(val);
+              handleFilterChange("dataLimiteInicio", val);
+            }}
+            style={{ minWidth: "150px" }}
+          />
+
+          {/* Filtro Data Limite Final */}
+          <TextInput
+            id="filter-data-fim"
+            data-testid="filter-data-fim"
+            type="date"
+            labelText="Data Limite (Até)"
+            disabled={loading || loadingPreferencias}
+            value={filtroDataFim}
+            onChange={(e) => {
+              const val = e.target.value;
+              setFiltroDataFim(val);
+              handleFilterChange("dataLimiteFim", val);
+            }}
+            style={{ minWidth: "150px" }}
+          />
+
           <div style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem" }}>
             <TextInput
               id="filter-busca"

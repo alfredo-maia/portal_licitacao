@@ -585,6 +585,8 @@ model TenantLicitacao {
   tags          String[]        @default([])
   notas         String?         @db.Text
   lanceMinimo   Float?
+  valorProposta Float?
+  valorHomologado Float?
   motivoRecusa  String?         @db.Text
   dataDecisao   DateTime?
   responsavelId String?

@@ -136,6 +136,7 @@ export default function ConfiguracoesPage() {
     subsegmentos: [],
     ufs: [],
     brasilInteiro: true,
+    preferenciasUpdatedAt: null,
   });
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
   const [buscandoCepEmpresa, setBuscandoCepEmpresa] = useState(false);
@@ -212,6 +213,7 @@ export default function ConfiguracoesPage() {
           subsegmentos: data.empresa.subsegmentos || [],
           ufs: data.empresa.ufs || [],
           brasilInteiro: data.empresa.brasilInteiro ?? true,
+          preferenciasUpdatedAt: data.empresa.preferenciasUpdatedAt || null,
         });
         if (data.activeTenantId && !tenantId) {
           setActiveTenantId(data.activeTenantId);
@@ -320,6 +322,15 @@ export default function ConfiguracoesPage() {
     ? Math.max(currentTenant?.maxUsers || 2, 2)
     : currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 10 : planoAtual === "PRO" ? 2 : 1);
   const isBasicoAtivo = planoAtual === "BASICO" && billingStatus !== "TRIAL";
+
+  const diasDesdeUltimaAlteracao = empresa.preferenciasUpdatedAt
+    ? Math.floor((Date.now() - new Date(empresa.preferenciasUpdatedAt).getTime()) / (24 * 60 * 60 * 1000))
+    : 999;
+  const diasRestantesDesbloqueio = Math.max(1, 30 - diasDesdeUltimaAlteracao);
+  const bloqueadoPlanoBasico30Dias = Boolean(isBasicoAtivo && empresa.preferenciasUpdatedAt && diasDesdeUltimaAlteracao < 30);
+  const dataProximaLiberacao = empresa.preferenciasUpdatedAt
+    ? new Date(new Date(empresa.preferenciasUpdatedAt).getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("pt-BR")
+    : "";
 
   // Regra do Botão Adicionar CNPJ
   const isCnpjLimitBasico = isBasicoAtivo || maxCnpjs <= 1;
@@ -468,6 +479,7 @@ export default function ConfiguracoesPage() {
   };
 
   const handleToggleMacroSegmento = (codigoMacro: string) => {
+    if (bloqueadoPlanoBasico30Dias) return;
     const macroDef = CATALOGO_MACRO_SEGMENTOS[codigoMacro as MacroSegmento];
     const subCodigos = (macroDef?.subcategorias || []).map((s) => s.codigo);
 
@@ -500,6 +512,7 @@ export default function ConfiguracoesPage() {
   };
 
   const handleToggleSubsegmento = (codigoSub: string) => {
+    if (bloqueadoPlanoBasico30Dias) return;
     setEmpresa((prev) => {
       const current = prev.subsegmentos || [];
       const updated = current.includes(codigoSub)
@@ -510,6 +523,7 @@ export default function ConfiguracoesPage() {
   };
 
   const handleToggleUf = (sigla: string) => {
+    if (bloqueadoPlanoBasico30Dias) return;
     setEmpresa((prev) => {
       if (isBasicoAtivo) {
         return { ...prev, ufs: [sigla], brasilInteiro: false };
@@ -1330,6 +1344,17 @@ export default function ConfiguracoesPage() {
                 />
               )}
 
+              {/* Alerta de Carência de 30 dias para Plano Básico */}
+              {bloqueadoPlanoBasico30Dias && (
+                <InlineNotification
+                  kind="info"
+                  title="Carência de 30 dias (Plano Básico)"
+                  subtitle={`No Plano Básico, alterações de Segmentos e Estados só podem ser realizadas a cada 30 dias. Próxima alteração disponível em ${dataProximaLiberacao} (faltam ${diasRestantesDesbloqueio} dia(s)).`}
+                  style={{ marginBottom: "1rem" }}
+                  data-testid="banner-trava-30-dias"
+                />
+              )}
+
               {/* Segmentos & Sub-segmentos de Atuação */}
               <div style={{ marginTop: "1rem", marginBottom: "1.5rem" }}>
                 <h4 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>
@@ -1354,12 +1379,14 @@ export default function ConfiguracoesPage() {
                           backgroundColor: isChecked
                             ? "var(--cds-layer-accent-01, rgba(69, 137, 255, 0.05))"
                             : "var(--cds-layer-02)",
+                          opacity: bloqueadoPlanoBasico30Dias ? 0.6 : 1,
                         }}
                       >
                         <Checkbox
                           id={`config-macro-${macro.codigo}`}
                           labelText={macro.nome}
                           checked={isChecked}
+                          disabled={bloqueadoPlanoBasico30Dias}
                           onChange={() => handleToggleMacroSegmento(macro.codigo)}
                         />
                         {isChecked && (
@@ -1378,6 +1405,7 @@ export default function ConfiguracoesPage() {
                                 id={`config-sub-${sub.codigo}`}
                                 labelText={sub.nome}
                                 checked={(empresa.subsegmentos || []).includes(sub.codigo)}
+                                disabled={bloqueadoPlanoBasico30Dias}
                                 onChange={() => handleToggleSubsegmento(sub.codigo)}
                               />
                             ))}
@@ -1405,7 +1433,8 @@ export default function ConfiguracoesPage() {
                       labelText="UF Monitorada (Plano Básico) *"
                       value={(empresa.ufs && empresa.ufs[0]) || empresa.uf || "GO"}
                       onChange={(e) => handleToggleUf(e.target.value)}
-                      helperText="O Plano Básico monitora exatamente 1 UF"
+                      disabled={bloqueadoPlanoBasico30Dias}
+                      helperText={bloqueadoPlanoBasico30Dias ? `Carência ativa até ${dataProximaLiberacao}` : "O Plano Básico monitora exatamente 1 UF"}
                     >
                       {ESTADOS_BRASIL.map((uf) => (
                         <SelectItem key={uf.sigla} value={uf.sigla} text={`${uf.sigla} — ${uf.nome}`} />
@@ -1550,7 +1579,10 @@ export default function ConfiguracoesPage() {
                           kind="ghost"
                           size="sm"
                           renderIcon={Edit}
+                          disabled={isCurrentUser}
+                          title={isCurrentUser ? "Você não pode alterar suas próprias permissões." : undefined}
                           onClick={() => {
+                            if (isCurrentUser) return;
                             setMembroSelecionado(membro);
                             setEditRole(membro.role);
                             setEditAtivo(membro.ativo);

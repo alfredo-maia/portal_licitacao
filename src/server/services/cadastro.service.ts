@@ -6,7 +6,7 @@ import { CadastroInput, cadastroContaSchema } from "@/server/schemas/cadastro.sc
 import { enfileirarMensagemWhatsApp } from "@/server/services/whatsapp.service";
 import { upsertInMemoryAuthUser } from "@/server/auth";
 import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
-import { updateInMemoryConfiguracaoEmpresa } from "@/server/services/licitacoes-store";
+import { updateInMemoryConfiguracaoEmpresa, insertInMemoryUsuario, updateInMemoryUsuario } from "@/server/services/licitacoes-store";
 
 export interface ResultadoCadastro {
   ok: boolean;
@@ -115,6 +115,7 @@ export async function realizarCadastroConta(
           passwordHash,
           role: "DIRETORIA",
           ativo: true,
+          telefone: input.whatsapp,
         },
       });
 
@@ -227,6 +228,16 @@ export async function realizarCadastroConta(
     cnpj: input.cnpj,
     plano: "PRO",
     tenantRole: "TITULAR",
+  });
+
+  insertInMemoryUsuario({
+    id: userId,
+    name: nomeFinal,
+    email: normalizedEmail,
+    role: "DIRETORIA",
+    ativo: true,
+    tenantId,
+    telefone: input.whatsapp,
   });
 
   // 8. Agenda WhatsApp de boas-vindas com jitter anti-ban

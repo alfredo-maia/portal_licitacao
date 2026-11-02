@@ -30,6 +30,7 @@ export const configuracaoEmpresaSchema = z.object({
   subsegmentos: z.array(z.string()).optional().default([]),
   ufs: z.array(z.string()).optional().default([]),
   brasilInteiro: z.boolean().optional().default(true),
+  preferenciasUpdatedAt: z.coerce.date().optional().nullable(),
   atualizadoEm: z.coerce.date().optional(),
 });
 

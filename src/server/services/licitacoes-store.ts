@@ -158,9 +158,10 @@ export function insertInMemoryLicitacao(
   const agora = new Date();
   const record: LicitacaoRecord = {
     ...data,
+    status: (data as any).status || "PENDENTE",
     id: (data as any).id || `lic_${randomUUID()}`,
-    createdAt: agora,
-    updatedAt: agora,
+    createdAt: (data as any).createdAt || (data as any).criadoEm || agora,
+    updatedAt: (data as any).updatedAt || (data as any).atualizadoEm || agora,
   };
   byId.set(record.id, record);
   idByIdPncp.set(record.idPncp, record.id);
@@ -334,6 +335,8 @@ export interface TenantLicitacaoRecord {
   tags?: string[];
   notas?: string | null;
   lanceMinimo?: number | null;
+  valorProposta?: number | null;
+  valorHomologado?: number | null;
   motivoRecusa?: string | null;
   dataDecisao?: Date | null;
   responsavelId?: string | null;
@@ -365,6 +368,8 @@ export function setInMemoryTenantLicitacao(
     tags: data.tags ?? existing?.tags ?? [],
     notas: data.notas ?? existing?.notas ?? null,
     lanceMinimo: data.lanceMinimo ?? existing?.lanceMinimo ?? null,
+    valorProposta: data.valorProposta ?? existing?.valorProposta ?? null,
+    valorHomologado: data.valorHomologado ?? existing?.valorHomologado ?? null,
     motivoRecusa: data.motivoRecusa ?? existing?.motivoRecusa ?? null,
     dataDecisao: data.dataDecisao ?? existing?.dataDecisao ?? new Date(),
     responsavelId: data.responsavelId ?? existing?.responsavelId ?? null,

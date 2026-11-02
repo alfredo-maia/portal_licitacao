@@ -76,6 +76,8 @@ async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cidade" TEXT;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "uf" TEXT;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cep" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
   ];
   for (const sql of queries) {
     try {
@@ -496,6 +498,7 @@ export async function obterConfiguracaoEmpresa(
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
       ufs: base?.ufs || memTenant?.ufs || ["GO"],
       brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
+      preferenciasUpdatedAt: (base as any)?.preferenciasUpdatedAt || (memTenant as any)?.preferenciasUpdatedAt || null,
     };
   } catch {
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
@@ -517,6 +520,7 @@ export async function obterConfiguracaoEmpresa(
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
       ufs: base?.ufs || memTenant?.ufs || ["GO"],
       brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
+      preferenciasUpdatedAt: (base as any)?.preferenciasUpdatedAt || (memTenant as any)?.preferenciasUpdatedAt || null,
     };
   }
 }
@@ -531,26 +535,55 @@ export async function atualizarConfiguracaoEmpresa(
 
   await ensureConfiguracaoEmpresaColumns().catch(() => undefined);
 
+  const alterandoPreferencias =
+    segmentos !== undefined ||
+    subsegmentos !== undefined ||
+    ufs !== undefined ||
+    brasilInteiro !== undefined;
+
+  let plano = "BASICO";
+  let billingStatus = "TRIAL";
+  let preferenciasUpdatedAt: Date | null = null;
+
+  if (tenantId) {
+    try {
+      const tenant = await (prisma as any).tenant.findUnique({
+        where: { id: tenantId },
+      });
+      if (tenant) {
+        plano = tenant.plano;
+        billingStatus = tenant.billingStatus;
+        preferenciasUpdatedAt = tenant.preferenciasUpdatedAt ?? null;
+      }
+    } catch {
+      const memTenant = inMemoryTenants.get(tenantId);
+      if (memTenant) {
+        plano = memTenant.plano || "BASICO";
+        billingStatus = memTenant.billingStatus || "TRIAL";
+        preferenciasUpdatedAt = (memTenant as any).preferenciasUpdatedAt ?? null;
+      }
+    }
+
+    if (alterandoPreferencias && plano === "BASICO" && preferenciasUpdatedAt) {
+      const trintaDiasMs = 30 * 24 * 60 * 60 * 1000;
+      const diffMs = Date.now() - new Date(preferenciasUpdatedAt).getTime();
+      if (diffMs < trintaDiasMs) {
+        const diasRestantes = Math.ceil((trintaDiasMs - diffMs) / (24 * 60 * 60 * 1000));
+        const err = new Error(
+          `No Plano Básico, alterações de Segmentos e Estados só podem ser realizadas a cada 30 dias. Próxima alteração disponível em ${diasRestantes} dia(s).`
+        );
+        (err as any).statusCode = 403;
+        (err as any).diasRestantes = diasRestantes;
+        throw err;
+      }
+    }
+  }
+
+  const agora = new Date();
+  const novoPreferenciasUpdatedAt = alterandoPreferencias ? agora : preferenciasUpdatedAt;
+
   try {
     if (tenantId) {
-      let plano = "BASICO";
-      let billingStatus = "TRIAL";
-      try {
-        const tenant = await (prisma as any).tenant.findUnique({
-          where: { id: tenantId },
-        });
-        if (tenant) {
-          plano = tenant.plano;
-          billingStatus = tenant.billingStatus;
-        }
-      } catch {
-        const memTenant = inMemoryTenants.get(tenantId);
-        if (memTenant) {
-          plano = memTenant.plano || "BASICO";
-          billingStatus = memTenant.billingStatus || "TRIAL";
-        }
-      }
-
       const escopo = normalizarEscopoPlano({
         plano,
         billingStatus,
@@ -584,6 +617,7 @@ export async function atualizarConfiguracaoEmpresa(
           ...(validado.cidade ? { cidade: validado.cidade } : {}),
           ...(validado.endereco ? { endereco: validado.endereco } : {}),
           ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
+          ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
           segmentos: escopo.segmentos,
           subsegmentos: subsegmentos || [],
           ufs: escopo.ufs,
@@ -597,6 +631,7 @@ export async function atualizarConfiguracaoEmpresa(
         memTenant.subsegmentos = subsegmentos || [];
         memTenant.ufs = escopo.ufs;
         memTenant.brasilInteiro = escopo.brasilInteiro;
+        if (alterandoPreferencias) (memTenant as any).preferenciasUpdatedAt = novoPreferenciasUpdatedAt;
         if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
         if (validado.nomeFantasia !== undefined) (memTenant as any).nomeFantasia = validado.nomeFantasia;
         if (validado.cnpj) memTenant.cnpj = validado.cnpj;
@@ -609,6 +644,7 @@ export async function atualizarConfiguracaoEmpresa(
           subsegmentos: subsegmentos || [],
           ufs: escopo.ufs,
           brasilInteiro: escopo.brasilInteiro,
+          preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
         },
         tenantId,
       );
@@ -651,7 +687,10 @@ export async function atualizarConfiguracaoEmpresa(
       ufs: ufs || [],
       brasilInteiro: brasilInteiro ?? true,
     };
-  } catch {
+  } catch (err: any) {
+    if (err?.statusCode === 403 || String(err?.message || "").includes("30 dias")) {
+      throw err;
+    }
     if (tenantId && inMemoryTenants.has(tenantId)) {
       const memTenant = inMemoryTenants.get(tenantId)!;
       const escopo = normalizarEscopoPlano({
@@ -666,6 +705,7 @@ export async function atualizarConfiguracaoEmpresa(
       memTenant.subsegmentos = subsegmentos || [];
       memTenant.ufs = escopo.ufs;
       memTenant.brasilInteiro = escopo.brasilInteiro;
+      if (alterandoPreferencias) (memTenant as any).preferenciasUpdatedAt = novoPreferenciasUpdatedAt;
       if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
       if (validado.nomeFantasia !== undefined) memTenant.nomeFantasia = validado.nomeFantasia;
       if (validado.cnpj) memTenant.cnpj = validado.cnpj;
@@ -674,7 +714,10 @@ export async function atualizarConfiguracaoEmpresa(
       inMemoryTenants.set(tenantId, memTenant);
     }
 
-    const memoria = updateInMemoryConfiguracaoEmpresa(validado, tenantId);
+    const memoria = updateInMemoryConfiguracaoEmpresa({
+      ...validado,
+      ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
+    }, tenantId);
 
     await recordAuditLog({
       acao: "CONFIGURACAO_EMPRESA_ATUALIZADA",
@@ -690,6 +733,7 @@ export async function atualizarConfiguracaoEmpresa(
       subsegmentos: validado.subsegmentos || [],
       ufs: validado.ufs || [],
       brasilInteiro: validado.brasilInteiro ?? true,
+      preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
     };
   }
 }
@@ -1138,9 +1182,14 @@ export async function atualizarMembroEquipe(
     }
   }
 
-  // 2. Nenhum usuário pode se auto-inativar
-  if (actor && actor.id === id && validado.ativo === false) {
-    throw new Error("O próprio usuário não pode inativar sua própria conta.");
+  // 2. O próprio usuário não pode alterar suas próprias permissões/cargo nem se auto-inativar
+  if (actor && actor.id === id) {
+    if (validado.role !== undefined) {
+      throw new Error("O próprio usuário não pode alterar seu próprio cargo ou permissões.");
+    }
+    if (validado.ativo === false) {
+      throw new Error("O próprio usuário não pode inativar sua própria conta.");
+    }
   }
 
   // 3. Apenas o Usuário Principal (Titular) pode inativar colaboradores

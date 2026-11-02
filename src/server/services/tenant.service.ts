@@ -74,6 +74,7 @@ export interface InMemoryTenantRecord {
   subsegmentos?: string[];
   ufs?: string[];
   brasilInteiro?: boolean;
+  preferenciasUpdatedAt?: Date | null;
   maxCnpjs: number;
   maxUsers: number;
   ativo: boolean;

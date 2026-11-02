@@ -131,6 +131,10 @@ interface OportunidadeDetalhe {
   justificativaIA?: string | null;
   status: string;
   motivoRecusa?: string | null;
+  valorProposta?: number | null;
+  lanceMinimo?: number | null;
+  valorHomologado?: number | null;
+  valorArrematado?: number | null;
   isPresencial: boolean;
   distanciaGoianiaKm?: number | null;
   quantidadeLotes: number;
@@ -265,6 +269,17 @@ function OportunidadesDetalheContent({
   const [salvandoStatusPipeline, setSalvandoStatusPipeline] = React.useState(false);
   const [statusPipelineMsg, setStatusPipelineMsg] = React.useState<string | null>(null);
 
+  // Aba Valor da Proposta & Modal Homologação
+  const [modalHomologarOpen, setModalHomologarOpen] = React.useState(false);
+  const [valorHomologarInput, setValorHomologarInput] = React.useState("");
+  const [salvandoHomologacao, setSalvandoHomologacao] = React.useState(false);
+
+  const [valorPropostaInput, setValorPropostaInput] = React.useState("");
+  const [lanceMinimoInput, setLanceMinimoInput] = React.useState("");
+  const [valorHomologadoTabInput, setValorHomologadoTabInput] = React.useState("");
+  const [salvandoValoresProposta, setSalvandoValoresProposta] = React.useState(false);
+  const [valoresPropostaMsg, setValoresPropostaMsg] = React.useState<string | null>(null);
+
   // Resolver params assíncrono (Next.js 15)
   React.useEffect(() => {
     Promise.resolve(params).then((p) => {
@@ -291,6 +306,11 @@ function OportunidadesDetalheContent({
       setTipoSelecionado(opp.tipoSistemaCodigo || "");
       setResponsavelId(opp.responsavelId || "");
       setAtribuidoIds((opp.atribuidos || []).map((a: any) => a.usuarioId));
+      setValorPropostaInput(opp.valorProposta != null ? String(opp.valorProposta) : "");
+      setLanceMinimoInput(opp.lanceMinimo != null ? String(opp.lanceMinimo) : "");
+      const finalHomologado = opp.valorHomologado != null ? String(opp.valorHomologado) : (opp.valorArrematado != null ? String(opp.valorArrematado) : "");
+      setValorHomologadoTabInput(finalHomologado);
+      setValorHomologarInput(finalHomologado);
 
       if (usrRes.ok) {
         const usrData = await usrRes.json();
@@ -576,6 +596,13 @@ function OportunidadesDetalheContent({
   // Alteração Direta de Status pelo Dossiê (Pipeline / Participação)
   const handleMudarStatusPipeline = async (novoStatus: string) => {
     if (!id || !oportunidade || novoStatus === oportunidade.status) return;
+
+    if (novoStatus === "CONTEMPLADA") {
+      setValorHomologarInput(valorHomologadoTabInput || (oportunidade.valorHomologado != null ? String(oportunidade.valorHomologado) : (oportunidade.valorArrematado != null ? String(oportunidade.valorArrematado) : "")));
+      setModalHomologarOpen(true);
+      return;
+    }
+
     setSalvandoStatusPipeline(true);
     setStatusPipelineMsg(null);
     try {
@@ -597,10 +624,85 @@ function OportunidadesDetalheContent({
       setStatusPipelineMsg("Status atualizado!");
       showNotification("success", `Status alterado para ${novoStatus}!`);
       setTimeout(() => setStatusPipelineMsg(null), 3500);
+      await carregarDados(id);
     } catch (err) {
       showNotification("error", err instanceof Error ? err.message : "Erro ao alterar status.");
     } finally {
       setSalvandoStatusPipeline(false);
+    }
+  };
+
+  const handleSalvarHomologacao = async () => {
+    if (!id) return;
+    setSalvandoHomologacao(true);
+    try {
+      const numHomologado = valorHomologarInput ? parseFloat(valorHomologarInput.replace(/\./g, "").replace(",", ".")) : undefined;
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "CONTEMPLADA",
+          valorArrematado: numHomologado,
+          valorHomologado: numHomologado,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Erro ao homologar vitória");
+      }
+      setOportunidade((prev) => (prev ? { ...prev, status: "CONTEMPLADA", valorHomologado: numHomologado, valorArrematado: numHomologado } : null));
+      setValorHomologadoTabInput(valorHomologarInput);
+      setModalHomologarOpen(false);
+      showNotification("success", "🏆 Vitória homologada com sucesso! Parabéns!");
+      await carregarDados(id);
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao homologar vitória");
+    } finally {
+      setSalvandoHomologacao(false);
+    }
+  };
+
+  const handleSalvarValoresProposta = async () => {
+    if (!id) return;
+    setSalvandoValoresProposta(true);
+    setValoresPropostaMsg(null);
+    try {
+      const numProposta = valorPropostaInput ? parseFloat(valorPropostaInput.replace(/\./g, "").replace(",", ".")) : undefined;
+      const numMinimo = lanceMinimoInput ? parseFloat(lanceMinimoInput.replace(/\./g, "").replace(",", ".")) : undefined;
+      const numHomologado = valorHomologadoTabInput ? parseFloat(valorHomologadoTabInput.replace(/\./g, "").replace(",", ".")) : undefined;
+
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: oportunidade?.status || "ACEITA",
+          valorProposta: numProposta,
+          lanceMinimo: numMinimo,
+          valorMinimo: numMinimo,
+          valorHomologado: numHomologado,
+          valorArrematado: numHomologado,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message || "Erro ao salvar valores da proposta");
+      }
+      setOportunidade((prev) => (prev ? {
+        ...prev,
+        valorProposta: numProposta,
+        lanceMinimo: numMinimo,
+        valorHomologado: numHomologado,
+        valorArrematado: numHomologado,
+      } : null));
+      setValorHomologarInput(valorHomologadoTabInput);
+      setValoresPropostaMsg("Valores da proposta salvos com sucesso!");
+      showNotification("success", "Valores da proposta atualizados com sucesso!");
+      setTimeout(() => setValoresPropostaMsg(null), 3500);
+      await carregarDados(id);
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao salvar valores");
+    } finally {
+      setSalvandoValoresProposta(false);
     }
   };
 
@@ -959,6 +1061,9 @@ Realize uma análise profunda estruturada em 4 dimensões:
           <Tab data-testid="tab-analise-ia">
             🤖 Histórico Análise IA ({analises.length})
           </Tab>
+          <Tab data-testid="tab-valor-proposta">
+            💰 Valor da Proposta
+          </Tab>
         </TabList>
 
         <TabPanels>
@@ -1306,8 +1411,101 @@ Realize uma análise profunda estruturada em 4 dimensões:
               )}
             </Tile>
           </TabPanel>
+
+          {/* Aba 4: Valor da Proposta */}
+          <TabPanel>
+            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
+              <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--cds-text-primary)" }}>
+                💰 Valores da Proposta & Disputa
+              </h4>
+              <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1.5rem" }}>
+                Defina o valor inicial da sua proposta comercial, o piso do lance mínimo para a disputa em pregão e registre o valor final homologado em caso de vitória.
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                <div>
+                  <TextInput
+                    id="input-valor-proposta"
+                    data-testid="input-valor-proposta"
+                    labelText="Valor da Proposta (R$)"
+                    placeholder="0,00"
+                    helperText="Valor que o cliente enviará ao órgão"
+                    value={valorPropostaInput}
+                    onChange={(e) => setValorPropostaInput(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <TextInput
+                    id="input-lance-minimo"
+                    data-testid="input-lance-minimo"
+                    labelText="Valor do Lance Mínimo (R$)"
+                    placeholder="0,00"
+                    helperText="Piso até onde o cliente pode chegar na disputa"
+                    value={lanceMinimoInput}
+                    onChange={(e) => setLanceMinimoInput(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <TextInput
+                    id="input-valor-homologado"
+                    data-testid="input-valor-homologado"
+                    labelText="Valor Final Arrematado / Homologado (R$)"
+                    placeholder="0,00"
+                    helperText="Sincronizado com a homologação de vitória"
+                    value={valorHomologadoTabInput}
+                    onChange={(e) => setValorHomologadoTabInput(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                <Button
+                  kind="primary"
+                  size="md"
+                  data-testid="btn-salvar-valores-proposta"
+                  disabled={salvandoValoresProposta}
+                  onClick={handleSalvarValoresProposta}
+                >
+                  {salvandoValoresProposta ? "Salvando..." : "Salvar Valores da Proposta"}
+                </Button>
+                {valoresPropostaMsg && (
+                  <span style={{ fontSize: "0.875rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
+                    ✓ {valoresPropostaMsg}
+                  </span>
+                )}
+              </div>
+            </Tile>
+          </TabPanel>
         </TabPanels>
       </Tabs>
+
+      {/* Modal: Homologar Vitória no Certame (Contemplada 🏆) */}
+      <Modal
+        open={modalHomologarOpen}
+        modalHeading="🏆 Homologar Vitória no Certame (Contemplada)"
+        primaryButtonText={salvandoHomologacao ? "Salvando..." : "Confirmar Vitória & Homologar"}
+        secondaryButtonText="Cancelar"
+        onRequestClose={() => setModalHomologarOpen(false)}
+        onRequestSubmit={handleSalvarHomologacao}
+        primaryButtonDisabled={salvandoHomologacao}
+        data-testid="modal-homologar-contemplada"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+            Parabéns pela vitória! Informe o valor final arrematado / homologado para atualizar o status e salvar nos registros da licitação.
+          </p>
+          <TextInput
+            id="modal-input-valor-homologado"
+            data-testid="modal-input-valor-homologado"
+            labelText="Valor Final Arrematado / Homologado (R$)"
+            placeholder="Ex: 450000.00"
+            value={valorHomologarInput}
+            onChange={(e) => setValorHomologarInput(e.target.value)}
+          />
+        </div>
+      </Modal>
 
       {/* Modal Deep Dive IA: "Verificar Status de Participação" (PRD §4.4.1 F) */}
       <Modal

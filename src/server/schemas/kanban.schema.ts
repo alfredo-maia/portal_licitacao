@@ -17,6 +17,10 @@ export const kanbanStatusUpdateSchema = z
     status: licitacaoStatusSchema,
     motivoPerda: z.string().trim().max(1000).optional(),
     valorArrematado: z.number().nonnegative().optional(),
+    valorProposta: z.number().nonnegative().optional(),
+    valorMinimo: z.number().nonnegative().optional(),
+    lanceMinimo: z.number().nonnegative().optional(),
+    valorHomologado: z.number().nonnegative().optional(),
   })
   .refine(
     (data) => {
