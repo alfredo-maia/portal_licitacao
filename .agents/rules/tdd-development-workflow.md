@@ -14,7 +14,7 @@ As demandas deste repositório são conduzidas pela squad no Paperclip conforme 
 
 | Papel | Agente no Paperclip | ID do Agente | Comandos / Skills Principais | Responsabilidade no Fluxo |
 | :--- | :--- | :--- | :--- | :--- |
-| **Direção Humana / Apoio Executivo** | Alfredo e Vítor (`Mr. Goku` como apoio executivo) | `fb74c3c0-1788-4a50-b4eb-a52183921a8c` | `GOVERNANCE.md` | Alçadas de escopo, merge, produção e compromissos externos (`Mr. Goku` não substitui aprovação humana). |
+| **Direção Humana / Apoio Executivo** | Alfredo e Vítor (`Mr. Goku` como apoio executivo) | `fb74c3c0-1788-4a50-b4eb-a52183921a8c` | Alçadas no Paperclip | Alçadas de escopo, merge, produção e compromissos externos (`Mr. Goku` não substitui aprovação humana). |
 | **Entrada e Acompanhamento (PM)** | `Mr. Shikamaru` | `e4709d94-3d4d-43c4-8f62-98629e785c12` | `/triage`, `/to-tickets`, `/wayfinder`, `/to-questionnaire`, `/handoff` | Porta de entrada e dono de acompanhamento das demandas, triagem no Paperclip e organização de capacidade. |
 | **Dono Técnico / Tech Lead** | `Mr. Kakashi` | `6ee7b192-bdd3-473b-b1e6-cf80fbd5ab9a` | `/setup-matt-pocock-skills`, `/ask-matt`, `/wayfinder`, `/domain-modeling`, `/codebase-design`, `/to-spec`, `/to-tickets`, `/implement-spec`, `/code-review`, `/pr`, `/diagnosing-bugs`, `/improve-codebase-architecture`, `/retro`, `/handoff` | Condução técnica proporcional, contratos Zod/Prisma, ADRs (`docs/adr/`), autorização `can()`, revisão de Standards e orquestração técnica. |
 | **Negócios e Requisitos** | `Ms. Hinata` / `Mr. Neji` | `c5761c8a-8b63-43ad-9545-462019f8ba01` / `d4ff6330-89d3-4476-bb7b-6301a4dc9ae6` | `/grill-with-docs`, `/grill-me`, `/grilling`, `/domain-modeling`, `/to-spec`, `/to-questionnaire`, `/ui-ux-pro-max` (Hinata), `/handoff` | Esclarecimento de decisões abertas de requisitos, modelagem de domínio (`GLOSSARY.md`) e síntese de especificações (`SPEC` / `AC`). |
@@ -44,7 +44,8 @@ O projeto adota o **`av-fluxo-enxuto`** integrado ao **Paperclip** (único rastr
 4. **Revisão Dupla no SHA Fixado (`/code-review`):**
    - **`Mr. Kakashi` (Standards):** revisa conformidade arquitetural, padrões obrigatórios da seção 3, tipagem estrita e fronteiras de módulo.
    - **`Ms. Sakura` (Spec / QA Independente):** em tarefa separada no mesmo SHA final, compara pedido, `SPEC`/`AC` e implementação, validando a suíte de testes e ausência de regressões. Autorrevisão do desenvolvedor não substitui o QA independente.
-5. **Governança de Merge e Deploy (`GOVERNANCE.md`):**
+5. **Governança de Merge e Deploy (alçadas no Paperclip):**
+   - As alçadas ficam no `GOVERNANCE.md` das instruções de cada agente no Paperclip, não neste repositório; na dúvida, a decisão é da direção humana (Alfredo e Vítor).
    - Concluir implementação ou QA não autoriza push, PR, merge ou deploy automaticamente; ações de publicação seguem as alçadas humanas vigentes.
 
 ---
