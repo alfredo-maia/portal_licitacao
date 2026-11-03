@@ -28,7 +28,7 @@ describe("Carga e Qualificação das 17 Licitações Mineradas no PNCP (Papercli
   });
 
   it("todos os tipos de sistema sugeridos devem pertencer ao catálogo oficial dos 22 tipos", () => {
-    const codigosValidos = new Set(TIPOS_SISTEMA_CATALOG.map((t) => t.codigo));
+    const codigosValidos = new Set<string>(TIPOS_SISTEMA_CATALOG.map((t) => t.codigo));
     for (const lic of LICITACOES_MINERADAS_PNCP) {
       expect(codigosValidos.has(lic.tipoSistemaCodigo)).toBe(true);
     }
