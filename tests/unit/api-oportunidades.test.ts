@@ -93,7 +93,7 @@ describe("AV-36 — POST /api/ingestao (contrato v2)", () => {
 describe("AV-36 — GET /api/oportunidades (listagem e filtros)", () => {
   it("deve responder 200 ordenado por dataAbertura ASC", async () => {
     const response = await oportunidadesGET(
-      jsonRequest("http://localhost/api/oportunidades"),
+      jsonRequest("http://localhost/api/oportunidades?pageSize=50"),
     );
 
     expect(response.status).toBe(200);

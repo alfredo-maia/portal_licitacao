@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { realizarCadastroConta } from "@/server/services/cadastro.service";
 import { obterMeuPerfil, atualizarConfiguracaoEmpresa, atualizarMembroEquipe } from "@/server/services/configuracoes.service";
 import { listOportunidades, buscarESincronizarArquivosEditalPncp, atualizarKanbanStatus } from "@/server/services/oportunidades.service";

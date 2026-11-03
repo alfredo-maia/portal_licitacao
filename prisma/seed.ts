@@ -129,6 +129,7 @@ export async function seedLicitacoesIniciais(): Promise<number> {
   for (const item of itens) {
     const hashCritico = computeHashCritico(item);
     const dados = {
+      numeroControlePNCP: item.numeroControlePNCP ?? item.idPncp,
       numeroEdital: item.numeroEdital,
       orgaoNome: item.orgaoNome,
       orgaoCnpj: item.orgaoCnpj,
@@ -142,13 +143,16 @@ export async function seedLicitacoesIniciais(): Promise<number> {
       resumo: item.resumo,
       valorEstimado: item.valorEstimado,
       dataAbertura: item.dataAbertura,
+      dataEncerramentoProposta: item.dataEncerramentoProposta ?? item.dataAbertura,
       dataPublicacaoPncp: item.dataPublicacaoPncp,
       dataUltimaAtualizacao: item.dataPublicacaoPncp,
       status: item.status,
       parecerIA: item.parecerIA,
       justificativaIA: item.justificativaIA,
       tipoSistemaCodigo: item.tipoSistemaCodigo,
-      atestadosExigidos: [] as string[],
+      segmentoMacro: item.segmentoMacro ?? "TECNOLOGIA_TELECOM",
+      subcategorias: (item.subcategorias ? [...item.subcategorias] : ["SOFTWARE_SAAS"]) as any,
+      atestadosExigidos: (item.atestadosExigidos ? [...item.atestadosExigidos] : []) as any,
       motivoRecusa: null,
       quantidadeLotes: item.quantidadeLotes,
       loteUnico: item.loteUnico,
@@ -156,7 +160,7 @@ export async function seedLicitacoesIniciais(): Promise<number> {
       isPresencial: item.isPresencial,
       distanciaGoianiaKm: item.distanciaGoianiaKm,
       linkPncp: item.linkPncp,
-      linkSistemaOrigem: null,
+      linkSistemaOrigem: item.linkSistemaOrigem ?? null,
       hashCritico,
       responsavelId: null,
     };

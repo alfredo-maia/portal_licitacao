@@ -11,8 +11,11 @@
  * memória dos testes automatizados.
  */
 
+import { LICITACOES_MINERADAS_PNCP } from "./licitacoes-pncp-coleta";
+
 export interface LicitacaoSeedItem {
   idPncp: string;
+  numeroControlePNCP?: string | null;
   numeroEdital: string;
   orgaoNome: string;
   orgaoCnpj: string;
@@ -32,12 +35,16 @@ export interface LicitacaoSeedItem {
   parecerIA: "GO" | "AVALIAR" | "NO_GO";
   justificativaIA: string;
   tipoSistemaCodigo: string;
+  segmentoMacro?: string | null;
+  subcategorias?: readonly string[];
+  atestadosExigidos?: readonly string[];
   quantidadeLotes: number;
   loteUnico: boolean;
   precoPorLote: boolean;
   isPresencial: boolean;
   distanciaGoianiaKm: number | null;
   linkPncp: string;
+  linkSistemaOrigem?: string | null;
 }
 
 const DIA_EM_MS = 24 * 60 * 60 * 1000;
@@ -45,13 +52,18 @@ const DIA_EM_MS = 24 * 60 * 60 * 1000;
 export function buildLicitacoesSeed(
   agora: Date = new Date(),
 ): readonly LicitacaoSeedItem[] {
-  if (process.env.DISABLE_SEED_LICITACOES === "true" || process.env.NODE_ENV === "production") {
+  if (process.env.DISABLE_SEED_LICITACOES === "true") {
     return [];
+  }
+
+  // Em produção estrita, expõe apenas os certames reais minerados do PNCP
+  if (process.env.NODE_ENV === "production") {
+    return LICITACOES_MINERADAS_PNCP;
   }
 
   const base = agora.getTime();
 
-  return [
+  const mocks: readonly LicitacaoSeedItem[] = [
     {
       idPncp: "SEED-EDUC-GO-001",
       numeroEdital: "001/2026-SEDUC-GO",
@@ -168,5 +180,7 @@ export function buildLicitacoesSeed(
       distanciaGoianiaKm: 666,
       linkPncp: "https://pncp.gov.br/app/editais/seed-infra-mg-004",
     },
-  ] as const;
+  ];
+
+  return [...mocks, ...LICITACOES_MINERADAS_PNCP];
 }
