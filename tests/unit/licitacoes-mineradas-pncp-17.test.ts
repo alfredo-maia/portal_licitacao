@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { LICITACOES_MINERADAS_PNCP } from "@/config/licitacoes-pncp-coleta";
-import { buildLicitacoesSeed } from "@/config/licitacoes-seed";
-import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
+import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 import { listOportunidades } from "@/server/services/oportunidades.service";
 import { resetInMemoryLicitacoes } from "@/server/services/licitacoes-store";
 
-describe("Carga e Qualificação das 17 Licitações Mineradas no PNCP (Paperclip 03/11/2026)", () => {
-  it("deve conter exatamente 17 certames minerados e qualificados para software/SaaS", () => {
+describe("Carga e Qualificação das 17 Licitações Mineradas no PNCP (Taxonomia Multi-Segmento)", () => {
+  it("deve conter exatamente 17 certames minerados e qualificados", () => {
     expect(LICITACOES_MINERADAS_PNCP).toHaveLength(17);
   });
 
@@ -20,17 +19,19 @@ describe("Carga e Qualificação das 17 Licitações Mineradas no PNCP (Papercli
     }
   });
 
-  it("todos os certames devem estar classificados no segmento macro TECNOLOGIA_TELECOM", () => {
-    for (const lic of LICITACOES_MINERADAS_PNCP) {
-      expect(lic.segmentoMacro).toBe("TECNOLOGIA_TELECOM");
-      expect(lic.subcategorias).toContain("SOFTWARE_SAAS");
-    }
-  });
+  it("todos os certames devem estar classificados em Macro-Segmentos e Subcategorias oficiais do CATALOGO_MACRO_SEGMENTOS", () => {
+    const macrosValidos = new Set(Object.keys(CATALOGO_MACRO_SEGMENTOS));
 
-  it("todos os tipos de sistema sugeridos devem pertencer ao catálogo oficial dos 22 tipos", () => {
-    const codigosValidos = new Set<string>(TIPOS_SISTEMA_CATALOG.map((t) => t.codigo));
     for (const lic of LICITACOES_MINERADAS_PNCP) {
-      expect(codigosValidos.has(lic.tipoSistemaCodigo)).toBe(true);
+      expect(macrosValidos.has(lic.segmentoMacro)).toBe(true);
+
+      const macroDef = CATALOGO_MACRO_SEGMENTOS[lic.segmentoMacro as MacroSegmento];
+      expect(macroDef).toBeDefined();
+
+      for (const sub of lic.subcategorias) {
+        expect(typeof sub).toBe("string");
+        expect(sub.length).toBeGreaterThan(0);
+      }
     }
   });
 

@@ -639,11 +639,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T00:00:59Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 74/100): Demanda corporativa em modelo SaaS para plataforma de atendimento multisserviço da ASCAR em Porto Alegre/RS. Orçamento sigiloso nos termos do Art. 24 da Lei nº 14.133/2021, o que requer formulação de proposta baseada em custos analíticos de mercado de telefonia VoIP/SaaS. Disputa eletrônica na plataforma Banrisul com sessão marcada para 13/11/2026 09:00 (limite de impugnação/esclarecimento sob o Art. 164: 10/11/2026). Recomendada avaliação estratégica de margem comercial frente a custos de interconexão telecom.",
-        "tipoSistemaCodigo": "INFRA_CLOUD_SUPORTE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS",
+            "REDES_TELECOMUNICACOES"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica (Art. 67 da Lei 14.133/2021) comprovando fornecimento continuado de solução como serviço (SaaS) de Plataforma de Comunicação Multisserviços ou Contact Center Omnichannel, incluindo telefonia IP/SIP, chat e gerenciamento de contatos com integração a banco de dados corporativo.",
@@ -674,11 +674,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T08:51:12Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 68/100): Certame eletrônico com valor de R$ 101.100,00 para intranet em fibra óptica no Município de Cachoeira do Sul/RS. Embora tramitando no Portal de Compras Públicas sem exigência presencial na sessão, o objeto demanda implantação física e operação de infraestrutura óptica local no Rio Grande do Sul (~1.400 km de Goiânia/GO). Recomendável participar apenas se viabilizada subcontratação de lançamento/manutenção óptica com provedor regional local licenciado pela Anatel.",
-        "tipoSistemaCodigo": "INFRA_CLOUD_SUPORTE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "REDES_TELECOMUNICACOES",
+            "SERVICOS_TECNICOS_TI"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica (Art. 67 da Lei 14.133/2021) comprovando implantação, operação e manutenção de infraestrutura de intranet ou rede corporativa de comunicação de dados baseada em enlaces de fibra óptica.",
@@ -709,11 +709,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T09:46:46Z",
         "parecerIA": "GO",
         "justificativaIA": "Parecer 🟢 GO (Score 92/100): Oportunidade 100% aderente ao portfólio de software de processo eletrônico e GED da AV (`PROTOCOLO_PROCESSO_ELETRONICO`). Orçamento divulgado de R$ 234.000,00 estruturado em Lote Único na modalidade Registro de Preços (SRP). Disputa 100% eletrônica na plataforma LicitaNet com sessão marcada para 17/11/2026 10:30 (prazo de impugnação/esclarecimento sob Art. 164: 12/11/2026). Janela operacional confortável de 14 dias corridos e pleno alinhamento tecnológico.",
-        "tipoSistemaCodigo": "PROTOCOLO_PROCESSO_ELETRONICO",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS",
+            "SERVICOS_TECNICOS_TI"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica (Art. 67 da Lei 14.133/2021) comprovando fornecimento de software de Gestão Eletrônica de Documentos (GED) em nuvem e prestação de serviços de digitalização, indexação e tratamento documental arquivístico.",
@@ -744,11 +744,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T10:21:01Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 70/100): Contratação compartilhada em modelo SaaS via Consórcio Intermunicipal CIM-AMREC/SC. Orçamento sob sigilo (Art. 24). Requer atenção redobrada quanto ao cronograma de abertura muito próximo (sessão em 06/11/2026 08:45, com limite de impugnação HOJE 03/11/2026). Exige integração de hardware de telemetria veicular e rede credenciada de abastecimento/manutenção em Santa Catarina.",
-        "tipoSistemaCodigo": "PATRIMONIO_ALMOXARIFADO_FROTA",
-        "segmentoMacro": "TECNOLOGIA_TELECOM",
+        "tipoSistemaCodigo": "OUTROS",
+        "segmentoMacro": "AUTOMOTIVO_PECAS_FROTAS",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SERVICOS_MECANICOS_MANUTENCAO",
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica comprovando implantação e operação de sistema SaaS de gestão integrada de frota pública com rastreamento veicular e telemetria para quantitativo compatível de veículos.",
@@ -779,11 +779,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T10:21:12Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 72/100): Certame de porte financeiro atrativo (R$ 1.671.823,02) no Compras.gov.br (UASG 926535 - CRA-SP). Contudo, o objeto técnico é expressamente restrito à sustentação e licenciamento da plataforma proprietária legada 'BENNER'. Sob a ótica técnica e jurídica da Lei 14.133/2021, a participação competitiva exige comprovação de domínio e parceria credenciada com a Benner Sistemas para mitigar risco de desclassificação por ausência de credenciamento oficial da fabricante.",
-        "tipoSistemaCodigo": "RH_FOLHA",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS",
+            "SERVICOS_TECNICOS_TI"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica comprovando execução de serviços de sustentação, parametrização, adequação às regras do eSocial e licenciamento do sistema específico BENNER de gestão de pessoas e folha de pagamento.",
@@ -814,11 +814,11 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T11:00:43Z",
         "parecerIA": "NO_GO",
         "justificativaIA": "Parecer 🔴 NO_GO (Score 25/100): Inviabilidade operacional e logística extrema. Objeto puramente focado em obras de cabeamento óptico e instalação de antenas satelitais em comunidades remotas da Secretaria de Saúde de Coari/AM (interior do Amazonas, acessível apenas por via fluvial/aérea). Orçamento sob sigilo e escopo fora do core de software da AV, acarretando custos logísticos desproporcionais e alto risco de inadimplemento contratual.",
-        "tipoSistemaCodigo": "INFRA_CLOUD_SUPORTE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "REDES_TELECOMUNICACOES",
+            "SERVICOS_TECNICOS_TI"
         ],
         "atestadosExigidos": [
             "Atestado de capacidade técnica em telecomunicações para fornecimento de links satelitais em banda Ku/Ka e enlaces de fibra óptica no interior da Amazônia Legal.",
@@ -849,11 +849,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T11:08:54Z",
         "parecerIA": "GO",
         "justificativaIA": "Parecer 🟢 GO (Score 88/100): Oportunidade 100% SaaS no segmento de RH/Folha para o SAAE de Sabinópolis/MG. Valor estimado baixo (R$ 4.594,80), porém com esforço marginal praticamente nulo de implantação e entrega 100% eletrônica em nuvem. Disputa eletrônica no portal Licitar Digital em 17/11/2026 09:00 (limite Art. 164: 12/11/2026). Excelente para agregação de atestado de capacitação técnica em compliance com a Portaria 671/MTE.",
-        "tipoSistemaCodigo": "RH_FOLHA",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica comprovando fornecimento de software de controle e registro de ponto eletrônico corporativo em nuvem (REP-P).",
@@ -884,11 +883,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T11:20:14Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 65/100): Certame no Município de Nova Laranjeiras/PR com valor de R$ 125.895,36 na plataforma BLL Compras. Trata-se de serviço de ISP / provedor de infraestrutura telecom local (enlaces de rádio e fibra física). Requer avaliação com provedores parceiros do Paraná para verificar se há viabilidade de consórcio ou subcontratação da ponta física local.",
-        "tipoSistemaCodigo": "INFRA_CLOUD_SUPORTE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "REDES_TELECOMUNICACOES"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica comprovando fornecimento de link dedicado de internet e interligação de rede de dados via fibra óptica e radiofrequência licenciada.",
@@ -919,11 +917,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T11:41:17Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 60/100): Objeto híbrido no Município de Matelândia/PR (R$ 125.472,48) que agrega plataforma digital de apoio pedagógico a fornecimento físico de material didático, insumos culinários/gastronômicos e consultoria pedagógica presencial continuada. Desvio significativo da atividade-fim de desenvolvimento de software puro, demandando parceria com editora pedagógica ou assessoria educacional especializada.",
-        "tipoSistemaCodigo": "EDUCACAO_PORTAL",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica comprovando execução de projetos pedagógicos de educação tecnológica/interdisciplinar com fornecimento de plataforma digital educacional e materiais paradidáticos.",
@@ -954,11 +951,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T14:15:33Z",
         "parecerIA": "NO_GO",
         "justificativaIA": "Parecer 🔴 NO_GO (Score 18/100): Duplicidade secundária de publicação no PNCP: registro gerado pela exportação de dados do sistema ERP interno municipal (Tchê Informática Ltda) para o PE 49/2026 da Prefeitura de Nova Boa Vista/RS sem link de disputa ativo. A sessão pública eletrônica oficial corre no Portal de Compras Públicas sob o controle PNCP 94704061000183-2026-305 (devidamente analisado e qualificado). Descarte técnico para saneamento do funil.",
-        "tipoSistemaCodigo": "IMOBILIARIO",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "N/A - Registro espelho do sistema de gestão municipal sem canal oficial de disputa habilitado."
@@ -988,11 +984,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T14:26:08Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 75/100): Publicação oficial ativa do PE 49/2026 no Portal de Compras Públicas (PCP). O software de gestão SIGWEB em ambiente web é plenamente compatível com o domínio imobiliário/tributário da AV. Contudo, o certame exige execução integrada de aerolevantamento, imageamento terrestre/aéreo 360º e ART de engenharia cartográfica. Orçamento sigiloso sob Art. 24. Sessão pública em 23/11/2026 12:59 (prazo limite de impugnação sob Art. 164: 18/11/2026), oferecendo 20 dias corridos para articulação de parceria/consórcio com empresa de geomensura.",
-        "tipoSistemaCodigo": "IMOBILIARIO",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica devidamente registrado(s) no CREA, comprovando a execução de serviços técnicos de aerolevantamento fotogramétrico, georreferenciamento urbano e implantação de Sistema de Informação Geográfica (SIGWEB) para gestão cadastral imobiliária municipal.",
@@ -1024,10 +1019,10 @@ async function bootstrapDatabase() {
         "parecerIA": "NO_GO",
         "justificativaIA": "Parecer 🔴 NO_GO (Score 10/100): Inviabilidade jurídica temporal insanável por preclusão fática: os dados oficiais cadastrados no PNCP indicam que o início de propostas ocorreu em 24/09/2026 e o encerramento da disputa em 08/10/2026 às 08:15. A publicação no PNCP ocorreu de forma intempestiva e extemporânea em 30/10/2026 (22 dias após a sessão de disputa). Certame já concluído/adjudicado na origem, impossibilitando submissão de proposta.",
         "tipoSistemaCodigo": "OUTROS",
-        "segmentoMacro": "TECNOLOGIA_TELECOM",
+        "segmentoMacro": "SERVICOS_TERCEIRIZADOS_OPERACIONAIS",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "VIGILANCIA_SEGURANCA_ELETRONICA",
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "N/A - Licitação preclusa temporalmente na origem."
@@ -1057,11 +1052,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-30T15:52:19Z",
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 78/100): Oportunidade de altíssimo valor financeiro (R$ 18.540.004,65 em Registro de Preços pelo Consórcio Intermunicipal CISALP/MG) via LicitaNet. A solução de software em nuvem (prontuário para neurodivergentes, teleatendimento, PEI, dashboards e IA) possui margem e sinergia técnica excepcionais. No entanto, o termo de referência inclui a implantação física e mobiliário sensorial. Recomendada avaliação urgente da composição dos itens do edital para verificar se há adjudicação por item/lote separado ou formação de consórcio empresarial com fabricante de mobiliário adaptado. Sessão em 16/11/2026 08:30 (impugnação até 11/11/2026).",
-        "tipoSistemaCodigo": "SAUDE_ATENCAO_BASICA",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado de Capacidade Técnica comprovando fornecimento/disponibilização de software web em nuvem para gestão de saúde/educação especial, prontuário eletrônico multidisciplinar, teleatendimento e relatórios gerenciais estruturados.",
@@ -1092,11 +1086,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-10-31T10:03:03Z",
         "parecerIA": "NO_GO",
         "justificativaIA": "Parecer 🔴 NO_GO (Score 10/100): Inviabilidade jurídica temporal insanável por preclusão fática: os registros oficiais no PNCP atestam que a sessão pública de abertura das propostas ocorreu em 29/04/2026 às 08:29, tendo sido inserido tardiamente no PNCP em 31/10/2026 (mais de 6 meses após a disputa). Certame precluso e encerrado há meses no Município de Oscar Bressane/SP, restando nula qualquer possibilidade de participação comercial.",
-        "tipoSistemaCodigo": "INFRA_CLOUD_SUPORTE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "REDES_TELECOMUNICACOES"
         ],
         "atestadosExigidos": [
             "N/A - Licitação preclusa temporalmente na origem."
@@ -1126,11 +1119,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-11-02T14:19:20Z",
         "parecerIA": "GO",
         "justificativaIA": "Parecer 🟢 GO (Score 94/100): Oportunidade excelente no portal Compras.gov.br (UASG 932133 - ADAPS / Brasília-DF). Orçamento divulgado de R$ 699.183,50 em Registro de Preços para fornecimento de licenças de assinatura anual Autodesk AEC Collection. Objeto padronizado de licenciamento, entrega 100% eletrônica, sem necessidade de alocação presencial ou mão de obra residente. Sessão pública marcada para 17/11/2026 10:00 (limite Art. 164: 12/11/2026). Corredor Brasília/Goiânia altamente estratégico para a AV.",
-        "tipoSistemaCodigo": "LICENCA_SOFTWARE",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica (Art. 67 da Lei 14.133/2021) comprovando o fornecimento corporativo de subscrições de licenças de software comercial/técnico ou soluções de engenharia/arquitetura.",
@@ -1161,11 +1153,10 @@ async function bootstrapDatabase() {
         "dataPublicacaoPncp": "2026-11-02T19:44:49Z",
         "parecerIA": "GO",
         "justificativaIA": "Parecer 🟢 GO (Score 95/100): Core absoluto da especialidade da AV (`GESTAO_PUBLICA_ERP`). Licenciamento temporário de ERP web para o Município de Monte do Carmo/TO, contemplando implantação, parametrização, migração de dados e suporte por 12 meses, com valor estimado de R$ 113.253,24. Disputa eletrônica na plataforma BNC com abertura em 16/11/2026 07:30 (limite Art. 164: 11/11/2026). Prazo adequado de 13 dias corridos, escopo técnico perfeitamente dominado e risco de execução mínimo.",
-        "tipoSistemaCodigo": "GESTAO_PUBLICA_ERP",
+        "tipoSistemaCodigo": "OUTROS",
         "segmentoMacro": "TECNOLOGIA_TELECOM",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "SOFTWARES_SAAS_LICENCAS"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica (Art. 67 da Lei 14.133/2021) comprovando disponibilização, implantação, migração de dados e suporte continuado de sistema integrado de gestão pública municipal (ERP em nuvem) operante 100% em ambiente web.",
@@ -1197,10 +1188,10 @@ async function bootstrapDatabase() {
         "parecerIA": "AVALIAR",
         "justificativaIA": "Parecer 🟡 AVALIAR (Score 68/100): Demanda corporativa de longo prazo (60 meses) para o Tribunal de Contas do Estado do Rio de Janeiro (TCE-RJ) no portal Compras.gov.br (UASG 925464). Orçamento sigiloso sob o Art. 24 da Lei 14.133/2021. Embora envolva softwares de supervisão e licenças, o objeto é eminentemente físico/predial, com obras de montagem, cabeamento, portas e alarmes de incêndio na sede do Tribunal no Rio de Janeiro/RJ. Recomendável avaliar somente se houver viabilidade de consórcio ou subcontratação com integrador de segurança física predial credenciado no RJ.",
         "tipoSistemaCodigo": "OUTROS",
-        "segmentoMacro": "TECNOLOGIA_TELECOM",
+        "segmentoMacro": "SERVICOS_TERCEIRIZADOS_OPERACIONAIS",
         "subcategorias": [
-            "SOFTWARE_SAAS",
-            "SISTEMAS_CLOUD"
+            "VIGILANCIA_SEGURANCA_ELETRONICA",
+            "EQUIPAMENTOS_HARDWARE"
         ],
         "atestadosExigidos": [
             "Atestado(s) de Capacidade Técnica com registro no CREA comprovando a implantação, instalação e integração de solução predial de segurança eletrônica abrangendo CFTV IP, controle de acesso e detecção de alarmes de incêndio.",
