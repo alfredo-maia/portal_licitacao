@@ -28,6 +28,34 @@ import bcrypt from "bcryptjs";
 import { canManageTeamMember } from "@/lib/rbac";
 import { isValidCpf } from "@/lib/validations/cpf";
 import { getInMemoryAuthUserByEmail, upsertInMemoryAuthUser } from "@/server/auth";
+import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
+
+const LEGACY_SEGMENTO_MAP: Record<string, string> = {
+  SAUDE_MEDICAMENTOS_HOSPITALAR: "SAUDE",
+  AUTOMOTIVO_PECAS_FROTAS: "VEICULOS_PECAS",
+  OBRAS_CONSTRUCAO_MANUTENCAO: "ENGENHARIA_SERVICOS",
+  ALIMENTOS_MERENDA_ESCOLAR: "ALIMENTACAO",
+  TECNOLOGIA_TELECOM: "INFORMATICA",
+  SERVICOS_TERCEIRIZADOS_OPERACIONAIS: "PRESTACAO_DE_SERVICOS_MAO_DE_OBRA",
+  MATERIAIS_ESCRITORIO_SUPRIMENTOS: "ESCRITORIO_E_GRAFICA",
+};
+
+export function normalizarSegmentosEntrada(segmentos?: string[] | null): string[] {
+  if (!segmentos || !Array.isArray(segmentos)) return [];
+  const validMacros = new Set(Object.keys(CATALOGO_MACRO_SEGMENTOS));
+  const result: string[] = [];
+  for (const seg of segmentos) {
+    if (validMacros.has(seg)) {
+      if (!result.includes(seg)) result.push(seg);
+    } else if (LEGACY_SEGMENTO_MAP[seg]) {
+      const mapped = LEGACY_SEGMENTO_MAP[seg];
+      if (!result.includes(mapped)) result.push(mapped);
+    } else if (seg && typeof seg === "string") {
+      if (!result.includes(seg)) result.push(seg);
+    }
+  }
+  return result;
+}
 
 let userProfileColumnsChecked = false;
 let configuracaoEmpresaColumnsChecked = false;
@@ -76,6 +104,11 @@ async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cidade" TEXT;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "uf" TEXT;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cep" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "telefone" TEXT;`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "segmentos" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "subsegmentos" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "ufs" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "brasilInteiro" BOOLEAN DEFAULT true;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
   ];
@@ -432,10 +465,11 @@ export async function obterConfiguracaoEmpresa(
           cidade: config.cidade || tenant?.cidade || "",
           uf: config.uf || tenant?.uf || "GO",
           cep: config.cep || tenant?.cep || "",
-          segmentos: tenant?.segmentos || [],
+          segmentos: normalizarSegmentosEntrada(tenant?.segmentos || []),
           subsegmentos: tenant?.subsegmentos || [],
           ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
           brasilInteiro: tenant?.brasilInteiro ?? true,
+          preferenciasUpdatedAt: tenant?.preferenciasUpdatedAt ?? (config as any)?.preferenciasUpdatedAt ?? null,
         };
       }
 
@@ -464,10 +498,11 @@ export async function obterConfiguracaoEmpresa(
           agencia: "",
           contaCorrente: "",
           chavePix: tenant.cnpj,
-          segmentos: tenant.segmentos || [],
+          segmentos: normalizarSegmentosEntrada(tenant.segmentos || []),
           subsegmentos: tenant.subsegmentos || [],
           ufs: tenant.ufs || (tenant.uf ? [tenant.uf] : ["GO"]),
           brasilInteiro: tenant.brasilInteiro ?? true,
+          preferenciasUpdatedAt: tenant.preferenciasUpdatedAt ?? null,
         };
       }
     }
@@ -564,7 +599,7 @@ export async function atualizarConfiguracaoEmpresa(
       }
     }
 
-    if (alterandoPreferencias && plano === "BASICO" && preferenciasUpdatedAt) {
+    if (alterandoPreferencias && plano === "BASICO" && billingStatus !== "TRIAL" && preferenciasUpdatedAt) {
       const trintaDiasMs = 30 * 24 * 60 * 60 * 1000;
       const diffMs = Date.now() - new Date(preferenciasUpdatedAt).getTime();
       if (diffMs < trintaDiasMs) {
@@ -587,7 +622,7 @@ export async function atualizarConfiguracaoEmpresa(
       const escopo = normalizarEscopoPlano({
         plano,
         billingStatus,
-        segmentos,
+        segmentos: normalizarSegmentosEntrada(segmentos),
         ufs,
         ufSede: validado.uf || undefined,
         brasilInteiro,
@@ -600,30 +635,56 @@ export async function atualizarConfiguracaoEmpresa(
           ...configData,
           id: configId,
           tenantId,
+          preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
         },
         update: {
           ...configData,
+          preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
           atualizadoEm: new Date(),
         },
       });
 
-      await (prisma as any).tenant.update({
-        where: { id: tenantId },
-        data: {
-          ...(validado.razaoSocial ? { razaoSocial: validado.razaoSocial } : {}),
-          ...(validado.nomeFantasia !== undefined ? { nomeFantasia: validado.nomeFantasia } : {}),
-          ...(validado.cnpj ? { cnpj: validado.cnpj } : {}),
-          ...(validado.uf ? { uf: validado.uf } : {}),
-          ...(validado.cidade ? { cidade: validado.cidade } : {}),
-          ...(validado.endereco ? { endereco: validado.endereco } : {}),
-          ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
-          ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
-          segmentos: escopo.segmentos,
-          subsegmentos: subsegmentos || [],
-          ufs: escopo.ufs,
-          brasilInteiro: escopo.brasilInteiro,
-        },
-      }).catch(() => undefined);
+      try {
+        await (prisma as any).tenant.update({
+          where: { id: tenantId },
+          data: {
+            ...(validado.razaoSocial ? { razaoSocial: validado.razaoSocial } : {}),
+            ...(validado.nomeFantasia !== undefined ? { nomeFantasia: validado.nomeFantasia } : {}),
+            ...(validado.cnpj ? { cnpj: validado.cnpj } : {}),
+            ...(validado.uf ? { uf: validado.uf } : {}),
+            ...(validado.cidade ? { cidade: validado.cidade } : {}),
+            ...(validado.endereco ? { endereco: validado.endereco } : {}),
+            ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
+            ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
+            segmentos: escopo.segmentos,
+            subsegmentos: subsegmentos || [],
+            ufs: escopo.ufs,
+            brasilInteiro: escopo.brasilInteiro,
+          },
+        });
+      } catch (errTenant: any) {
+        console.warn("[ConfiguracoesService] Fallback update do tenant sem preferenciasUpdatedAt:", errTenant?.message);
+        try {
+          await (prisma as any).tenant.update({
+            where: { id: tenantId },
+            data: {
+              ...(validado.razaoSocial ? { razaoSocial: validado.razaoSocial } : {}),
+              ...(validado.nomeFantasia !== undefined ? { nomeFantasia: validado.nomeFantasia } : {}),
+              ...(validado.cnpj ? { cnpj: validado.cnpj } : {}),
+              ...(validado.uf ? { uf: validado.uf } : {}),
+              ...(validado.cidade ? { cidade: validado.cidade } : {}),
+              ...(validado.endereco ? { endereco: validado.endereco } : {}),
+              ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
+              segmentos: escopo.segmentos,
+              subsegmentos: subsegmentos || [],
+              ufs: escopo.ufs,
+              brasilInteiro: escopo.brasilInteiro,
+            },
+          });
+        } catch (errFallback: any) {
+          console.error("[ConfiguracoesService] Erro ao atualizar tenant:", errFallback?.message);
+        }
+      }
 
       const memTenant = inMemoryTenants.get(tenantId);
       if (memTenant) {
@@ -663,6 +724,7 @@ export async function atualizarConfiguracaoEmpresa(
         subsegmentos: subsegmentos || [],
         ufs: escopo.ufs,
         brasilInteiro: escopo.brasilInteiro,
+        preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
       };
     }
 
@@ -691,12 +753,30 @@ export async function atualizarConfiguracaoEmpresa(
     if (err?.statusCode === 403 || String(err?.message || "").includes("30 dias")) {
       throw err;
     }
-    if (tenantId && inMemoryTenants.has(tenantId)) {
-      const memTenant = inMemoryTenants.get(tenantId)!;
+    if (tenantId) {
+      let memTenant = inMemoryTenants.get(tenantId);
+      if (!memTenant) {
+        memTenant = {
+          id: tenantId,
+          cnpj: validado.cnpj || "00.000.000/0001-00",
+          razaoSocial: validado.razaoSocial || "Empresa",
+          plano: plano as any,
+          billingStatus: billingStatus as any,
+          maxCnpjs: 1,
+          maxUsers: 1,
+          ativo: true,
+          segmentos: [],
+          subsegmentos: [],
+          ufs: [],
+          brasilInteiro: true,
+          criadoEm: new Date(),
+          updatedAt: new Date(),
+        };
+      }
       const escopo = normalizarEscopoPlano({
-        plano: memTenant.plano || "BASICO",
-        billingStatus: memTenant.billingStatus || "TRIAL",
-        segmentos,
+        plano: memTenant.plano || plano || "BASICO",
+        billingStatus: memTenant.billingStatus || billingStatus || "TRIAL",
+        segmentos: normalizarSegmentosEntrada(segmentos),
         ufs,
         ufSede: validado.uf || undefined,
         brasilInteiro,
@@ -714,8 +794,27 @@ export async function atualizarConfiguracaoEmpresa(
       inMemoryTenants.set(tenantId, memTenant);
     }
 
+    const escopoRetorno = tenantId
+      ? normalizarEscopoPlano({
+          plano: plano || "BASICO",
+          billingStatus: billingStatus || "TRIAL",
+          segmentos: normalizarSegmentosEntrada(segmentos),
+          ufs,
+          ufSede: validado.uf || undefined,
+          brasilInteiro,
+        })
+      : {
+          segmentos: normalizarSegmentosEntrada(segmentos),
+          ufs: ufs || [],
+          brasilInteiro: brasilInteiro ?? true,
+        };
+
     const memoria = updateInMemoryConfiguracaoEmpresa({
       ...validado,
+      segmentos: escopoRetorno.segmentos,
+      subsegmentos: subsegmentos || [],
+      ufs: escopoRetorno.ufs,
+      brasilInteiro: escopoRetorno.brasilInteiro,
       ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
     }, tenantId);
 
@@ -729,10 +828,10 @@ export async function atualizarConfiguracaoEmpresa(
 
     return {
       ...memoria,
-      segmentos: validado.segmentos || [],
-      subsegmentos: validado.subsegmentos || [],
-      ufs: validado.ufs || [],
-      brasilInteiro: validado.brasilInteiro ?? true,
+      segmentos: escopoRetorno.segmentos,
+      subsegmentos: subsegmentos || [],
+      ufs: escopoRetorno.ufs,
+      brasilInteiro: escopoRetorno.brasilInteiro,
       preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
     };
   }

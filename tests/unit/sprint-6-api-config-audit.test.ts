@@ -59,6 +59,46 @@ describe("Sprint 6 [TDD RED] — APIs de Configurações, Gestão de Equipe & Tr
       expect(putData.ok).toBe(true);
       expect(putData.empresa.razaoSocial).toBe("APONTA TECNOLOGIA GOIAS LTDA");
     });
+
+    it("deve salvar e atualizar segmentos, subsegmentos e UFs com sucesso e normalizar legados", async () => {
+      const { GET: empresaGET, PUT: empresaPUT } = await import(
+        "@/app/api/configuracoes/empresa/route"
+      );
+
+      const putReq = jsonRequest(
+        "http://localhost:3010/api/configuracoes/empresa",
+        {
+          razaoSocial: "APONTA TECNOLOGIA GOIAS LTDA",
+          cnpj: "12.345.678/0001-90",
+          segmentos: ["AGROPECUARIO", "SAUDE_MEDICAMENTOS_HOSPITALAR"],
+          subsegmentos: ["2301", "2302"],
+          ufs: ["GO", "DF"],
+          brasilInteiro: false,
+        },
+        "PUT",
+      );
+
+      const putResp = await empresaPUT(putReq);
+      expect(putResp.status).toBe(200);
+      const putData = await putResp.json();
+      expect(putData.ok).toBe(true);
+      expect(putData.empresa.segmentos).toContain("AGROPECUARIO");
+      expect(putData.empresa.segmentos).toContain("SAUDE");
+      expect(putData.empresa.subsegmentos).toEqual(["2301", "2302"]);
+      expect(putData.empresa.ufs).toEqual(["GO", "DF"]);
+      expect(putData.empresa.brasilInteiro).toBe(false);
+
+      const getReq = jsonRequest("http://localhost:3010/api/configuracoes/empresa");
+      const getResp = await empresaGET(getReq);
+      expect(getResp.status).toBe(200);
+      const getData = await getResp.json();
+      expect(getData.ok).toBe(true);
+      expect(getData.empresa.segmentos).toContain("AGROPECUARIO");
+      expect(getData.empresa.segmentos).toContain("SAUDE");
+      expect(getData.empresa.subsegmentos).toEqual(["2301", "2302"]);
+      expect(getData.empresa.ufs).toEqual(["GO", "DF"]);
+      expect(getData.empresa.brasilInteiro).toBe(false);
+    });
   });
 
   describe("2. Gestão de Equipe & RBAC (/api/configuracoes/equipe)", () => {

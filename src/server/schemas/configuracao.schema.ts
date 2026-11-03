@@ -34,10 +34,19 @@ export const configuracaoEmpresaSchema = z.object({
   atualizadoEm: z.coerce.date().optional(),
 });
 
+const emptyToUndefined = (val: unknown) =>
+  typeof val === "string" && val.trim() === "" ? undefined : val;
+
 export const configuracaoEmpresaAtualizarInputSchema = z.object({
-  razaoSocial: z.string().trim().min(2, "Razão Social é obrigatória").max(255).optional(),
+  razaoSocial: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(2, "Razão Social é obrigatória").max(255).optional(),
+  ),
   nomeFantasia: z.string().trim().max(255).optional().nullable(),
-  cnpj: z.string().trim().min(14, "CNPJ é obrigatório").max(20).optional(),
+  cnpj: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(14, "CNPJ é obrigatório").max(20).optional(),
+  ),
   inscricaoEstadual: z.string().trim().max(50).optional().nullable(),
   inscricaoMunicipal: z.string().trim().max(50).optional().nullable(),
   cnae: z.string().trim().max(100).optional().nullable(),
@@ -49,7 +58,10 @@ export const configuracaoEmpresaAtualizarInputSchema = z.object({
   uf: z.string().trim().max(2).optional().nullable(),
   cep: z.string().trim().max(10).optional().nullable(),
   representanteNome: z.string().trim().max(255).optional().nullable(),
-  representanteCpf: z.string().trim().max(14).optional().nullable(),
+  representanteCpf: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(14).optional().nullable(),
+  ),
   representanteRg: z.string().trim().max(50).optional().nullable(),
   representanteCargo: z.string().trim().max(100).optional().nullable(),
   bancoNome: z.string().trim().max(100).optional().nullable(),
@@ -60,6 +72,7 @@ export const configuracaoEmpresaAtualizarInputSchema = z.object({
   subsegmentos: z.array(z.string()).optional().default([]),
   ufs: z.array(z.string()).optional().default([]),
   brasilInteiro: z.boolean().optional().default(true),
+  preferenciasUpdatedAt: z.coerce.date().optional().nullable(),
 });
 
 export type ConfiguracaoEmpresa = z.infer<typeof configuracaoEmpresaSchema>;

@@ -551,7 +551,7 @@ export default function ConfiguracoesPage() {
       });
       const data = await res.json();
       if (res.ok && data.ok) {
-        setNotificacao({ tipo: "success", texto: "Dados cadastrais da empresa atualizados com sucesso!" });
+        setNotificacao({ tipo: "success", texto: "Dados e escopo da empresa atualizados com sucesso!" });
         if (data.empresa) {
           setEmpresa((prev) => ({
             ...prev,
@@ -560,13 +560,10 @@ export default function ConfiguracoesPage() {
             subsegmentos: data.empresa.subsegmentos || prev.subsegmentos || [],
             ufs: data.empresa.ufs || prev.ufs || [],
             brasilInteiro: data.empresa.brasilInteiro ?? prev.brasilInteiro ?? true,
+            preferenciasUpdatedAt: data.empresa.preferenciasUpdatedAt || prev.preferenciasUpdatedAt || null,
           }));
         }
-        if (typeof window !== "undefined" && activeTenantId) {
-          window.dispatchEvent(
-            new CustomEvent("tenant-changed", { detail: { tenantId: activeTenantId } }),
-          );
-        }
+        await carregarTenants();
       } else {
         setNotificacao({ tipo: "error", texto: data.error || "Falha ao salvar dados da empresa." });
       }
@@ -1502,6 +1499,28 @@ export default function ConfiguracoesPage() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Botão de Salvar no rodapé da Seção 5 */}
+              <div
+                style={{
+                  marginTop: "1.5rem",
+                  paddingTop: "1rem",
+                  borderTop: "1px solid var(--cds-border-subtle)",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <Button
+                  kind="primary"
+                  size="md"
+                  renderIcon={Save}
+                  onClick={handleSalvarEmpresa}
+                  disabled={salvandoEmpresa || bloqueadoPlanoBasico30Dias}
+                  id="btn-salvar-escopo-rodape"
+                >
+                  {salvandoEmpresa ? <InlineLoading description="Salvando escopo..." /> : "Salvar Alterações de Escopo"}
+                </Button>
               </div>
             </div>
           </Tile>

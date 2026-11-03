@@ -504,6 +504,7 @@ model ConfiguracaoEmpresa {
   chavePix           String?  @default("12.345.678/0001-90")
   tenantId           String?  @unique
   tenant             Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preferenciasUpdatedAt DateTime?
   atualizadoEm       DateTime @default(now()) @updatedAt
 
   @@map("configuracao_empresa")
@@ -542,6 +543,7 @@ model Tenant {
   subsegmentos        String[]            @default([])
   ufs                 String[]            @default([])
   brasilInteiro       Boolean             @default(true)
+  preferenciasUpdatedAt DateTime?
   trialFim            DateTime?
   criadoEm            DateTime            @default(now())
   atualizadoEm        DateTime            @updatedAt
