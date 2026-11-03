@@ -226,8 +226,8 @@ describe("Configurações Page — Reforma Completa (Meu Perfil 3 Cards, Multi-C
 
       // Seção 5: Triagem & Escopo de Licitações
       expect(screen.getByText(/5\. Triagem & Escopo de Licitações/i)).toBeInTheDocument();
-      expect(screen.getByText(/Saúde, Medicamentos & Hospitalar/i)).toBeInTheDocument();
-      expect(screen.getByText(/Tecnologia.*Telecom/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Saúde$/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Informática$/i)).toBeInTheDocument();
       expect(screen.getByText(/Brasil Inteiro/i)).toBeInTheDocument();
     });
   });

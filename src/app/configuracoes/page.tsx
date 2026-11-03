@@ -38,6 +38,7 @@ import { getVisibleConfigTabs } from "@/lib/rbac";
 import { isValidCpf, maskCep, maskCnpj, maskCpf, maskPhone } from "@/lib/masks";
 import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 import { ESTADOS_BRASIL } from "@/config/estados";
+import { filtrarCatalogoSegmentos } from "@/lib/segmentos-busca";
 import { CATALOGO_CNAE } from "@/config/cnae-catalogo";
 import type {
   ConfiguracaoEmpresa,
@@ -139,6 +140,7 @@ export default function ConfiguracoesPage() {
     preferenciasUpdatedAt: null,
   });
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
+  const [buscaSegmento, setBuscaSegmento] = useState("");
   const [buscandoCepEmpresa, setBuscandoCepEmpresa] = useState(false);
 
   // 3. GESTÃO DA EQUIPE
@@ -1366,8 +1368,27 @@ export default function ConfiguracoesPage() {
                     : "Selecione os segmentos de atuação. Ao marcar um segmento, suas subcategorias vêm selecionadas por padrão."}
                 </p>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => {
+                <TextInput
+                  id="config-busca-segmento"
+                  data-testid="config-busca-segmento"
+                  labelText="Buscar segmento ou subatividade"
+                  placeholder="Ex.: medicamentos, software, pavimentação"
+                  value={buscaSegmento}
+                  onChange={(e) => setBuscaSegmento(e.target.value)}
+                  style={{ marginBottom: "0.75rem" }}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.75rem",
+                    maxHeight: "32rem",
+                    overflowY: "auto",
+                    paddingRight: "0.25rem",
+                  }}
+                >
+                  {filtrarCatalogoSegmentos(buscaSegmento).map((macro) => {
                     const isChecked = (empresa.segmentos || []).includes(macro.codigo);
                     return (
                       <div

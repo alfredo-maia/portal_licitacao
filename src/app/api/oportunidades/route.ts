@@ -46,6 +46,9 @@ export async function GET(request: Request) {
           configuracaoPendente = true;
         } else {
           params.segmentosTenantAtivo = cfg.segmentos;
+          if (Array.isArray(cfg.subsegmentos) && cfg.subsegmentos.length > 0) {
+            params.subsegmentosTenantAtivo = cfg.subsegmentos;
+          }
         }
       } catch {}
     }

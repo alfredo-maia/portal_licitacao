@@ -95,7 +95,7 @@ function seedToRecord(seed: LicitacaoSeedItem): LicitacaoRecord {
     responsavelId: null,
     modalidadeCodigo: 6,
     numeroControlePNCP: seed.numeroControlePNCP ?? seed.idPncp,
-    segmentoMacro: seed.segmentoMacro ?? "TECNOLOGIA_TELECOM",
+    segmentoMacro: seed.segmentoMacro ?? null,
     subcategorias: (seed.subcategorias ? [...seed.subcategorias] : []) as any,
     createdAt: agora,
     updatedAt: agora,

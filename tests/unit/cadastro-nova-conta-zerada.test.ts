@@ -26,7 +26,7 @@ describe("Issue #27 — Conta Nova no Cadastro Deve Vir 100% Zerada e Isolada", 
       email: fakeEmail,
       whatsapp: "(11) 99999-0000",
       senha: "SenhaSegura@2026",
-      segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+      segmentos: ["ALIMENTACAO"],
       subsegmentos: [],
       ufs: ["SP"],
       brasilInteiro: false,
@@ -74,7 +74,7 @@ describe("Issue #27 — Conta Nova no Cadastro Deve Vir 100% Zerada e Isolada", 
       email: `maria_${Date.now()}@gmail.com`,
       whatsapp: "(21) 98888-7777",
       senha: "SenhaSegura@2026",
-      segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+      segmentos: ["ALIMENTACAO"],
       subsegmentos: [],
       ufs: ["RJ"],
       brasilInteiro: false,
@@ -132,7 +132,7 @@ describe("Issue #27 — Conta Nova no Cadastro Deve Vir 100% Zerada e Isolada", 
   it("5. Dashboard de novo tenant deve vir com pipeline de deliberação zerado (emPrecificacao: 0, recusadas: 0)", async () => {
     const dashboard = await getDashboardData({
       tenantId: "tnt_novo_zerado_999",
-      segmentosTenantAtivo: ["ALIMENTOS_MERENDA_ESCOLAR"],
+      segmentosTenantAtivo: ["ALIMENTACAO"],
     });
 
     expect(dashboard.cards.emPrecificacao.total).toBe(0);

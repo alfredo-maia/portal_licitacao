@@ -26,15 +26,15 @@ const mockOportunidadesData = {
       resumo: "Aquisição de pães franceses, bolos e produtos de panificação para a merenda escolar do município.",
       status: "PENDENTE",
       parecerIA: "GO",
-      tipoSistemaCodigo: "ALIMENTOS_MERENDA_ESCOLAR",
+      tipoSistemaCodigo: "ALIMENTACAO",
     },
   ],
 };
 
 const mockPreferenciasData = {
   ok: true,
-  segmentos: ["ALIMENTOS_MERENDA_ESCOLAR", "SAUDE_MEDICAMENTOS_HOSPITALAR"],
-  subsegmentos: ["PANIFICACAO_LANCHES", "MEDICAMENTOS_FARMACOS"],
+  segmentos: ["ALIMENTACAO", "SAUDE"],
+  subsegmentos: ["2501", "2201"],
   ufs: ["GO"],
   brasilInteiro: false,
 };
@@ -101,7 +101,7 @@ describe("Sprint 6 - Task 6: Central de Oportunidades", () => {
         screen.getByText(/pães e gêneros alimentícios/i),
       ).toBeInTheDocument();
       // Não deve renderizar tags de tipoSistemaCodigo na célula de miniResumo
-      expect(screen.queryByText("ALIMENTOS_MERENDA_ESCOLAR")).toBeNull();
+      expect(screen.queryByText("ALIMENTACAO")).toBeNull();
     });
   });
 });

@@ -51,7 +51,7 @@ describe("Tarefa 4 — UX de Carregamento em Oportunidades (#26)", () => {
       json: () =>
         Promise.resolve({
           ok: true,
-          segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+          segmentos: ["ALIMENTACAO"],
           ufs: ["GO"],
           brasilInteiro: false,
         }),

@@ -29,6 +29,7 @@ import {
   type MacroSegmento,
 } from "@/server/schemas/segmentos.schema";
 import { ESTADOS_BRASIL } from "@/config/estados";
+import { filtrarCatalogoSegmentos } from "@/lib/segmentos-busca";
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function CadastroPage() {
   // Campos da Etapa 2
   const [segmentosSelecionados, setSegmentosSelecionados] = useState<string[]>([]);
   const [subsegmentosSelecionados, setSubsegmentosSelecionados] = useState<string[]>([]);
+  const [buscaSegmento, setBuscaSegmento] = useState("");
   const [brasilInteiro, setBrasilInteiro] = useState(true);
   const [ufsSelecionadas, setUfsSelecionadas] = useState<string[]>([]);
 
@@ -405,8 +407,27 @@ export default function CadastroPage() {
                       Ao selecionar um segmento, todas as subcategorias vêm marcadas por padrão. Desmarque as que não fornecer.
                     </p>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                      {Object.values(CATALOGO_MACRO_SEGMENTOS).map((macro) => {
+                    <TextInput
+                      id="busca-segmento"
+                      data-testid="busca-segmento"
+                      labelText="Buscar segmento ou subatividade"
+                      placeholder="Ex.: medicamentos, software, pavimentação"
+                      value={buscaSegmento}
+                      onChange={(e) => setBuscaSegmento(e.target.value)}
+                      style={{ marginBottom: "1rem" }}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "1rem",
+                        maxHeight: "28rem",
+                        overflowY: "auto",
+                        paddingRight: "0.25rem",
+                      }}
+                    >
+                      {filtrarCatalogoSegmentos(buscaSegmento).map((macro) => {
                         const isMacroChecked = segmentosSelecionados.includes(macro.codigo);
                         return (
                           <div

@@ -65,6 +65,16 @@ export async function pesquisarLicitacoes(
       where.segmentoMacro = { in: query.macroSegmentos };
     }
 
+    if (query.subcategorias && query.subcategorias.length > 0) {
+      where.AND = [
+        {
+          OR: query.subcategorias.map((codigo) => ({
+            subcategorias: { array_contains: [codigo] },
+          })),
+        },
+      ];
+    }
+
     if (query.modalidades && query.modalidades.length > 0) {
       where.modalidadeCodigo = { in: query.modalidades };
     }
@@ -135,6 +145,16 @@ export async function pesquisarLicitacoes(
       // Filtro de Macro-Segmentos
       if (query.macroSegmentos && query.macroSegmentos.length > 0) {
         if (!item.segmentoMacro || !query.macroSegmentos.includes(item.segmentoMacro)) {
+          return false;
+        }
+      }
+
+      // Filtro de Subatividades (qualquer uma das selecionadas)
+      if (query.subcategorias && query.subcategorias.length > 0) {
+        const subsItem = Array.isArray(item.subcategorias)
+          ? (item.subcategorias as string[])
+          : [];
+        if (!query.subcategorias.some((codigo) => subsItem.includes(codigo))) {
           return false;
         }
       }

@@ -9,14 +9,14 @@ describe("Task 4 — Filtro Semântico de Sub-segmentos em Oportunidades", () =>
     expect(palavras).toContain("ampola");
   });
 
-  it("deve retornar palavras-chave para subcategoria por código (MEDICAMENTOS_FARMACOS)", () => {
-    const palavras = obterPalavrasChaveSubsegmento("MEDICAMENTOS_FARMACOS");
-    expect(palavras).toContain("fármaco");
-    expect(palavras).toContain("antibiótico");
+  it("deve retornar palavras-chave para subcategoria por código (2201)", () => {
+    const palavras = obterPalavrasChaveSubsegmento("2201");
+    expect(palavras).toContain("farmaco");
+    expect(palavras).toContain("antibiotico");
   });
 
   it("deve retornar palavras-chave para subcategoria de Pneus Automotivos", () => {
-    const palavras = obterPalavrasChaveSubsegmento("PNEUS_CAMARAS_RECAPAGEM");
+    const palavras = obterPalavrasChaveSubsegmento("1705");
     expect(palavras).toContain("pneu");
     expect(palavras).toContain("recapagem");
   });

@@ -65,7 +65,7 @@ describe("Task 1 - Trava de UF e Segmento no /cadastro", () => {
 
     // Seleciona um segmento
     const checkboxAlimentos = screen.getByRole("checkbox", {
-      name: /Alimentos & Merenda Escolar/i,
+      name: /^Alimentação$/i,
     });
     fireEvent.click(checkboxAlimentos);
 

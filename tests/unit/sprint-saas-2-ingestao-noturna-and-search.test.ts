@@ -39,7 +39,7 @@ describe("Sprint SaaS 2 — Ingestão Noturna, Prorrogação de Prazos e Full-Te
 
     const registro = res.registros[0];
     expect(registro.idPncp).toBe("SAAS-MED-001-2026");
-    expect(registro.segmentoMacro).toBe("SAUDE_MEDICAMENTOS_HOSPITALAR");
+    expect(registro.segmentoMacro).toBe("SAUDE");
     expect(registro.modalidadeCodigo).toBe(6);
   });
 
@@ -90,19 +90,19 @@ describe("Sprint SaaS 2 — Ingestão Noturna, Prorrogação de Prazos e Full-Te
       expect(busca.total).toBeGreaterThanOrEqual(1);
       const match = busca.itens.find((i) => i.idPncp === "SAAS-MED-001-2026");
       expect(match).toBeDefined();
-      expect(match?.segmentoMacro).toBe("SAUDE_MEDICAMENTOS_HOSPITALAR");
+      expect(match?.segmentoMacro).toBe("SAUDE");
     });
 
     it("deve filtrar licitações por Macro-Segmento", async () => {
       const busca = await pesquisarLicitacoes({
-        macroSegmentos: ["SAUDE_MEDICAMENTOS_HOSPITALAR"],
+        macroSegmentos: ["SAUDE"],
         pagina: 1,
         limite: 10,
       });
 
       expect(busca.total).toBeGreaterThanOrEqual(1);
       for (const item of busca.itens) {
-        expect(item.segmentoMacro).toBe("SAUDE_MEDICAMENTOS_HOSPITALAR");
+        expect(item.segmentoMacro).toBe("SAUDE");
       }
     });
 

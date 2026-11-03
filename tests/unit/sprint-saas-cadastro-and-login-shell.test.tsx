@@ -21,8 +21,8 @@ describe("Sprint SaaS — Cadastro (Trial 14 Dias) & Ajuste Visual do Login (Iss
         cnpj: "04.252.011/0001-10",
         razaoSocial: "Minha Empresa Comercial Ltda",
         whatsapp: "(62) 99999-8888",
-        segmentos: ["SAUDE_MEDICAMENTOS_HOSPITALAR"],
-        subsegmentos: ["MEDICAMENTOS_FARMACOS"],
+        segmentos: ["SAUDE"],
+        subsegmentos: ["2201"],
         ufs: ["GO"],
         brasilInteiro: false,
       };
@@ -69,8 +69,8 @@ describe("Sprint SaaS — Cadastro (Trial 14 Dias) & Ajuste Visual do Login (Iss
         cnpj: "04.252.011/0001-10",
         razaoSocial: "Empresa ABC Comércio e Serviços Ltda",
         whatsapp: "62988887777",
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
-        subsegmentos: ["PANIFICACAO_LANCHES"],
+        segmentos: ["ALIMENTACAO"],
+        subsegmentos: ["2501"],
         ufs: ["GO"],
         brasilInteiro: false,
       };

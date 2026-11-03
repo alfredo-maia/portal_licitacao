@@ -39,6 +39,10 @@ export const oportunidadesFilterSchema = z.object({
     .union([z.array(z.string()), z.string()])
     .transform((val) => (Array.isArray(val) ? val : [val]))
     .optional(),
+  subsegmentosTenantAtivo: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) => (Array.isArray(val) ? val : [val]))
+    .optional(),
   subsegmento: z.string().optional(),
   uf: z
     .string()

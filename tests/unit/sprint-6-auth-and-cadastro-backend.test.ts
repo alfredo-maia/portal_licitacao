@@ -40,8 +40,8 @@ describe("Sprint 6 - Task 1: Auth and Cadastro Backend Resilience", () => {
         email: "opaonossopanificadora@gmail.com",
         whatsapp: "(62) 98888-7777",
         senha: "123456",
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
-        subsegmentos: ["PANIFICACAO_LANCHES"],
+        segmentos: ["ALIMENTACAO"],
+        subsegmentos: ["2501"],
         ufs: ["GO", "DF"],
         brasilInteiro: false,
       };
@@ -49,8 +49,8 @@ describe("Sprint 6 - Task 1: Auth and Cadastro Backend Resilience", () => {
       const result = cadastroContaSchema.safeParse(payloadValido);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.segmentos).toContain("ALIMENTOS_MERENDA_ESCOLAR");
-        expect(result.data.subsegmentos).toContain("PANIFICACAO_LANCHES");
+        expect(result.data.segmentos).toContain("ALIMENTACAO");
+        expect(result.data.subsegmentos).toContain("2501");
         expect(result.data.ufs).toEqual(["GO", "DF"]);
         expect(result.data.brasilInteiro).toBe(false);
       }
@@ -66,8 +66,8 @@ describe("Sprint 6 - Task 1: Auth and Cadastro Backend Resilience", () => {
         email: "opaonossopanificadora@gmail.com",
         whatsapp: "62988887777",
         senha: "123456",
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
-        subsegmentos: ["PANIFICACAO_LANCHES"],
+        segmentos: ["ALIMENTACAO"],
+        subsegmentos: ["2501"],
         ufs: ["GO"],
         brasilInteiro: true,
       });

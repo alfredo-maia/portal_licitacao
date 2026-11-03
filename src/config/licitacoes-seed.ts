@@ -11,8 +11,6 @@
  * memória dos testes automatizados.
  */
 
-import { LICITACOES_MINERADAS_PNCP } from "./licitacoes-pncp-coleta";
-
 export interface LicitacaoSeedItem {
   idPncp: string;
   numeroControlePNCP?: string | null;
@@ -56,9 +54,9 @@ export function buildLicitacoesSeed(
     return [];
   }
 
-  // Em produção estrita, expõe apenas os certames reais minerados do PNCP
+  // Em produção nunca há carga fixa: os certames reais chegam via ingestão (POST /api/ingestao).
   if (process.env.NODE_ENV === "production") {
-    return LICITACOES_MINERADAS_PNCP;
+    return [];
   }
 
   const base = agora.getTime();
@@ -86,6 +84,8 @@ export function buildLicitacoesSeed(
       justificativaIA:
         "Stack aderente ao portfólio, valor dentro da faixa-alvo e órgão estadual com histórico de adimplência.",
       tipoSistemaCodigo: "EDUCACAO_PORTAL",
+      segmentoMacro: "INFORMATICA",
+      subcategorias: ["3101"],
       quantidadeLotes: 1,
       loteUnico: true,
       precoPorLote: false,
@@ -115,6 +115,8 @@ export function buildLicitacoesSeed(
       justificativaIA:
         "Aderência funcional alta, porém exige atestado de capacidade técnica em saúde municipal de porte similar.",
       tipoSistemaCodigo: "SAUDE_ATENCAO_BASICA",
+      segmentoMacro: "INFORMATICA",
+      subcategorias: ["3101"],
       quantidadeLotes: 2,
       loteUnico: false,
       precoPorLote: true,
@@ -144,6 +146,8 @@ export function buildLicitacoesSeed(
       justificativaIA:
         "Exigência de atestados em três entes federativos de porte equivalente e presença de disputa presencial elevam o risco de execução.",
       tipoSistemaCodigo: "GESTAO_PUBLICA_ERP",
+      segmentoMacro: "INFORMATICA",
+      subcategorias: ["3101"],
       quantidadeLotes: 1,
       loteUnico: true,
       precoPorLote: false,
@@ -173,6 +177,8 @@ export function buildLicitacoesSeed(
       justificativaIA:
         "Serviço continuado aderente à operação atual, SLA compatível e possibilidade de alocação remota da equipe.",
       tipoSistemaCodigo: "INFRA_CLOUD_SUPORTE",
+      segmentoMacro: "INFORMATICA",
+      subcategorias: ["3101"],
       quantidadeLotes: 3,
       loteUnico: false,
       precoPorLote: true,
@@ -182,5 +188,5 @@ export function buildLicitacoesSeed(
     },
   ];
 
-  return [...mocks, ...LICITACOES_MINERADAS_PNCP];
+  return mocks;
 }

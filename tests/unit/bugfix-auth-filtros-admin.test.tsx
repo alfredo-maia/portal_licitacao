@@ -120,7 +120,7 @@ describe("Bugfix Hotfix — Multi-Tenant Auth, Filtros de Oportunidades e Acesso
             json: () =>
               Promise.resolve({
                 ok: true,
-                segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+                segmentos: ["ALIMENTACAO"],
                 subsegmentos: [],
                 ufs: ["GO"],
               }),
@@ -152,12 +152,12 @@ describe("Bugfix Hotfix — Multi-Tenant Auth, Filtros de Oportunidades e Acesso
       await waitFor(() => expect(combobox).not.toBeDisabled());
       fireEvent.click(combobox);
 
-      const opcaoAlimentacao = await screen.findByText(/Alimentos & Merenda/i);
+      const opcaoAlimentacao = await screen.findByText(/Alimentação/i);
       fireEvent.click(opcaoAlimentacao);
 
       expect(mockPush).toHaveBeenCalled();
       const lastCall = mockPush.mock.calls[mockPush.mock.calls.length - 1][0];
-      expect(lastCall).toContain("segmento=ALIMENTOS_MERENDA_ESCOLAR");
+      expect(lastCall).toContain("segmento=ALIMENTACAO");
       expect(lastCall).not.toContain("segmento=&");
     });
   });

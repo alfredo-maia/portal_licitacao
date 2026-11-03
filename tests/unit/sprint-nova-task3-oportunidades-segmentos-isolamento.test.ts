@@ -17,7 +17,7 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       dataAbertura: new Date("2026-11-15T09:00:00Z"),
       valorEstimado: 100000,
       tipoSistemaCodigo: "OUTROS",
-      segmentoMacro: "ALIMENTACAO_BEBIDAS",
+      segmentoMacro: "ALIMENTACAO",
       status: "PENDENTE",
     } as any);
 
@@ -32,17 +32,17 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       dataAbertura: new Date("2026-11-15T09:00:00Z"),
       valorEstimado: 200000,
       tipoSistemaCodigo: "OUTROS",
-      segmentoMacro: "SAUDE_MEDICAMENTOS",
+      segmentoMacro: "SAUDE",
       status: "PENDENTE",
     } as any);
 
-    // Cenário: Empresa ativa trabalha APENAS com ALIMENTACAO_BEBIDAS
+    // Cenário: Empresa ativa trabalha APENAS com ALIMENTACAO
     const resultadoEmpresaAlimentos = await listOportunidades({
-      segmentosTenantAtivo: ["ALIMENTACAO_BEBIDAS"],
+      segmentosTenantAtivo: ["ALIMENTACAO"],
       // segmento não informado (busca default 'Todos os Segmentos')
     });
 
-    expect(resultadoEmpresaAlimentos.some((l) => l.segmentoMacro === "ALIMENTACAO_BEBIDAS")).toBe(true);
-    expect(resultadoEmpresaAlimentos.some((l) => l.segmentoMacro === "SAUDE_MEDICAMENTOS")).toBe(false);
+    expect(resultadoEmpresaAlimentos.some((l) => l.segmentoMacro === "ALIMENTACAO")).toBe(true);
+    expect(resultadoEmpresaAlimentos.some((l) => l.segmentoMacro === "SAUDE")).toBe(false);
   });
 });

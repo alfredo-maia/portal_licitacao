@@ -53,7 +53,11 @@ import {
 } from "./licitacoes-store";
 import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
 import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
-import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
+import {
+  CATALOGO_MACRO_SEGMENTOS,
+  MACRO_POR_SUBCATEGORIA,
+  type MacroSegmento,
+} from "@/server/schemas/segmentos.schema";
 import { inMemoryTenants } from "@/server/services/tenant.service";
 
 export function obterPalavrasChaveSubsegmento(subsegmento: string): string[] {
@@ -127,30 +131,18 @@ function buildPrismaWhere(
       .map((s) => s.trim())
       .filter(Boolean);
     if (selectedSegments.length === 1) {
-      and.push({
-        OR: [
-          { segmentoMacro: selectedSegments[0] },
-          { tipoSistemaCodigo: selectedSegments[0] as any },
-        ],
-      });
+      and.push({ segmentoMacro: selectedSegments[0] });
     } else if (selectedSegments.length > 1) {
-      and.push({
-        OR: [
-          { segmentoMacro: { in: selectedSegments } },
-          { tipoSistemaCodigo: { in: selectedSegments as any } },
-        ],
-      });
+      and.push({ segmentoMacro: { in: selectedSegments } });
     }
   } else if (
     filters.segmentosTenantAtivo &&
     filters.segmentosTenantAtivo.length > 0
   ) {
-    and.push({
-      OR: [
-        { segmentoMacro: { in: filters.segmentosTenantAtivo } },
-        { tipoSistemaCodigo: { in: filters.segmentosTenantAtivo as any } },
-      ],
-    });
+    and.push({ segmentoMacro: { in: filters.segmentosTenantAtivo } });
+  }
+  if (filters.subsegmento) {
+    and.push({ subcategorias: { array_contains: [filters.subsegmento] } });
   }
   if (filters.uf) {
     const ufs = filters.uf
@@ -291,13 +283,18 @@ function buildPrismaWhere(
 }
 
 function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
-  const storedMacro = (record as any).segmentoMacro;
-  const storedSubs = Array.isArray((record as any).subcategorias)
+  const storedMacro = (record as any).segmentoMacro as string | null | undefined;
+  const storedSubs: string[] = Array.isArray((record as any).subcategorias)
     ? (record as any).subcategorias
     : [];
+  const macroValida = !!storedMacro && storedMacro in CATALOGO_MACRO_SEGMENTOS;
+  const subsValidas = storedSubs.filter(
+    (codigo) => MACRO_POR_SUBCATEGORIA[codigo] === storedMacro,
+  );
 
-  // Otimização de Performance: se já possui segmentoMacro e subcategorias válidos, não reprocessar NLP
-  if (storedMacro && storedSubs.length > 0 && storedMacro !== "TECNOLOGIA_TELECOM") {
+  // Otimização de Performance: se já possui segmentoMacro e subcategorias válidos
+  // na taxonomia oficial (40 x 188), não reprocessar o classificador.
+  if (macroValida && subsValidas.length > 0) {
     return record;
   }
 
@@ -305,16 +302,32 @@ function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
     record.resumo || (record as any).objeto || "",
     record.miniResumo || "",
   );
-  const effectiveMacro =
-    !storedMacro || (storedMacro === "TECNOLOGIA_TELECOM" && classif.macro !== "TECNOLOGIA_TELECOM")
-      ? classif.macro
-      : storedMacro;
-  const effectiveSubs = Array.from(new Set([...storedSubs, ...classif.subcategorias]));
+  const effectiveMacro = macroValida ? (storedMacro as string) : classif.macro;
+  const effectiveSubs =
+    effectiveMacro === classif.macro ? classif.subcategorias : subsValidas;
   return {
     ...record,
     segmentoMacro: effectiveMacro,
     subcategorias: effectiveSubs,
   } as LicitacaoRecord;
+}
+
+/**
+ * Escopo de subatividades do tenant: quando o cliente selecionou subatividades de
+ * uma macro-categoria, só passam certames com ao menos uma delas. Macro-categorias
+ * em que o cliente não restringiu subatividades permanecem liberadas.
+ */
+function passaSubsegmentosTenant(
+  macro: string | null | undefined,
+  subs: string[],
+  subsegmentosTenant?: string[],
+): boolean {
+  if (!subsegmentosTenant || subsegmentosTenant.length === 0) return true;
+  const def = macro ? CATALOGO_MACRO_SEGMENTOS[macro as MacroSegmento] : undefined;
+  if (!def) return true;
+  const restringiu = def.subcategorias.some((s) => subsegmentosTenant.includes(s.codigo));
+  if (!restringiu || subs.length === 0) return true;
+  return subs.some((codigo) => subsegmentosTenant.includes(codigo));
 }
 
 function matchesFilters(
@@ -335,11 +348,7 @@ function matchesFilters(
       .filter(Boolean);
     if (selectedSegments.length > 0) {
       const macro = (enriched as any).segmentoMacro;
-      const tipo = enriched.tipoSistemaCodigo;
-      const matchesAny =
-        (macro && selectedSegments.includes(macro)) ||
-        (tipo ? selectedSegments.includes(tipo) : false);
-      if (!matchesAny) {
+      if (!macro || !selectedSegments.includes(macro)) {
         return false;
       }
     }
@@ -348,26 +357,25 @@ function matchesFilters(
     filters.segmentosTenantAtivo.length > 0
   ) {
     const macro = (enriched as any).segmentoMacro;
-    const tipo = enriched.tipoSistemaCodigo;
-    const matchesTenant =
-      (macro && filters.segmentosTenantAtivo.includes(macro)) ||
-      (tipo ? filters.segmentosTenantAtivo.includes(tipo) : false);
-    if (!matchesTenant) {
+    if (!macro || !filters.segmentosTenantAtivo.includes(macro)) {
       return false;
     }
   }
+  const subsDoRegistro: string[] = Array.isArray((enriched as any).subcategorias)
+    ? (enriched as any).subcategorias
+    : [];
   if (filters.subsegmento) {
-    const subs: string[] = Array.isArray((enriched as any).subcategorias)
-      ? (enriched as any).subcategorias
-      : [];
-    const text = `${enriched.resumo || ""} ${enriched.miniResumo || ""}`.toLowerCase();
-    const palavras = obterPalavrasChaveSubsegmento(filters.subsegmento);
-    const match =
-      subs.includes(filters.subsegmento) ||
-      palavras.some((p) => text.includes(p.toLowerCase()));
-    if (!match) {
+    if (!subsDoRegistro.includes(filters.subsegmento)) {
       return false;
     }
+  } else if (
+    !passaSubsegmentosTenant(
+      (enriched as any).segmentoMacro,
+      subsDoRegistro,
+      filters.subsegmentosTenantAtivo,
+    )
+  ) {
+    return false;
   }
   if (filters.uf) {
     const ufs = filters.uf

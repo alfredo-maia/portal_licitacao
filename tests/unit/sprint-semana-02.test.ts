@@ -22,7 +22,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
       whatsapp: "(62) 98888-7777",
       email: "diretor.semana2@empresa.com.br",
       senha: "SenhaForte@2026",
-      segmentos: ["TECNOLOGIA_TELECOM"],
+      segmentos: ["INFORMATICA"],
       subsegmentos: ["SOFTWARES_SAAS_LICENCAS"],
       ufs: ["GO"],
       brasilInteiro: false,
@@ -48,7 +48,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         plano: "BASICO",
         billingStatus: "ACTIVE",
         ativo: true,
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+        segmentos: ["ALIMENTACAO"],
         ufs: ["GO"],
         preferenciasUpdatedAt: null,
       } as any);
@@ -57,7 +57,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         {
           razaoSocial: "Cliente Basico Teste",
           cnpj: "11.222.333/0001-44",
-          segmentos: ["SAUDE_MEDICAMENTOS_HOSPITALAR"],
+          segmentos: ["SAUDE"],
           subsegmentos: [],
           ufs: ["SP"],
           brasilInteiro: false,
@@ -66,7 +66,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         tenantId,
       );
 
-      expect(res.segmentos).toContain("SAUDE_MEDICAMENTOS_HOSPITALAR");
+      expect(res.segmentos).toContain("SAUDE");
       const tenant = inMemoryTenants.get(tenantId);
       expect(tenant?.preferenciasUpdatedAt).toBeDefined();
     });
@@ -81,7 +81,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         plano: "BASICO",
         billingStatus: "ACTIVE",
         ativo: true,
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+        segmentos: ["ALIMENTACAO"],
         ufs: ["GO"],
         preferenciasUpdatedAt: dezDiasAtras,
       } as any);
@@ -91,7 +91,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
           {
             razaoSocial: "Cliente Basico Bloqueado",
             cnpj: "11.222.333/0001-55",
-            segmentos: ["TECNOLOGIA_TELECOM"],
+            segmentos: ["INFORMATICA"],
             subsegmentos: [],
             ufs: ["DF"],
             brasilInteiro: false,
@@ -112,7 +112,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         plano: "PRO",
         billingStatus: "ACTIVE",
         ativo: true,
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+        segmentos: ["ALIMENTACAO"],
         ufs: ["GO"],
         preferenciasUpdatedAt: umDiaAtras,
       } as any);
@@ -121,7 +121,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         {
           razaoSocial: "Cliente Pro Livre",
           cnpj: "11.222.333/0001-66",
-          segmentos: ["TECNOLOGIA_TELECOM"],
+          segmentos: ["INFORMATICA"],
           subsegmentos: [],
           ufs: ["DF", "GO", "SP"],
           brasilInteiro: false,
@@ -130,7 +130,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         tenantId,
       );
 
-      expect(res.segmentos).toContain("TECNOLOGIA_TELECOM");
+      expect(res.segmentos).toContain("INFORMATICA");
     });
   });
 
@@ -349,9 +349,9 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
   describe("Item 7: Expansão do Catálogo de Segmentos e Subsegmentos", () => {
     it("deve conter catálogo com os macro-segmentos e subsegmentos expandidos", () => {
       expect(Object.keys(CATALOGO_MACRO_SEGMENTOS).length).toBeGreaterThanOrEqual(7);
-      expect(CATALOGO_MACRO_SEGMENTOS.ALIMENTOS_MERENDA_ESCOLAR).toBeDefined();
-      expect(CATALOGO_MACRO_SEGMENTOS.SAUDE_MEDICAMENTOS_HOSPITALAR).toBeDefined();
-      expect(CATALOGO_MACRO_SEGMENTOS.TECNOLOGIA_TELECOM).toBeDefined();
+      expect(CATALOGO_MACRO_SEGMENTOS.ALIMENTACAO).toBeDefined();
+      expect(CATALOGO_MACRO_SEGMENTOS.SAUDE).toBeDefined();
+      expect(CATALOGO_MACRO_SEGMENTOS.INFORMATICA).toBeDefined();
     });
   });
 
@@ -369,7 +369,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         plano: "PRO",
         billingStatus: "ACTIVE",
         ativo: true,
-        segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+        segmentos: ["ALIMENTACAO"],
         ufs: ["GO"],
         criadoEm: clienteCriadoEm,
       } as any);
@@ -387,7 +387,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         criadoEm: new Date("2026-09-01T00:00:00Z"),
         dataAbertura: new Date("2026-09-11T10:00:00Z"),
         dataEncerramentoProposta: new Date("2026-09-11T10:00:00Z"),
-        segmentoMacro: "ALIMENTOS_MERENDA_ESCOLAR",
+        segmentoMacro: "ALIMENTACAO",
       } as any);
 
       // 2. Licitação criada há 20 dias do cadastro (12/10) mesmo vencida em 20/10 -> DEVE APARECER (Janela 30 dias)
@@ -403,7 +403,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         criadoEm: new Date("2026-10-12T00:00:00Z"),
         dataAbertura: new Date("2026-10-20T10:00:00Z"),
         dataEncerramentoProposta: new Date("2026-10-20T10:00:00Z"),
-        segmentoMacro: "ALIMENTOS_MERENDA_ESCOLAR",
+        segmentoMacro: "ALIMENTACAO",
       } as any);
 
       // 3. Licitação antiga criada há 60 dias (01/09) mas com proposta vigente em 15/11 -> DEVE APARECER
@@ -419,7 +419,7 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         criadoEm: new Date("2026-09-01T00:00:00Z"),
         dataAbertura: new Date("2026-11-15T10:00:00Z"),
         dataEncerramentoProposta: new Date("2026-11-15T10:00:00Z"),
-        segmentoMacro: "ALIMENTOS_MERENDA_ESCOLAR",
+        segmentoMacro: "ALIMENTACAO",
       } as any);
 
       const lista = await listOportunidades({}, tenantId);

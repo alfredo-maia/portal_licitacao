@@ -18,116 +18,153 @@ export function normalizarTexto(texto: string): string {
     .trim();
 }
 
+interface TermoCompilado {
+  macro: MacroSegmento;
+  subcategoria: string;
+  termo: string;
+  regex: RegExp;
+  peso: number;
+}
+
+const PESO_TERMO_COMPOSTO = 15;
+const PESO_TERMO_SIMPLES = 5;
+/** Bônus aplicado à macro LEILOES quando o objeto é, de fato, um leilão. */
+const BONUS_LEILAO = 50;
+/** LEILOES só pontua quando o texto indica leilão (evita falso positivo em compras comuns). */
+const GATILHO_LEILAO = /\b(leilao|leiloes|leiloeiro|leiloeira|leiloar)\b/;
+
+function escaparRegex(valor: string): string {
+  return valor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function compilarTermo(palavraNorm: string): RegExp {
+  const partes = palavraNorm.split(" ").map((palavra) => {
+    const stem =
+      palavra.length > 3 && palavra.endsWith("s") ? palavra.slice(0, -1) : palavra;
+    return palavra.length >= 3
+      ? `${escaparRegex(stem)}(?:s|es)?`
+      : escaparRegex(palavra);
+  });
+  return new RegExp(`\\b${partes.join("\\s+")}\\b`);
+}
+
+let termosCompilados: TermoCompilado[] | null = null;
+
+function obterTermosCompilados(): TermoCompilado[] {
+  if (termosCompilados) return termosCompilados;
+  const lista: TermoCompilado[] = [];
+  for (const macroDef of Object.values(CATALOGO_MACRO_SEGMENTOS)) {
+    for (const sub of macroDef.subcategorias) {
+      for (const palavraChave of sub.palavrasChave) {
+        const palavraNorm = normalizarTexto(palavraChave);
+        if (!palavraNorm) continue;
+        lista.push({
+          macro: macroDef.codigo,
+          subcategoria: sub.codigo,
+          termo: palavraChave,
+          regex: compilarTermo(palavraNorm),
+          peso: palavraNorm.includes(" ") ? PESO_TERMO_COMPOSTO : PESO_TERMO_SIMPLES,
+        });
+      }
+    }
+  }
+  termosCompilados = lista;
+  return lista;
+}
+
+/**
+ * Heurística de último recurso (radicais) quando nenhum termo do catálogo pontuou.
+ * Mantém a classificação coerente com a árvore Conlicitação sem inventar subcategorias.
+ */
+const FALLBACK_RADICAIS: ReadonlyArray<{
+  regex: RegExp;
+  macro: MacroSegmento;
+  subcategoria: string;
+}> = [
+  { regex: /\b(saude|hospital|medic|farmac|ambulator|odontolog|clinica|ubs|upa|enfermag|cirurg|vacin|exame)\w*/, macro: "SAUDE", subcategoria: "2202" },
+  { regex: /\b(veicul|frota|automot|pneu|mecanic|viatur|motor)\w*/, macro: "TRANSPORTES_RODOVIARIOS", subcategoria: "1705" },
+  { regex: /\b(obra|construc|engenhari|reforma|paviment|eletric|hidraulic|asfalt|drenag|terrapl)\w*/, macro: "ENGENHARIA_SERVICOS", subcategoria: "0101" },
+  { regex: /\b(aliment|merenda|refeic|nutric|hortifrut|genero|padaria|panific)\w*/, macro: "ALIMENTACAO", subcategoria: "2501" },
+  { regex: /\b(software|sistema|informatica|computador|telecom|licenca|nuvem|saas|servidor|impressora|internet)\w*/, macro: "INFORMATICA", subcategoria: "3101" },
+  { regex: /\b(limpez|vigilanc|portari|terceiriz|conservac|zeladori)\w*/, macro: "PRESTACAO_DE_SERVICOS_MAO_DE_OBRA", subcategoria: "0301" },
+];
+
 /**
  * Classifica um edital com base em seu objeto, resumo ou descrição, atribuindo
- * o Macro-Segmento mais relevante e a lista de Subcategorias correspondentes.
+ * a macro-categoria mais relevante e as subatividades correspondentes da árvore
+ * oficial Conlicitação (40 macro-categorias / 188 subatividades).
  */
 export function classificarLicitacaoPorTexto(
   objeto: string,
   resumo?: string,
 ): ClassificacaoSegmento {
-  const textoCompleto = `${objeto || ""} ${resumo || ""}`;
-  const textoNormalizado = normalizarTexto(textoCompleto);
+  const textoNormalizado = normalizarTexto(`${objeto || ""} ${resumo || ""}`);
 
   if (!textoNormalizado) {
+    return { macro: "ASSESSORIAS", subcategorias: [], score: 0, termosCorrespondentes: [] };
+  }
+
+  const ehLeilao = GATILHO_LEILAO.test(textoNormalizado);
+  const scores = new Map<
+    MacroSegmento,
+    { scoreTotal: number; subcategorias: Set<string>; termos: Set<string> }
+  >();
+
+  for (const termo of obterTermosCompilados()) {
+    if (termo.macro === "LEILOES" && !ehLeilao) continue;
+    if (!termo.regex.test(textoNormalizado)) continue;
+    let entry = scores.get(termo.macro);
+    if (!entry) {
+      entry = { scoreTotal: 0, subcategorias: new Set(), termos: new Set() };
+      scores.set(termo.macro, entry);
+    }
+    entry.scoreTotal += termo.peso;
+    entry.subcategorias.add(termo.subcategoria);
+    entry.termos.add(termo.termo);
+  }
+
+  if (ehLeilao) {
+    const leilao = scores.get("LEILOES") ?? {
+      scoreTotal: 0,
+      subcategorias: new Set<string>(),
+      termos: new Set<string>(),
+    };
+    leilao.scoreTotal += BONUS_LEILAO;
+    scores.set("LEILOES", leilao);
+  }
+
+  let melhorMacro: MacroSegmento | null = null;
+  let maiorScore = 0;
+  for (const [macro, data] of scores) {
+    const melhor = melhorMacro ? scores.get(melhorMacro) : undefined;
+    if (
+      data.scoreTotal > maiorScore ||
+      (data.scoreTotal === maiorScore && melhor && data.termos.size > melhor.termos.size)
+    ) {
+      maiorScore = data.scoreTotal;
+      melhorMacro = macro;
+    }
+  }
+
+  if (melhorMacro) {
+    const resultado = scores.get(melhorMacro)!;
     return {
-      macro: "TECNOLOGIA_TELECOM",
-      subcategorias: [],
+      macro: melhorMacro,
+      subcategorias: Array.from(resultado.subcategorias).sort(),
+      score: maiorScore,
+      termosCorrespondentes: Array.from(resultado.termos),
+    };
+  }
+
+  const fallback = FALLBACK_RADICAIS.find((f) => f.regex.test(textoNormalizado));
+  if (fallback) {
+    return {
+      macro: fallback.macro,
+      subcategorias: [fallback.subcategoria],
       score: 0,
       termosCorrespondentes: [],
     };
   }
 
-  const scores: Record<
-    MacroSegmento,
-    {
-      scoreTotal: number;
-      subcategorias: Set<string>;
-      termos: Set<string>;
-    }
-  > = {
-    SAUDE_MEDICAMENTOS_HOSPITALAR: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    AUTOMOTIVO_PECAS_FROTAS: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    OBRAS_CONSTRUCAO_MANUTENCAO: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    ALIMENTOS_MERENDA_ESCOLAR: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    TECNOLOGIA_TELECOM: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    SERVICOS_TERCEIRIZADOS_OPERACIONAIS: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-    MATERIAIS_ESCRITORIO_SUPRIMENTOS: { scoreTotal: 0, subcategorias: new Set(), termos: new Set() },
-  };
-
-  for (const [macroKey, macroDef] of Object.entries(CATALOGO_MACRO_SEGMENTOS)) {
-    const macro = macroKey as MacroSegmento;
-    const entry = scores[macro];
-
-    for (const sub of macroDef.subcategorias) {
-      for (const palavraChave of sub.palavrasChave) {
-        const palavraNorm = normalizarTexto(palavraChave);
-        if (!palavraNorm) continue;
-
-        // Se for termo composto (ex: "oleo lubrificante", "merenda escolar")
-        if (palavraNorm.includes(" ")) {
-          if (textoNormalizado.includes(palavraNorm)) {
-            entry.scoreTotal += 15; // Pontuação maior para expressões exatas compostas
-            entry.subcategorias.add(sub.codigo);
-            entry.termos.add(palavraChave);
-          }
-        } else {
-          // Busca por palavra inteira ou plural simples (ex: seringa / seringas)
-          const stem = palavraNorm.endsWith("s") && palavraNorm.length > 3 ? palavraNorm.slice(0, -1) : palavraNorm;
-          const regex = new RegExp(`\\b${stem}s?\\b`, "i");
-          if (regex.test(textoNormalizado)) {
-            entry.scoreTotal += 5;
-            entry.subcategorias.add(sub.codigo);
-            entry.termos.add(palavraChave);
-          }
-        }
-      }
-    }
-  }
-
-  // Encontra o macro-segmento com maior pontuação
-  let melhorMacro: MacroSegmento = "MATERIAIS_ESCRITORIO_SUPRIMENTOS";
-  let maiorScore = 0;
-
-  for (const [macroKey, data] of Object.entries(scores)) {
-    if (data.scoreTotal > maiorScore) {
-      maiorScore = data.scoreTotal;
-      melhorMacro = macroKey as MacroSegmento;
-    }
-  }
-
-  // Fallback heurístico caso nenhuma palavra-chave exata do catálogo tenha pontuado
-  if (maiorScore === 0) {
-    if (/\b(saude|hospital|medic|farmac|ambulator|odontolog|clinica|ubs|upa|enfermag|cirurg|vacin|exame)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "SAUDE_MEDICAMENTOS_HOSPITALAR";
-      scores[melhorMacro].subcategorias.add("MATERIAIS_HOSPITALARES_DESCARTAVEIS");
-    } else if (/\b(veicul|frota|automot|combustiv|oleo|lubrific|pneu|mecan|viatur|motor|diesel|gasolin)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "AUTOMOTIVO_PECAS_FROTAS";
-      scores[melhorMacro].subcategorias.add("PECAS_AUTOMOTIVAS_ACESSORIOS");
-    } else if (/\b(obra|construc|engenhari|reforma|paviment|britag|eletric|hidraulic|asfalt|drenag|predial|terrapl)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "OBRAS_CONSTRUCAO_MANUTENCAO";
-      scores[melhorMacro].subcategorias.add("OBRAS_ENGENHARIA_PAVIMENTACAO");
-    } else if (/\b(aliment|merenda|refeic|nutric|hortifrut|cesta basica|genero|padaria|panific|cozinha)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "ALIMENTOS_MERENDA_ESCOLAR";
-      scores[melhorMacro].subcategorias.add("GENEROS_NAO_PERECIVEIS");
-    } else if (/\b(software|sistema|informatica|computador|rede|telecom|licenca|nuvem|saas|servidor|impressora|internet|fibra)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "TECNOLOGIA_TELECOM";
-      scores[melhorMacro].subcategorias.add("SOFTWARES_SAAS_LICENCAS");
-    } else if (/\b(limpez|vigilanc|portari|locacao|terceiriz|manutencao|seguranca|transporte|coleta|evento)\w*/i.test(textoNormalizado)) {
-      melhorMacro = "SERVICOS_TERCEIRIZADOS_OPERACIONAIS";
-      scores[melhorMacro].subcategorias.add("LIMPEZA_CONSERVACAO_PREDIAL");
-    } else {
-      melhorMacro = "MATERIAIS_ESCRITORIO_SUPRIMENTOS";
-      scores[melhorMacro].subcategorias.add("PAPELARIA_MATERIAL_ESCOLAR");
-    }
-  }
-
-  const melhorResultado = scores[melhorMacro];
-
-  return {
-    macro: melhorMacro,
-    subcategorias: Array.from(melhorResultado.subcategorias),
-    score: maiorScore,
-    termosCorrespondentes: Array.from(melhorResultado.termos),
-  };
+  return { macro: "ASSESSORIAS", subcategorias: [], score: 0, termosCorrespondentes: [] };
 }

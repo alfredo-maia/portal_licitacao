@@ -88,7 +88,7 @@ describe("Sprint 6 - Task 2: Tela de Cadastro em 2 Etapas", () => {
     await waitFor(() => {
       expect(screen.getByText(/Ramo do seu negócio/i)).toBeInTheDocument();
       expect(
-        screen.getByText(/Alimentos & Merenda Escolar/i),
+        screen.getByText(/^Alimentação$/i),
       ).toBeInTheDocument();
     });
 
@@ -100,12 +100,12 @@ describe("Sprint 6 - Task 2: Tela de Cadastro em 2 Etapas", () => {
 
     // Ao selecionar um Macro-Segmento, seus sub-segmentos vêm marcados por padrão
     const checkboxAlimentos = screen.getByRole("checkbox", {
-      name: /Alimentos & Merenda Escolar/i,
+      name: /^Alimentação$/i,
     });
     fireEvent.click(checkboxAlimentos);
 
     // Sub-segmentos devem estar visíveis e selecionados
-    expect(screen.getByText(/Panificação & Lanches/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Gêneros alimentícios$/i)).toBeInTheDocument();
 
     // E o botão agora deve estar habilitado
     expect(btnFinalizar).not.toBeDisabled();

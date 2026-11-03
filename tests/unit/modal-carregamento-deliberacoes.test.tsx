@@ -34,7 +34,7 @@ const mockLicitacao = {
   valorEstimado: 150000,
   dataAbertura: "2026-11-20T10:00:00.000Z",
   status: "PENDENTE",
-  tipoSistemaCodigo: "ALIMENTOS_MERENDA_ESCOLAR",
+  tipoSistemaCodigo: "ALIMENTACAO",
   arquivos: [],
   repositoriosSimilares: [],
   analisesIA: [],
@@ -61,7 +61,7 @@ describe("Issue #31 — Modal de Carregamento nas Deliberações de Oportunidade
           json: () =>
             Promise.resolve({
               ok: true,
-              segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+              segmentos: ["ALIMENTACAO"],
               brasilInteiro: true,
               ufs: [],
             }),
@@ -126,7 +126,7 @@ describe("Issue #31 — Modal de Carregamento nas Deliberações de Oportunidade
           json: () =>
             Promise.resolve({
               ok: true,
-              segmentos: ["ALIMENTOS_MERENDA_ESCOLAR"],
+              segmentos: ["ALIMENTACAO"],
               brasilInteiro: true,
               ufs: [],
             }),

@@ -24,7 +24,7 @@ const mockDetalheData = {
     dataAbertura: "2026-11-15T09:00:00.000Z",
     miniResumo: "Fornecimento de pães",
     resumo: "Aquisição de pães franceses para alimentação escolar.",
-    tipoSistemaCodigo: "ALIMENTOS_MERENDA_ESCOLAR",
+    tipoSistemaCodigo: "ALIMENTACAO",
     parecerIA: "GO",
     status: "PENDENTE",
     isPresencial: false,
@@ -76,7 +76,7 @@ describe("Sprint 6 - Task 7: Dossiê da Oportunidade e Sincronização PNCP", ()
     // Não deve conter a tag "Parecer IA: GO"
     expect(screen.queryByText(/Parecer IA:/i)).toBeNull();
     // Não deve conter a tag do tipo de sistema no cabeçalho
-    expect(screen.queryByText("ALIMENTOS_MERENDA_ESCOLAR")).toBeNull();
+    expect(screen.queryByText("ALIMENTACAO")).toBeNull();
   });
 
   it("não deve renderizar os botões 'Abrir Edital Oficial no PNCP' e 'Portal de Disputa'", async () => {

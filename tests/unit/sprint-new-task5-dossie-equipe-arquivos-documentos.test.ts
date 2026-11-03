@@ -49,7 +49,7 @@ describe("Sprint New - Task 5: Dossiê (Equipe & Arquivos) e Salvamento de Docum
       parecerIA: "GO",
       justificativaIA: null,
       tipoSistemaCodigo: "INFRAESTRUTURA_EQUIPAMENTOS",
-      segmentoMacro: "TECNOLOGIA_TELECOM",
+      segmentoMacro: "INFORMATICA",
       subcategorias: ["INFRAESTRUTURA_EQUIPAMENTOS"],
       atestadosExigidos: [],
       motivoRecusa: null,
