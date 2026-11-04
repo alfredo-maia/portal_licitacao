@@ -9,6 +9,8 @@ import {
   Checkbox,
   Form,
   InlineNotification,
+  Loading,
+  Modal,
   PasswordInput,
   Stack,
   Tag,
@@ -576,6 +578,43 @@ export default function CadastroPage() {
           </Stack>
         </Tile>
       </div>
+
+      {/* Modal de Carregamento & Configuração da Conta */}
+      {isSubmitting && (
+        <Modal
+          passiveModal
+          open
+          modalHeading="Configurando sua conta..."
+          onRequestClose={() => {}}
+          preventCloseOnClickOutside
+          data-testid="modal-cadastro-loading"
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "2rem 1.5rem",
+              gap: "1.25rem",
+              textAlign: "center",
+            }}
+          >
+            <Loading withOverlay={false} small={false} description="Configurando conta" />
+            <p
+              style={{
+                margin: 0,
+                color: "var(--cds-text-secondary)",
+                fontSize: "0.9375rem",
+                lineHeight: 1.5,
+                maxWidth: "420px",
+              }}
+            >
+              Estamos preparando seu ambiente e calibrando a triagem de licitações para a sua empresa. Em poucos segundos você acessará o sistema.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

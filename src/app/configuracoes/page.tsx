@@ -19,6 +19,7 @@ import {
   Tag,
   TextInput,
   Tile,
+  ToastNotification,
 } from "@carbon/react";
 import {
   Add,
@@ -278,6 +279,15 @@ export default function ConfiguracoesPage() {
     window.addEventListener("tenant-changed", handleTenantChanged);
     return () => window.removeEventListener("tenant-changed", handleTenantChanged);
   }, [carregarEmpresa, carregarEquipe]);
+
+  // Auto-dismiss da notificação dinâmica após 5 segundos
+  useEffect(() => {
+    if (!notificacao) return;
+    const timer = setTimeout(() => {
+      setNotificacao(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [notificacao]);
 
   // Controle de Abas Autorizadas
   const visibleTabIds = useMemo(() => getVisibleConfigTabs(userRole), [userRole]);
@@ -699,16 +709,32 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {notificacao && (
-          <InlineNotification
-            style={{ marginTop: "1rem" }}
+      </div>
+
+      {/* Toast Dinâmico Flutuante com Auto-Dismiss (Visível em qualquer rolagem) */}
+      {notificacao && (
+        <div
+          data-testid="config-toast-container"
+          style={{
+            position: "fixed",
+            bottom: "2rem",
+            right: "2rem",
+            zIndex: 99999,
+            maxWidth: "460px",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+          }}
+        >
+          <ToastNotification
             kind={notificacao.tipo}
             title={notificacao.tipo === "success" ? "Sucesso" : notificacao.tipo === "warning" ? "Atenção" : "Erro"}
             subtitle={notificacao.texto}
-            onCloseButtonClick={() => setNotificacao(null)}
+            caption={new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            timeout={5000}
+            onClose={() => setNotificacao(null)}
+            data-testid="config-toast-notification"
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabs Principais */}
       <Tabs
@@ -1074,17 +1100,6 @@ export default function ConfiguracoesPage() {
                     Adicionar CNPJ
                   </Button>
                 </span>
-
-                <Button
-                  kind="primary"
-                  size="md"
-                  renderIcon={Save}
-                  onClick={handleSalvarEmpresa}
-                  disabled={salvandoEmpresa}
-                  id="btn-salvar-empresa"
-                >
-                  {salvandoEmpresa ? <InlineLoading description="Salvando..." /> : "Salvar Alterações"}
-                </Button>
               </div>
             </div>
 
@@ -1517,9 +1532,10 @@ export default function ConfiguracoesPage() {
                   renderIcon={Save}
                   onClick={handleSalvarEmpresa}
                   disabled={salvandoEmpresa || bloqueadoPlanoBasico30Dias}
-                  id="btn-salvar-escopo-rodape"
+                  id="btn-salvar-empresa"
+                  data-testid="btn-salvar-empresa"
                 >
-                  {salvandoEmpresa ? <InlineLoading description="Salvando escopo..." /> : "Salvar Alterações de Escopo"}
+                  {salvandoEmpresa ? <InlineLoading description="Salvando..." /> : "Salvar Alterações"}
                 </Button>
               </div>
             </div>
