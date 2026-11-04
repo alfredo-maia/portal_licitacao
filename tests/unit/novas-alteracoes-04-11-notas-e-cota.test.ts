@@ -13,6 +13,7 @@ import {
 } from "@/server/schemas/licitacao-nota.schema";
 import {
   insertInMemoryLicitacao,
+  insertInMemoryLicitacaoArquivo,
   insertInMemoryUsuario,
   listInMemoryNotificacoesUsuario,
   resetInMemoryLicitacoes,
@@ -88,7 +89,23 @@ function seedLicitacao(): string {
     hashCritico: `hash_${Math.random()}`,
     valorArrematado: null,
     responsavelId: null,
+    arquivos: [
+      {
+        id: "arq_seed_edital_1",
+        nome: "Edital_PE_321_2026.pdf",
+        url: "https://pncp.gov.br/doc/1",
+        tamanho: 1048576,
+        tipo: "EDITAL",
+      },
+    ],
   } as any);
+  insertInMemoryLicitacaoArquivo(lic.id, {
+    id: `arq_${lic.id}`,
+    nome: "Edital_PE_321_2026.pdf",
+    url: "https://pncp.gov.br/doc/1",
+    tamanho: 1048576,
+    tipo: "EDITAL",
+  });
   return lic.id;
 }
 

@@ -4,6 +4,7 @@ import type { RbacUser } from "@/lib/rbac";
 import { recordAuditLog } from "@/server/audit";
 import {
   type CotaMensalAnaliseIA,
+  type ItemDisputaEdital,
   type RelatorioParticipacao,
   type SolicitarAnaliseInput,
   calcularCotaAnaliseIA,
@@ -28,6 +29,7 @@ import {
 } from "./licitacoes-store";
 import { notificarRelatorioIAPronto } from "./notificacoes.service";
 import {
+  buscarESincronizarArquivosEditalPncp,
   getOportunidadeById,
   type OportunidadesActorContext,
 } from "./oportunidades.service";
@@ -245,16 +247,16 @@ export function gerarPdfRelatorioParticipacao(params: {
   const blocos: LinhaEstruturada[] = [
     {
       bold: true,
-      size: 14,
-      text: "RELATORIO EXECUTIVO DE PARTICIPACAO E VIABILIDADE (IA)",
+      size: 12,
+      text: "RAIO-X DE EDITAL & ATA (IA) - RELATORIO EXECUTIVO DE PARTICIPACAO E VIABILIDADE",
     },
     {
       bold: false,
-      size: 9,
-      text: `Gerado em: ${dataGeracao} (America/Sao_Paulo) | Portal de Licitacoes`,
+      size: 8.5,
+      text: `Gerado em: ${dataGeracao} (America/Sao_Paulo) | Dossiê Analítico Executivo`,
     },
     { text: "----------------------------------------------------------------------------------------" },
-    { bold: true, size: 11, text: "1. IDENTIFICACAO DO CERTAME E DA EMPRESA LICITANTE" },
+    { bold: true, size: 10.5, text: "1. IDENTIFICACAO DO CERTAME E DA EMPRESA LICITANTE" },
     { text: `Edital: ${params.numeroEdital} | Modalidade: ${params.modalidade}` },
     {
       text: `Orgao Comprador: ${params.orgaoNome} (${params.municipio ? `${params.municipio}/` : ""}${params.uf})`,
@@ -266,88 +268,152 @@ export function gerarPdfRelatorioParticipacao(params: {
       text: `Empresa Licitante: ${params.empresaNome || "Empresa Configurada no Tenant"} | CNPJ: ${params.empresaCnpj || "N/I"}`,
     },
     {
-      text: `Segmento Identificado: ${r.segmentoIdentificado} | Margem/Lance Ref.: ${r.viabilidadeFinanceira.lanceMinimoReferencia || "Sob calculo comercial"}`,
+      text: `Segmento: ${r.segmentoIdentificado || "Geral"}`,
     },
     { text: "----------------------------------------------------------------------------------------" },
     {
       bold: true,
-      size: 12,
-      text: `2. PARECER FINAL: ${labelParecer} — SCORE: ${r.scoreAderencia}/100`,
+      size: 11,
+      text: `2. VEREDITO DE HABILITACAO DOCUMENTAL: ${labelParecer} (SCORE: ${r.scoreAderencia}/100)`,
     },
     ...quebrarLinhasPdf(r.resumoExecutivo, 86).map((t) => ({ text: t })),
-    { text: "----------------------------------------------------------------------------------------" },
-    {
-      bold: true,
-      size: 11,
-      text: `3. ADERENCIA DE ESCOPO E CNAE (${r.aderenciaEscopo.compativel ? "COMPATIVEL" : "REQUER REVISAO"})`,
-    },
-    ...quebrarLinhasPdf(
-      `Segmento Empresa: ${r.aderenciaEscopo.segmentoEmpresa} | Segmento Edital: ${r.aderenciaEscopo.segmentoEdital}`,
-      86,
-    ).map((t) => ({ text: t })),
-    ...quebrarLinhasPdf(`Analise: ${r.aderenciaEscopo.observacao}`, 86).map(
-      (t) => ({ text: t }),
-    ),
-    { text: "----------------------------------------------------------------------------------------" },
-    { bold: true, size: 11, text: "4. CHECKLIST DOCUMENTAL E HABILITACAO (/documentacao)" },
+    ...quebrarLinhasPdf(`Status da Habilitacao: ${r.habilitacao?.status || r.parecer} - ${r.habilitacao?.resumo || ""}`, 86).map((t) => ({ text: t })),
   ];
 
-  for (const item of r.checklistDocumental) {
-    const linhasItem = quebrarLinhasPdf(
-      `[${item.status}] ${item.documento} (${item.categoria}): ${item.detalhe}`,
-      86,
+  if (r.habilitacao?.certidoesRegulares?.length) {
+    blocos.push({ bold: true, size: 9, text: "Certidoes Regulares Cadastradas (/documentacao):" });
+    for (const c of r.habilitacao.certidoesRegulares) {
+      for (const l of quebrarLinhasPdf(`[OK] ${c}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (r.habilitacao?.certidoesVencidasOuPendentes?.length) {
+    blocos.push({ bold: true, size: 9, text: "Certidoes Vencidas ou Pendentes de Renovacao:" });
+    for (const c of r.habilitacao.certidoesVencidasOuPendentes) {
+      for (const l of quebrarLinhasPdf(`[ATENCAO] ${c}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (r.habilitacao?.atestadosExigidos?.length) {
+    blocos.push({ bold: true, size: 9, text: "Atestados Tecnicos Exigidos pelo Certame:" });
+    for (const a of r.habilitacao.atestadosExigidos) {
+      for (const l of quebrarLinhasPdf(`• ${a}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (r.habilitacao?.exigenciasEspeciais?.length) {
+    blocos.push({ bold: true, size: 9, text: "Exigencias Especiais (Vistoria, Registro em Conselho):" });
+    for (const e of r.habilitacao.exigenciasEspeciais) {
+      for (const l of quebrarLinhasPdf(`• ${e}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  blocos.push(
+    { text: "----------------------------------------------------------------------------------------" },
+    { bold: true, size: 10.5, text: "3. CRONOGRAMA, PRAZOS POS-ASSINATURA E LOCALIZACAO FISICA" },
+    { text: `Previsao de Inicio dos Servicos/Fornecimento: ${r.cronograma?.dataPrevisaoInicio || "Apos homologacao contratual"}` },
+    ...quebrarLinhasPdf(`Inicio dos Pedidos apos Assinatura: ${r.cronograma?.prazoInicioPedidosAposAssinatura || "Conforme emissao de OS/OF"}`, 86).map((t) => ({ text: t })),
+    ...quebrarLinhasPdf(`Prazo de Execucao/Entrega: ${r.cronograma?.prazoEntregaExecucao || "Conforme Termo de Referencia"}`, 86).map((t) => ({ text: t })),
+    ...quebrarLinhasPdf(`Endereco Fisico de Entrega/Execucao: ${r.cronograma?.enderecoExecucaoOuEntrega || "Definido no Edital"}`, 86).map((t) => ({ text: t })),
+    { text: `Certame/Execucao Presencial: ${r.cronograma?.isPresencial ? "SIM (Requer presenca fisica no local)" : "NAO (100% Eletronico / Remoto)"}` },
+  );
+
+  if (r.cronograma?.observacoesLogistica) {
+    for (const l of quebrarLinhasPdf(`Observacoes Logisticas: ${r.cronograma.observacoesLogistica}`, 86)) {
+      blocos.push({ text: l });
+    }
+  }
+
+  blocos.push(
+    { text: "----------------------------------------------------------------------------------------" },
+    { bold: true, size: 10.5, text: `4. ITENS EM DISPUTA E MARCAS EXIGIDAS (${r.itens?.totalItens ?? 1} item/lote)` },
+  );
+
+  if (r.itens?.destaqueMarcasExigidas?.length) {
+    blocos.push({ bold: true, size: 9.5, text: "MARCAS OU MODELOS EXIGIDOS / HOMOLOGADOS NO EDITAL:" });
+    for (const m of r.itens.destaqueMarcasExigidas) {
+      for (const l of quebrarLinhasPdf(`★ ${m}`, 86)) blocos.push({ text: l });
+    }
+  } else {
+    blocos.push({ text: "Marcas: Nao ha exigencia exclusiva de marca no edital (padrao ampla concorrencia)." });
+  }
+
+  if (r.itens?.lista && r.itens.lista.length > 0) {
+    blocos.push({ bold: true, size: 9, text: "Detalhamento dos Itens / Lotes:" });
+    for (const it of r.itens.lista.slice(0, 10)) {
+      const vUnit = it.valorUnitarioEstimado ? ` | Unit: R$ ${it.valorUnitarioEstimado.toFixed(2)}` : "";
+      const vTot = it.valorTotalEstimado ? ` | Tot: R$ ${it.valorTotalEstimado.toFixed(2)}` : "";
+      const marca = it.marcaExigidaOuReferencia ? ` | Marca: ${it.marcaExigidaOuReferencia}` : "";
+      for (const l of quebrarLinhasPdf(
+        `Item ${it.numeroItem}${it.lote ? ` (Lote ${it.lote})` : ""}: ${it.descricao} - Qtd: ${it.quantidade} ${it.unidadeMedida || "UN"}${vUnit}${vTot}${marca}`,
+        86,
+      )) {
+        blocos.push({ text: l });
+      }
+    }
+  }
+
+  blocos.push(
+    { text: "----------------------------------------------------------------------------------------" },
+    { bold: true, size: 10.5, text: "5. RISCOS CONTRATUAIS, MULTAS E FLUXO FINANCEIRO" },
+    { text: `Nivel de Risco Geral: ${r.riscos?.nivelRiscoGeral || "MEDIO"}` },
+    ...quebrarLinhasPdf(`Prazo de Pagamento do Orgao: ${r.riscos?.prazoPagamentoOrgao || "Ate 30 dias apos atesto da NF"}`, 86).map((t) => ({ text: t })),
+    ...quebrarLinhasPdf(`Garantia Contratual: ${r.riscos?.exigenciaGarantiaContratual || "Conforme minuta contratual (5% do valor)"}`, 86).map((t) => ({ text: t })),
+  );
+
+  if (r.riscos?.clausulasPenalidadesMultas?.length) {
+    blocos.push({ bold: true, size: 9, text: "Clausulas de Penalidades e Multas por Atraso:" });
+    for (const p of r.riscos.clausulasPenalidadesMultas) {
+      for (const l of quebrarLinhasPdf(`• ${p}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (r.riscos?.riscosFinanceirosIdentificados?.length) {
+    blocos.push({ bold: true, size: 9, text: "Riscos Financeiros Identificados:" });
+    for (const rf of r.riscos.riscosFinanceirosIdentificados) {
+      for (const l of quebrarLinhasPdf(`• ${rf}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  blocos.push(
+    { text: "----------------------------------------------------------------------------------------" },
+    { bold: true, size: 10.5, text: "6. MATRIZ SWOT DA OPORTUNIDADE" },
+  );
+
+  if (r.swot?.forcas?.length) {
+    blocos.push({ bold: true, size: 9, text: "[FORCAS]:" });
+    for (const f of r.swot.forcas) {
+      for (const l of quebrarLinhasPdf(`+ ${f}`, 86)) blocos.push({ text: l });
+    }
+  }
+  if (r.swot?.fraquezas?.length) {
+    blocos.push({ bold: true, size: 9, text: "[FRAQUEZAS]:" });
+    for (const f of r.swot.fraquezas) {
+      for (const l of quebrarLinhasPdf(`- ${f}`, 86)) blocos.push({ text: l });
+    }
+  }
+  if (r.swot?.oportunidades?.length) {
+    blocos.push({ bold: true, size: 9, text: "[OPORTUNIDADES]:" });
+    for (const o of r.swot.oportunidades) {
+      for (const l of quebrarLinhasPdf(`* ${o}`, 86)) blocos.push({ text: l });
+    }
+  }
+  if (r.swot?.ameacas?.length) {
+    blocos.push({ bold: true, size: 9, text: "[AMEACAS]:" });
+    for (const a of r.swot.ameacas) {
+      for (const l of quebrarLinhasPdf(`! ${a}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (r.checklistDocumental?.length || r.statusPortalDisputa) {
+    blocos.push(
+      { text: "----------------------------------------------------------------------------------------" },
+      { bold: true, size: 10.5, text: "7. PORTAL DE DISPUTA E AUDITORIA DOCUMENTAL" },
     );
-    for (const l of linhasItem) blocos.push({ text: l });
-  }
-
-  blocos.push(
-    { text: "----------------------------------------------------------------------------------------" },
-    {
-      bold: true,
-      size: 11,
-      text: `5. PORTAL DE DISPUTA: ${r.statusPortalDisputa.portalNome} (${r.statusPortalDisputa.status})`,
-    },
-    ...quebrarLinhasPdf(r.statusPortalDisputa.detalhe, 86).map((t) => ({
-      text: t,
-    })),
-    { text: "----------------------------------------------------------------------------------------" },
-    { bold: true, size: 11, text: "6. EXIGENCIAS TECNICAS, ATESTADOS E CAPACIDADE" },
-  );
-
-  for (const ex of r.exigenciasTecnicas) {
-    for (const l of quebrarLinhasPdf(
-      `• [${ex.atendido}] ${ex.exigencia}: ${ex.observacao}`,
-      86,
-    )) {
-      blocos.push({ text: l });
-    }
-  }
-
-  blocos.push(
-    { text: "----------------------------------------------------------------------------------------" },
-    { bold: true, size: 11, text: "7. VIABILIDADE FINANCEIRA E RISCOS IDENTIFICADOS" },
-    ...quebrarLinhasPdf(r.viabilidadeFinanceira.observacoesCustos, 86).map(
-      (t) => ({ text: t }),
-    ),
-  );
-
-  for (const risco of r.riscosIdentificados) {
-    for (const l of quebrarLinhasPdf(
-      `• [${risco.severidade}] ${risco.titulo}: ${risco.mitigacao}`,
-      86,
-    )) {
-      blocos.push({ text: l });
-    }
-  }
-
-  blocos.push(
-    { text: "----------------------------------------------------------------------------------------" },
-    { bold: true, size: 11, text: "8. RECOMENDACOES PRATICAS PARA A EQUIPE" },
-  );
-
-  for (const rec of r.recomendacoesPraticas) {
-    for (const l of quebrarLinhasPdf(`• ${rec}`, 86)) {
-      blocos.push({ text: l });
+    if (r.statusPortalDisputa) {
+      blocos.push({
+        text: `Portal: ${r.statusPortalDisputa.portalNome} (${r.statusPortalDisputa.status}) - ${r.statusPortalDisputa.detalhe}`,
+      });
     }
   }
 
@@ -446,6 +512,16 @@ export function gerarPdfRelatorioParticipacao(params: {
 
 async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   resumoExecutivo?: string;
+  habilitacao?: Partial<RelatorioParticipacao["habilitacao"]>;
+  cronograma?: Partial<RelatorioParticipacao["cronograma"]>;
+  itens?: {
+    totalItens?: number;
+    valorTotalEstimado?: number;
+    destaqueMarcasExigidas?: string[];
+    lista?: ItemDisputaEdital[];
+  };
+  riscos?: Partial<RelatorioParticipacao["riscos"]>;
+  swot?: Partial<RelatorioParticipacao["swot"]>;
   recomendacoesExtras?: string[];
   observacoesCustos?: string;
 } | null> {
@@ -455,6 +531,62 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   if (!openaiKey && !geminiKey) {
     return null;
   }
+
+  const systemPrompt =
+    "Você é um Especialista Sênior em Licitações Públicas e Análise de Editais/ATAs (Lei 14.133/2021). " +
+    "Sua função é gerar um Raio-X Executivo direto e mastigado para que o licitante não precise ler 100+ páginas de edital. " +
+    "NÃO gere sugestões de preço de lance sem cotação de insumos. Retorne estritamente um JSON com a seguinte estrutura:\n" +
+    "{\n" +
+    '  "resumoExecutivo": "string com resumo em até 3 parágrafos claros",\n' +
+    '  "habilitacao": {\n' +
+    '    "status": "APTO" | "APTO_COM_RESSALVAS" | "INAPTO",\n' +
+    '    "scoreConformidade": 85,\n' +
+    '    "resumo": "string explicativa da habilitação",\n' +
+    '    "certidoesRegulares": ["string"],\n' +
+    '    "certidoesVencidasOuPendentes": ["string"],\n' +
+    '    "atestadosExigidos": ["string"],\n' +
+    '    "exigenciasEspeciais": ["vistoria presencial, registro no CREA/CRF, etc."]\n' +
+    "  },\n" +
+    '  "cronograma": {\n' +
+    '    "dataPrevisaoInicio": "data ou prazo previsto para início dos serviços/fornecimento",\n' +
+    '    "prazoInicioPedidosAposAssinatura": "prazo após assinatura da Ata/Contrato para início das ordens",\n' +
+    '    "prazoEntregaExecucao": "prazo de entrega ou execução das remessas",\n' +
+    '    "enderecoExecucaoOuEntrega": "endereço físico exato de entrega/execução",\n' +
+    '    "isPresencial": false,\n' +
+    '    "observacoesLogistica": "orientações sobre frete, presença ou deslocamento"\n' +
+    "  },\n" +
+    '  "itens": {\n' +
+    '    "totalItens": 1,\n' +
+    '    "valorTotalEstimado": 100000,\n' +
+    '    "destaqueMarcasExigidas": ["Ex: Computador Macbook Pro M4, TV Samsung 55 QLED, Dipirona 50mg"],\n' +
+    '    "lista": [\n' +
+    '      {\n' +
+    '        "numeroItem": 1,\n' +
+    '        "lote": 1,\n' +
+    '        "descricao": "string",\n' +
+    '        "especificacaoDetalhada": "string",\n' +
+    '        "quantidade": 10,\n' +
+    '        "unidadeMedida": "UN",\n' +
+    '        "valorUnitarioEstimado": 1000,\n' +
+    '        "valorTotalEstimado": 10000,\n' +
+    '        "marcaExigidaOuReferencia": "Marca X ou null"\n' +
+    "      }\n" +
+    "    ]\n" +
+    "  },\n" +
+    '  "riscos": {\n' +
+    '    "prazoPagamentoOrgao": "Ex: Até 30 dias após atesto da Nota Fiscal",\n' +
+    '    "exigenciaGarantiaContratual": "Ex: 5% sobre o valor adjudicado",\n' +
+    '    "clausulasPenalidadesMultas": ["Multa moratória de 0,5% ao dia", "Multa de 10% por inexecução"],\n' +
+    '    "riscosFinanceirosIdentificados": ["Risco de demora no empenho", "Descasamento de fluxo de caixa"],\n' +
+    '    "nivelRiscoGeral": "BAIXO" | "MEDIO" | "ALTO"\n' +
+    "  },\n" +
+    '  "swot": {\n' +
+    '    "forcas": ["string"],\n' +
+    '    "fraquezas": ["string"],\n' +
+    '    "oportunidades": ["string"],\n' +
+    '    "ameacas": ["string"]\n' +
+    "  }\n" +
+    "}";
 
   try {
     if (openaiKey) {
@@ -469,15 +601,11 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
           temperature: 0.2,
           response_format: { type: "json_object" },
           messages: [
-            {
-              role: "system",
-              content:
-                "Você é um Especialista Sênior em Licitações Públicas (Lei 14.133/2021) multi-segmento. Retorne exclusivamente um JSON com os campos: resumoExecutivo (string), observacoesCustos (string) e recomendacoesExtras (array de strings).",
-            },
+            { role: "system", content: systemPrompt },
             { role: "user", content: promptContexto },
           ],
         }),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(14000),
       });
       if (res.ok) {
         const json: any = await res.json();
@@ -498,7 +626,7 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
               {
                 parts: [
                   {
-                    text: `Você é um Especialista Sênior em Licitações Públicas (Lei 14.133/2021). Analise os dados abaixo e retorne apenas um JSON válido com {"resumoExecutivo": "...", "observacoesCustos": "...", "recomendacoesExtras": ["..."]}:\n\n${promptContexto}`,
+                    text: `${systemPrompt}\n\nAnalise os seguintes dados do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
                   },
                 ],
               },
@@ -508,7 +636,7 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
               responseMimeType: "application/json",
             },
           }),
-          signal: AbortSignal.timeout(12000),
+          signal: AbortSignal.timeout(14000),
         },
       );
       if (res.ok) {
@@ -811,37 +939,84 @@ export async function construirRelatorioParticipacaoHibrido(
     });
   }
 
-  let resumoExecutivo =
-    parecer === "APTO"
-      ? `A empresa apresenta alta aderência técnica e documental (Score ${score}/100) para participar do Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) no segmento de ${nomeSegmentoEdital}.`
-      : parecer === "APTO_COM_RESSALVAS"
-        ? `A participação no Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) é viável com ressalvas (Score ${score}/100). Recomenda-se sanar as pendências apontadas no checklist antes da abertura da sessão.`
-        : `Foram identificados impedimentos críticos (Score ${score}/100) para o Edital ${oportunidade.numeroEdital}. Revise os documentos vencidos e a compatibilidade de CNAE/escopo antes de deliberar.`;
+  // 8. Extração e Modelagem do Raio-X de Edital & ATA (Issue #37)
+  const dtAbertura = new Date(oportunidade.dataAbertura);
+  const dtPrevisaoInicio = new Date(dtAbertura.getTime() + 25 * 24 * 60 * 60 * 1000);
+  const dataPrevisaoInicioStr = `Previsão: ${dtPrevisaoInicio.toLocaleDateString("pt-BR")} (aproximadamente 25 dias corridos após a sessão)`;
 
-  let observacoesCustos = `Valor estimado pelo órgão: ${fmtBRL(valorEstimado)}. Proposta inicial recomendada (deságio tático de 12%): ${fmtBRL(precoSugerido)}. Piso operacional sugerido para fase de lances (margem preservada): ${fmtBRL(lanceMinimoRef)} (${oportunidade.quantidadeLotes || 1} lote(s)).`;
+  const enderecoEntrega = `${oportunidade.municipio ? `${oportunidade.municipio} - ` : ""}${oportunidade.uf || "UF"} (${oportunidade.orgaoNome}) - Conforme Termo de Referência`;
 
-  const recomendacoesPraticas: string[] = [
-    `Revisar integralmente os ${Array.isArray(oportunidade.arquivos) ? oportunidade.arquivos.length : 0} anexo(s) do edital e validar especificações de marca/modelo ou SLA de execução.`,
-    `Confirmar vigência das certidões em /documentacao na véspera da disputa (${new Date(oportunidade.dataAbertura).toLocaleDateString("pt-BR")}).`,
-    `Registrar proposta inicial em ${fmtBRL(precoSugerido)} e definir limite de lance automático em ${fmtBRL(lanceMinimoRef)}.`,
+  // Detecção de marcas e modelos de referência no objeto/resumo
+  const textoCompletoCertame = `${oportunidade.resumo || ""} ${oportunidade.miniResumo || ""} ${oportunidade.numeroEdital || ""}`;
+  const marcasDetectadas = new Set<string>();
+  const padroesMarcasConhecidas = [
+    /\b(MacBook(?:\s+Pro|\s+Air)?(?:\s+M\d+)?)\b/i,
+    /\b(Dell(?:\s+Latitude|\s+Optiplex|\s+PowerEdge)?)\b/i,
+    /\b(Samsung(?:\s+Galaxy|\s+QLED|\s+Crystal)?)\b/i,
+    /\b(Apple(?:\s+iPad|\s+iPhone)?)\b/i,
+    /\b(Lenovo(?:\s+ThinkPad)?)\b/i,
+    /\b(HP(?:\s+ProBook|\s+LaserJet)?)\b/i,
+    /\b(LG(?:\s+OLED|\s+UltraGear)?)\b/i,
+    /\b(Toyota(?:\s+Hilux|\s+Corolla)?)\b/i,
+    /\b(Chevrolet(?:\s+Onix|\s+S10)?)\b/i,
+    /\b(Dipirona(?:\s+\d+\s*mg)?)\b/i,
+    /\b(Paracetamol(?:\s+\d+\s*mg)?)\b/i,
+    /\b(Amoxicilina(?:\s+\d+\s*mg)?)\b/i,
+    /\b(Cisco(?:\s+Catalyst)?)\b/i,
+    /\b(Hikvision|Intelbras)\b/i,
   ];
-  const obsUsuario = input.observacoes || input.observacoesExtras;
-  if (obsUsuario) {
-    recomendacoesPraticas.push(
-      `Consideração específica solicitada pela equipe: ${obsUsuario}`,
-    );
+  for (const regex of padroesMarcasConhecidas) {
+    const m = textoCompletoCertame.match(regex);
+    if (m && m[1]) marcasDetectadas.add(m[1].trim());
+  }
+  const regexMarcaGenerica = /(?:marca(?:\s+de\s+refer[êe]ncia)?|modelo|fabricante)\s*[:=]\s*([a-zA-Z0-9\s\.\-\+]{3,35})/gi;
+  let matchGen;
+  while ((matchGen = regexMarcaGenerica.exec(textoCompletoCertame)) !== null) {
+    if (matchGen[1]) marcasDetectadas.add(matchGen[1].trim());
   }
 
-  // 8. Enriquecimento opcional com LLM (OpenAI / Gemini) se chave configurada
+  const listaItensBase: ItemDisputaEdital[] = [];
+  if (Array.isArray(oportunidade.itens) && oportunidade.itens.length > 0) {
+    for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
+      listaItensBase.push({
+        numeroItem: it.numeroItem ?? idx + 1,
+        lote: it.lote ?? 1,
+        descricao: it.descricao || `Item ${idx + 1}`,
+        especificacaoDetalhada: it.especificacao || it.descricao,
+        quantidade: Number(it.quantidade) || 1,
+        unidadeMedida: it.unidadeMedida || "UN",
+        valorUnitarioEstimado: it.valorUnitario ? Number(it.valorUnitario) : null,
+        valorTotalEstimado: it.valorTotal ? Number(it.valorTotal) : null,
+        marcaExigidaOuReferencia: it.marca || Array.from(marcasDetectadas)[0] || null,
+      });
+    }
+  } else {
+    listaItensBase.push({
+      numeroItem: 1,
+      lote: 1,
+      descricao: oportunidade.resumo || oportunidade.miniResumo || "Fornecimento de bens e serviços conforme edital",
+      especificacaoDetalhada: oportunidade.resumo,
+      quantidade: 1,
+      unidadeMedida: "UN/LOTE",
+      valorUnitarioEstimado: valorEstimado,
+      valorTotalEstimado: valorEstimado,
+      marcaExigidaOuReferencia: Array.from(marcasDetectadas)[0] || null,
+    });
+  }
+
+  // 9. Enriquecimento opcional com LLM (OpenAI / Gemini) se chave configurada
+  const obsUsuario = input.observacoes || input.observacoesExtras;
   const enriquecidoLLM = await tentarEnriquecerComLLM(
     JSON.stringify({
       edital: oportunidade.numeroEdital,
       orgao: oportunidade.orgaoNome,
       uf: oportunidade.uf,
+      municipio: oportunidade.municipio,
       modalidade: oportunidade.modalidade,
       segmentoEdital: nomeSegmentoEdital,
       objeto: oportunidade.resumo,
       valorEstimado,
+      isPresencial: oportunidade.isPresencial,
       arquivosEdital: (oportunidade.arquivos || []).map((a: any) => a.nome),
       empresaSegmentos: labelSegmentoEmpresa,
       empresaCnae: empresa?.cnae,
@@ -851,25 +1026,195 @@ export async function construirRelatorioParticipacaoHibrido(
     }),
   );
 
-  if (enriquecidoLLM?.resumoExecutivo) {
-    resumoExecutivo = enriquecidoLLM.resumoExecutivo;
-  }
-  if (enriquecidoLLM?.observacoesCustos) {
-    observacoesCustos = enriquecidoLLM.observacoesCustos;
+  let resumoExecutivo =
+    enriquecidoLLM?.resumoExecutivo ||
+    (parecer === "APTO"
+      ? `A empresa apresenta alta aderência técnica e documental (Score ${score}/100) para participar do Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) no segmento de ${nomeSegmentoEdital}.`
+      : parecer === "APTO_COM_RESSALVAS"
+        ? `A participação no Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) é viável com ressalvas (Score ${score}/100). Recomenda-se sanar as pendências apontadas antes da abertura da sessão.`
+        : `Foram identificados impedimentos críticos (Score ${score}/100) para o Edital ${oportunidade.numeroEdital}. Revise os documentos vencidos e a compatibilidade de escopo antes de deliberar.`);
+
+  let observacoesCustos =
+    enriquecidoLLM?.observacoesCustos ||
+    `Valor total de referência estipulado pelo órgão: ${fmtBRL(valorEstimado)} (${listaItensBase.length} item/lote). Proposta comercial preliminar estimada em ${fmtBRL(precoSugerido)}.`;
+
+  const recomendacoesPraticas: string[] = [
+    `Validar vigência e autenticidade das certidões em /documentacao na véspera da sessão (${new Date(oportunidade.dataAbertura).toLocaleDateString("pt-BR")}).`,
+    `Verificar especificações de marca/modelo e prazos de garantia exigidos no Termo de Referência.`,
+  ];
+  if (obsUsuario) {
+    recomendacoesPraticas.push(`Observação solicitada pela equipe: ${obsUsuario}`);
   }
   if (Array.isArray(enriquecidoLLM?.recomendacoesExtras)) {
     for (const rec of enriquecidoLLM.recomendacoesExtras.slice(0, 3)) {
-      if (rec && typeof rec === "string") {
-        recomendacoesPraticas.push(rec);
-      }
+      if (rec && typeof rec === "string") recomendacoesPraticas.push(rec);
     }
   }
+
+  // Montagem estruturada do Raio-X
+  const certidoesRegulares = documentos
+    .filter((d: any) => d.status === "ATIVO" && !d.vencido)
+    .map((d: any) => `${d.nome} (${d.categoria})`);
+
+  const certidoesVencidasOuPendentes = [
+    ...documentos.filter((d: any) => d.vencido).map((d: any) => `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dias)`),
+    ...checklistDocumental.filter((c) => c.status === "AUSENTE").map((c) => `${c.documento} (Não cadastrado em /documentacao)`),
+  ];
+
+  const atestadosExigidos = atestadosEdital.length > 0
+    ? atestadosEdital
+    : [`Atestado de Capacidade Técnica de fornecimento similar ao objeto (Art. 67 da Lei 14.133/2021)`];
+
+  const exigenciasEspeciais: string[] = [];
+  if (oportunidade.isPresencial) {
+    exigenciasEspeciais.push(`Sessão/Execução Presencial no município de ${oportunidade.municipio || oportunidade.uf}`);
+  }
+  if (oportunidade.segmentoMacro === "ENGENHARIA_E_OBRAS") {
+    exigenciasEspeciais.push("Registro e regularidade da empresa e responsável técnico junto ao CREA/CAU");
+  }
+  if (oportunidade.segmentoMacro === "SAUDE_MEDICAMENTOS") {
+    exigenciasEspeciais.push("Alvará Sanitário e Autorização de Funcionamento de Empresa (AFE/ANVISA)");
+  }
+
+  const destaqueMarcasFinal = Array.from(
+    new Set([
+      ...marcasDetectadas,
+      ...(enriquecidoLLM?.itens?.destaqueMarcasExigidas || []),
+    ]),
+  );
 
   const relatorio: RelatorioParticipacao = {
     parecer,
     scoreAderencia: score,
     segmentoIdentificado: nomeSegmentoEdital,
     resumoExecutivo,
+
+    // 1. Habilitação Documental Real
+    habilitacao: {
+      status: enriquecidoLLM?.habilitacao?.status || parecer,
+      scoreConformidade: enriquecidoLLM?.habilitacao?.scoreConformidade ?? score,
+      resumo:
+        enriquecidoLLM?.habilitacao?.resumo ||
+        (parecer === "APTO"
+          ? `A empresa possui documentação regularizada (${certidoesRegulares.length} documento(s) ativo(s)) e atende às exigências preliminares do edital.`
+          : parecer === "APTO_COM_RESSALVAS"
+            ? `Identificadas pendências documentais ou categorias ausentes em /documentacao que exigem saneamento antes da sessão.`
+            : `Impedimento documental crítico detectado: certidões vencidas impedem a habilitação jurídica/fiscal.`),
+      certidoesRegulares: enriquecidoLLM?.habilitacao?.certidoesRegulares?.length
+        ? enriquecidoLLM.habilitacao.certidoesRegulares
+        : certidoesRegulares,
+      certidoesVencidasOuPendentes: enriquecidoLLM?.habilitacao?.certidoesVencidasOuPendentes?.length
+        ? enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes
+        : certidoesVencidasOuPendentes,
+      atestadosExigidos: enriquecidoLLM?.habilitacao?.atestadosExigidos?.length
+        ? enriquecidoLLM.habilitacao.atestadosExigidos
+        : atestadosExigidos,
+      exigenciasEspeciais: enriquecidoLLM?.habilitacao?.exigenciasEspeciais?.length
+        ? enriquecidoLLM.habilitacao.exigenciasEspeciais
+        : exigenciasEspeciais,
+    },
+
+    // 2. Cronograma & Localização Física
+    cronograma: {
+      dataPrevisaoInicio:
+        enriquecidoLLM?.cronograma?.dataPrevisaoInicio || dataPrevisaoInicioStr,
+      prazoInicioPedidosAposAssinatura:
+        enriquecidoLLM?.cronograma?.prazoInicioPedidosAposAssinatura ||
+        "Até 5 a 10 dias úteis após assinatura da Ata/Contrato e emissão da 1ª Ordem de Fornecimento",
+      prazoEntregaExecucao:
+        enriquecidoLLM?.cronograma?.prazoEntregaExecucao ||
+        "Entrega parcelada em até 15 a 30 dias corridos conforme Ordem de Fornecimento",
+      enderecoExecucaoOuEntrega:
+        enriquecidoLLM?.cronograma?.enderecoExecucaoOuEntrega || enderecoEntrega,
+      isPresencial:
+        enriquecidoLLM?.cronograma?.isPresencial ?? Boolean(oportunidade.isPresencial),
+      observacoesLogistica:
+        enriquecidoLLM?.cronograma?.observacoesLogistica ||
+        (oportunidade.isPresencial
+          ? `Certame/Execução com etapa presencial em ${oportunidade.municipio || oportunidade.uf}. Planejar logística ou representação legal local.`
+          : "Certame e entrega sem necessidade de comparecimento presencial na fase de disputa."),
+    },
+
+    // 3. Itens, Quantidades & Marcas Exigidas
+    itens: {
+      totalItens: enriquecidoLLM?.itens?.totalItens ?? listaItensBase.length,
+      valorTotalEstimado:
+        enriquecidoLLM?.itens?.valorTotalEstimado ?? valorEstimado,
+      destaqueMarcasExigidas: destaqueMarcasFinal,
+      lista: enriquecidoLLM?.itens?.lista && enriquecidoLLM.itens.lista.length > 0
+        ? enriquecidoLLM.itens.lista
+        : listaItensBase,
+    },
+
+    // 4. Riscos Contratuais & Financeiros
+    riscos: {
+      prazoPagamentoOrgao:
+        enriquecidoLLM?.riscos?.prazoPagamentoOrgao ||
+        "Até 30 dias após liquidação e atesto da Nota Fiscal pelo fiscal do contrato",
+      exigenciaGarantiaContratual:
+        enriquecidoLLM?.riscos?.exigenciaGarantiaContratual ||
+        "Garantia de execução contratual de 5% sobre o valor adjudicado (Art. 96 a 102 da Lei 14.133/2021)",
+      clausulasPenalidadesMultas:
+        enriquecidoLLM?.riscos?.clausulasPenalidadesMultas?.length
+          ? enriquecidoLLM.riscos.clausulasPenalidadesMultas
+          : [
+              "Multa moratória de 0,5% por dia de atraso injustificado na entrega, limitada a 10%",
+              "Multa compensatória de até 10% sobre o saldo contratual em caso de inexecução total ou parcial",
+              "Impedimento de licitar e contratar com a Administração Pública por prazo de até 3 anos",
+            ],
+      riscosFinanceirosIdentificados:
+        enriquecidoLLM?.riscos?.riscosFinanceirosIdentificados?.length
+          ? enriquecidoLLM.riscos.riscosFinanceirosIdentificados
+          : [
+              "Risco de descasamento no fluxo de caixa (ciclo entre entrega e pagamento público de 30 a 60 dias)",
+              "Flutuação de custos de insumos durante os 12 meses de vigência da Ata de Registro de Preços",
+              "Possibilidade de empenhos fracionados com volume mensal inferior ao estimado inicialmente",
+            ],
+      nivelRiscoGeral:
+        enriquecidoLLM?.riscos?.nivelRiscoGeral ||
+        (qtdDocsVencidos > 0 ? "ALTO" : !escopoCompativel ? "MEDIO" : "BAIXO"),
+    },
+
+    // 5. Matriz SWOT
+    swot: {
+      forcas:
+        enriquecidoLLM?.swot?.forcas?.length
+          ? enriquecidoLLM.swot.forcas
+          : [
+              `Regularidade cadastral ativa em /documentacao (${certidoesRegulares.length} documento(s) válido(s))`,
+              `Aderência de atuação territorial no Estado de ${oportunidade.uf}`,
+              `Experiência comprovada no fornecimento no segmento de ${nomeSegmentoEdital}`,
+            ],
+      fraquezas:
+        enriquecidoLLM?.swot?.fraquezas?.length
+          ? enriquecidoLLM.swot.fraquezas
+          : [
+              ...(qtdDocsVencidos > 0
+                ? [`${qtdDocsVencidos} documento(s) vencido(s) que exigem renovação imediata.`]
+                : []),
+              ...(statusPortalDisputa.status !== "ATIVO"
+                ? [`Portal de disputa (${statusPortalDisputa.portalNome}) pendente de credenciamento ou renovação.`]
+                : []),
+              "Necessidade de cotação prévia com distribuidores para assegurar disponibilidade em estoque",
+            ],
+      oportunidades:
+        enriquecidoLLM?.swot?.oportunidades?.length
+          ? enriquecidoLLM.swot.oportunidades
+          : [
+              `Valor de referência total estimado em ${fmtBRL(valorEstimado)}`,
+              "Potencial de fornecimento contínuo via Ata de Registro de Preços pelo período de 12 meses",
+              "Possibilidade de adesão à Ata ('carona') por outros órgãos públicos participantes",
+            ],
+      ameacas:
+        enriquecidoLLM?.swot?.ameacas?.length
+          ? enriquecidoLLM.swot.ameacas
+          : [
+              "Disputa predatória na fase de lances no portal com risco de preços inexequíveis por concorrentes",
+              "Possível morosidade burocrática na emissão das ordens de fornecimento ou empenhos pelo órgão",
+            ],
+    },
+
+    // Compatibilidade Legada
     aderenciaEscopo: {
       compativel: escopoCompativel && atuaNaUf,
       segmentoEmpresa: labelSegmentoEmpresa,
@@ -893,38 +1238,48 @@ export async function construirRelatorioParticipacaoHibrido(
   };
 
   const impedimentosTexto =
-    riscosIdentificados
-      .filter((r) => r.severidade === "ALTA")
-      .map((r) => `${r.titulo}: ${r.mitigacao}`)
-      .join(" | ") ||
-    "Nenhum impedimento eliminatório crítico detectado nos cadastros ativos.";
+    relatorio.habilitacao.certidoesVencidasOuPendentes.length > 0
+      ? `Pendências documentais: ${relatorio.habilitacao.certidoesVencidasOuPendentes.join(" | ")}`
+      : "Nenhum impedimento documental eliminatório detectado.";
 
-  const viabilidadeTexto = `${resumoExecutivo} Aderência de Escopo: ${relatorio.aderenciaEscopo.observacao}`;
+  const viabilidadeTexto = `${resumoExecutivo} Prazos: ${relatorio.cronograma.prazoInicioPedidosAposAssinatura}.`;
   const custosTexto = observacoesCustos;
 
   const relatorioTexto = [
-    `PARECER EXECUTIVO: ${parecer} (Score ${score}/100)`,
+    `RAIO-X DE EDITAL & ATA DE REGISTRO DE PREÇOS: ${parecer} (Score ${score}/100)`,
     `Segmento: ${nomeSegmentoEdital}`,
     "",
     `1. RESUMO EXECUTIVO`,
     resumoExecutivo,
     "",
-    `2. ADERÊNCIA DE ESCOPO E CNAE`,
-    relatorio.aderenciaEscopo.observacao,
+    `2. HABILITAÇÃO DOCUMENTAL (/documentacao)`,
+    relatorio.habilitacao.resumo,
+    `Certidões Regulares: ${relatorio.habilitacao.certidoesRegulares.length}`,
+    `Pendências: ${relatorio.habilitacao.certidoesVencidasOuPendentes.length > 0 ? relatorio.habilitacao.certidoesVencidasOuPendentes.join(", ") : "Nenhuma"}`,
     "",
-    `3. CHECKLIST DOCUMENTAL (/documentacao)`,
-    ...checklistDocumental.map(
-      (c) => `- [${c.status}] ${c.documento}: ${c.detalhe}`,
-    ),
+    `3. CRONOGRAMA, PRAZOS PÓS-ASSINATURA E ENDEREÇO`,
+    `- Previsão de Início: ${relatorio.cronograma.dataPrevisaoInicio}`,
+    `- Início dos Pedidos: ${relatorio.cronograma.prazoInicioPedidosAposAssinatura}`,
+    `- Prazo de Entrega: ${relatorio.cronograma.prazoEntregaExecucao}`,
+    `- Endereço de Entrega/Execução: ${relatorio.cronograma.enderecoExecucaoOuEntrega}`,
+    `- Presencial: ${relatorio.cronograma.isPresencial ? "SIM" : "NÃO"}`,
     "",
-    `4. PORTAL DE DISPUTA (/portais)`,
-    `- [${statusPortalDisputa.status}] ${statusPortalDisputa.portalNome}: ${statusPortalDisputa.detalhe}`,
+    `4. ITENS E MARCAS EXIGIDAS`,
+    `Total de Itens: ${relatorio.itens.totalItens} | Valor: ${fmtBRL(relatorio.itens.valorTotalEstimado)}`,
+    relatorio.itens.destaqueMarcasExigidas.length > 0
+      ? `Marcas Homologadas/Exigidas: ${relatorio.itens.destaqueMarcasExigidas.join(", ")}`
+      : "Sem exigência restritiva de marcas específicas.",
     "",
-    `5. VIABILIDADE FINANCEIRA`,
-    observacoesCustos,
+    `5. RISCOS CONTRATUAIS & FINANCEIROS`,
+    `- Prazo de Pagamento: ${relatorio.riscos.prazoPagamentoOrgao}`,
+    `- Garantia Contratual: ${relatorio.riscos.exigenciaGarantiaContratual}`,
+    `- Risco Geral: ${relatorio.riscos.nivelRiscoGeral}`,
     "",
-    `6. RECOMENDAÇÕES PRÁTICAS`,
-    ...recomendacoesPraticas.map((rec) => `- ${rec}`),
+    `6. MATRIZ SWOT`,
+    `[Forças]: ${relatorio.swot.forcas.join(" | ")}`,
+    `[Fraquezas]: ${relatorio.swot.fraquezas.join(" | ")}`,
+    `[Oportunidades]: ${relatorio.swot.oportunidades.join(" | ")}`,
+    `[Ameaças]: ${relatorio.swot.ameacas.join(" | ")}`,
   ].join("\n");
 
   return {
@@ -954,6 +1309,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   options?: {
     referencia?: Date;
     aguardarConclusao?: boolean;
+    permitirSemArquivos?: boolean;
   },
 ): Promise<{
   ok: true;
@@ -968,7 +1324,30 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   const oportunidade = await getOportunidadeById(licitacaoId, tenantId);
   const realId = oportunidade.id;
 
-  // 1. Verifica limite mensal do plano antes de criar
+  // 1. Pre-flight de arquivos de Edital: se a oportunidade não possui arquivos baixados no dossiê,
+  // tenta sincronizar automaticamente da API pública do PNCP.
+  let arquivosAtuais = Array.isArray(oportunidade.arquivos) ? oportunidade.arquivos : [];
+  if (arquivosAtuais.length === 0) {
+    try {
+      await buscarESincronizarArquivosEditalPncp(realId, user, actorContext);
+      const recarregada = await getOportunidadeById(realId, tenantId);
+      arquivosAtuais = Array.isArray(recarregada.arquivos) ? recarregada.arquivos : [];
+    } catch {
+      // Silencioso se PNCP offline/indisponível
+    }
+  }
+
+  // Se mesmo após a busca pública não houver nenhum arquivo de edital,
+  // encerra a solicitação ANTES de consumir a cota mensal
+  if (arquivosAtuais.length === 0 && !options?.permitirSemArquivos) {
+    throw new AnaliseIAParticipacaoError(
+      "SEM_ARQUIVOS_EDITAL",
+      "Nenhum arquivo de edital ou termo de referência foi localizado para este certame no portal público (PNCP). Faça o upload manual dos documentos na aba 'Arquivos do Edital' ou aguarde a disponibilização pública pelo órgão antes de gerar o Raio-X com IA.",
+      400,
+    );
+  }
+
+  // 2. Verifica limite mensal do plano antes de criar (preservando a cota se sem arquivos)
   const cotaAntes = await obterStatusCotaAnaliseIA(tenantId, referencia);
   if (cotaAntes.atingiuLimite) {
     throw new AnaliseIAParticipacaoError(

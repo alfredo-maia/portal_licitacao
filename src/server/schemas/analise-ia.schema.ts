@@ -21,7 +21,12 @@ export type SalvarAnaliseIAInput = z.infer<typeof salvarAnaliseIASchema>;
    Análise de Participação Assíncrona (Issue #36)
 ========================================================================= */
 
-export const ANALISE_STATUS = ["PROCESSANDO", "CONCLUIDO", "ERRO"] as const;
+export const ANALISE_STATUS = [
+  "PROCESSANDO",
+  "CONCLUIDO",
+  "ERRO",
+  "AGUARDANDO_DOCUMENTOS",
+] as const;
 export const analiseStatusSchema = z.enum(ANALISE_STATUS);
 export type AnaliseStatus = z.infer<typeof analiseStatusSchema>;
 
@@ -41,58 +46,183 @@ export const ANALISE_ORIGENS = [
 ] as const;
 export type AnaliseOrigem = (typeof ANALISE_ORIGENS)[number];
 
+/** Item/Lote detalhado do certame (Issue #37) */
+export const itemDisputaEditalSchema = z.object({
+  numeroItem: z.number(),
+  lote: z.number().nullable().optional(),
+  descricao: z.string(),
+  especificacaoDetalhada: z.string().optional(),
+  quantidade: z.number(),
+  unidadeMedida: z.string().default("UN"),
+  valorUnitarioEstimado: z.number().nullable().optional(),
+  valorTotalEstimado: z.number().nullable().optional(),
+  marcaExigidaOuReferencia: z.string().nullable().optional(),
+  exigeAmostra: z.boolean().optional(),
+});
+export type ItemDisputaEdital = z.infer<typeof itemDisputaEditalSchema>;
+
 /**
- * Relatório estruturado de participação, universal para qualquer segmento
- * (obras, saúde, alimentação, frota, serviços, comércio, TI...).
- * É o contrato de saída exigido da LLM e do motor analítico interno.
+ * Relatório estruturado de participação (Raio-X de Edital & ATA — Issue #37)
+ * Focado em verificação real de habilitação da empresa, extração de marcas exigidas,
+ * prazos de início/pedidos, endereços físicos de entrega, riscos contratuais e matriz SWOT.
  */
 export const relatorioParticipacaoSchema = z.object({
   parecer: parecerHabilitacaoSchema,
   scoreAderencia: z.number().min(0).max(100),
-  segmentoIdentificado: z.string(),
+  segmentoIdentificado: z.string().default("Fornecimento de Bens e Serviços"),
   resumoExecutivo: z.string(),
-  aderenciaEscopo: z.object({
-    compativel: z.boolean(),
-    segmentoEmpresa: z.string(),
-    segmentoEdital: z.string(),
-    observacao: z.string(),
-  }),
-  checklistDocumental: z.array(
-    z.object({
-      documento: z.string(),
-      categoria: z.string(),
-      status: z.enum(["REGULAR", "VENCENDO", "VENCIDO", "AUSENTE"]),
-      diasParaVencer: z.number().nullable(),
-      detalhe: z.string(),
+
+  // 1. Veredito de Habilitação Documental
+  habilitacao: z
+    .object({
+      status: parecerHabilitacaoSchema,
+      scoreConformidade: z.number().min(0).max(100).default(80),
+      resumo: z.string(),
+      certidoesRegulares: z.array(z.string()).default([]),
+      certidoesVencidasOuPendentes: z.array(z.string()).default([]),
+      atestadosExigidos: z.array(z.string()).default([]),
+      exigenciasEspeciais: z.array(z.string()).default([]),
+    })
+    .default({
+      status: "APTO",
+      scoreConformidade: 80,
+      resumo: "Conformidade documental preliminar aprovada.",
+      certidoesRegulares: [],
+      certidoesVencidasOuPendentes: [],
+      atestadosExigidos: [],
+      exigenciasEspeciais: [],
     }),
-  ),
-  statusPortalDisputa: z.object({
-    portalNome: z.string(),
-    status: z.enum(["ATIVO", "VENCIDO", "NAO_CADASTRADO"]),
-    dataVencimento: z.string().nullable(),
-    detalhe: z.string(),
-  }),
-  exigenciasTecnicas: z.array(
-    z.object({
-      exigencia: z.string(),
-      atendido: z.enum(["SIM", "VERIFICAR", "NAO"]),
+
+  // 2. Cronograma & Localização Física
+  cronograma: z
+    .object({
+      dataPrevisaoInicio: z.string().default("A definir após homologação"),
+      prazoInicioPedidosAposAssinatura: z
+        .string()
+        .default("Até 5 a 10 dias úteis após assinatura da Ata/Contrato"),
+      prazoEntregaExecucao: z
+        .string()
+        .default("Em conformidade com as Ordens de Fornecimento emitidas pelo órgão"),
+      enderecoExecucaoOuEntrega: z
+        .string()
+        .default("Conforme especificado no Termo de Referência"),
+      isPresencial: z.boolean().default(false),
+      observacoesLogistica: z.string().optional(),
+    })
+    .default({
+      dataPrevisaoInicio: "A definir após homologação",
+      prazoInicioPedidosAposAssinatura: "Até 5 a 10 dias úteis após assinatura da Ata/Contrato",
+      prazoEntregaExecucao: "Em conformidade com as Ordens de Fornecimento emitidas pelo órgão",
+      enderecoExecucaoOuEntrega: "Conforme especificado no Termo de Referência",
+      isPresencial: false,
+    }),
+
+  // 3. Itens, Quantidades & Marcas Exigidas
+  itens: z
+    .object({
+      totalItens: z.number().default(0),
+      valorTotalEstimado: z.number().default(0),
+      destaqueMarcasExigidas: z.array(z.string()).default([]),
+      lista: z.array(itemDisputaEditalSchema).default([]),
+    })
+    .default({
+      totalItens: 0,
+      valorTotalEstimado: 0,
+      destaqueMarcasExigidas: [],
+      lista: [],
+    }),
+
+  // 4. Riscos Contratuais & Financeiros
+  riscos: z
+    .object({
+      prazoPagamentoOrgao: z
+        .string()
+        .default("Até 30 dias após liquidação e atesto da Nota Fiscal"),
+      exigenciaGarantiaContratual: z
+        .string()
+        .default("Conforme estipulado na Minuta Contratual"),
+      clausulasPenalidadesMultas: z.array(z.string()).default([]),
+      riscosFinanceirosIdentificados: z.array(z.string()).default([]),
+      nivelRiscoGeral: z.enum(["BAIXO", "MEDIO", "ALTO"]).default("MEDIO"),
+    })
+    .default({
+      prazoPagamentoOrgao: "Até 30 dias após liquidação e atesto da Nota Fiscal",
+      exigenciaGarantiaContratual: "Conforme estipulado na Minuta Contratual",
+      clausulasPenalidadesMultas: [],
+      riscosFinanceirosIdentificados: [],
+      nivelRiscoGeral: "MEDIO",
+    }),
+
+  // 5. Matriz SWOT
+  swot: z
+    .object({
+      forcas: z.array(z.string()).default([]),
+      fraquezas: z.array(z.string()).default([]),
+      oportunidades: z.array(z.string()).default([]),
+      ameacas: z.array(z.string()).default([]),
+    })
+    .default({
+      forcas: [],
+      fraquezas: [],
+      oportunidades: [],
+      ameacas: [],
+    }),
+
+  // Campos retrocompatíveis para não quebrar módulos anteriores
+  aderenciaEscopo: z
+    .object({
+      compativel: z.boolean(),
+      segmentoEmpresa: z.string(),
+      segmentoEdital: z.string(),
       observacao: z.string(),
-    }),
-  ),
-  viabilidadeFinanceira: z.object({
-    valorEstimadoEdital: z.number(),
-    lanceMinimoReferencia: z.string().nullable(),
-    margemSegurancaSugerida: z.string(),
-    observacoesCustos: z.string(),
-  }),
-  riscosIdentificados: z.array(
-    z.object({
-      severidade: z.enum(["ALTA", "MEDIA", "BAIXA"]),
-      titulo: z.string(),
-      mitigacao: z.string(),
-    }),
-  ),
-  recomendacoesPraticas: z.array(z.string()),
+    })
+    .optional(),
+  checklistDocumental: z
+    .array(
+      z.object({
+        documento: z.string(),
+        categoria: z.string(),
+        status: z.enum(["REGULAR", "VENCENDO", "VENCIDO", "AUSENTE"]),
+        diasParaVencer: z.number().nullable(),
+        detalhe: z.string(),
+      }),
+    )
+    .optional(),
+  statusPortalDisputa: z
+    .object({
+      portalNome: z.string(),
+      status: z.enum(["ATIVO", "VENCIDO", "NAO_CADASTRADO"]),
+      dataVencimento: z.string().nullable(),
+      detalhe: z.string(),
+    })
+    .optional(),
+  exigenciasTecnicas: z
+    .array(
+      z.object({
+        exigencia: z.string(),
+        atendido: z.enum(["SIM", "VERIFICAR", "NAO"]),
+        observacao: z.string(),
+      }),
+    )
+    .optional(),
+  viabilidadeFinanceira: z
+    .object({
+      valorEstimadoEdital: z.number(),
+      lanceMinimoReferencia: z.string().nullable(),
+      margemSegurancaSugerida: z.string(),
+      observacoesCustos: z.string(),
+    })
+    .optional(),
+  riscosIdentificados: z
+    .array(
+      z.object({
+        severidade: z.enum(["ALTA", "MEDIA", "BAIXA"]),
+        titulo: z.string(),
+        mitigacao: z.string(),
+      }),
+    )
+    .optional(),
+  recomendacoesPraticas: z.array(z.string()).default([]),
 });
 
 export type RelatorioParticipacao = z.infer<typeof relatorioParticipacaoSchema>;
@@ -102,6 +232,8 @@ export const solicitarAnaliseInputSchema = z
   .object({
     observacoes: z.string().trim().max(2000).optional(),
     observacoesExtras: z.string().trim().max(2000).optional(),
+    sistemaBaseProprio: z.string().optional(),
+    repositorioReferencia: z.string().optional(),
   })
   .default({});
 

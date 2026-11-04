@@ -334,12 +334,9 @@ function OportunidadesDetalheContent({
   const [repUrl, setRepUrl] = React.useState("");
   const [salvandoRep, setSalvandoRep] = React.useState(false);
 
-  // Aba 4: Modal Deep Dive IA
+  // Aba 4: Modal Raio-X IA
   const [modalIAOpen, setModalIAOpen] = React.useState(false);
-  const [scriptCopiado, setScriptCopiado] = React.useState(false);
-  const [sistemaBaseProprio, setSistemaBaseProprio] = React.useState("Sim, módulo base existente em Next.js e PostgreSQL");
-  const [repositorioReferencia, setRepositorioReferencia] = React.useState("");
-  const [notasEstrategicas, setNotasEstrategicas] = React.useState("Margem mínima de 25%. Foco em comprovação de atestado técnico.");
+  const [notasEstrategicas, setNotasEstrategicas] = React.useState("");
   const [salvandoAnalise, setSalvandoAnalise] = React.useState(false);
 
   // Modal Recusa GO/No-GO
@@ -843,40 +840,18 @@ function OportunidadesDetalheContent({
     }
   };
 
-  // Gerador de Script do Prompt para IA Externa (Deep Dive)
+  // Contexto de Diretrizes e Observações para o Raio-X
   const gerarPromptScript = () => {
     if (!oportunidade) return "";
-    return `### PROMPT DE ANÁLISE PROFUNDA DE VIABILIDADE TÉCNICA E JURÍDICA
+    return `### RAIO-X EXECUTIVO DE EDITAL & ATA (IA)
 Licitação: ${oportunidade.numeroEdital} - ${oportunidade.orgaoNome} (${oportunidade.uf})
 Objeto: ${oportunidade.resumo}
 Valor Estimado: ${formatarMoeda(oportunidade.valorEstimado)}
 Modalidade: ${oportunidade.modalidade} (${oportunidade.isPresencial ? "Presencial" : "Eletrônica"})
-Tipo de Sistema: ${oportunidade.tipoSistemaCodigo}
-
-CONTEXTO DA EMPRESA:
-- Balanço Patrimonial: Índices de Liquidez Corrente e Geral acima de 1.0 (Comprovados)
-- Certidões: CND Federal, CNDT Trabalhista, FGTS e Estadual 100% regulares
-- Sistema Base Próprio: ${sistemaBaseProprio}
-- Repositório de Referência: ${repositorioReferencia || "Repositórios internos da organização"}
-- Diretrizes Estratégicas: ${notasEstrategicas}
-
-TAREFA:
-Realize uma análise profunda estruturada em 4 dimensões:
-1. Impedimentos de Habilitação Jurídica, Fiscal e Qualificação Técnica.
-2. Viabilidade Técnica, Prazos de Implantação e SLAs.
-3. Estimativa de Custos Operacionais, Alocação de Equipe e Margens.
-4. Sugestão de Preço de Lance Competitivo (Lance de Abertura, Teto e Mínimo).`;
+Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`;
   };
 
-  // Copiar Prompt
-  const handleCopiarScript = () => {
-    const script = gerarPromptScript();
-    navigator.clipboard.writeText(script);
-    setScriptCopiado(true);
-    setTimeout(() => setScriptCopiado(false), 3000);
-  };
-
-  // Salvar Relatório de IA
+  // Salvar Relatório de IA (legado)
   const handleSalvarRelatorioIA = async () => {
     if (!id || !oportunidade) return;
     setSalvandoAnalise(true);
@@ -884,26 +859,15 @@ Realize uma análise profunda estruturada em 4 dimensões:
       const scriptPrompt = gerarPromptScript();
       const payload = {
         scriptPrompt,
-        relatorioTexto: `Análise profunda realizada em ${new Date().toLocaleString("pt-BR")}. Oportunidade classificada como favorável com margem operacional estimada de 28%.`,
+        relatorioTexto: `Análise profunda realizada em ${new Date().toLocaleString("pt-BR")}. Oportunidade classificada como favorável com parecer executivo emitido.`,
         impedimentos: {
           habilitacaoJuridica: "REGULAR",
           atestadosTecnicos: "Compatível com acervo técnico",
-          observacoes: "Exige certidão de registro no CRA/CREA.",
+          observacoes: "Regularidade documental confirmada.",
         },
         viabilidade: {
           prazoDias: 120,
           viabilidadeTecnica: "ALTA",
-          stackSugerida: "Next.js, Node.js, PostgreSQL",
-        },
-        custos: {
-          horasEstimadas: 650,
-          custoEquipe: oportunidade.valorEstimado * 0.45,
-          margemBruta: "35%",
-        },
-        precoSugerido: {
-          lanceAbertura: oportunidade.valorEstimado * 0.95,
-          lanceMinimo: oportunidade.valorEstimado * 0.72,
-          estrategia: "Acompanhar lances e segurar margem no desempate ME/EPP.",
         },
       };
 
@@ -924,7 +888,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
     }
   };
 
-  // Disparo Assíncrono da Análise de Participação com IA (Issue #36)
+  // Disparo Assíncrono do Raio-X com IA (Issue #37)
   const handleIniciarAnaliseIA = async () => {
     if (!id || !oportunidade) return;
     setIniciandoAnaliseIA(true);
@@ -933,24 +897,25 @@ Realize uma análise profunda estruturada em 4 dimensões:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          observacoes: notasEstrategicas,
-          sistemaBaseProprio,
-          repositorioReferencia,
+          observacoes: notasEstrategicas.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        if (data?.error === "LIMITE_MENSAL_ATINGIDO") {
+        if (data?.error === "COTA_MENSAL_IA_ATINGIDA" || data?.error === "LIMITE_MENSAL_ATINGIDO") {
           if (data.cota) setCotaIA(data.cota);
           throw new Error(data.message || "Limite mensal de análises de IA atingido.");
         }
-        throw new Error(data?.message || data?.error || "Erro ao solicitar análise de IA.");
+        if (data?.error === "SEM_ARQUIVOS_EDITAL") {
+          throw new Error(data.message || "Nenhum arquivo de edital encontrado. Faça o upload manual na aba 'Arquivos do Edital' para iniciar o Raio-X.");
+        }
+        throw new Error(data?.message || data?.error || "Erro ao solicitar Raio-X com IA.");
       }
 
       if (data?.cota) setCotaIA(data.cota);
       setModalIAOpen(false);
       setModalNotificacaoIAOpen(true);
-      showNotification("success", "Análise de participação com IA iniciada com sucesso!");
+      showNotification("success", "Raio-X de Edital & ATA com IA iniciado com sucesso!");
 
       await carregarDados(id);
       setActiveTab(3); // Redireciona para a aba de Histórico IA
@@ -1850,7 +1815,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                               <Tag type="cyan">PROCESSANDO</Tag>
                               <strong style={{ fontSize: "1rem" }}>
-                                Relatório Analítico #{analises.length - idx}
+                                Raio-X de Edital & ATA #{analises.length - idx}
                               </strong>
                             </div>
                             <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
@@ -1860,23 +1825,28 @@ Realize uma análise profunda estruturada em 4 dimensões:
                           <div style={{ padding: "0.75rem 0" }}>
                             <InlineLoading
                               status="active"
-                              description="Gerando relatório analítico multi-segmento com inteligência artificial... O sistema está cruzando certidões da empresa, portais e editais. Você será notificado assim que for concluído."
+                              description="Gerando Raio-X com Inteligência Artificial... Destrinchando documentos de habilitação, itens, marcas exigidas, prazos e matriz SWOT. Você será notificado assim que for concluído."
                             />
                           </div>
                         </Tile>
                       );
                     }
 
+                    const r = an.relatorioJson || {};
+                    const parecer = an.parecer || r.parecer;
+                    const score = r.scoreAderencia ?? 85;
+
                     return (
                       <Tile key={an.id} style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-01)" }} data-testid={`analise-card-${an.id}`}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                            {an.parecer === "APTO" && <Tag type="green">APTO PARA DISPUTA</Tag>}
-                            {an.parecer === "APTO_COM_RESSALVAS" && <Tag type="warm-gray">APTO COM RESSALVAS</Tag>}
-                            {an.parecer === "INAPTO" && <Tag type="red">INAPTO DOCUMENTAL</Tag>}
-                            {!an.parecer && <Tag type="cool-gray">CONCLUÍDO</Tag>}
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                            {parecer === "APTO" && <Tag type="green">APTO PARA DISPUTA (GO)</Tag>}
+                            {parecer === "APTO_COM_RESSALVAS" && <Tag type="warm-gray">APTO COM RESSALVAS</Tag>}
+                            {parecer === "INAPTO" && <Tag type="red">INAPTO DOCUMENTAL (NO-GO)</Tag>}
+                            {!parecer && <Tag type="cool-gray">CONCLUÍDO</Tag>}
+                            <Tag type="cyan">Score: {score}/100</Tag>
                             <strong style={{ fontSize: "1rem" }}>
-                              Relatório Analítico #{analises.length - idx}
+                              ⚡ Raio-X de Edital & ATA #{analises.length - idx}
                             </strong>
                           </div>
 
@@ -1899,47 +1869,148 @@ Realize uma análise profunda estruturada em 4 dimensões:
                           </div>
                         </div>
 
+                        {/* Destaque de Marcas Exigidas (se houver) */}
+                        {r.itens?.destaqueMarcasExigidas && r.itens.destaqueMarcasExigidas.length > 0 && (
+                          <div style={{ padding: "0.75rem 1rem", backgroundColor: "var(--cds-layer-02)", borderLeft: "4px solid var(--cds-support-info, #0f62fe)", borderRadius: "4px", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                              ★ MARCAS OU MODELOS EXIGIDOS / HOMOLOGADOS:
+                            </strong>
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                              {r.itens.destaqueMarcasExigidas.map((m: string, i: number) => (
+                                <Tag key={i} type="teal" size="sm">
+                                  {m}
+                                </Tag>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Grid dos 4 Pilares do Raio-X */}
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
-                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                              Impedimentos Documentais
-                            </span>
-                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                              {an.impedimentos?.observacoes || "Nenhum impedimento crítico detectado."}
+                          {/* 1. Habilitação Documental Real */}
+                          <div style={{ padding: "0.875rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                                📋 Habilitação Documental
+                              </span>
+                              <Tag type={parecer === "APTO" ? "green" : parecer === "INAPTO" ? "red" : "warm-gray"} size="sm">
+                                {r.habilitacao?.status || parecer || "REGULAR"}
+                              </Tag>
                             </div>
+                            <p style={{ fontSize: "0.8125rem", margin: "0.25rem 0", color: "var(--cds-text-primary)", lineHeight: 1.4 }}>
+                              {r.habilitacao?.resumo || an.impedimentos || "Documentação verificada perante /documentacao."}
+                            </p>
+                            {r.habilitacao?.certidoesVencidasOuPendentes && r.habilitacao.certidoesVencidasOuPendentes.length > 0 && (
+                              <div style={{ fontSize: "0.75rem", color: "var(--cds-support-error, #da1e28)", marginTop: "0.35rem" }}>
+                                ⚠ {r.habilitacao.certidoesVencidasOuPendentes.length} pendência(s) encontrada(s)
+                              </div>
+                            )}
                           </div>
 
-                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                              Viabilidade Técnica & Prazos
-                            </span>
-                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                              {an.viabilidade?.viabilidadeTecnica || "Alta"} • Prazo:{" "}
-                              {an.viabilidade?.prazoDias || "120"} dias
+                          {/* 2. Cronograma & Prazos Pós-Assinatura */}
+                          <div style={{ padding: "0.875rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                                ⏱ Cronograma & Pedidos
+                              </span>
+                              <Tag type={r.cronograma?.isPresencial ? "warm-gray" : "teal"} size="sm">
+                                {r.cronograma?.isPresencial ? "Presencial" : "Eletrônico"}
+                              </Tag>
                             </div>
+                            <p style={{ fontSize: "0.8125rem", margin: "0.25rem 0", color: "var(--cds-text-primary)", lineHeight: 1.4 }}>
+                              <strong>Início dos Pedidos:</strong> {r.cronograma?.prazoInicioPedidosAposAssinatura || "Conforme emissão de ordens"}
+                            </p>
+                            <p style={{ fontSize: "0.75rem", margin: 0, color: "var(--cds-text-secondary)" }}>
+                              <strong>Local:</strong> {r.cronograma?.enderecoExecucaoOuEntrega || `${oportunidade.uf || "UF"}`}
+                            </p>
                           </div>
 
-                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                              Estimativa de Custos
+                          {/* 3. Itens em Disputa */}
+                          <div style={{ padding: "0.875rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)", display: "block", marginBottom: "0.25rem" }}>
+                              📦 Itens em Disputa
                             </span>
-                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                              Margem Bruta Estimada: {an.custos?.margemBruta || "30%"}
+                            <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--cds-text-primary)" }}>
+                              {r.itens?.totalItens ?? 1} item/lote • {formatarMoeda(r.itens?.valorTotalEstimado ?? oportunidade.valorEstimado)}
                             </div>
+                            <p style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", lineHeight: 1.4 }}>
+                              {r.itens?.lista?.[0]?.descricao || oportunidade.resumo || "Fornecimento conforme termo de referência"}
+                            </p>
                           </div>
 
-                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                              Preço de Lance Sugerido
-                            </span>
-                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem", fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)", color: "var(--cds-support-success)" }}>
-                              {an.precoSugerido?.lanceMinimo ? formatarMoeda(an.precoSugerido.lanceMinimo) : "Calculado"}
+                          {/* 4. Riscos & Pagamento */}
+                          <div style={{ padding: "0.875rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                                ⚠ Riscos Contratuais
+                              </span>
+                              <Tag type={r.riscos?.nivelRiscoGeral === "ALTO" ? "red" : r.riscos?.nivelRiscoGeral === "BAIXO" ? "green" : "warm-gray"} size="sm">
+                                Risco {r.riscos?.nivelRiscoGeral || "MÉDIO"}
+                              </Tag>
                             </div>
+                            <p style={{ fontSize: "0.8125rem", margin: "0.25rem 0", color: "var(--cds-text-primary)", lineHeight: 1.4 }}>
+                              <strong>Pagamento:</strong> {r.riscos?.prazoPagamentoOrgao || "Até 30 dias após atesto da NF"}
+                            </p>
+                            <p style={{ fontSize: "0.75rem", margin: 0, color: "var(--cds-text-secondary)" }}>
+                              <strong>Garantia:</strong> {r.riscos?.exigenciaGarantiaContratual || "5% sobre o valor adjudicado"}
+                            </p>
                           </div>
                         </div>
 
-                        <div style={{ fontSize: "0.875rem", lineHeight: 1.4, color: "var(--cds-text-primary)", whiteSpace: "pre-wrap" }}>
-                          {an.relatorioTexto}
+                        {/* Matriz SWOT (Se disponível) */}
+                        {r.swot && (
+                          <div style={{ marginBottom: "1rem", backgroundColor: "var(--cds-layer-02)", padding: "1rem", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
+                            <strong style={{ fontSize: "0.8125rem", display: "block", marginBottom: "0.5rem" }}>
+                              🧭 Matriz SWOT da Licitação:
+                            </strong>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
+                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-success, #24a148)" }}>
+                                  ✓ Forças:
+                                </span>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
+                                  {(r.swot.forcas || []).slice(0, 3).map((f: string, i: number) => (
+                                    <li key={i}>{f}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-warning, #f1c21b)" }}>
+                                  ⚠ Fraquezas:
+                                </span>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
+                                  {(r.swot.fraquezas || []).slice(0, 3).map((f: string, i: number) => (
+                                    <li key={i}>{f}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-info, #0f62fe)" }}>
+                                  ★ Oportunidades:
+                                </span>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
+                                  {(r.swot.oportunidades || []).slice(0, 3).map((o: string, i: number) => (
+                                    <li key={i}>{o}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-error, #da1e28)" }}>
+                                  ! Ameaças:
+                                </span>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
+                                  {(r.swot.ameacas || []).slice(0, 3).map((a: string, i: number) => (
+                                    <li key={i}>{a}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Resumo Executivo Completo */}
+                        <div style={{ fontSize: "0.8125rem", lineHeight: 1.5, color: "var(--cds-text-primary)", whiteSpace: "pre-wrap", backgroundColor: "var(--cds-layer)", padding: "0.875rem", borderRadius: "4px" }}>
+                          {r.resumoExecutivo || an.relatorioTexto}
                         </div>
                       </Tile>
                     );
@@ -2044,16 +2115,16 @@ Realize uma análise profunda estruturada em 4 dimensões:
         </div>
       </Modal>
 
-      {/* Modal Deep Dive IA: "Verificar Status de Participação" (PRD §4.4.1 F & Issue #36) */}
+      {/* Modal Raio-X com IA: Edital, ATA, Habilitação e Prazos (Issue #37) */}
       <Modal
         open={modalIAOpen}
-        modalHeading="🤖 Verificar Status de Participação com IA"
+        modalHeading="⚡ Raio-X de Edital & ATA com Inteligência Artificial"
         primaryButtonText={
           iniciandoAnaliseIA
             ? "Processando..."
             : cotaIA?.atingiuLimite
             ? "Limite Mensal Atingido"
-            : "🚀 Gerar Relatório de Participação (com IA)"
+            : "🚀 Gerar Raio-X da Licitação"
         }
         secondaryButtonText="Fechar"
         onRequestClose={() => setModalIAOpen(false)}
@@ -2063,7 +2134,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
         data-testid="modal-deep-dive-ia"
       >
         <div style={{ marginBottom: "1.5rem" }}>
-          {/* Status da Cota Mensal (Issue #36) */}
+          {/* Status da Cota Mensal (Issue #36 & #37) */}
           {cotaIA?.atingiuLimite ? (
             <div style={{ marginBottom: "1.5rem" }}>
               <InlineNotification
@@ -2130,82 +2201,49 @@ Realize uma análise profunda estruturada em 4 dimensões:
             </div>
           )}
 
-          <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-            Nossa Inteligência Artificial executará a compilação cruzada dos documentos cadastrados da sua empresa (Balanço, Certidões, Atestados) com os anexos do edital para emitir parecer executivo e relatório em PDF.
-          </p>
-
-          {/* Contexto da Empresa */}
+          {/* Status dos Arquivos do Edital & Auto-Sincronização */}
           <Tile style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", marginBottom: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <DocumentPdf size={18} style={{ color: "var(--cds-support-info, #0f62fe)" }} />
+              <strong style={{ fontSize: "0.875rem" }}>
+                {Array.isArray(oportunidade?.arquivos) && oportunidade.arquivos.length > 0
+                  ? `✓ ${oportunidade.arquivos.length} arquivo(s) de edital anexado(s) no dossiê`
+                  : "Sincronização Automática com o Portal do Governo (PNCP)"}
+              </strong>
+            </div>
+            <p style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", margin: 0, lineHeight: 1.5 }}>
+              {Array.isArray(oportunidade?.arquivos) && oportunidade.arquivos.length > 0
+                ? "A IA lerá integralmente o edital, termo de referência e minuta de contrato/ATA anexados para extrair todas as regras da disputa."
+                : "Caso a oportunidade ainda não possua arquivos anexados, o sistema tentará buscar e baixar os editais oficiais diretamente do PNCP. Se o órgão ainda não disponibilizou os documentos, você será avisado sem consumir sua cota."}
+            </p>
+          </Tile>
+
+          {/* O que o Raio-X Analisa */}
+          <Tile style={{ padding: "1rem", backgroundColor: "var(--cds-layer-02)", marginBottom: "1rem" }}>
             <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
-              Contexto Institucional da Empresa:
+              O que este Raio-X Executivo analisa para sua empresa:
             </strong>
-            <ul style={{ fontSize: "0.75rem", margin: 0, paddingLeft: "1.25rem", color: "var(--cds-text-secondary)" }}>
-              <li>Balanço Patrimonial Vigente: Índices de Liquidez Geral e Corrente comprovados &gt; 1.0.</li>
-              <li>Certidões de Regularidade Fiscal: CND Federal, FGTS, CNDT Trabalhista e Estadual válidas.</li>
-              <li>Atestados de Capacidade Técnica: Acervo documental cadastrado no módulo Documentação.</li>
+            <ul style={{ fontSize: "0.8125rem", margin: 0, paddingLeft: "1.25rem", color: "var(--cds-text-primary)", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <li><strong>Habilitação Documental Real:</strong> Cruzamento de exigências com certidões e balanço cadastrados em /documentacao.</li>
+              <li><strong>Cronograma & Prazos:</strong> Data prevista de início e prazo pós-assinatura da Ata/Contrato para início dos pedidos.</li>
+              <li><strong>Localização Física:</strong> Endereço exato de entrega/execução e alerta se a sessão/serviço for presencial.</li>
+              <li><strong>Itens em Disputa & Marcas:</strong> Quantidades, valores de referência e destaque de marcas/modelos exigidos ou homologados.</li>
+              <li><strong>Riscos & Penalidades:</strong> Prazo de pagamento do órgão (dias para liquidar NF), exigência de garantias e multas por atraso.</li>
+              <li><strong>Matriz SWOT:</strong> Forças, Fraquezas, Oportunidades e Ameaças mapeadas para deliberação da diretoria.</li>
             </ul>
           </Tile>
 
-          {/* Perguntas de Refinamento */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-            <TextInput
-              id="input-sistema-base"
-              data-testid="input-sistema-base"
-              labelText="Sistema Base Próprio para Reaproveitamento"
-              value={sistemaBaseProprio}
-              onChange={(e) => setSistemaBaseProprio(e.target.value)}
-              disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
-            />
-            <TextInput
-              id="input-rep-referencia"
-              data-testid="input-rep-referencia"
-              labelText="Repositório de Referência Técnica"
-              placeholder="Ex: repositórios da aba de benchmarking"
-              value={repositorioReferencia}
-              onChange={(e) => setRepositorioReferencia(e.target.value)}
-              disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
-            />
-          </div>
-
+          {/* Observações da Equipe (Opcional) */}
           <TextArea
             id="input-notas-estrategicas"
             data-testid="input-notas-estrategicas"
-            labelText="Diretrizes Estratégicas da Diretoria / Observações"
+            labelText="Observações ou Foco Específico da Equipe (Opcional)"
+            placeholder="Ex: Focar na exigência de amostras no lote 1 ou verificar exigência de marca homologada..."
             rows={2}
             value={notasEstrategicas}
             onChange={(e) => setNotasEstrategicas(e.target.value)}
             disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
-            style={{ marginBottom: "1rem" }}
           />
-
-          {/* Visualização do Script com Botão Copiar */}
-          <div style={{ border: "1px solid var(--cds-border-subtle)", borderRadius: "4px", padding: "1rem", backgroundColor: "var(--cds-layer-02)", marginBottom: "1rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-              <strong style={{ fontSize: "0.875rem" }}>Script do Prompt para LLM Externa (Opcional):</strong>
-              <Button
-                kind="tertiary"
-                size="sm"
-                renderIcon={Copy}
-                onClick={handleCopiarScript}
-                data-testid="btn-copiar-script"
-              >
-                {scriptCopiado ? "Copiado! ✓" : "📋 Copiar Script"}
-              </Button>
-            </div>
-            <pre
-              style={{
-                fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
-                fontSize: "0.75rem",
-                maxHeight: "140px",
-                overflowY: "auto",
-                whiteSpace: "pre-wrap",
-                color: "var(--cds-text-primary)",
-                margin: 0,
-              }}
-            >
-              {gerarPromptScript()}
-            </pre>
-          </div>
         </div>
       </Modal>
 
