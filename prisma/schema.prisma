@@ -47,6 +47,9 @@ enum NotificacaoTipo {
   N6_VENCIMENTO_PORTAL
   N7_VENCIMENTO_DOCUMENTO
   N8_PRAZO_IMPUGNACAO
+  N9_MENCAO_NOTA
+  N10_MOVIMENTACAO_LICITACAO
+  N11_RELATORIO_IA_PRONTO
 }
 
 enum NotificacaoSeveridade {
@@ -206,6 +209,7 @@ model Licitacao {
   arquivos              Arquivo[]
   repositoriosSimilares RepositorioSimilar[]
   analisesIA            AnaliseStatusParticipacao[]
+  notas                 LicitacaoNota[]
   historicoStatus       LicitacaoStatusHistorico[]
   notificacoes          Notificacao[]
   modalidadeCodigo      Int?
@@ -322,10 +326,43 @@ model AnaliseStatusParticipacao {
   executadoPorId String?
   criadoEm       DateTime @default(now())
 
+  // Issue #36 — análise assíncrona (LLM + cruzamento interno), cota mensal por tenant e relatório em PDF
+  tenantId       String?
+  status         String    @default("CONCLUIDO")
+  origem         String?
+  parecer        String?
+  relatorioJson  Json?
+  pdfBase64      String?   @db.Text
+  pdfNome        String?
+  erroMensagem   String?
+  concluidoEm    DateTime?
+
   licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
 
   @@index([licitacaoId])
+  @@index([tenantId, criadoEm])
   @@map("analise_status_participacao")
+}
+
+// Issue #36 — Notas colaborativas do Dossiê (aba "Notas") com @menções
+model LicitacaoNota {
+  id             String   @id @default(cuid())
+  licitacaoId    String
+  tenantId       String?
+  autorId        String
+  autorNome      String
+  autorCargo     String   @default("")
+  texto          String   @db.Text
+  mencionadosIds String[] @default([])
+  editada        Boolean  @default(false)
+  criadaEm       DateTime @default(now())
+  atualizadaEm   DateTime @default(now()) @updatedAt
+
+  licitacao Licitacao @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+
+  @@index([licitacaoId, criadaEm])
+  @@index([tenantId])
+  @@map("licitacao_nota")
 }
 
 model LicitacaoStatusHistorico {

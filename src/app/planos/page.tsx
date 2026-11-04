@@ -58,6 +58,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
       "1 Segmento Macro de atuação",
       "1 Estado (UF da sede da empresa)",
       "Busca de oportunidades PNCP",
+      "5 Análises de Viabilidade com IA por mês",
       "Dossiê básico e análise de editais",
       "Suporte via e-mail",
     ],
@@ -76,6 +77,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
       "Até 2 Usuários simultâneos",
       "Todos os Segmentos Macros liberados",
       "Todas as 27 UFs (Todo o Brasil)",
+      "10 Análises de Viabilidade com IA por mês (com PDF executivo)",
       "Triagem com IA e Parecer Go/No-Go",
       "Dossiê avançado com download automático de anexos",
       "Gestão de certidões e alertas de validade",
@@ -94,6 +96,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
       "Até 5 CNPJs cadastrados",
       "Até 10 Colaboradores na equipe",
       "Cobertura nacional completa e ilimitada",
+      "20 Análises de Viabilidade com IA por mês",
       "Prioridade máxima na coleta e análise de editais",
       "Trilha de auditoria executiva completa",
       "Gerente de contas dedicado",
@@ -222,7 +225,7 @@ export default function PlanosPage() {
                 </>
               ) : (
                 <>
-                  <Tag type={planoAtivoId === "PRO" ? "blue" : planoAtivoId === "ENTERPRISE" ? "purple" : "teal"}>
+                  <Tag type={planoAtivoId === "PRO" ? "blue" : planoAtivoId === "ENTERPRISE" ? "cyan" : "teal"}>
                     {planoAtivoId}
                   </Tag>
                   {status?.billingStatus === "ATIVO" && <Tag type="green">Assinatura Ativa</Tag>}

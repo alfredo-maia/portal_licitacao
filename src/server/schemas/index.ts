@@ -11,6 +11,7 @@ export * from "./kanban.schema";
 export * from "./equipe.schema";
 export * from "./repositorio.schema";
 export * from "./analise-ia.schema";
+export * from "./licitacao-nota.schema";
 export * from "./status-grupos.schema";
 export * from "./dashboard.schema";
 export * from "./calendario.schema";

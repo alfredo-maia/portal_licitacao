@@ -15,6 +15,9 @@ export const NOTIFICACAO_TIPOS = [
   "N6_VENCIMENTO_PORTAL",
   "N7_VENCIMENTO_DOCUMENTO",
   "N8_PRAZO_IMPUGNACAO",
+  "N9_MENCAO_NOTA",
+  "N10_MOVIMENTACAO_LICITACAO",
+  "N11_RELATORIO_IA_PRONTO",
 ] as const;
 
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
@@ -25,6 +28,7 @@ export const NOTIFICACAO_DESTINATARIOS = [
   "RESPONSAVEL_E_ATRIBUIDOS",
   "DIRETORIA_E_COMERCIAL",
   "DIRETORIA",
+  "MENCIONADOS",
 ] as const;
 
 export const notificacaoDestinatariosRegraSchema = z.enum(NOTIFICACAO_DESTINATARIOS);
@@ -74,6 +78,24 @@ export const NOTIFICACAO_MATRIZ = {
     destinatarios: "DIRETORIA",
     severidade: "CRITICA",
     antecedenciaDias: [2, 1],
+  },
+  /** Issue #36 — menção `@usuário` na aba Notas do Dossiê (disparo por evento). */
+  N9_MENCAO_NOTA: {
+    destinatarios: "MENCIONADOS",
+    severidade: "INFO",
+    antecedenciaDias: null,
+  },
+  /** Issue #36 — mudança de status, arquivos ou datas (Coordenador + Membros atribuídos). */
+  N10_MOVIMENTACAO_LICITACAO: {
+    destinatarios: "RESPONSAVEL_E_ATRIBUIDOS",
+    severidade: "ATENCAO",
+    antecedenciaDias: null,
+  },
+  /** Issue #36 — relatório de participação (IA) concluído e disponível em PDF. */
+  N11_RELATORIO_IA_PRONTO: {
+    destinatarios: "RESPONSAVEL_E_ATRIBUIDOS",
+    severidade: "INFO",
+    antecedenciaDias: null,
   },
 } as const satisfies Record<
   (typeof NOTIFICACAO_TIPOS)[number],

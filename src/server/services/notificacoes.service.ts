@@ -18,12 +18,16 @@ import {
   notificacoesListQuerySchema,
 } from "@/server/schemas/notificacao.schema";
 import {
+  getInMemoryLicitacaoById,
+  getInMemoryLicitacaoEquipe,
+  getInMemoryTenantLicitacao,
   insertInMemoryNotificacao,
   listInMemoryLicitacoes,
   listInMemoryNotificacoesUsuario,
   listInMemoryPortais,
   listInMemoryDocumentos,
   listInMemoryImpugnacoes,
+  listInMemoryUsuarios,
   marcarInMemoryNotificacaoLida,
   marcarTodasInMemoryNotificacoesLidas,
 } from "./licitacoes-store";
@@ -291,20 +295,34 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
     N6_VENCIMENTO_PORTAL: 0,
     N7_VENCIMENTO_DOCUMENTO: 0,
     N8_PRAZO_IMPUGNACAO: 0,
+    N9_MENCAO_NOTA: 0,
+    N10_MOVIMENTACAO_LICITACAO: 0,
+    N11_RELATORIO_IA_PRONTO: 0,
   };
   let ignoradas = 0;
 
   // Busca usuários para mapeamento de perfis
-  let allUsers: { id: string; role: string }[] = [];
+  let allUsers: { id: string; role: string; tenantId?: string | null }[] = [];
   try {
-    allUsers = await prisma.user.findMany({
+    const dbUsers = await prisma.user.findMany({
       where: { ativo: true },
-      select: { id: true, role: true },
+      select: {
+        id: true,
+        role: true,
+        tenantMemberships: { select: { tenantId: true } },
+      },
     });
+    allUsers = dbUsers.map((u) => ({
+      id: u.id,
+      role: u.role,
+      tenantId: u.tenantMemberships?.[0]?.tenantId ?? null,
+    }));
   } catch {
+    const memUsers = listInMemoryUsuarios().filter((u) => u.ativo !== false);
     allUsers = [
-      { id: "seed_vitor", role: "DIRETORIA" },
-      { id: "seed_alfredo", role: "DIRETORIA" },
+      { id: "seed_vitor", role: "DIRETORIA", tenantId: null },
+      { id: "seed_alfredo", role: "DIRETORIA", tenantId: null },
+      ...memUsers.map((u) => ({ id: u.id, role: u.role, tenantId: u.tenantId ?? null })),
     ];
   }
 
@@ -457,13 +475,25 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         janela: `${dataBrtStr}_D${diffDias}`,
       });
 
+      const destTenant = portal.tenantId
+        ? allUsers
+            .filter(
+              (u) =>
+                u.tenantId === portal.tenantId &&
+                (u.role === "DIRETORIA" || u.role === "ANALISTA_COMERCIAL" || u.role === "SUPERADMIN"),
+            )
+            .map((u) => u.id)
+        : [];
+      const destinatariosPortal =
+        destTenant.length > 0 ? destTenant : diretoriaEComercialIds;
+
       const res = await criarNotificacao({
         tipo: "N6_VENCIMENTO_PORTAL",
         titulo: `Renovação de Portal: ${portal.nome} vence em ${diffDias} dias`,
         descricao: `A assinatura da plataforma de compras ${portal.nome} expira em ${diffDias} dia(s). Regularize a anuidade para evitar suspensão de lances.`,
         linkDestino: `/portais/${portal.id}`,
         chaveIdempotencia: chave,
-        destinatarioIds: diretoriaEComercialIds,
+        destinatarioIds: destinatariosPortal,
       });
 
       if (res.criada) contagens.N6_VENCIMENTO_PORTAL++;
@@ -499,13 +529,19 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         janela: `${dataBrtStr}_D${diffDias}`,
       });
 
+      const destTenant = doc.tenantId
+        ? allUsers.filter((u) => u.tenantId === doc.tenantId).map((u) => u.id)
+        : [];
+      const destinatariosDoc =
+        destTenant.length > 0 ? destTenant : todosUsuariosIds;
+
       const res = await criarNotificacao({
         tipo: "N7_VENCIMENTO_DOCUMENTO",
         titulo: `Documento Vencendo: ${doc.nome} expira em ${diffDias} dias`,
         descricao: `O documento de habilitação ${doc.nome} (${doc.categoria}) expira em ${diffDias} dia(s). Providencie a renovação/emissão para manter a empresa habilitada.`,
         linkDestino: `/documentacao`,
         chaveIdempotencia: chave,
-        destinatarioIds: todosUsuariosIds,
+        destinatarioIds: destinatariosDoc,
       });
 
       if (res.criada) contagens.N7_VENCIMENTO_DOCUMENTO++;
@@ -572,3 +608,415 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
     ignoradasPorIdempotencia: ignoradas,
   };
 }
+
+/* =========================================================================
+   6. Helpers de Disparo de Eventos (N9, N10, N11 e Vencimento Imediato N6/N7)
+========================================================================= */
+
+/**
+ * Resolve todos os usuários assignados (Coordenador Único `responsavelId` +
+ * Membros Atribuídos `membrosEquipeIds` / `atribuidoIds`) para uma licitação,
+ * considerando tanto o escopo `tenantId` quanto o vínculo global/memória.
+ */
+export async function obterUsuariosAssignadosLicitacao(
+  licitacaoId: string,
+  tenantId?: string | null,
+): Promise<string[]> {
+  const ids = new Set<string>();
+
+  // 1. Verifica store em memória (TenantLicitacao e LicitacaoEquipe)
+  if (tenantId) {
+    const tlMem = getInMemoryTenantLicitacao(tenantId, licitacaoId);
+    if (tlMem?.responsavelId) ids.add(tlMem.responsavelId);
+    if (Array.isArray(tlMem?.membrosEquipeIds)) {
+      for (const uid of tlMem.membrosEquipeIds) {
+        if (uid) ids.add(uid);
+      }
+    }
+    const eqTenantMem = getInMemoryLicitacaoEquipe(licitacaoId, tenantId);
+    if (eqTenantMem?.responsavelId) ids.add(eqTenantMem.responsavelId);
+    if (Array.isArray(eqTenantMem?.atribuidoIds)) {
+      for (const uid of eqTenantMem.atribuidoIds) {
+        if (uid) ids.add(uid);
+      }
+    }
+  }
+
+  const eqGlobalMem = getInMemoryLicitacaoEquipe(licitacaoId);
+  if (eqGlobalMem?.responsavelId) ids.add(eqGlobalMem.responsavelId);
+  if (Array.isArray(eqGlobalMem?.atribuidoIds)) {
+    for (const uid of eqGlobalMem.atribuidoIds) {
+      if (uid) ids.add(uid);
+    }
+  }
+
+  const licMem = getInMemoryLicitacaoById(licitacaoId);
+  if (licMem?.responsavelId) ids.add(licMem.responsavelId);
+
+  // 2. Verifica no banco (TenantLicitacao e Licitacao + LicitacaoAtribuido)
+  try {
+    if (tenantId) {
+      const tl = await prisma.tenantLicitacao.findUnique({
+        where: {
+          tenantId_licitacaoId: {
+            tenantId,
+            licitacaoId,
+          },
+        },
+        select: {
+          responsavelId: true,
+        },
+      });
+      if (tl?.responsavelId) ids.add(tl.responsavelId);
+    } else {
+      // Sem tenantId específico (ex.: sincronização global), busca todos os TenantLicitacao vinculados
+      const tls = await prisma.tenantLicitacao.findMany({
+        where: { licitacaoId },
+        select: { responsavelId: true },
+      });
+      for (const tl of tls) {
+        if (tl.responsavelId) ids.add(tl.responsavelId);
+      }
+    }
+
+    const licDb = await prisma.licitacao.findUnique({
+      where: { id: licitacaoId },
+      select: {
+        responsavelId: true,
+        atribuidos: { select: { usuarioId: true } },
+      },
+    });
+    if (licDb?.responsavelId) ids.add(licDb.responsavelId);
+    if (Array.isArray(licDb?.atribuidos)) {
+      for (const a of licDb.atribuidos) {
+        if (a?.usuarioId) ids.add(a.usuarioId);
+      }
+    }
+  } catch {
+    // Silencioso em modo offline/memória
+  }
+
+  return Array.from(ids);
+}
+
+/**
+ * N9 — Notifica colaboradores mencionados com `@` em uma nota na aba Notas.
+ */
+export async function notificarMencaoNota(params: {
+  licitacaoId: string;
+  notaId: string;
+  numeroEdital: string;
+  autorNome: string;
+  textoNota: string;
+  mencoesIds: string[];
+  sufixoIdempotencia?: string;
+}): Promise<{ acionada: boolean; destinatariosCount: number; notificacaoId?: string }> {
+  const destinatarios = Array.from(
+    new Set((params.mencoesIds || []).map((id) => id.trim()).filter(Boolean)),
+  );
+  if (destinatarios.length === 0) {
+    return { acionada: false, destinatariosCount: 0 };
+  }
+
+  const resumo =
+    params.textoNota.length > 160
+      ? `${params.textoNota.slice(0, 157)}...`
+      : params.textoNota;
+
+  const chave = montarChaveIdempotencia({
+    tipo: "N9_MENCAO_NOTA",
+    entidadeId: params.notaId,
+    janela: params.sufixoIdempotencia || "criacao",
+  });
+
+  const res = await criarNotificacao({
+    tipo: "N9_MENCAO_NOTA",
+    titulo: `Você foi mencionado por ${params.autorNome} no Edital ${params.numeroEdital}`,
+    descricao: `"${resumo}" — Clique para abrir a aba Notas da oportunidade.`,
+    linkDestino: `/oportunidades/${params.licitacaoId}?aba=notas`,
+    licitacaoId: params.licitacaoId,
+    chaveIdempotencia: chave,
+    destinatarioIds: destinatarios,
+  });
+
+  return {
+    acionada: res.criada,
+    destinatariosCount: destinatarios.length,
+    notificacaoId: res.id,
+  };
+}
+
+/**
+ * N10 — Notifica Coordenador e/ou Membros Atribuídos quando a licitação
+ * sofre alteração de status, atualização de documentos/arquivos ou mudança de datas.
+ */
+export async function notificarMovimentacaoLicitacao(params: {
+  licitacaoId: string;
+  numeroEdital: string;
+  orgaoNome: string;
+  tipoEvento: "STATUS" | "ARQUIVOS" | "DATAS";
+  resumoMudanca: string;
+  tenantId?: string | null;
+  chaveSufixo?: string;
+}): Promise<{ acionada: boolean; destinatariosCount: number; notificacaoId?: string }> {
+  const destinatarios = await obterUsuariosAssignadosLicitacao(
+    params.licitacaoId,
+    params.tenantId,
+  );
+
+  if (destinatarios.length === 0) {
+    return { acionada: false, destinatariosCount: 0 };
+  }
+
+  const prefixoTitulo =
+    params.tipoEvento === "STATUS"
+      ? "Alteração de Status"
+      : params.tipoEvento === "ARQUIVOS"
+        ? "Atualização de Documentos"
+        : "Mudança de Datas";
+
+  const chave = montarChaveIdempotencia({
+    tipo: "N10_MOVIMENTACAO_LICITACAO",
+    entidadeId: params.licitacaoId,
+    janela: `${params.tipoEvento}_${params.chaveSufixo || Date.now()}`,
+  });
+
+  const res = await criarNotificacao({
+    tipo: "N10_MOVIMENTACAO_LICITACAO",
+    titulo: `${prefixoTitulo}: ${params.numeroEdital}`,
+    descricao: `${params.resumoMudanca} (${params.orgaoNome}).`,
+    linkDestino: `/oportunidades/${params.licitacaoId}`,
+    licitacaoId: params.licitacaoId,
+    chaveIdempotencia: chave,
+    destinatarioIds: destinatarios,
+  });
+
+  return {
+    acionada: res.criada,
+    destinatariosCount: destinatarios.length,
+    notificacaoId: res.id,
+  };
+}
+
+/**
+ * N11 — Notifica todos os usuários assignados no projeto (+ solicitante)
+ * quando o relatório assíncrono de participação com IA estiver concluído.
+ */
+export async function notificarRelatorioIAPronto(params: {
+  licitacaoId: string;
+  analiseId: string;
+  numeroEdital: string;
+  orgaoNome: string;
+  parecer: "APTO" | "APTO_COM_RESSALVAS" | "INAPTO";
+  score: number;
+  solicitanteId?: string | null;
+  tenantId?: string | null;
+}): Promise<{ acionada: boolean; destinatariosCount: number; notificacaoId?: string }> {
+  const assignados = await obterUsuariosAssignadosLicitacao(
+    params.licitacaoId,
+    params.tenantId,
+  );
+  const conjunto = new Set<string>(assignados);
+  if (params.solicitanteId) {
+    conjunto.add(params.solicitanteId);
+  }
+
+  if (conjunto.size === 0 && params.tenantId) {
+    try {
+      const tenantUsers = await prisma.user.findMany({
+        where: { tenantMemberships: { some: { tenantId: params.tenantId } }, ativo: true },
+        select: { id: true },
+      });
+      for (const u of tenantUsers) conjunto.add(u.id);
+    } catch {
+      for (const u of listInMemoryUsuarios(params.tenantId)) {
+        if (u.id) conjunto.add(u.id);
+      }
+    }
+  }
+
+  const destinatarios = Array.from(conjunto);
+  if (destinatarios.length === 0) {
+    return { acionada: false, destinatariosCount: 0 };
+  }
+
+  const labelParecer =
+    params.parecer === "APTO"
+      ? "APTO PARA PARTICIPAR"
+      : params.parecer === "APTO_COM_RESSALVAS"
+        ? "APTO COM RESSALVAS"
+        : "INAPTO / IMPEDIMENTO";
+
+  const chave = montarChaveIdempotencia({
+    tipo: "N11_RELATORIO_IA_PRONTO",
+    entidadeId: params.analiseId,
+    janela: "concluido",
+  });
+
+  const res = await criarNotificacao({
+    tipo: "N11_RELATORIO_IA_PRONTO",
+    titulo: `Relatório de IA Pronto (${labelParecer}): ${params.numeroEdital}`,
+    descricao: `A análise de participação do edital ${params.numeroEdital} (${params.orgaoNome}) foi concluída com score ${params.score}/100 e PDF disponível na aba Histórico Análise IA.`,
+    linkDestino: `/oportunidades/${params.licitacaoId}?aba=historico-ia`,
+    licitacaoId: params.licitacaoId,
+    chaveIdempotencia: chave,
+    destinatarioIds: destinatarios,
+  });
+
+  return {
+    acionada: res.criada,
+    destinatariosCount: destinatarios.length,
+    notificacaoId: res.id,
+  };
+}
+
+/**
+ * Disparo imediato de N7 quando um documento é cadastrado/atualizado já próximo de vencer (<= 30 dias).
+ */
+export async function verificarDisparoImediatoVencimentoDocumento(doc: {
+  id: string;
+  nome: string;
+  categoria: string;
+  status?: string | null;
+  semValidade?: boolean | null;
+  dataVencimento?: Date | string | null;
+  tenantId?: string | null;
+}): Promise<{ acionada: boolean }> {
+  if (!doc.dataVencimento || doc.semValidade || (doc.status && doc.status !== "ATIVO")) {
+    return { acionada: false };
+  }
+  const agora = new Date();
+  const dataVenc = new Date(doc.dataVencimento);
+  if (Number.isNaN(dataVenc.getTime())) return { acionada: false };
+
+  const diffDias = calcularDiasCivis(dataVenc, agora);
+  if (diffDias > 30 || diffDias < -365) {
+    return { acionada: false };
+  }
+
+  let destinatarios: string[] = [];
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        ativo: true,
+        ...(doc.tenantId ? { tenantId: doc.tenantId } : {}),
+      },
+      select: { id: true },
+    });
+    destinatarios = users.map((u) => u.id);
+  } catch {
+    destinatarios = listInMemoryUsuarios(doc.tenantId)
+      .filter((u) => u.ativo !== false)
+      .map((u) => u.id);
+  }
+
+  if (destinatarios.length === 0) {
+    destinatarios = listInMemoryUsuarios()
+      .filter((u) => u.ativo !== false)
+      .map((u) => u.id);
+  }
+  if (destinatarios.length === 0) return { acionada: false };
+
+  const dataBrtStr = agora.toLocaleDateString("sv-SE", { timeZone: OPERACAO_TIMEZONE });
+  const chave = montarChaveIdempotencia({
+    tipo: "N7_VENCIMENTO_DOCUMENTO",
+    entidadeId: doc.id,
+    janela: `${dataBrtStr}_D${diffDias}`,
+  });
+
+  const titulo =
+    diffDias < 0
+      ? `Documento Vencido: ${doc.nome} venceu há ${Math.abs(diffDias)} dia(s)`
+      : diffDias === 0
+        ? `Documento Vence Hoje: ${doc.nome}`
+        : `Documento Vencendo: ${doc.nome} expira em ${diffDias} dia(s)`;
+
+  const res = await criarNotificacao({
+    tipo: "N7_VENCIMENTO_DOCUMENTO",
+    titulo,
+    descricao: `O documento de habilitação ${doc.nome} (${doc.categoria}) requer atenção imediata para manter a empresa habilitada.`,
+    linkDestino: `/documentacao`,
+    chaveIdempotencia: chave,
+    destinatarioIds: destinatarios,
+  });
+
+  return { acionada: res.criada };
+}
+
+/**
+ * Disparo imediato de N6 quando um portal é cadastrado/atualizado já próximo de vencer (<= 30 dias).
+ */
+export async function verificarDisparoImediatoVencimentoPortal(portal: {
+  id: string;
+  nome: string;
+  dataVencimento?: Date | string | null;
+  tenantId?: string | null;
+}): Promise<{ acionada: boolean }> {
+  if (!portal.dataVencimento) return { acionada: false };
+  const agora = new Date();
+  const dataVenc = new Date(portal.dataVencimento);
+  if (Number.isNaN(dataVenc.getTime())) return { acionada: false };
+
+  const diffDias = calcularDiasCivis(dataVenc, agora);
+  if (diffDias > 30 || diffDias < -365) {
+    return { acionada: false };
+  }
+
+  let destinatarios: string[] = [];
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        ativo: true,
+        ...(portal.tenantId ? { tenantId: portal.tenantId } : {}),
+        role: { in: ["DIRETORIA", "ANALISTA_COMERCIAL", "SUPERADMIN"] as any },
+      },
+      select: { id: true },
+    });
+    destinatarios = users.map((u) => u.id);
+  } catch {
+    destinatarios = listInMemoryUsuarios(portal.tenantId)
+      .filter(
+        (u) =>
+          u.ativo !== false &&
+          (u.role === "DIRETORIA" || u.role === "ANALISTA_COMERCIAL" || u.role === "SUPERADMIN"),
+      )
+      .map((u) => u.id);
+  }
+
+  if (destinatarios.length === 0) {
+    destinatarios = listInMemoryUsuarios()
+      .filter(
+        (u) =>
+          u.ativo !== false &&
+          (u.role === "DIRETORIA" || u.role === "ANALISTA_COMERCIAL" || u.role === "SUPERADMIN"),
+      )
+      .map((u) => u.id);
+  }
+  if (destinatarios.length === 0) return { acionada: false };
+
+  const dataBrtStr = agora.toLocaleDateString("sv-SE", { timeZone: OPERACAO_TIMEZONE });
+  const chave = montarChaveIdempotencia({
+    tipo: "N6_VENCIMENTO_PORTAL",
+    entidadeId: portal.id,
+    janela: `${dataBrtStr}_D${diffDias}`,
+  });
+
+  const titulo =
+    diffDias < 0
+      ? `Portal Vencido: ${portal.nome} expirou há ${Math.abs(diffDias)} dia(s)`
+      : diffDias === 0
+        ? `Renovação de Portal: ${portal.nome} vence hoje`
+        : `Renovação de Portal: ${portal.nome} vence em ${diffDias} dia(s)`;
+
+  const res = await criarNotificacao({
+    tipo: "N6_VENCIMENTO_PORTAL",
+    titulo,
+    descricao: `A assinatura da plataforma de compras ${portal.nome} requer renovação para evitar bloqueio de participação em certames.`,
+    linkDestino: `/portais/${portal.id}`,
+    chaveIdempotencia: chave,
+    destinatarioIds: destinatarios,
+  });
+
+  return { acionada: res.criada };
+}
+

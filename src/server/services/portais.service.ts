@@ -17,6 +17,7 @@ import {
   listInMemoryPortais,
   updateInMemoryPortal,
 } from "./licitacoes-store";
+import { verificarDisparoImediatoVencimentoPortal } from "./notificacoes.service";
 
 export async function listarPortais(
   rawQuery?: Partial<PortalListQuery>,
@@ -187,6 +188,13 @@ export async function criarPortal(
       depois: { nome: p.nome, url: p.url, status: p.status },
     });
 
+    await verificarDisparoImediatoVencimentoPortal({
+      id: p.id,
+      nome: p.nome,
+      dataVencimento: p.dataVencimento,
+      tenantId: tenantId || null,
+    }).catch(() => undefined);
+
     return {
       id: p.id,
       nome: p.nome,
@@ -211,6 +219,12 @@ export async function criarPortal(
       ...validado,
       tenantId: tenantId || null,
     });
+    await verificarDisparoImediatoVencimentoPortal({
+      id: memoria.id,
+      nome: memoria.nome,
+      dataVencimento: memoria.dataVencimento,
+      tenantId: tenantId || null,
+    }).catch(() => undefined);
     return memoria;
   }
 }
@@ -251,6 +265,13 @@ export async function atualizarPortal(
       depois: validado,
     });
 
+    await verificarDisparoImediatoVencimentoPortal({
+      id: p.id,
+      nome: p.nome,
+      dataVencimento: p.dataVencimento,
+      tenantId: (p as any).tenantId || null,
+    }).catch(() => undefined);
+
     return {
       id: p.id,
       nome: p.nome,
@@ -271,7 +292,16 @@ export async function atualizarPortal(
       atualizadoEm: p.atualizadoEm,
     };
   } catch {
-    return updateInMemoryPortal(id, validado);
+    const updated = updateInMemoryPortal(id, validado);
+    if (updated) {
+      await verificarDisparoImediatoVencimentoPortal({
+        id: updated.id,
+        nome: updated.nome,
+        dataVencimento: updated.dataVencimento,
+        tenantId: updated.tenantId || null,
+      }).catch(() => undefined);
+    }
+    return updated;
   }
 }
 

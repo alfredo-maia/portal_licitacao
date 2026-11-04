@@ -386,6 +386,7 @@ let licitacaoEquipeStore: Map<string, { responsavelId: string | null; atribuidoI
 let licitacaoArquivosStore: Map<string, any[]> = new Map();
 let licitacaoRepositoriosStore: Map<string, any[]> = new Map();
 let licitacaoAnalisesIAStore: Map<string, any[]> = new Map();
+let licitacaoNotasStore: Map<string, any[]> = new Map();
 
 export function setInMemoryLicitacaoEquipe(
   licitacaoId: string,
@@ -471,6 +472,15 @@ export function insertInMemoryLicitacaoAnaliseIA(licitacaoId: string, data: any)
     ...data,
     id: data.id || `ia_${randomUUID()}`,
     licitacaoId,
+    tenantId: data.tenantId ?? null,
+    status: data.status || "CONCLUIDO",
+    origem: data.origem || "IA_HIBRIDA",
+    parecer: data.parecer ?? (data.podeParticipar === false ? "INAPTO" : "APTO"),
+    relatorioJson: data.relatorioJson ?? null,
+    pdfBase64: data.pdfBase64 ?? null,
+    pdfNome: data.pdfNome ?? null,
+    erroMensagem: data.erroMensagem ?? null,
+    concluidoEm: data.concluidoEm ? new Date(data.concluidoEm) : (data.status === "PROCESSANDO" ? null : new Date()),
     criadoEm: data.criadoEm ? new Date(data.criadoEm) : new Date(),
   };
   const filtrados = atual.filter((a) => a.id !== record.id);
@@ -478,8 +488,135 @@ export function insertInMemoryLicitacaoAnaliseIA(licitacaoId: string, data: any)
   return record;
 }
 
-export function listInMemoryLicitacaoAnalisesIA(licitacaoId: string): any[] {
-  return [...(licitacaoAnalisesIAStore.get(licitacaoId) || [])];
+export function updateInMemoryLicitacaoAnaliseIA(
+  licitacaoId: string,
+  analiseId: string,
+  patch: any,
+): any | null {
+  const atual = licitacaoAnalisesIAStore.get(licitacaoId) || [];
+  const idx = atual.findIndex((a) => a.id === analiseId);
+  if (idx === -1) return null;
+  const updated = {
+    ...atual[idx],
+    ...patch,
+    id: atual[idx].id,
+    licitacaoId,
+  };
+  const next = [...atual];
+  next[idx] = updated;
+  licitacaoAnalisesIAStore.set(licitacaoId, next);
+  return updated;
+}
+
+export function getInMemoryLicitacaoAnaliseIA(
+  licitacaoId: string,
+  analiseId: string,
+): any | null {
+  const atual = licitacaoAnalisesIAStore.get(licitacaoId) || [];
+  return atual.find((a) => a.id === analiseId) || null;
+}
+
+export function listInMemoryLicitacaoAnalisesIA(
+  licitacaoId: string,
+  tenantId?: string | null,
+): any[] {
+  const lista = [...(licitacaoAnalisesIAStore.get(licitacaoId) || [])];
+  if (tenantId) {
+    return lista.filter((a) => !a.tenantId || a.tenantId === tenantId);
+  }
+  return lista;
+}
+
+export function listAllInMemoryAnalisesIA(tenantId?: string | null): any[] {
+  const todas: any[] = [];
+  for (const lista of licitacaoAnalisesIAStore.values()) {
+    for (const item of lista) {
+      if (tenantId) {
+        if (item.tenantId === tenantId) {
+          todas.push(item);
+        }
+      } else {
+        todas.push(item);
+      }
+    }
+  }
+  return todas;
+}
+
+export function insertInMemoryLicitacaoNota(licitacaoId: string, data: any): any {
+  const atual = licitacaoNotasStore.get(licitacaoId) || [];
+  const agora = new Date();
+  const record = {
+    ...data,
+    id: data.id || `nota_${randomUUID()}`,
+    licitacaoId,
+    tenantId: data.tenantId ?? null,
+    texto: data.texto,
+    mencoesIds: Array.isArray(data.mencoesIds) ? [...data.mencoesIds] : [],
+    mencoesNomes: Array.isArray(data.mencoesNomes) ? [...data.mencoesNomes] : [],
+    autorId: data.autorId,
+    autorNome: data.autorNome,
+    autorEmail: data.autorEmail ?? null,
+    autorCargo: data.autorCargo ?? null,
+    editadoEm: data.editadoEm ? new Date(data.editadoEm) : null,
+    criadoEm: data.criadoEm ? new Date(data.criadoEm) : agora,
+    atualizadoEm: data.atualizadoEm ? new Date(data.atualizadoEm) : agora,
+  };
+  const filtrados = atual.filter((n) => n.id !== record.id);
+  licitacaoNotasStore.set(licitacaoId, [record, ...filtrados]);
+  return record;
+}
+
+export function listInMemoryLicitacaoNotas(
+  licitacaoId: string,
+  tenantId?: string | null,
+): any[] {
+  const lista = [...(licitacaoNotasStore.get(licitacaoId) || [])];
+  if (tenantId) {
+    return lista.filter((n) => !n.tenantId || n.tenantId === tenantId);
+  }
+  return lista;
+}
+
+export function getInMemoryLicitacaoNota(
+  licitacaoId: string,
+  notaId: string,
+): any | null {
+  const lista = licitacaoNotasStore.get(licitacaoId) || [];
+  return lista.find((n) => n.id === notaId) || null;
+}
+
+export function updateInMemoryLicitacaoNota(
+  licitacaoId: string,
+  notaId: string,
+  patch: any,
+): any | null {
+  const lista = licitacaoNotasStore.get(licitacaoId) || [];
+  const idx = lista.findIndex((n) => n.id === notaId);
+  if (idx === -1) return null;
+  const agora = new Date();
+  const updated = {
+    ...lista[idx],
+    ...patch,
+    id: lista[idx].id,
+    licitacaoId,
+    editadoEm: patch.editadoEm !== undefined ? patch.editadoEm : agora,
+    atualizadoEm: agora,
+  };
+  const next = [...lista];
+  next[idx] = updated;
+  licitacaoNotasStore.set(licitacaoId, next);
+  return updated;
+}
+
+export function deleteInMemoryLicitacaoNota(
+  licitacaoId: string,
+  notaId: string,
+): boolean {
+  const lista = licitacaoNotasStore.get(licitacaoId) || [];
+  const next = lista.filter((n) => n.id !== notaId);
+  licitacaoNotasStore.set(licitacaoId, next);
+  return next.length !== lista.length;
 }
 
 export function insertInMemoryPortal(data: any): any {
@@ -869,6 +1006,7 @@ export function resetInMemoryLicitacoes(): void {
   licitacaoArquivosStore.clear();
   licitacaoRepositoriosStore.clear();
   licitacaoAnalisesIAStore.clear();
+  licitacaoNotasStore.clear();
   tenantLicitacoesStore.clear();
 }
 
@@ -881,6 +1019,7 @@ export function clearInMemoryLicitacoes(): void {
   licitacaoArquivosStore.clear();
   licitacaoRepositoriosStore.clear();
   licitacaoAnalisesIAStore.clear();
+  licitacaoNotasStore.clear();
   tenantLicitacoesStore.clear();
 }
 

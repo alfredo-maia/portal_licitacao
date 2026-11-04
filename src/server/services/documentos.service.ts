@@ -21,6 +21,7 @@ import {
   listInMemoryDocumentos,
   updateInMemoryDocumento,
 } from "./licitacoes-store";
+import { verificarDisparoImediatoVencimentoDocumento } from "./notificacoes.service";
 
 export function calcularStatusValidade(
   dataVencimento: Date | null,
@@ -288,6 +289,16 @@ export async function criarDocumento(
       depois: { nome: doc.nome, categoria: doc.categoria, dataVencimento: doc.dataVencimento },
     });
 
+    await verificarDisparoImediatoVencimentoDocumento({
+      id: doc.id,
+      nome: doc.nome,
+      categoria: doc.categoria,
+      status: doc.status,
+      semValidade: doc.semValidade,
+      dataVencimento: doc.dataVencimento,
+      tenantId: tenantId || null,
+    }).catch(() => undefined);
+
     return mapToDocumentoItem(doc);
   } catch {
     const memoria = insertInMemoryDocumento({
@@ -297,6 +308,15 @@ export async function criarDocumento(
       criadoPorId: usuarioId || null,
       tenantId: tenantId || null,
     });
+    await verificarDisparoImediatoVencimentoDocumento({
+      id: memoria.id,
+      nome: memoria.nome,
+      categoria: memoria.categoria,
+      status: memoria.status,
+      semValidade: memoria.semValidade,
+      dataVencimento: memoria.dataVencimento,
+      tenantId: tenantId || null,
+    }).catch(() => undefined);
     return mapToDocumentoItem(memoria);
   }
 }
@@ -431,9 +451,30 @@ export async function atualizarDocumento(
       depois: validado,
     });
 
+    await verificarDisparoImediatoVencimentoDocumento({
+      id: doc.id,
+      nome: doc.nome,
+      categoria: doc.categoria,
+      status: doc.status,
+      semValidade: doc.semValidade,
+      dataVencimento: doc.dataVencimento,
+      tenantId: (doc as any).tenantId || null,
+    }).catch(() => undefined);
+
     return mapToDocumentoItem(doc);
   } catch {
     const updated = updateInMemoryDocumento(id, validado);
+    if (updated) {
+      await verificarDisparoImediatoVencimentoDocumento({
+        id: updated.id,
+        nome: updated.nome,
+        categoria: updated.categoria,
+        status: updated.status,
+        semValidade: updated.semValidade,
+        dataVencimento: updated.dataVencimento,
+        tenantId: updated.tenantId || null,
+      }).catch(() => undefined);
+    }
     return updated ? mapToDocumentoItem(updated) : null;
   }
 }

@@ -21,6 +21,20 @@ import {
   InlineLoading,
   Loading,
   Checkbox,
+  DataTable,
+  Table,
+  TableHead,
+  TableRow,
+  TableHeader,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
+  OverflowMenu,
+  OverflowMenuItem,
+  Pagination,
 } from "@carbon/react";
 import {
   ArrowLeft,
@@ -37,6 +51,11 @@ import {
   Save,
   Events,
   UserFollow,
+  Edit,
+  Add,
+  DocumentPdf,
+  Upgrade,
+  User,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
@@ -102,6 +121,14 @@ interface RepositorioItem {
 
 interface AnaliseIAItem {
   id: string;
+  status?: "PROCESSANDO" | "CONCLUIDO" | "ERRO" | string;
+  origem?: string;
+  parecer?: "APTO" | "APTO_COM_RESSALVAS" | "INAPTO" | string;
+  relatorioJson?: any;
+  pdfBase64?: string | null;
+  pdfNome?: string | null;
+  erroMensagem?: string | null;
+  concluidoEm?: string | null;
   scriptPrompt: string;
   relatorioTexto: string;
   impedimentos: any;
@@ -109,6 +136,35 @@ interface AnaliseIAItem {
   custos: any;
   precoSugerido: any;
   criadoEm: string;
+}
+
+interface NotaItemUI {
+  id: string;
+  licitacaoId: string;
+  autorId: string;
+  autorNome: string;
+  autorCargo?: string | null;
+  texto: string;
+  mencionadosIds: string[];
+  mencoesNomes?: string[];
+  editada: boolean;
+  editadoEm?: string | null;
+  criadaEm: string;
+  atualizadaEm: string;
+  podeEditar: boolean;
+  podeExcluir: boolean;
+}
+
+interface CotaInfo {
+  plano: string;
+  limite: number;
+  usadas: number;
+  restantes: number;
+  atingiuLimite: boolean;
+  mesReferencia: string;
+  renovaEm: string;
+  acaoSugerida: "UPGRADE" | "CONTATO_VENDAS" | null;
+  mensagemBloqueio: string | null;
 }
 
 interface OportunidadeDetalhe {
@@ -148,6 +204,7 @@ interface OportunidadeDetalhe {
   arquivos?: ArquivoItem[];
   repositoriosSimilares?: RepositorioItem[];
   analisesIA?: AnaliseIAItem[];
+  notas?: NotaItemUI[];
 }
 
 interface OportunidadesDetalhePageProps {
@@ -167,6 +224,31 @@ function formatarBytes(bytes: number): string {
   const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+function renderTextoComMencoes(texto: string) {
+  if (!texto) return null;
+  const parts = texto.split(/(@[a-zA-Z0-9_\u00C0-\u017F.-]+)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("@")) {
+      return (
+        <span
+          key={index}
+          style={{
+            fontWeight: 600,
+            color: "var(--cds-link-primary, #0f62fe)",
+            backgroundColor: "var(--cds-layer-02, #e0e0e0)",
+            padding: "0.1rem 0.35rem",
+            borderRadius: "3px",
+            marginRight: "0.15rem",
+          }}
+        >
+          {part}
+        </span>
+      );
+    }
+    return <span key={index}>{part}</span>;
+  });
 }
 
 export default function OportunidadesDetalhePage(props: OportunidadesDetalhePageProps) {
@@ -280,6 +362,27 @@ function OportunidadesDetalheContent({
   const [salvandoValoresProposta, setSalvandoValoresProposta] = React.useState(false);
   const [valoresPropostaMsg, setValoresPropostaMsg] = React.useState<string | null>(null);
 
+  // Controle de Abas Ativas (Issue #36)
+  const [activeTab, setActiveTab] = React.useState<number>(0);
+
+  // Aba Notas da Licitação (Issue #36)
+  const [notas, setNotas] = React.useState<NotaItemUI[]>([]);
+  const [filtroAutorNota, setFiltroAutorNota] = React.useState<string>("TODOS");
+  const [buscaNota, setBuscaNota] = React.useState<string>("");
+  const [modalNovaNotaOpen, setModalNovaNotaOpen] = React.useState(false);
+  const [modalEditarNotaOpen, setModalEditarNotaOpen] = React.useState(false);
+  const [notaEmEdicao, setNotaEmEdicao] = React.useState<NotaItemUI | null>(null);
+  const [textoNotaInput, setTextoNotaInput] = React.useState("");
+  const [mencionadosNotaInput, setMencionadosNotaInput] = React.useState<string[]>([]);
+  const [salvandoNota, setSalvandoNota] = React.useState(false);
+  const [paginaNotas, setPaginaNotas] = React.useState(1);
+  const [pageSizeNotas, setPageSizeNotas] = React.useState(5);
+
+  // Análise de Participação com IA & Cota Mensal (Issue #36)
+  const [cotaIA, setCotaIA] = React.useState<CotaInfo | null>(null);
+  const [iniciandoAnaliseIA, setIniciandoAnaliseIA] = React.useState(false);
+  const [modalNotificacaoIAOpen, setModalNotificacaoIAOpen] = React.useState(false);
+
   // Resolver params assíncrono (Next.js 15)
   React.useEffect(() => {
     Promise.resolve(params).then((p) => {
@@ -287,13 +390,31 @@ function OportunidadesDetalheContent({
     });
   }, [params]);
 
+  // Sincronização de deep link de abas via query params (?aba=notas, ?aba=historico-ia)
+  React.useEffect(() => {
+    const abaParam = searchParams?.get("aba") || searchParams?.get("tab");
+    if (abaParam === "notas") {
+      setActiveTab(2);
+    } else if (abaParam === "analise-ia" || abaParam === "historico-ia") {
+      setActiveTab(3);
+    } else if (abaParam === "arquivos") {
+      setActiveTab(1);
+    } else if (abaParam === "proposta" || abaParam === "valor-proposta") {
+      setActiveTab(4);
+    } else if (abaParam === "visao-geral") {
+      setActiveTab(0);
+    }
+  }, [searchParams]);
+
   const carregarDados = React.useCallback(async (targetId: string) => {
     setLoading(true);
     setError(null);
     try {
-      const [oppRes, usrRes] = await Promise.all([
+      const [oppRes, usrRes, notasRes, iaRes] = await Promise.all([
         fetch(`/api/oportunidades/${targetId}`),
         fetch("/api/usuarios"),
+        fetch(`/api/oportunidades/${targetId}/notas`),
+        fetch(`/api/oportunidades/${targetId}/analise-ia`),
       ]);
 
       if (!oppRes.ok) {
@@ -302,6 +423,22 @@ function OportunidadesDetalheContent({
 
       const oppData = await oppRes.json();
       const opp = oppData.oportunidade;
+
+      if (iaRes.ok) {
+        const iaData = await iaRes.json().catch(() => null);
+        if (iaData?.cota) setCotaIA(iaData.cota);
+        if (Array.isArray(iaData?.analises)) {
+          opp.analisesIA = iaData.analises;
+        }
+      }
+
+      if (notasRes.ok) {
+        const nData = await notasRes.json().catch(() => null);
+        if (Array.isArray(nData?.notas)) {
+          setNotas(nData.notas);
+        }
+      }
+
       setOportunidade(opp);
       setTipoSelecionado(opp.tipoSistemaCodigo || "");
       setResponsavelId(opp.responsavelId || "");
@@ -313,8 +450,8 @@ function OportunidadesDetalheContent({
       setValorHomologarInput(finalHomologado);
 
       if (usrRes.ok) {
-        const usrData = await usrRes.json();
-        setUsuarios(usrData.usuarios || []);
+        const usrData = await usrRes.json().catch(() => null);
+        setUsuarios(usrData?.usuarios || []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar dados.");
@@ -787,6 +924,171 @@ Realize uma análise profunda estruturada em 4 dimensões:
     }
   };
 
+  // Disparo Assíncrono da Análise de Participação com IA (Issue #36)
+  const handleIniciarAnaliseIA = async () => {
+    if (!id || !oportunidade) return;
+    setIniciandoAnaliseIA(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/analise-ia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          observacoes: notasEstrategicas,
+          sistemaBaseProprio,
+          repositorioReferencia,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        if (data?.error === "LIMITE_MENSAL_ATINGIDO") {
+          if (data.cota) setCotaIA(data.cota);
+          throw new Error(data.message || "Limite mensal de análises de IA atingido.");
+        }
+        throw new Error(data?.message || data?.error || "Erro ao solicitar análise de IA.");
+      }
+
+      if (data?.cota) setCotaIA(data.cota);
+      setModalIAOpen(false);
+      setModalNotificacaoIAOpen(true);
+      showNotification("success", "Análise de participação com IA iniciada com sucesso!");
+
+      await carregarDados(id);
+      setActiveTab(3); // Redireciona para a aba de Histórico IA
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao iniciar análise.");
+    } finally {
+      setIniciandoAnaliseIA(false);
+    }
+  };
+
+  // Handlers da Aba Notas (Issue #36)
+  const handleCriarNota = async () => {
+    if (!id || !textoNotaInput.trim()) return;
+    setSalvandoNota(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/notas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto: textoNotaInput.trim(),
+          mencionadosIds: mencionadosNotaInput,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || "Erro ao salvar anotação.");
+      }
+      showNotification("success", "Anotação adicionada com sucesso!");
+      setTextoNotaInput("");
+      setMencionadosNotaInput([]);
+      setModalNovaNotaOpen(false);
+
+      const nRes = await fetch(`/api/oportunidades/${id}/notas`);
+      if (nRes.ok) {
+        const nData = await nRes.json().catch(() => null);
+        if (Array.isArray(nData?.notas)) setNotas(nData.notas);
+      }
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao adicionar anotação.");
+    } finally {
+      setSalvandoNota(false);
+    }
+  };
+
+  const handleAbrirEdicaoNota = (nota: NotaItemUI) => {
+    setNotaEmEdicao(nota);
+    setTextoNotaInput(nota.texto);
+    setMencionadosNotaInput(nota.mencionadosIds || []);
+    setModalEditarNotaOpen(true);
+  };
+
+  const handleSalvarEdicaoNota = async () => {
+    if (!id || !notaEmEdicao || !textoNotaInput.trim()) return;
+    setSalvandoNota(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/notas/${notaEmEdicao.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto: textoNotaInput.trim(),
+          mencionadosIds: mencionadosNotaInput,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || "Erro ao atualizar anotação.");
+      }
+      showNotification("success", "Anotação atualizada com sucesso!");
+      setTextoNotaInput("");
+      setMencionadosNotaInput([]);
+      setNotaEmEdicao(null);
+      setModalEditarNotaOpen(false);
+
+      const nRes = await fetch(`/api/oportunidades/${id}/notas`);
+      if (nRes.ok) {
+        const nData = await nRes.json().catch(() => null);
+        if (Array.isArray(nData?.notas)) setNotas(nData.notas);
+      }
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao atualizar anotação.");
+    } finally {
+      setSalvandoNota(false);
+    }
+  };
+
+  const handleExcluirNota = async (notaId: string) => {
+    if (!id) return;
+    if (!confirm("Deseja realmente remover esta anotação interna? Esta ação é irreversível.")) return;
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/notas/${notaId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || "Erro ao excluir anotação.");
+      }
+      showNotification("success", "Anotação excluída com sucesso.");
+
+      const nRes = await fetch(`/api/oportunidades/${id}/notas`);
+      if (nRes.ok) {
+        const nData = await nRes.json().catch(() => null);
+        if (Array.isArray(nData?.notas)) setNotas(nData.notas);
+      }
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Erro ao excluir anotação.");
+    }
+  };
+
+  // Filtragem e paginação das notas
+  const autoresDisponiveis = React.useMemo(() => {
+    const map = new Map<string, string>();
+    notas.forEach((n) => {
+      map.set(n.autorId, n.autorNome);
+    });
+    return Array.from(map.entries()).map(([autId, nome]) => ({ id: autId, nome }));
+  }, [notas]);
+
+  const notasFiltradas = React.useMemo(() => {
+    return notas.filter((n) => {
+      if (filtroAutorNota !== "TODOS" && n.autorId !== filtroAutorNota) {
+        return false;
+      }
+      if (buscaNota.trim()) {
+        const query = buscaNota.toLowerCase();
+        const textoMatch = n.texto.toLowerCase().includes(query);
+        const autorMatch = n.autorNome.toLowerCase().includes(query);
+        const mencoesMatch = (n.mencoesNomes || []).some((m) => m.toLowerCase().includes(query));
+        if (!textoMatch && !autorMatch && !mencoesMatch) return false;
+      }
+      return true;
+    });
+  }, [notas, filtroAutorNota, buscaNota]);
+
+  const notasPaginadas = React.useMemo(() => {
+    const inicio = (paginaNotas - 1) * pageSizeNotas;
+    return notasFiltradas.slice(inicio, inicio + pageSizeNotas);
+  }, [notasFiltradas, paginaNotas, pageSizeNotas]);
+
   if (loading) {
     return (
       <ModulePageShell routePath={`/oportunidades/${id}`}>
@@ -924,7 +1226,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação ({oportunidade.analisesIA?.length || 0}/3)
+                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
               </Button>
             </div>
           ) : (
@@ -952,7 +1254,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação ({oportunidade.analisesIA?.length || 0}/3)
+                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
               </Button>
               {statusPipelineMsg && (
                 <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
@@ -1053,11 +1355,12 @@ Realize uma análise profunda estruturada em 4 dimensões:
         )}
       </Tile>
 
-      {/* 3 Carbon Tabs do Dossiê */}
-      <Tabs>
+      {/* Carbon Tabs do Dossiê */}
+      <Tabs selectedIndex={activeTab} onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}>
         <TabList aria-label="Abas do Dossiê da Licitação">
           <Tab data-testid="tab-visao-geral">Visão Geral & Dados Técnicos</Tab>
           <Tab data-testid="tab-arquivos">Arquivos do Edital</Tab>
+          <Tab data-testid="tab-notas">📝 Notas ({notas.length})</Tab>
           <Tab data-testid="tab-analise-ia">
             🤖 Histórico Análise IA ({analises.length})
           </Tab>
@@ -1316,16 +1619,203 @@ Realize uma análise profunda estruturada em 4 dimensões:
             </Tile>
           </TabPanel>
 
-          {/* Aba 3: 🤖 Análise IA & Status de Participação */}
+          {/* Aba 3: 📝 Notas da Licitação (Issue #36) */}
+          <TabPanel style={{ padding: "1.5rem 0" }}>
+            <Tile style={{ padding: "1.5rem" }}>
+              <TableContainer
+                title="Anotações & Notas Internas da Equipe"
+                description="Espaço colaborativo para alinhamento estratégico, menções a responsáveis e observações técnicas."
+              >
+                <TableToolbar>
+                  <TableToolbarContent>
+                    <div style={{ minWidth: "220px" }}>
+                      <Select
+                        id="filtro-autor-nota"
+                        labelText="Filtrar por Autor"
+                        hideLabel
+                        size="sm"
+                        value={filtroAutorNota}
+                        onChange={(e) => {
+                          setFiltroAutorNota(e.target.value);
+                          setPaginaNotas(1);
+                        }}
+                        data-testid="select-filtro-autor-nota"
+                      >
+                        <SelectItem value="TODOS" text="Todos os Autores" />
+                        {autoresDisponiveis.map((a) => (
+                          <SelectItem key={a.id} value={a.id} text={a.nome} />
+                        ))}
+                      </Select>
+                    </div>
+
+                    <TableToolbarSearch
+                      placeholder="Buscar em anotações..."
+                      value={buscaNota}
+                      onChange={(e: any) => {
+                        setBuscaNota(e.target.value || "");
+                        setPaginaNotas(1);
+                      }}
+                      data-testid="search-notas"
+                    />
+
+                    <Button
+                      kind="primary"
+                      size="sm"
+                      renderIcon={Add}
+                      onClick={() => {
+                        setTextoNotaInput("");
+                        setMencionadosNotaInput([]);
+                        setModalNovaNotaOpen(true);
+                      }}
+                      data-testid="btn-adicionar-nota"
+                    >
+                      + Adicionar nota
+                    </Button>
+                  </TableToolbarContent>
+                </TableToolbar>
+
+                {notasFiltradas.length === 0 ? (
+                  <div style={{ padding: "3rem 1.5rem", textAlign: "center", backgroundColor: "var(--cds-layer-01)" }}>
+                    <Edit size={36} style={{ marginBottom: "0.75rem", color: "var(--cds-icon-secondary)" }} />
+                    <p style={{ margin: 0, fontWeight: 600, color: "var(--cds-text-primary)" }}>
+                      {notas.length === 0
+                        ? "Nenhuma anotação registrada para esta licitação até o momento."
+                        : "Nenhuma anotação encontrada com os filtros selecionados."}
+                    </p>
+                    <p style={{ margin: "0.5rem 0 1.5rem 0", fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                      {notas.length === 0
+                        ? "Utilize as notas para registrar orientações do pregão, pendências ou marcar colegas de equipe com @Nome."
+                        : "Tente limpar o filtro de busca ou selecionar outro autor."}
+                    </p>
+                    {notas.length === 0 && (
+                      <Button
+                        kind="tertiary"
+                        size="sm"
+                        renderIcon={Add}
+                        onClick={() => {
+                          setTextoNotaInput("");
+                          setMencionadosNotaInput([]);
+                          setModalNovaNotaOpen(true);
+                        }}
+                      >
+                        Criar primeira anotação
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <Table aria-label="Tabela de Notas da Licitação" data-testid="tabela-notas">
+                      <TableHead>
+                        <TableRow>
+                          <TableHeader style={{ width: "240px" }}>Postado em / Autor</TableHeader>
+                          <TableHeader>Anotação & Menções</TableHeader>
+                          <TableHeader style={{ width: "100px", textAlign: "right" }}>Ações</TableHeader>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {notasPaginadas.map((nota) => (
+                          <TableRow key={nota.id} data-testid={`nota-row-${nota.id}`}>
+                            <TableCell style={{ verticalAlign: "top" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                  <User size={16} style={{ color: "var(--cds-icon-secondary)" }} />
+                                  <strong style={{ fontSize: "0.875rem" }}>{nota.autorNome}</strong>
+                                </div>
+                                {nota.autorCargo && (
+                                  <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                    {nota.autorCargo}
+                                  </span>
+                                )}
+                                <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                  {new Date(nota.criadaEm).toLocaleString("pt-BR", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                {nota.editada && (
+                                  <Tag type="cool-gray" size="sm" style={{ alignSelf: "flex-start", marginTop: "0.25rem" }}>
+                                    Editada
+                                  </Tag>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            <TableCell style={{ verticalAlign: "top" }}>
+                              <div style={{ fontSize: "0.875rem", lineHeight: 1.5, color: "var(--cds-text-primary)", whiteSpace: "pre-wrap" }}>
+                                {renderTextoComMencoes(nota.texto)}
+                              </div>
+                              {nota.mencoesNomes && nota.mencoesNomes.length > 0 && (
+                                <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", marginTop: "0.5rem", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                    Notificados:
+                                  </span>
+                                  {nota.mencoesNomes.map((m, idx) => (
+                                    <Tag key={idx} type="cyan" size="sm">
+                                      @{m}
+                                    </Tag>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+
+                            <TableCell style={{ verticalAlign: "top", textAlign: "right" }}>
+                              <div style={{ display: "inline-flex", justifyContent: "flex-end" }}>
+                                <OverflowMenu flipped size="sm" aria-label={`Ações para a nota de ${nota.autorNome}`} data-testid={`overflow-nota-${nota.id}`}>
+                                  <OverflowMenuItem
+                                    itemText="Editar nota"
+                                    disabled={!nota.podeEditar}
+                                    onClick={() => handleAbrirEdicaoNota(nota)}
+                                    data-testid={`btn-editar-nota-${nota.id}`}
+                                  />
+                                  <OverflowMenuItem
+                                    itemText="Excluir nota"
+                                    isDelete
+                                    hasDivider
+                                    disabled={!nota.podeExcluir}
+                                    onClick={() => handleExcluirNota(nota.id)}
+                                    data-testid={`btn-excluir-nota-${nota.id}`}
+                                  />
+                                </OverflowMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    <Pagination
+                      backwardText="Página anterior"
+                      forwardText="Próxima página"
+                      itemsPerPageText="Itens por página:"
+                      page={paginaNotas}
+                      pageNumberText="Número da página"
+                      pageSize={pageSizeNotas}
+                      pageSizes={[5, 10, 20]}
+                      totalItems={notasFiltradas.length}
+                      onChange={({ page, pageSize }) => {
+                        setPaginaNotas(page);
+                        setPageSizeNotas(pageSize);
+                      }}
+                    />
+                  </>
+                )}
+              </TableContainer>
+            </Tile>
+          </TabPanel>
+
+          {/* Aba 4: 🤖 Histórico Análise IA (Issue #36) */}
           <TabPanel style={{ padding: "1.5rem 0" }}>
             <Tile style={{ padding: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>
                 <div>
                   <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
-                    Relatórios da Ferramenta IA: "Verificar Status de Participação"
+                    Relatórios da Ferramenta IA: &ldquo;Verificar Status de Participação&rdquo;
                   </h3>
                   <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: "0.25rem 0 0 0" }}>
-                    Análise profunda documental, viabilidade técnica, estimativa de custos e sugestão de preço de lance.
+                    Análise profunda documental, viabilidade técnica, estimativa de custos e parecer executivo para deliberação.
                   </p>
                 </div>
 
@@ -1336,7 +1826,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
                   onClick={() => setModalIAOpen(true)}
                   data-testid="btn-executar-analise-ia"
                 >
-                  Executar Nova Análise com IA
+                  Executar Nova Análise com IA ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
                 </Button>
               </div>
 
@@ -1344,69 +1834,116 @@ Realize uma análise profunda estruturada em 4 dimensões:
                 <div style={{ padding: "2rem", textAlign: "center", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
                   <Bot size={40} style={{ marginBottom: "0.75rem", color: "var(--cds-icon-secondary)" }} />
                   <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-                    Nenhuma análise profunda salva para este certame até o momento.
+                    Nenhuma análise de participação salva para este certame até o momento.
                   </p>
                   <p style={{ margin: "0.5rem 0 1rem 0", fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                    Clique no botão acima para abrir o gerador de script do prompt e compilar o relatório.
+                    Clique no botão acima para iniciar a compilação documental e emissão do parecer executivo em PDF.
                   </p>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }} data-testid="analises-list">
-                  {analises.map((an, idx) => (
-                    <Tile key={an.id} style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-01)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                        <strong style={{ fontSize: "1rem" }}>
-                          Relatório Analítico #{analises.length - idx}
-                        </strong>
-                        <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                          Gerado em {new Date(an.criadoEm).toLocaleString("pt-BR")}
-                        </span>
-                      </div>
+                  {analises.map((an, idx) => {
+                    if (an.status === "PROCESSANDO") {
+                      return (
+                        <Tile key={an.id} style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-01)", borderLeft: "4px solid var(--cds-support-info, #0f62fe)" }} data-testid={`analise-processando-${an.id}`}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <Tag type="cyan">PROCESSANDO</Tag>
+                              <strong style={{ fontSize: "1rem" }}>
+                                Relatório Analítico #{analises.length - idx}
+                              </strong>
+                            </div>
+                            <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                              Iniciado em {new Date(an.criadoEm).toLocaleString("pt-BR")}
+                            </span>
+                          </div>
+                          <div style={{ padding: "0.75rem 0" }}>
+                            <InlineLoading
+                              status="active"
+                              description="Gerando relatório analítico multi-segmento com inteligência artificial... O sistema está cruzando certidões da empresa, portais e editais. Você será notificado assim que for concluído."
+                            />
+                          </div>
+                        </Tile>
+                      );
+                    }
 
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
-                        <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                            Impedimentos Documentais
-                          </span>
-                          <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                            {an.impedimentos?.observacoes || "Nenhum impedimento crítico detectado."}
+                    return (
+                      <Tile key={an.id} style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-01)" }} data-testid={`analise-card-${an.id}`}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.75rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            {an.parecer === "APTO" && <Tag type="green">APTO PARA DISPUTA</Tag>}
+                            {an.parecer === "APTO_COM_RESSALVAS" && <Tag type="warm-gray">APTO COM RESSALVAS</Tag>}
+                            {an.parecer === "INAPTO" && <Tag type="red">INAPTO DOCUMENTAL</Tag>}
+                            {!an.parecer && <Tag type="cool-gray">CONCLUÍDO</Tag>}
+                            <strong style={{ fontSize: "1rem" }}>
+                              Relatório Analítico #{analises.length - idx}
+                            </strong>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                              {an.concluidoEm
+                                ? `Concluído em ${new Date(an.concluidoEm).toLocaleString("pt-BR")}`
+                                : `Gerado em ${new Date(an.criadoEm).toLocaleString("pt-BR")}`}
+                            </span>
+                            <Button
+                              kind="secondary"
+                              size="sm"
+                              renderIcon={DocumentPdf}
+                              href={`/api/oportunidades/${id}/analise-ia/${an.id}/pdf`}
+                              target="_blank"
+                              data-testid={`btn-baixar-pdf-${an.id}`}
+                            >
+                              📄 Baixar Relatório em PDF
+                            </Button>
                           </div>
                         </div>
 
-                        <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                            Viabilidade Técnica & Prazos
-                          </span>
-                          <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                            {an.viabilidade?.viabilidadeTecnica || "Alta"} • Prazo:{" "}
-                            {an.viabilidade?.prazoDias || "120"} dias
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                              Impedimentos Documentais
+                            </span>
+                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                              {an.impedimentos?.observacoes || "Nenhum impedimento crítico detectado."}
+                            </div>
+                          </div>
+
+                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                              Viabilidade Técnica & Prazos
+                            </span>
+                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                              {an.viabilidade?.viabilidadeTecnica || "Alta"} • Prazo:{" "}
+                              {an.viabilidade?.prazoDias || "120"} dias
+                            </div>
+                          </div>
+
+                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                              Estimativa de Custos
+                            </span>
+                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
+                              Margem Bruta Estimada: {an.custos?.margemBruta || "30%"}
+                            </div>
+                          </div>
+
+                          <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                            <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                              Preço de Lance Sugerido
+                            </span>
+                            <div style={{ fontSize: "0.875rem", marginTop: "0.25rem", fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)", color: "var(--cds-support-success)" }}>
+                              {an.precoSugerido?.lanceMinimo ? formatarMoeda(an.precoSugerido.lanceMinimo) : "Calculado"}
+                            </div>
                           </div>
                         </div>
 
-                        <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                            Estimativa de Custos
-                          </span>
-                          <div style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>
-                            Margem Bruta Estimada: {an.custos?.margemBruta || "30%"}
-                          </div>
+                        <div style={{ fontSize: "0.875rem", lineHeight: 1.4, color: "var(--cds-text-primary)", whiteSpace: "pre-wrap" }}>
+                          {an.relatorioTexto}
                         </div>
-
-                        <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-                            Preço de Lance Sugerido
-                          </span>
-                          <div style={{ fontSize: "0.875rem", marginTop: "0.25rem", fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)", color: "var(--cds-support-success)" }}>
-                            {an.precoSugerido?.lanceMinimo ? formatarMoeda(an.precoSugerido.lanceMinimo) : "Calculado"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ fontSize: "0.875rem", lineHeight: 1.4, color: "var(--cds-text-primary)" }}>
-                        {an.relatorioTexto}
-                      </div>
-                    </Tile>
-                  ))}
+                      </Tile>
+                    );
+                  })}
                 </div>
               )}
             </Tile>
@@ -1507,21 +2044,94 @@ Realize uma análise profunda estruturada em 4 dimensões:
         </div>
       </Modal>
 
-      {/* Modal Deep Dive IA: "Verificar Status de Participação" (PRD §4.4.1 F) */}
+      {/* Modal Deep Dive IA: "Verificar Status de Participação" (PRD §4.4.1 F & Issue #36) */}
       <Modal
         open={modalIAOpen}
-        modalHeading="🤖 Verificar Status de Participação (Deep Dive IA)"
-        primaryButtonText={salvandoAnalise ? "Salvando Relatório..." : "💾 Salvar Relatório na Licitação"}
+        modalHeading="🤖 Verificar Status de Participação com IA"
+        primaryButtonText={
+          iniciandoAnaliseIA
+            ? "Processando..."
+            : cotaIA?.atingiuLimite
+            ? "Limite Mensal Atingido"
+            : "🚀 Gerar Relatório de Participação (com IA)"
+        }
         secondaryButtonText="Fechar"
         onRequestClose={() => setModalIAOpen(false)}
-        onRequestSubmit={handleSalvarRelatorioIA}
-        primaryButtonDisabled={salvandoAnalise}
+        onRequestSubmit={handleIniciarAnaliseIA}
+        primaryButtonDisabled={iniciandoAnaliseIA || Boolean(cotaIA?.atingiuLimite)}
         size="lg"
         data-testid="modal-deep-dive-ia"
       >
         <div style={{ marginBottom: "1.5rem" }}>
+          {/* Status da Cota Mensal (Issue #36) */}
+          {cotaIA?.atingiuLimite ? (
+            <div style={{ marginBottom: "1.5rem" }}>
+              <InlineNotification
+                kind="warning"
+                title="Limite Mensal de Análises Atingido"
+                subtitle={
+                  cotaIA.mensagemBloqueio ||
+                  `Você utilizou todas as ${cotaIA.limite} análises de IA disponíveis no plano ${cotaIA.plano} para este mês civil. A cota será renovada automaticamente em ${new Date(cotaIA.renovaEm).toLocaleDateString("pt-BR")}.`
+                }
+                lowContrast
+                style={{ marginBottom: "1rem" }}
+              />
+
+              {cotaIA.acaoSugerida === "UPGRADE" ? (
+                <Tile style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-02)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", textAlign: "center" }}>
+                  <Upgrade size={32} style={{ color: "var(--cds-support-warning, #f1c21b)" }} />
+                  <strong style={{ fontSize: "1rem" }}>
+                    Precisa de mais análises analíticas de IA para este certame?
+                  </strong>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
+                    Faça upgrade agora mesmo para o plano <strong>Pro (10 análises/mês)</strong> ou <strong>Enterprise (20 análises/mês)</strong> para continuar acelerando suas deliberações.
+                  </p>
+                  <Button
+                    kind="primary"
+                    size="md"
+                    renderIcon={Upgrade}
+                    onClick={() => {
+                      setModalIAOpen(false);
+                      router.push("/planos");
+                    }}
+                    data-testid="btn-upgrade-cota-modal"
+                    style={{ marginTop: "0.5rem" }}
+                  >
+                    Ver Planos & Efetuar Upgrade
+                  </Button>
+                </Tile>
+              ) : (
+                <Tile style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-02)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", textAlign: "center" }}>
+                  <Bot size={32} style={{ color: "var(--cds-support-info, #0f62fe)" }} />
+                  <strong style={{ fontSize: "1rem" }}>
+                    Plano Enterprise: Limite Mensal de 20 Análises Atingido
+                  </strong>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
+                    Você atingiu o teto mensal de 20 análises do plano Enterprise. Para contratar cotas adicionais ou suporte customizado, entre em contato direto com nossa equipe comercial.
+                  </p>
+                  <Button
+                    kind="tertiary"
+                    size="md"
+                    onClick={() => window.open("mailto:comercial@inboxlicitacoes.com.br?subject=Solicitacao de Cota Adicional IA Enterprise", "_blank")}
+                    data-testid="btn-contato-vendas-modal"
+                    style={{ marginTop: "0.5rem" }}
+                  >
+                    Falar com Equipe de Vendas
+                  </Button>
+                </Tile>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", marginBottom: "1rem" }}>
+              <Bot size={20} style={{ color: "var(--cds-support-info, #0f62fe)" }} />
+              <span style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
+                Consumo Mensal: <strong>{cotaIA?.usadas ?? 0}/{cotaIA?.limite ?? 10} análises utilizadas</strong> (Plano {cotaIA?.plano || "PRO"}). Restantes neste mês: <strong>{cotaIA?.restantes ?? 10}</strong>.
+              </span>
+            </div>
+          )}
+
           <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-            Compilação analítica com base nos documentos cadastrados da empresa (Balanço, Certidões, Atestados) e arquivos do edital.
+            Nossa Inteligência Artificial executará a compilação cruzada dos documentos cadastrados da sua empresa (Balanço, Certidões, Atestados) com os anexos do edital para emitir parecer executivo e relatório em PDF.
           </p>
 
           {/* Contexto da Empresa */}
@@ -1532,7 +2142,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
             <ul style={{ fontSize: "0.75rem", margin: 0, paddingLeft: "1.25rem", color: "var(--cds-text-secondary)" }}>
               <li>Balanço Patrimonial Vigente: Índices de Liquidez Geral e Corrente comprovados &gt; 1.0.</li>
               <li>Certidões de Regularidade Fiscal: CND Federal, FGTS, CNDT Trabalhista e Estadual válidas.</li>
-              <li>Atestados de Capacidade Técnica: Desenvolvimento de software web, portal e suporte continuado.</li>
+              <li>Atestados de Capacidade Técnica: Acervo documental cadastrado no módulo Documentação.</li>
             </ul>
           </Tile>
 
@@ -1544,6 +2154,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               labelText="Sistema Base Próprio para Reaproveitamento"
               value={sistemaBaseProprio}
               onChange={(e) => setSistemaBaseProprio(e.target.value)}
+              disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
             />
             <TextInput
               id="input-rep-referencia"
@@ -1552,23 +2163,25 @@ Realize uma análise profunda estruturada em 4 dimensões:
               placeholder="Ex: repositórios da aba de benchmarking"
               value={repositorioReferencia}
               onChange={(e) => setRepositorioReferencia(e.target.value)}
+              disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
             />
           </div>
 
           <TextArea
             id="input-notas-estrategicas"
             data-testid="input-notas-estrategicas"
-            labelText="Diretrizes Estratégicas da Diretoria"
+            labelText="Diretrizes Estratégicas da Diretoria / Observações"
             rows={2}
             value={notasEstrategicas}
             onChange={(e) => setNotasEstrategicas(e.target.value)}
+            disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
             style={{ marginBottom: "1rem" }}
           />
 
           {/* Visualização do Script com Botão Copiar */}
           <div style={{ border: "1px solid var(--cds-border-subtle)", borderRadius: "4px", padding: "1rem", backgroundColor: "var(--cds-layer-02)", marginBottom: "1rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-              <strong style={{ fontSize: "0.875rem" }}>Script do Prompt para LLM Externa:</strong>
+              <strong style={{ fontSize: "0.875rem" }}>Script do Prompt para LLM Externa (Opcional):</strong>
               <Button
                 kind="tertiary"
                 size="sm"
@@ -1583,7 +2196,7 @@ Realize uma análise profunda estruturada em 4 dimensões:
               style={{
                 fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
                 fontSize: "0.75rem",
-                maxHeight: "180px",
+                maxHeight: "140px",
                 overflowY: "auto",
                 whiteSpace: "pre-wrap",
                 color: "var(--cds-text-primary)",
@@ -1593,19 +2206,181 @@ Realize uma análise profunda estruturada em 4 dimensões:
               {gerarPromptScript()}
             </pre>
           </div>
+        </div>
+      </Modal>
 
-          {/* Prévia do Relatório Analítico */}
-          <Tile style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)" }}>
-            <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
-              Prévia do Parecer de Participação:
-            </strong>
-            <div style={{ fontSize: "0.75rem", lineHeight: 1.4, color: "var(--cds-text-secondary)" }}>
-              ✓ Habilitação: Sem impedimentos nas certidões. Acervo técnico compatível.<br />
-              ✓ Viabilidade: Prazos e SLAs dentro da capacidade técnica da equipe.<br />
-              ✓ Custos: Margem operacional estimada de 28% no preço teto.<br />
-              ✓ Preço de Lance: Sugestão de lance competitivo com recuo seguro até 72% do valor estimado.
+      {/* Modal: Nova Anotação da Licitação (Issue #36) */}
+      <Modal
+        open={modalNovaNotaOpen}
+        modalHeading="📝 Adicionar Anotação Interna"
+        primaryButtonText={salvandoNota ? "Salvando..." : "Salvar Anotação"}
+        secondaryButtonText="Cancelar"
+        primaryButtonDisabled={salvandoNota || !textoNotaInput.trim()}
+        onRequestClose={() => {
+          setModalNovaNotaOpen(false);
+          setTextoNotaInput("");
+          setMencionadosNotaInput([]);
+        }}
+        onRequestSubmit={handleCriarNota}
+        data-testid="modal-nova-nota"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0 }}>
+            Registre orientações de pregão, estratégias de lance ou marque colegas com @Nome para notificá-los.
+          </p>
+
+          <TextArea
+            id="modal-input-texto-nova-nota"
+            data-testid="modal-input-texto-nova-nota"
+            labelText="Texto da Anotação"
+            placeholder="Ex: Favor conferir cláusula de atestado técnico no edital. @Carlos Silva"
+            rows={4}
+            value={textoNotaInput}
+            onChange={(e) => setTextoNotaInput(e.target.value)}
+          />
+
+          {usuarios.length > 0 && (
+            <div>
+              <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)", display: "block", marginBottom: "0.5rem" }}>
+                Inserir @Menção Rápida de Colaborador:
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                {usuarios.map((u) => {
+                  const isMarcado = mencionadosNotaInput.includes(u.id);
+                  return (
+                    <Button
+                      key={u.id}
+                      kind={isMarcado ? "secondary" : "ghost"}
+                      size="sm"
+                      renderIcon={UserFollow}
+                      onClick={() => {
+                        if (isMarcado) {
+                          setMencionadosNotaInput((prev) => prev.filter((mid) => mid !== u.id));
+                        } else {
+                          setMencionadosNotaInput((prev) => [...prev, u.id]);
+                          if (!textoNotaInput.includes(`@${u.name}`)) {
+                            setTextoNotaInput((prev) => (prev ? `${prev.trim()} @${u.name} ` : `@${u.name} `));
+                          }
+                        }
+                      }}
+                      style={{ fontSize: "0.75rem", padding: "0 0.5rem", height: "1.75rem" }}
+                      data-testid={`btn-mencionar-user-${u.id}`}
+                    >
+                      @{u.name}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal: Editar Anotação (Issue #36) */}
+      <Modal
+        open={modalEditarNotaOpen}
+        modalHeading="✏️ Editar Anotação da Licitação"
+        primaryButtonText={salvandoNota ? "Atualizando..." : "Salvar Alterações"}
+        secondaryButtonText="Cancelar"
+        primaryButtonDisabled={salvandoNota || !textoNotaInput.trim()}
+        onRequestClose={() => {
+          setModalEditarNotaOpen(false);
+          setNotaEmEdicao(null);
+          setTextoNotaInput("");
+          setMencionadosNotaInput([]);
+        }}
+        onRequestSubmit={handleSalvarEdicaoNota}
+        data-testid="modal-editar-nota"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0 }}>
+            Apenas o autor original pode editar o conteúdo desta anotação.
+          </p>
+
+          <TextArea
+            id="modal-input-texto-editar-nota"
+            data-testid="modal-input-texto-editar-nota"
+            labelText="Texto da Anotação"
+            rows={4}
+            value={textoNotaInput}
+            onChange={(e) => setTextoNotaInput(e.target.value)}
+          />
+
+          {usuarios.length > 0 && (
+            <div>
+              <label style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-text-secondary)", display: "block", marginBottom: "0.5rem" }}>
+                Atualizar @Menção de Colaboradores:
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                {usuarios.map((u) => {
+                  const isMarcado = mencionadosNotaInput.includes(u.id);
+                  return (
+                    <Button
+                      key={u.id}
+                      kind={isMarcado ? "secondary" : "ghost"}
+                      size="sm"
+                      renderIcon={UserFollow}
+                      onClick={() => {
+                        if (isMarcado) {
+                          setMencionadosNotaInput((prev) => prev.filter((mid) => mid !== u.id));
+                        } else {
+                          setMencionadosNotaInput((prev) => [...prev, u.id]);
+                          if (!textoNotaInput.includes(`@${u.name}`)) {
+                            setTextoNotaInput((prev) => (prev ? `${prev.trim()} @${u.name} ` : `@${u.name} `));
+                          }
+                        }
+                      }}
+                      style={{ fontSize: "0.75rem", padding: "0 0.5rem", height: "1.75rem" }}
+                    >
+                      @{u.name}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal Notificação: Análise de IA em Background (Issue #36) */}
+      <Modal
+        open={modalNotificacaoIAOpen}
+        passiveModal
+        modalHeading="🤖 Análise de Participação Solicitada!"
+        onRequestClose={() => setModalNotificacaoIAOpen(false)}
+        data-testid="modal-ia-notificacao-iniciada"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1rem 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <CheckmarkOutline size={32} style={{ color: "var(--cds-support-success, #24a148)" }} />
+            <div>
+              <h4 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
+                O relatório está sendo gerado em segundo plano
+              </h4>
+              <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: "0.25rem 0 0 0" }}>
+                Nossa IA está cruzando o edital e anexos com as certidões e balanço da sua empresa.
+              </p>
+            </div>
+          </div>
+
+          <Tile style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)" }}>
+            <p style={{ fontSize: "0.875rem", margin: 0, lineHeight: 1.5, color: "var(--cds-text-primary)" }}>
+              🔔 <strong>Notificação Automática:</strong> Assim que a análise for concluída, você e todos os colaboradores atribuídos a esta oportunidade receberão uma notificação no sistema.
+            </p>
+            <p style={{ fontSize: "0.8125rem", margin: "0.5rem 0 0 0", color: "var(--cds-text-secondary)" }}>
+              O relatório executivo e o arquivo oficial em PDF estarão disponíveis na aba <strong>&ldquo;🤖 Histórico Análise IA&rdquo;</strong>.
+            </p>
           </Tile>
+
+          <Button
+            kind="primary"
+            size="md"
+            onClick={() => setModalNotificacaoIAOpen(false)}
+            style={{ alignSelf: "flex-end" }}
+            data-testid="btn-fechar-notificacao-ia"
+          >
+            Entendido, acompanhar progresso
+          </Button>
         </div>
       </Modal>
 

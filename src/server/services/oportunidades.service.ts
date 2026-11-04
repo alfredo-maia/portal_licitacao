@@ -43,6 +43,7 @@ import {
   type LicitacaoRecord,
   listInMemoryLicitacaoAnalisesIA,
   listInMemoryLicitacaoArquivos,
+  listInMemoryLicitacaoNotas,
   listInMemoryLicitacaoRepositorios,
   listInMemoryLicitacoes,
   listInMemoryTenantLicitacoes,
@@ -51,6 +52,7 @@ import {
   setInMemoryTenantLicitacao,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
+import { notificarMovimentacaoLicitacao } from "./notificacoes.service";
 import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
 import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
 import {
@@ -817,6 +819,9 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
           statusKanban: dbTenantLic.statusKanban,
           motivoRecusa: dbTenantLic.motivoRecusa,
           responsavelId: dbTenantLic.responsavelId,
+          membrosEquipeIds: Array.isArray((dbTenantLic as any).membrosEquipeIds)
+            ? (dbTenantLic as any).membrosEquipeIds
+            : [],
           lanceMinimo: dbTenantLic.lanceMinimo,
           valorProposta: (dbTenantLic as any).valorProposta ?? null,
           valorHomologado: (dbTenantLic as any).valorHomologado ?? null,
@@ -933,11 +938,24 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
   }
 
   const dbAnalises: any[] = Array.isArray(base.analisesIA) ? base.analisesIA : [];
-  const memAnalises = listInMemoryLicitacaoAnalisesIA(realId);
+  const memAnalises = listInMemoryLicitacaoAnalisesIA(realId, tenantId);
   const analisesMap = new Map<string, any>();
   for (const an of [...memAnalises, ...dbAnalises]) {
     if (an && an.id && !analisesMap.has(an.id)) {
-      analisesMap.set(an.id, an);
+      if (!tenantId || !an.tenantId || an.tenantId === tenantId) {
+        analisesMap.set(an.id, an);
+      }
+    }
+  }
+
+  const dbNotas: any[] = Array.isArray(base.notas) ? base.notas : [];
+  const memNotas = listInMemoryLicitacaoNotas(realId, tenantId);
+  const notasMap = new Map<string, any>();
+  for (const n of [...memNotas, ...dbNotas]) {
+    if (n && n.id && !notasMap.has(n.id)) {
+      if (!tenantId || !n.tenantId || n.tenantId === tenantId) {
+        notasMap.set(n.id, n);
+      }
     }
   }
 
@@ -954,6 +972,7 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
     arquivos: arquivosFiltrados,
     repositoriosSimilares: Array.from(reposMap.values()),
     analisesIA: Array.from(analisesMap.values()),
+    notas: Array.from(notasMap.values()),
   };
 }
 
@@ -1078,6 +1097,7 @@ export async function atualizarKanbanStatus(
 
   let atualizado: any;
   if (tenantId) {
+    const respPreservado = oportunidade.responsavelId ?? user?.id ?? null;
     setInMemoryTenantLicitacao(tenantId, oportunidade.id, {
       tenantId,
       licitacaoId: oportunidade.id,
@@ -1087,7 +1107,7 @@ export async function atualizarKanbanStatus(
       valorProposta: finalValorProposta,
       valorHomologado: finalValorHomologado,
       dataDecisao: new Date(),
-      responsavelId: user?.id ?? null,
+      responsavelId: respPreservado,
     });
 
     try {
@@ -1110,7 +1130,7 @@ export async function atualizarKanbanStatus(
           ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
           ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
           dataDecisao: new Date(),
-          responsavelId: user?.id ?? null,
+          ...(respPreservado ? { responsavelId: respPreservado } : {}),
         },
         create: {
           tenantId,
@@ -1121,7 +1141,7 @@ export async function atualizarKanbanStatus(
           ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
           ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
           dataDecisao: new Date(),
-          responsavelId: user?.id ?? null,
+          responsavelId: respPreservado,
         },
       });
     } catch {}
@@ -1178,6 +1198,18 @@ export async function atualizarKanbanStatus(
     motivo: input.motivoPerda ?? null,
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
   });
+
+  if (oportunidade.status !== input.status) {
+    await notificarMovimentacaoLicitacao({
+      licitacaoId: oportunidade.id,
+      numeroEdital: oportunidade.numeroEdital,
+      orgaoNome: oportunidade.orgaoNome,
+      tipoEvento: "STATUS",
+      resumoMudanca: `O status do certame foi alterado de ${oportunidade.status} para ${input.status}`,
+      tenantId,
+      chaveSufixo: `${oportunidade.status}_para_${input.status}_${Date.now()}`,
+    }).catch(() => undefined);
+  }
 
   return atualizado;
 }
@@ -1469,6 +1501,16 @@ export async function adicionarArquivoEdital(
     ip: actorContext?.ip ?? null,
   });
 
+  await notificarMovimentacaoLicitacao({
+    licitacaoId: realId,
+    numeroEdital: oportunidade.numeroEdital,
+    orgaoNome: oportunidade.orgaoNome,
+    tipoEvento: "ARQUIVOS",
+    resumoMudanca: `Novo documento anexado ao edital: "${criado.nome}"`,
+    tenantId: dadosArquivo.tenantId,
+    chaveSufixo: `upload_${criado.id}`,
+  }).catch(() => undefined);
+
   return criado;
 }
 
@@ -1500,6 +1542,17 @@ export async function removerArquivoEdital(
     usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
   });
+
+  if (oportunidade) {
+    await notificarMovimentacaoLicitacao({
+      licitacaoId: realId,
+      numeroEdital: oportunidade.numeroEdital,
+      orgaoNome: oportunidade.orgaoNome,
+      tipoEvento: "ARQUIVOS",
+      resumoMudanca: `Um arquivo anexado foi removido do dossiê do edital ${oportunidade.numeroEdital}`,
+      chaveSufixo: `remocao_${arquivoId}`,
+    }).catch(() => undefined);
+  }
 
   return { ok: true };
 }
@@ -1636,6 +1689,18 @@ export async function deliberarOportunidade(
     motivo: motivoRecusa,
     usuarioId: input.user?.id ?? null,
   });
+
+  if (statusAnterior !== novoStatus) {
+    await notificarMovimentacaoLicitacao({
+      licitacaoId: existente.id,
+      numeroEdital: existente.numeroEdital,
+      orgaoNome: existente.orgaoNome,
+      tipoEvento: "STATUS",
+      resumoMudanca: `Deliberação registrada: status alterado de ${statusAnterior} para ${novoStatus}`,
+      tenantId: input.tenantId,
+      chaveSufixo: `${statusAnterior}_para_${novoStatus}_${Date.now()}`,
+    }).catch(() => undefined);
+  }
 
   return atualizado;
 }
@@ -1783,6 +1848,39 @@ export async function atualizarLicitacao(
     usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
   });
+
+  const mudouAbertura =
+    patch.dataAbertura &&
+    new Date(patch.dataAbertura).getTime() !== new Date(antes.dataAbertura).getTime();
+  const mudouEncerramento =
+    patch.dataEncerramentoProposta &&
+    new Date(patch.dataEncerramentoProposta).getTime() !==
+      new Date(antes.dataEncerramentoProposta ?? antes.dataAbertura).getTime();
+
+  if (mudouAbertura || mudouEncerramento) {
+    const novaDataRef = new Date(
+      (patch.dataEncerramentoProposta ?? patch.dataAbertura ?? antes.dataAbertura) as Date,
+    ).toLocaleString("pt-BR");
+    await notificarMovimentacaoLicitacao({
+      licitacaoId: antes.id,
+      numeroEdital: antes.numeroEdital,
+      orgaoNome: antes.orgaoNome,
+      tipoEvento: "DATAS",
+      resumoMudanca: `As datas do certame ${antes.numeroEdital} foram atualizadas (novo prazo/abertura: ${novaDataRef})`,
+      chaveSufixo: `datas_${Date.now()}`,
+    }).catch(() => undefined);
+  }
+
+  if (patch.status && patch.status !== antes.status) {
+    await notificarMovimentacaoLicitacao({
+      licitacaoId: antes.id,
+      numeroEdital: antes.numeroEdital,
+      orgaoNome: antes.orgaoNome,
+      tipoEvento: "STATUS",
+      resumoMudanca: `O status do certame foi alterado de ${antes.status} para ${patch.status}`,
+      chaveSufixo: `status_${patch.status}_${Date.now()}`,
+    }).catch(() => undefined);
+  }
 
   return getOportunidadeById(id);
 }

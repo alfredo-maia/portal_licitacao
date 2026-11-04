@@ -11,10 +11,11 @@ import {
   getInMemoryLicitacaoByIdPncp,
   insertInMemoryLicitacao,
   type LicitacaoRecord,
+  listInMemoryUsuarios,
   type NovaLicitacaoData,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
-import { criarNotificacao } from "./notificacoes.service";
+import { criarNotificacao, notificarMovimentacaoLicitacao } from "./notificacoes.service";
 import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 
@@ -155,9 +156,12 @@ export async function ingestLicitacoesV2(
     const users = await prisma.user.findMany({ where: { ativo: true }, select: { id: true } });
     allActiveUserIds = users.map((u) => u.id);
   } catch {}
-  if (allActiveUserIds.length === 0) {
-    allActiveUserIds = ["seed_vitor", "seed_alfredo"];
-  }
+  const memUserIds = listInMemoryUsuarios()
+    .filter((u) => u.ativo !== false)
+    .map((u) => u.id);
+  allActiveUserIds = Array.from(
+    new Set([...allActiveUserIds, ...memUserIds, "seed_vitor", "seed_alfredo"]),
+  );
 
   for (const item of parsed.licitacoes) {
     const novoHash = computeHashCritico({
@@ -264,6 +268,23 @@ export async function ingestLicitacoesV2(
       }),
       destinatarioIds: destN2,
     }).catch(() => undefined);
+
+    const encAnt = existente.dataEncerramentoProposta
+      ? new Date(existente.dataEncerramentoProposta).getTime()
+      : new Date(existente.dataAbertura).getTime();
+    const encNovo = patch.dataEncerramentoProposta
+      ? new Date(patch.dataEncerramentoProposta).getTime()
+      : new Date(registro.dataAbertura).getTime();
+    if (encAnt !== encNovo) {
+      await notificarMovimentacaoLicitacao({
+        licitacaoId: registro.id,
+        numeroEdital: registro.numeroEdital,
+        orgaoNome: registro.orgaoNome,
+        tipoEvento: "DATAS",
+        resumoMudanca: `A data limite da proposta do edital ${registro.numeroEdital} foi retificada no PNCP`,
+        chaveSufixo: novoHash,
+      }).catch(() => undefined);
+    }
   }
 
   await recordAuditLog({
