@@ -34,7 +34,7 @@ import {
   type OportunidadesActorContext,
 } from "./oportunidades.service";
 import { listarPortais } from "./portais.service";
-import { inMemoryTenants } from "./tenant.service";
+import { inMemoryTenants, inMemoryTenantUsers } from "./tenant.service";
 
 export class AnaliseIAParticipacaoError extends Error {
   readonly code: string;
@@ -79,83 +79,233 @@ async function ensureAnaliseIAColumns(): Promise<void> {
 }
 
 /**
- * Resolve o plano ativo do Tenant (`BASICO` = 5, `PRO` / `TRIAL` = 10, `ENTERPRISE` = 20).
+ * Resolve o contexto da conta do usuário para apuração unificada de cota de IA.
+ * Regra de Negócio: A cota mensal de análises de IA (10 no plano PRO) é atrelada à
+ * CONTA do usuário (titular/assinatura) e compartilhada entre todos os seus CNPJs (tenants),
+ * e NÃO isolada por CNPJ individual.
  */
-export async function resolverPlanoTenant(
+export async function resolverContextoContaCota(
   tenantId?: string | null,
-): Promise<PlanoAssinatura> {
-  if (!tenantId) {
-    return "PRO";
+  userId?: string | null,
+): Promise<{
+  accountTenantIds: Set<string>;
+  candidateUserIds: Set<string>;
+  plano: PlanoAssinatura;
+}> {
+  const accountTenantIds = new Set<string>();
+  const candidateUserIds = new Set<string>();
+
+  if (tenantId) {
+    accountTenantIds.add(tenantId);
   }
 
-  const mem = inMemoryTenants.get(tenantId);
-  if (mem?.plano && ["BASICO", "PRO", "ENTERPRISE"].includes(String(mem.plano))) {
-    return mem.plano as PlanoAssinatura;
+  // Se userId foi informado e é um email, descobre o id do usuário
+  let resolvedUserId: string | null = userId ?? null;
+  if (resolvedUserId && resolvedUserId.includes("@")) {
+    const memByEmail = inMemoryTenantUsers.find(
+      (tu) => tu.userEmail?.toLowerCase() === resolvedUserId!.toLowerCase(),
+    );
+    if (memByEmail?.userId) {
+      resolvedUserId = memByEmail.userId;
+    } else {
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: resolvedUserId.trim().toLowerCase() },
+          select: { id: true },
+        });
+        if (dbUser?.id) {
+          resolvedUserId = dbUser.id;
+        }
+      } catch {}
+    }
+  }
+
+  if (resolvedUserId) {
+    candidateUserIds.add(resolvedUserId);
+  }
+
+  // 1. Identifica o titular responsável pela conta/assinatura do tenant informado
+  let titularUserId: string | null = null;
+  if (tenantId) {
+    // Em memória
+    const memUsers = inMemoryTenantUsers.filter(
+      (tu) => tu.tenantId === tenantId && tu.ativo,
+    );
+    const titularMem =
+      memUsers.find((tu) => tu.role === "TITULAR") || memUsers[0];
+    if (titularMem?.userId) {
+      titularUserId = titularMem.userId;
+      candidateUserIds.add(titularMem.userId);
+    }
+
+    // No Postgres
+    if (!titularUserId) {
+      try {
+        const dbTitular = await prisma.tenantUser.findFirst({
+          where: { tenantId, role: "TITULAR", ativo: true },
+          select: { userId: true },
+        });
+        if (dbTitular?.userId) {
+          titularUserId = dbTitular.userId;
+          candidateUserIds.add(dbTitular.userId);
+        } else {
+          const dbFirst = await prisma.tenantUser.findFirst({
+            where: { tenantId, ativo: true },
+            select: { userId: true },
+          });
+          if (dbFirst?.userId) {
+            candidateUserIds.add(dbFirst.userId);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Se temos titularUserId ou resolvedUserId, busca todos os tenants pertencentes à mesma conta
+  const targetUserIds = new Set<string>();
+  if (titularUserId) targetUserIds.add(titularUserId);
+  if (resolvedUserId) targetUserIds.add(resolvedUserId);
+
+  for (const uid of targetUserIds) {
+    // Em memória
+    const userMems = inMemoryTenantUsers.filter(
+      (tu) => tu.userId === uid && tu.ativo,
+    );
+    for (const m of userMems) {
+      accountTenantIds.add(m.tenantId);
+    }
+
+    // No Postgres
+    try {
+      const dbMems = await prisma.tenantUser.findMany({
+        where: { userId: uid, ativo: true },
+        select: { tenantId: true },
+      });
+      for (const m of dbMems) {
+        accountTenantIds.add(m.tenantId);
+      }
+    } catch {}
+  }
+
+  // 3. Resolve o plano contratado da conta (priorizando o melhor plano entre os tenants da conta)
+  let plano: PlanoAssinatura = "PRO";
+  const planosEncontrados: PlanoAssinatura[] = [];
+
+  for (const tid of accountTenantIds) {
+    const mem = inMemoryTenants.get(tid);
+    if (mem?.plano && ["BASICO", "PRO", "ENTERPRISE"].includes(String(mem.plano))) {
+      planosEncontrados.push(mem.plano as PlanoAssinatura);
+    }
   }
 
   try {
-    const dbTenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { plano: true, billingStatus: true },
-    });
-    if (
-      dbTenant?.plano &&
-      ["BASICO", "PRO", "ENTERPRISE"].includes(String(dbTenant.plano))
-    ) {
-      return dbTenant.plano as PlanoAssinatura;
+    const tArray = Array.from(accountTenantIds).filter(Boolean);
+    if (tArray.length > 0) {
+      const dbTenants = await prisma.tenant.findMany({
+        where: { id: { in: tArray } },
+        select: { plano: true },
+      });
+      for (const t of dbTenants) {
+        if (t?.plano && ["BASICO", "PRO", "ENTERPRISE"].includes(String(t.plano))) {
+          planosEncontrados.push(t.plano as PlanoAssinatura);
+        }
+      }
     }
-  } catch {
-    // Fallback em memória
+  } catch {}
+
+  if (planosEncontrados.includes("ENTERPRISE")) {
+    plano = "ENTERPRISE";
+  } else if (planosEncontrados.includes("PRO")) {
+    plano = "PRO";
+  } else if (planosEncontrados.includes("BASICO")) {
+    plano = "BASICO";
   }
 
-  return "PRO";
+  return {
+    accountTenantIds,
+    candidateUserIds,
+    plano,
+  };
 }
 
 /**
- * Calcula a cota mensal de análises de IA do Tenant no mês civil vigente (America/Sao_Paulo).
- * Quando o mês vira, a janela `[inicioMes, proximoMes)` muda automaticamente e a contagem
- * volta para `0/5`, `0/10` ou `0/20`.
+ * Resolve o plano ativo da conta/tenant (`BASICO` = 5, `PRO` / `TRIAL` = 10, `ENTERPRISE` = 20).
+ */
+export async function resolverPlanoTenant(
+  tenantId?: string | null,
+  userId?: string | null,
+): Promise<PlanoAssinatura> {
+  const { plano } = await resolverContextoContaCota(tenantId, userId);
+  return plano;
+}
+
+/**
+ * Calcula a cota mensal de análises de IA atrelada à conta do usuário no mês civil vigente (America/Sao_Paulo).
+ * A cota é compartilhada entre todos os CNPJs (tenants) sob a mesma conta do usuário.
+ * Quando o mês vira, a janela `[inicioMes, proximoMes)` renova automaticamente para `0/5`, `0/10` ou `0/20`.
  */
 export async function obterStatusCotaAnaliseIA(
   tenantId?: string | null,
   referencia: Date = new Date(),
+  userId?: string | null,
 ): Promise<CotaMensalAnaliseIA> {
-  const plano = await resolverPlanoTenant(tenantId);
+  const { accountTenantIds, candidateUserIds, plano } =
+    await resolverContextoContaCota(tenantId, userId);
+
   const inicioMes = inicioMesCivilBRT(referencia);
   const fimMes = proximoMesCivilBRT(referencia);
 
   const idsContabilizados = new Set<string>();
 
   // 1. Store em memória
-  const memList = listAllInMemoryAnalisesIA(tenantId);
+  const memList = listAllInMemoryAnalisesIA();
   for (const item of memList) {
     if (!item || item.status === "ERRO") continue;
-    if (tenantId && item.tenantId !== tenantId) continue;
     const criadoEm = item.criadoEm ? new Date(item.criadoEm) : new Date();
     if (
       criadoEm.getTime() >= inicioMes.getTime() &&
       criadoEm.getTime() < fimMes.getTime()
     ) {
-      idsContabilizados.add(String(item.id));
+      const pertenceAConta =
+        (item.tenantId && accountTenantIds.has(item.tenantId)) ||
+        (item.executadoPorId && candidateUserIds.has(item.executadoPorId)) ||
+        (!userId && !tenantId);
+
+      if (pertenceAConta) {
+        idsContabilizados.add(String(item.id));
+      }
     }
   }
 
   // 2. Banco de dados PostgreSQL
   try {
     await ensureAnaliseIAColumns();
-    const dbList = await prisma.analiseStatusParticipacao.findMany({
-      where: {
-        ...(tenantId ? { tenantId } : {}),
-        status: { not: "ERRO" },
-        criadoEm: {
-          gte: inicioMes,
-          lt: fimMes,
+    const tArray = Array.from(accountTenantIds).filter(Boolean);
+    const uArray = Array.from(candidateUserIds).filter(Boolean);
+
+    const orConditions: any[] = [];
+    if (tArray.length > 0) {
+      orConditions.push({ tenantId: { in: tArray } });
+    }
+    if (uArray.length > 0) {
+      orConditions.push({ executadoPorId: { in: uArray } });
+    }
+
+    if (orConditions.length > 0) {
+      const dbList = await prisma.analiseStatusParticipacao.findMany({
+        where: {
+          OR: orConditions,
+          status: { not: "ERRO" },
+          criadoEm: {
+            gte: inicioMes,
+            lt: fimMes,
+          },
         },
-      },
-      select: { id: true },
-    });
-    for (const row of dbList) {
-      idsContabilizados.add(row.id);
+        select: { id: true },
+      });
+      for (const row of dbList) {
+        idsContabilizados.add(row.id);
+      }
     }
   } catch {
     // Em modo offline/teste usa apenas memória
@@ -1356,6 +1506,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
     referencia?: Date;
     aguardarConclusao?: boolean;
     permitirSemArquivos?: boolean;
+    userId?: string | null;
   },
 ): Promise<{
   ok: true;
@@ -1369,6 +1520,12 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   const referencia = options?.referencia ?? new Date();
   const oportunidade = await getOportunidadeById(licitacaoId, tenantId);
   const realId = oportunidade.id;
+  const effectiveUserId =
+    options?.userId ??
+    (user as any)?.id ??
+    (user as any)?.email ??
+    actorContext?.usuarioId ??
+    null;
 
   // 1. Pre-flight de arquivos de Edital: se a oportunidade não possui arquivos baixados no dossiê,
   // tenta sincronizar automaticamente da API pública do PNCP.
@@ -1393,8 +1550,12 @@ export async function iniciarAnaliseParticipacaoAssincrona(
     );
   }
 
-  // 2. Verifica limite mensal do plano antes de criar (preservando a cota se sem arquivos)
-  const cotaAntes = await obterStatusCotaAnaliseIA(tenantId, referencia);
+  // 2. Verifica limite mensal da conta antes de criar (preservando a cota se sem arquivos)
+  const cotaAntes = await obterStatusCotaAnaliseIA(
+    tenantId,
+    referencia,
+    effectiveUserId,
+  );
   if (cotaAntes.atingiuLimite) {
     throw new AnaliseIAParticipacaoError(
       "COTA_MENSAL_IA_ATINGIDA",
@@ -1454,8 +1615,12 @@ export async function iniciarAnaliseParticipacaoAssincrona(
     // Store em memória já registrou
   }
 
-  // Calcula cota atualizada (já refletindo +1 no mês)
-  const cotaAtualizada = await obterStatusCotaAnaliseIA(tenantId, referencia);
+  // Calcula cota atualizada (já refletindo +1 no mês na conta do usuário)
+  const cotaAtualizada = await obterStatusCotaAnaliseIA(
+    tenantId,
+    referencia,
+    effectiveUserId,
+  );
 
   // 3. Dispara o processamento em background
   const jobPromise = (async () => {

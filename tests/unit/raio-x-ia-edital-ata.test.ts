@@ -18,7 +18,7 @@ import {
   insertInMemoryUsuario,
   resetInMemoryLicitacoes,
 } from "@/server/services/licitacoes-store";
-import { inMemoryTenants } from "@/server/services/tenant.service";
+import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
 
 const TENANT_ID = "tenant_raiox_test";
 
@@ -33,6 +33,7 @@ const DIRETOR: RbacUser & { id: string } = {
 describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", () => {
   beforeEach(() => {
     resetInMemoryLicitacoes();
+    inMemoryTenantUsers.length = 0;
     inMemoryTenants.set(TENANT_ID, {
       id: TENANT_ID,
       nome: "Empresa Licitante Pro",
@@ -388,6 +389,145 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
       expect(decoded).toContain("5. RISCOS CONTRATUAIS");
       expect(decoded).toContain("6. MATRIZ SWOT DA OPORTUNIDADE");
       expect(decoded.trim().endsWith("%%EOF")).toBe(true);
+    });
+  });
+
+  describe("5. Cota Unificada por Conta / Usuário (Multi-CNPJ)", () => {
+    it("compartilha a cota de análises entre múltiplos CNPJs pertencentes ao mesmo usuário", async () => {
+      const TENANT_CNPJ1 = "tnt_cnpj_74962700";
+      const TENANT_CNPJ2 = "tnt_cnpj_91205461";
+      const USER_TEST: RbacUser & { id: string } = {
+        id: "usr_testetesteteste",
+        name: "Usuário Teste",
+        email: "testetesteteste@gmail.com",
+        role: "DIRETORIA",
+        ativo: true,
+      };
+
+      inMemoryTenants.set(TENANT_CNPJ1, {
+        id: TENANT_CNPJ1,
+        cnpj: "74.962.700/0001-01",
+        razaoSocial: "Empresa Um Ltda",
+        plano: "PRO",
+        ativo: true,
+      } as any);
+
+      inMemoryTenants.set(TENANT_CNPJ2, {
+        id: TENANT_CNPJ2,
+        cnpj: "91.205.461/0001-56",
+        razaoSocial: "Empresa Dois Ltda",
+        plano: "PRO",
+        ativo: true,
+      } as any);
+
+      inMemoryTenantUsers.push(
+        {
+          id: "tu_cnpj1",
+          tenantId: TENANT_CNPJ1,
+          userId: USER_TEST.id,
+          userEmail: USER_TEST.email,
+          userName: USER_TEST.name,
+          role: "TITULAR",
+          ativo: true,
+          criadoEm: new Date(),
+        },
+        {
+          id: "tu_cnpj2",
+          tenantId: TENANT_CNPJ2,
+          userId: USER_TEST.id,
+          userEmail: USER_TEST.email,
+          userName: USER_TEST.name,
+          role: "TITULAR",
+          ativo: true,
+          criadoEm: new Date(),
+        },
+      );
+
+      const refMes = new Date("2026-11-05T12:00:00Z");
+
+      // Cria 8 análises sob o CNPJ 1 pelo usuário
+      for (let i = 1; i <= 8; i++) {
+        const licId = criarLicitacaoBase({ comArquivos: true });
+        await iniciarAnaliseParticipacaoAssincrona(
+          licId,
+          { observacoes: `Análise ${i} no CNPJ 1` },
+          USER_TEST,
+          undefined,
+          TENANT_CNPJ1,
+          { referencia: refMes },
+        );
+      }
+
+      // CNPJ 1 deve indicar 8/10
+      const cotaCnpj1 = await obterStatusCotaAnaliseIA(TENANT_CNPJ1, refMes, USER_TEST.id);
+      expect(cotaCnpj1.usadas).toBe(8);
+      expect(cotaCnpj1.limite).toBe(10);
+      expect(cotaCnpj1.restantes).toBe(2);
+
+      // O novo CNPJ 2 do mesmo usuário DEVE refletir 8/10 (e não 0/10)
+      const cotaCnpj2 = await obterStatusCotaAnaliseIA(TENANT_CNPJ2, refMes, USER_TEST.id);
+      expect(cotaCnpj2.usadas).toBe(8);
+      expect(cotaCnpj2.limite).toBe(10);
+      expect(cotaCnpj2.restantes).toBe(2);
+
+      // Ao realizar a 9ª análise no CNPJ 2, a cota unificada é debitada para 9/10
+      const licCnpj2 = criarLicitacaoBase({ comArquivos: true });
+      const resp9 = await iniciarAnaliseParticipacaoAssincrona(
+        licCnpj2,
+        { observacoes: "9ª análise disparada a partir do CNPJ 2" },
+        USER_TEST,
+        undefined,
+        TENANT_CNPJ2,
+        { referencia: refMes },
+      );
+      expect(resp9.cota.usadas).toBe(9);
+      expect(resp9.cota.restantes).toBe(1);
+
+      // CNPJ 1 agora também reflete 9/10 imediatamente
+      const cotaCnpj1Apos = await obterStatusCotaAnaliseIA(TENANT_CNPJ1, refMes, USER_TEST.id);
+      expect(cotaCnpj1Apos.usadas).toBe(9);
+      expect(cotaCnpj1Apos.restantes).toBe(1);
+
+      // Executa a 10ª análise no CNPJ 1
+      const licCnpj1Final = criarLicitacaoBase({ comArquivos: true });
+      await iniciarAnaliseParticipacaoAssincrona(
+        licCnpj1Final,
+        { observacoes: "10ª análise atingindo limite" },
+        USER_TEST,
+        undefined,
+        TENANT_CNPJ1,
+        { referencia: refMes },
+      );
+
+      // Agora a 11ª análise deve ser bloqueada em ambos os CNPJs
+      const lic11 = criarLicitacaoBase({ comArquivos: true });
+      await expect(
+        iniciarAnaliseParticipacaoAssincrona(
+          lic11,
+          { observacoes: "Tentativa de 11ª análise no CNPJ 2" },
+          USER_TEST,
+          undefined,
+          TENANT_CNPJ2,
+          { referencia: refMes },
+        ),
+      ).rejects.toMatchObject({
+        code: "COTA_MENSAL_IA_ATINGIDA",
+        status: 403,
+      });
+
+      await expect(
+        iniciarAnaliseParticipacaoAssincrona(
+          lic11,
+          { observacoes: "Tentativa de 11ª análise no CNPJ 1" },
+          USER_TEST,
+          undefined,
+          TENANT_CNPJ1,
+          { referencia: refMes },
+        ),
+      ).rejects.toMatchObject({
+        code: "COTA_MENSAL_IA_ATINGIDA",
+        status: 403,
+      });
     });
   });
 });

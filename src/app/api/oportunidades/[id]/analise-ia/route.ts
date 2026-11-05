@@ -49,8 +49,9 @@ export async function GET(request: Request, context: RouteContext) {
   const { user, tenantId } = await resolveTenantAndUser(request);
 
   try {
+    const userIdentifier = (user as any)?.id || (user as any)?.email || null;
     const [cota, oportunidade] = await Promise.all([
-      obterStatusCotaAnaliseIA(tenantId),
+      obterStatusCotaAnaliseIA(tenantId, new Date(), userIdentifier),
       getOportunidadeById(id, tenantId),
     ]);
 
