@@ -615,35 +615,51 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
         }
       }
     } else if (geminiKey) {
-      const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
+      const candidateModels = Array.from(
+        new Set([
+          process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
+          "gemini-3.5-flash-lite",
+          "gemini-flash-lite-latest",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash",
+        ]),
+      );
+
+      for (const model of candidateModels) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [
                   {
-                    text: `${systemPrompt}\n\nAnalise os seguintes dados do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
+                    parts: [
+                      {
+                        text: `${systemPrompt}\n\nAnalise os seguintes dados do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: "application/json",
+                generationConfig: {
+                  temperature: 0.2,
+                  responseMimeType: "application/json",
+                },
+              }),
+              signal: AbortSignal.timeout(8000),
             },
-          }),
-          signal: AbortSignal.timeout(14000),
-        },
-      );
-      if (res.ok) {
-        const json: any = await res.json();
-        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return JSON.parse(text);
+          );
+          if (res.ok) {
+            const json: any = await res.json();
+            const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              return JSON.parse(text);
+            }
+          }
+        } catch {
+          // Em caso de 503 (high demand) ou timeout do modelo, avança para o próximo candidato do pool
+          continue;
         }
       }
     }
@@ -1084,8 +1100,8 @@ export async function construirRelatorioParticipacaoHibrido(
   );
 
   const relatorio: RelatorioParticipacao = {
-    parecer,
-    scoreAderencia: score,
+    parecer: enriquecidoLLM?.habilitacao?.status || parecer,
+    scoreAderencia: enriquecidoLLM?.habilitacao?.scoreConformidade ?? score,
     segmentoIdentificado: nomeSegmentoEdital,
     resumoExecutivo,
 
@@ -1181,9 +1197,18 @@ export async function construirRelatorioParticipacaoHibrido(
         enriquecidoLLM?.swot?.forcas?.length
           ? enriquecidoLLM.swot.forcas
           : [
-              `Regularidade cadastral ativa em /documentacao (${certidoesRegulares.length} documento(s) válido(s))`,
+              ...(certidoesRegulares.length > 0
+                ? [
+                    `Regularidade cadastral ativa em /documentacao (${certidoesRegulares.length} documento(s) válido(s))`,
+                  ]
+                : []),
               `Aderência de atuação territorial no Estado de ${oportunidade.uf}`,
-              `Experiência comprovada no fornecimento no segmento de ${nomeSegmentoEdital}`,
+              `Experiência comercial no segmento de ${nomeSegmentoEdital}`,
+              ...(oportunidade.isPresencial
+                ? []
+                : [
+                    "Disputa em modalidade eletrônica sem custos de deslocamento inicial",
+                  ]),
             ],
       fraquezas:
         enriquecidoLLM?.swot?.fraquezas?.length
