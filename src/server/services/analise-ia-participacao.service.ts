@@ -535,7 +535,13 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   const systemPrompt =
     "Você é um Especialista Sênior em Licitações Públicas e Análise de Editais/ATAs (Lei 14.133/2021). " +
     "Sua função é gerar um Raio-X Executivo direto e mastigado para que o licitante não precise ler 100+ páginas de edital. " +
-    "NÃO gere sugestões de preço de lance sem cotação de insumos. Retorne estritamente um JSON com a seguinte estrutura:\n" +
+    "NÃO gere sugestões de preço de lance sem cotação de insumos. " +
+    "CRITÉRIO OBRIGATÓRIO DE STATUS E SCORE: " +
+    "Analise criticamente se a empresa tem capacidade e compatibilidade com o objeto do edital. " +
+    "- Se a empresa for INAPTA (ex: objeto exige atividade financeira/bancária/Bacen, conselho de classe como CREA/CRF não condizente, ou há impedimento flagrante), o 'status' DEVE ser 'INAPTO' e o 'scoreConformidade' DEVE ser rigorosamente BAIXO (entre 10 e 35). " +
+    "- Se for viável com ressalvas, 'status' deve ser 'APTO_COM_RESSALVAS' com score entre 45 e 74. " +
+    "- Se for plenamente apta, 'status' deve ser 'APTO' com score entre 75 e 100. " +
+    "Retorne estritamente um JSON com a seguinte estrutura:\n" +
     "{\n" +
     '  "resumoExecutivo": "string com resumo em até 3 parágrafos claros",\n' +
     '  "habilitacao": {\n' +
@@ -1020,6 +1026,16 @@ export async function construirRelatorioParticipacaoHibrido(
     });
   }
 
+  // Montagem preliminar das certidões para envio contextual à IA
+  const certidoesRegulares = documentos
+    .filter((d: any) => d.status === "ATIVO" && !d.vencido)
+    .map((d: any) => `${d.nome} (${d.categoria})`);
+
+  const certidoesVencidasOuPendentes = [
+    ...documentos.filter((d: any) => d.vencido).map((d: any) => `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dias)`),
+    ...checklistDocumental.filter((c) => c.status === "AUSENTE").map((c) => `${c.documento} (Não cadastrado em /documentacao)`),
+  ];
+
   // 9. Enriquecimento opcional com LLM (OpenAI / Gemini) se chave configurada
   const obsUsuario = input.observacoes || input.observacoesExtras;
   const enriquecidoLLM = await tentarEnriquecerComLLM(
@@ -1036,19 +1052,34 @@ export async function construirRelatorioParticipacaoHibrido(
       arquivosEdital: (oportunidade.arquivos || []).map((a: any) => a.nome),
       empresaSegmentos: labelSegmentoEmpresa,
       empresaCnae: empresa?.cnae,
-      parecerPreliminar: parecer,
-      score,
+      certidoesRegularesEmpresa: certidoesRegulares,
+      pendenciasDocumentaisEmpresa: certidoesVencidasOuPendentes,
       observacoesUsuario: obsUsuario || null,
     }),
   );
 
+  const statusFinal: RelatorioParticipacao["parecer"] =
+    enriquecidoLLM?.habilitacao?.status || parecer;
+
+  let scoreFinal =
+    enriquecidoLLM?.habilitacao?.scoreConformidade != null
+      ? Number(enriquecidoLLM.habilitacao.scoreConformidade)
+      : score;
+
+  if (statusFinal === "INAPTO" && scoreFinal > 35) {
+    scoreFinal = 20;
+  }
+  if (statusFinal === "APTO" && scoreFinal < 70) {
+    scoreFinal = 85;
+  }
+
   let resumoExecutivo =
     enriquecidoLLM?.resumoExecutivo ||
-    (parecer === "APTO"
-      ? `A empresa apresenta alta aderência técnica e documental (Score ${score}/100) para participar do Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) no segmento de ${nomeSegmentoEdital}.`
-      : parecer === "APTO_COM_RESSALVAS"
-        ? `A participação no Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) é viável com ressalvas (Score ${score}/100). Recomenda-se sanar as pendências apontadas antes da abertura da sessão.`
-        : `Foram identificados impedimentos críticos (Score ${score}/100) para o Edital ${oportunidade.numeroEdital}. Revise os documentos vencidos e a compatibilidade de escopo antes de deliberar.`);
+    (statusFinal === "APTO"
+      ? `A empresa apresenta alta aderência técnica e documental (Score ${scoreFinal}/100) para participar do Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) no segmento de ${nomeSegmentoEdital}.`
+      : statusFinal === "APTO_COM_RESSALVAS"
+        ? `A participação no Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) é viável com ressalvas (Score ${scoreFinal}/100). Recomenda-se sanar as pendências apontadas antes da abertura da sessão.`
+        : `Foram identificados impedimentos críticos (Score ${scoreFinal}/100) para o Edital ${oportunidade.numeroEdital}. Revise os documentos vencidos e a compatibilidade de escopo antes de deliberar.`);
 
   let observacoesCustos =
     enriquecidoLLM?.observacoesCustos ||
@@ -1066,16 +1097,6 @@ export async function construirRelatorioParticipacaoHibrido(
       if (rec && typeof rec === "string") recomendacoesPraticas.push(rec);
     }
   }
-
-  // Montagem estruturada do Raio-X
-  const certidoesRegulares = documentos
-    .filter((d: any) => d.status === "ATIVO" && !d.vencido)
-    .map((d: any) => `${d.nome} (${d.categoria})`);
-
-  const certidoesVencidasOuPendentes = [
-    ...documentos.filter((d: any) => d.vencido).map((d: any) => `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dias)`),
-    ...checklistDocumental.filter((c) => c.status === "AUSENTE").map((c) => `${c.documento} (Não cadastrado em /documentacao)`),
-  ];
 
   const atestadosExigidos = atestadosEdital.length > 0
     ? atestadosEdital
@@ -1100,20 +1121,20 @@ export async function construirRelatorioParticipacaoHibrido(
   );
 
   const relatorio: RelatorioParticipacao = {
-    parecer: enriquecidoLLM?.habilitacao?.status || parecer,
-    scoreAderencia: enriquecidoLLM?.habilitacao?.scoreConformidade ?? score,
+    parecer: statusFinal,
+    scoreAderencia: scoreFinal,
     segmentoIdentificado: nomeSegmentoEdital,
     resumoExecutivo,
 
     // 1. Habilitação Documental Real
     habilitacao: {
-      status: enriquecidoLLM?.habilitacao?.status || parecer,
-      scoreConformidade: enriquecidoLLM?.habilitacao?.scoreConformidade ?? score,
+      status: statusFinal,
+      scoreConformidade: scoreFinal,
       resumo:
         enriquecidoLLM?.habilitacao?.resumo ||
-        (parecer === "APTO"
+        (statusFinal === "APTO"
           ? `A empresa possui documentação regularizada (${certidoesRegulares.length} documento(s) ativo(s)) e atende às exigências preliminares do edital.`
-          : parecer === "APTO_COM_RESSALVAS"
+          : statusFinal === "APTO_COM_RESSALVAS"
             ? `Identificadas pendências documentais ou categorias ausentes em /documentacao que exigem saneamento antes da sessão.`
             : `Impedimento documental crítico detectado: certidões vencidas impedem a habilitação jurídica/fiscal.`),
       certidoesRegulares: enriquecidoLLM?.habilitacao?.certidoesRegulares?.length
@@ -1271,7 +1292,7 @@ export async function construirRelatorioParticipacaoHibrido(
   const custosTexto = observacoesCustos;
 
   const relatorioTexto = [
-    `RAIO-X DE EDITAL & ATA DE REGISTRO DE PREÇOS: ${parecer} (Score ${score}/100)`,
+    `RAIO-X DE EDITAL & ATA DE REGISTRO DE PREÇOS: ${relatorio.parecer} (Score ${relatorio.scoreAderencia}/100)`,
     `Segmento: ${nomeSegmentoEdital}`,
     "",
     `1. RESUMO EXECUTIVO`,

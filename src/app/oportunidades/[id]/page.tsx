@@ -640,49 +640,18 @@ function OportunidadesDetalheContent({
     return `/api/oportunidades/${id}/arquivos/${arq.id}/download`;
   };
 
-  // Baixar Selecionados
-  const handleBaixarSelecionados = async () => {
-    const alvos = (oportunidade?.arquivos || []).filter((a) => arquivosSelecionados.includes(a.id));
-    for (let i = 0; i < alvos.length; i++) {
-      const arq = alvos[i];
-      const url = obterUrlDownload(arq);
-      if (typeof window !== "undefined") {
-        const link = document.createElement("a");
-        link.href = url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.download = arq.nome || `arquivo_${i + 1}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-      if (i < alvos.length - 1) {
-        // Pausa de 500ms evita que o bloqueador de pop-ups/downloads múltiplos do navegador interrompa os arquivos
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+  // Baixar Selecionados em Pacote ZIP
+  const handleBaixarSelecionados = () => {
+    if (typeof window !== "undefined" && arquivosSelecionados.length > 0) {
+      const idsParam = encodeURIComponent(arquivosSelecionados.join(","));
+      window.location.href = `/api/oportunidades/${id}/arquivos/download-zip?ids=${idsParam}`;
     }
   };
 
-  // Baixar Todos os Arquivos
-  const handleBaixarTodos = async () => {
-    const alvos = oportunidade?.arquivos || [];
-    for (let i = 0; i < alvos.length; i++) {
-      const arq = alvos[i];
-      const url = obterUrlDownload(arq);
-      if (typeof window !== "undefined") {
-        const link = document.createElement("a");
-        link.href = url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.download = arq.nome || `arquivo_${i + 1}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-      if (i < alvos.length - 1) {
-        // Pausa de 500ms evita que o bloqueador de pop-ups/downloads múltiplos do navegador interrompa os arquivos
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+  // Baixar Todos os Arquivos em Pacote ZIP
+  const handleBaixarTodos = () => {
+    if (typeof window !== "undefined") {
+      window.location.href = `/api/oportunidades/${id}/arquivos/download-zip`;
     }
   };
 
@@ -1505,7 +1474,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     disabled={arquivosSelecionados.length === 0}
                     data-testid="btn-baixar-selecionados"
                   >
-                    Baixar Selecionados ({arquivosSelecionados.length})
+                    Baixar Selecionados (ZIP) ({arquivosSelecionados.length})
                   </Button>
                   <Button
                     kind="ghost"
@@ -1515,7 +1484,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     disabled={arquivos.length === 0}
                     data-testid="btn-baixar-todos"
                   >
-                    Baixar Todos os Arquivos
+                    Baixar Todos os Arquivos (ZIP)
                   </Button>
                 </div>
               </div>
