@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RbacUser } from "@/lib/rbac";
 import {
   itemDisputaEditalSchema,
@@ -11,6 +11,7 @@ import {
   iniciarAnaliseParticipacaoAssincrona,
   obterStatusCotaAnaliseIA,
 } from "@/server/services/analise-ia-participacao.service";
+import { getOportunidadeById } from "@/server/services/oportunidades.service";
 import {
   insertInMemoryLicitacao,
   insertInMemoryLicitacaoArquivo,
@@ -238,6 +239,59 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
       expect(concluido.relatorioJson?.itens).toBeDefined();
       expect(concluido.relatorioJson?.riscos).toBeDefined();
       expect(concluido.relatorioJson?.swot).toBeDefined();
+    });
+
+    it("busca e baixa os editais do PNCP automaticamente caso o dossiê esteja sem arquivos e prossegue", async () => {
+      const licSemArquivos = criarLicitacaoBase({ comArquivos: false });
+      const refNovembro = new Date("2026-11-15T15:00:00Z");
+
+      // Simula a resposta da API oficial do PNCP retornando 2 arquivos oficiais
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockImplementation((url: string, opts?: any) => {
+        if (typeof url === "string" && url.includes("pncp.gov.br/api/pncp/v1/orgaos")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve([
+                {
+                  titulo: "Edital_Oficial_PE_999_2026.pdf",
+                  url: "https://pncp.gov.br/arquivos/edital_999.pdf",
+                  tamanho: 2048576,
+                },
+                {
+                  titulo: "Termo_de_Referencia_Anexo_I.pdf",
+                  url: "https://pncp.gov.br/arquivos/tr_anexo_1.pdf",
+                  tamanho: 1048576,
+                },
+              ]),
+          } as any);
+        }
+        return originalFetch(url, opts);
+      });
+
+      try {
+        const inicio = await iniciarAnaliseParticipacaoAssincrona(
+          licSemArquivos,
+          {},
+          DIRETOR,
+          undefined,
+          TENANT_ID,
+          { referencia: refNovembro, aguardarConclusao: true },
+        );
+
+        expect(inicio.ok).toBe(true);
+        expect(inicio.status).toBe("CONCLUIDO");
+        expect(inicio.cota.usadas).toBe(1);
+
+        // Verifica que os arquivos foram baixados e vinculados no dossiê
+        const recarregada = await getOportunidadeById(licSemArquivos, TENANT_ID);
+        expect(recarregada.arquivos.length).toBeGreaterThanOrEqual(2);
+        const nomes = recarregada.arquivos.map((a: any) => a.nome);
+        expect(nomes).toContain("Edital_Oficial_PE_999_2026.pdf");
+        expect(nomes).toContain("Termo_de_Referencia_Anexo_I.pdf");
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 
