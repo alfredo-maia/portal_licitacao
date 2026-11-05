@@ -463,6 +463,27 @@ function OportunidadesDetalheContent({
     }
   }, [id, carregarDados]);
 
+  // Polling automático e reativo enquanto houver análise com status PROCESSANDO
+  React.useEffect(() => {
+    const analisesAtuais = oportunidade?.analisesIA || [];
+    const temProcessando = analisesAtuais.some((a) => a.status === "PROCESSANDO");
+    if (!temProcessando || !id) return;
+
+    const interval = setInterval(() => {
+      fetch(`/api/oportunidades/${id}/analise-ia`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data?.analises)) {
+            setOportunidade((prev) => (prev ? { ...prev, analisesIA: data.analises } : null));
+            if (data.cota) setCotaIA(data.cota);
+          }
+        })
+        .catch(() => undefined);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [oportunidade?.analisesIA, id]);
+
   const showNotification = (tipo: "success" | "error" | "warning", msg: string) => {
     setFeedback({ tipo, msg });
     setTimeout(() => setFeedback(null), 4000);
