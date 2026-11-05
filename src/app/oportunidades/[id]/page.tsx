@@ -1922,6 +1922,38 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                 ⚠ {r.habilitacao.certidoesVencidasOuPendentes.length} pendência(s) encontrada(s)
                               </div>
                             )}
+
+                            {r.habilitacao?.exigenciasEspeciais && (Array.isArray(r.habilitacao.exigenciasEspeciais) ? r.habilitacao.exigenciasEspeciais.length > 0 : Boolean(r.habilitacao.exigenciasEspeciais)) && (
+                              <div style={{ marginTop: "0.5rem", borderTop: "1px dashed var(--cds-border-subtle)", paddingTop: "0.35rem" }}>
+                                <strong style={{ fontSize: "0.75rem", color: "var(--cds-text-primary)", display: "block" }}>
+                                  ⚡ Exigências Especiais:
+                                </strong>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)", lineHeight: 1.35 }}>
+                                  {(Array.isArray(r.habilitacao.exigenciasEspeciais)
+                                    ? r.habilitacao.exigenciasEspeciais
+                                    : String(r.habilitacao.exigenciasEspeciais).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+                                  ).map((e: string, i: number) => (
+                                    <li key={i}>{e}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {r.habilitacao?.atestadosExigidos && (Array.isArray(r.habilitacao.atestadosExigidos) ? r.habilitacao.atestadosExigidos.length > 0 : Boolean(r.habilitacao.atestadosExigidos)) && (
+                              <div style={{ marginTop: "0.35rem" }}>
+                                <strong style={{ fontSize: "0.75rem", color: "var(--cds-text-primary)", display: "block" }}>
+                                  📜 Atestados Técnicos:
+                                </strong>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)", lineHeight: 1.35 }}>
+                                  {(Array.isArray(r.habilitacao.atestadosExigidos)
+                                    ? r.habilitacao.atestadosExigidos
+                                    : String(r.habilitacao.atestadosExigidos).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+                                  ).map((a: string, i: number) => (
+                                    <li key={i}>{a}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
                           </div>
 
                           {/* 2. Cronograma & Prazos Pós-Assinatura */}

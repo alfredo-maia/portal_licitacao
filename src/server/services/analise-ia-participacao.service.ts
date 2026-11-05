@@ -444,16 +444,30 @@ export function gerarPdfRelatorioParticipacao(params: {
     }
   }
 
-  if (r.habilitacao?.atestadosExigidos?.length) {
+  const rawAtestados = r.habilitacao?.atestadosExigidos;
+  const listaAtestados: string[] = Array.isArray(rawAtestados)
+    ? rawAtestados.map(String).map((s) => s.trim()).filter(Boolean)
+    : typeof rawAtestados === "string"
+      ? (rawAtestados as string).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  if (listaAtestados.length > 0) {
     blocos.push({ bold: true, size: 9, text: "Atestados Tecnicos Exigidos pelo Certame:" });
-    for (const a of r.habilitacao.atestadosExigidos) {
+    for (const a of listaAtestados) {
       for (const l of quebrarLinhasPdf(`• ${a}`, 86)) blocos.push({ text: l });
     }
   }
 
-  if (r.habilitacao?.exigenciasEspeciais?.length) {
+  const rawExigencias = r.habilitacao?.exigenciasEspeciais;
+  const listaExigencias: string[] = Array.isArray(rawExigencias)
+    ? rawExigencias.map(String).map((s) => s.trim()).filter(Boolean)
+    : typeof rawExigencias === "string"
+      ? (rawExigencias as string).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  if (listaExigencias.length > 0) {
     blocos.push({ bold: true, size: 9, text: "Exigencias Especiais (Vistoria, Registro em Conselho):" });
-    for (const e of r.habilitacao.exigenciasEspeciais) {
+    for (const e of listaExigencias) {
       for (const l of quebrarLinhasPdf(`• ${e}`, 86)) blocos.push({ text: l });
     }
   }
@@ -683,25 +697,29 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   }
 
   const systemPrompt =
-    "Você é um Especialista Sênior em Licitações Públicas e Análise de Editais/ATAs (Lei 14.133/2021). " +
-    "Sua função é gerar um Raio-X Executivo direto e mastigado para que o licitante não precise ler 100+ páginas de edital. " +
-    "NÃO gere sugestões de preço de lance sem cotação de insumos. " +
-    "CRITÉRIO OBRIGATÓRIO DE STATUS E SCORE: " +
-    "Analise criticamente se a empresa tem capacidade e compatibilidade com o objeto do edital. " +
-    "- Se a empresa for INAPTA (ex: objeto exige atividade financeira/bancária/Bacen, conselho de classe como CREA/CRF não condizente, ou há impedimento flagrante), o 'status' DEVE ser 'INAPTO' e o 'scoreConformidade' DEVE ser rigorosamente BAIXO (entre 10 e 35). " +
-    "- Se for viável com ressalvas, 'status' deve ser 'APTO_COM_RESSALVAS' com score entre 45 e 74. " +
-    "- Se for plenamente apta, 'status' deve ser 'APTO' com score entre 75 e 100. " +
+    "Você é um Especialista Sênior em Licitações Públicas e Engenharia/Contratações Governamentais (Lei 14.133/2021).\n" +
+    "Sua função é gerar um Raio-X Executivo aprofundado, técnico e direto para que a diretoria da empresa licitante tome a decisão de GO / NO-GO com segurança.\n\n" +
+    "DIRETRIZES DE STATUS E SCORE DE CONFORMIDADE:\n" +
+    "- Analise com precisão técnica a compatibilidade entre a empresa (CNAE, segmentos, certidões) e o edital licitado.\n" +
+    "- 'APTO' (Score entre 85 e 98): A empresa atua no segmento do objeto (ex: Engenharia para Obras/Infraestrutura, TI para Software, etc.), possui regularidade e tem capacidade de atender o certame.\n" +
+    "- 'APTO_COM_RESSALVAS' (Score entre 75 e 84): O escopo é plenamente compatível, mas existem exigências operacionais ou documentais pontuais que demandam atenção (ex: emitir certidão de falência/concordata, atestado de acervo técnico específico no conselho profissional CREA/CAU/CRF, realizar vistoria ou declaração substitutiva de conhecimento do local). A nota deve valorizar a aptidão real do licitante.\n" +
+    "- 'APTO_COM_RESSALVAS_MODERADA' (Score entre 50 e 74): Apenas se houver pendências documentais substanciais ou indefinições relevantes de escopo.\n" +
+    "- 'INAPTO' (Score entre 10 e 35): Exclusivamente se a empresa for de segmento totalmente alheio/incompatível ao objeto (ex: empresa de informática tentando executar obra civil pesada ou banco) ou houver impedimento legal flagrante.\n\n" +
+    "REGRAS DE FORMATAÇÃO E QUALIDADE (RIGOROSO):\n" +
+    "1. PROIBIDO MENCIONAR NÚMEROS DE SCORE OU A PALAVRA 'SCORE' nos textos de resumo, habilitação ou SWOT (ex: NUNCA escreva 'o score de 63 indica...', 'score de conformidade atual', etc.). A redação deve ser corporativa, técnica e executiva.\n" +
+    "2. 'exigenciasEspeciais' e 'atestadosExigidos' DEVEM ser arrays JSON de strings, contendo cada exigência como um item pontual e claro (NUNCA envie uma string única contínua).\n" +
+    "3. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU), jamais tautologias sobre o próprio relatório.\n\n" +
     "Retorne estritamente um JSON com a seguinte estrutura:\n" +
     "{\n" +
-    '  "resumoExecutivo": "string com resumo em até 3 parágrafos claros",\n' +
+    '  "resumoExecutivo": "string com análise executiva em até 3 parágrafos claros",\n' +
     '  "habilitacao": {\n' +
     '    "status": "APTO" | "APTO_COM_RESSALVAS" | "INAPTO",\n' +
-    '    "scoreConformidade": 85,\n' +
-    '    "resumo": "string explicativa da habilitação",\n' +
+    '    "scoreConformidade": 86,\n' +
+    '    "resumo": "análise técnica detalhada da habilitação jurídica, fiscal e técnica",\n' +
     '    "certidoesRegulares": ["string"],\n' +
     '    "certidoesVencidasOuPendentes": ["string"],\n' +
-    '    "atestadosExigidos": ["string"],\n' +
-    '    "exigenciasEspeciais": ["vistoria presencial, registro no CREA/CRF, etc."]\n' +
+    '    "atestadosExigidos": ["Ex: Atestado de capacidade técnica com CAT/ART compatível com o objeto"],\n' +
+    '    "exigenciasEspeciais": ["Ex: Registro no conselho profissional competente (CREA/CAU/CRF)", "Ex: Visita técnica ou declaração de conhecimento do local"]\n' +
     "  },\n" +
     '  "cronograma": {\n' +
     '    "dataPrevisaoInicio": "data ou prazo previsto para início dos serviços/fornecimento",\n' +
@@ -737,10 +755,10 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
     '    "nivelRiscoGeral": "BAIXO" | "MEDIO" | "ALTO"\n' +
     "  },\n" +
     '  "swot": {\n' +
-    '    "forcas": ["string"],\n' +
-    '    "fraquezas": ["string"],\n' +
-    '    "oportunidades": ["string"],\n' +
-    '    "ameacas": ["string"]\n' +
+    '    "forcas": ["string detalhando pontos fortes da empresa e do certame"],\n' +
+    '    "fraquezas": ["string com pontos de atenção operacional/técnica da oportunidade"],\n' +
+    '    "oportunidades": ["string com ganhos estratégicos e de acervo"],\n' +
+    '    "ameacas": ["string com riscos de fiscalização, multas ou flutuação de insumos"]\n' +
     "  }\n" +
     "}";
 
@@ -1058,12 +1076,22 @@ export async function construirRelatorioParticipacaoHibrido(
 
   // 5. Cálculo de Score e Parecer
   let score = 92;
-  if (!escopoCompativel) score -= 28;
-  if (!atuaNaUf) score -= 12;
-  score -= qtdDocsVencidos * 18;
-  score -= qtdDocsVencendo * 5;
-  score -= qtdCategoriasAusentes * 6;
-  score -= penalidadePortal;
+  if (!escopoCompativel) score -= 30;
+  if (!atuaNaUf && oportunidade.isPresencial) {
+    score -= 15;
+  } else if (!atuaNaUf) {
+    score -= 4; // Certame eletrônico permite disputa remota; leve impacto logístico
+  }
+  score -= qtdDocsVencidos * 15;
+  score -= qtdDocsVencendo * 3;
+  score -= qtdCategoriasAusentes * 3;
+  if (
+    penalidadePortal > 0 &&
+    !nomePortalEdital.toLowerCase().includes("pncp") &&
+    !nomePortalEdital.toLowerCase().includes("compras.gov")
+  ) {
+    score -= penalidadePortal;
+  }
   score = Math.max(15, Math.min(100, score));
 
   const parecer: RelatorioParticipacao["parecer"] =
@@ -1219,8 +1247,26 @@ export async function construirRelatorioParticipacaoHibrido(
   if (statusFinal === "INAPTO" && scoreFinal > 35) {
     scoreFinal = 20;
   }
-  if (statusFinal === "APTO" && scoreFinal < 70) {
-    scoreFinal = 85;
+  if (statusFinal === "APTO" && scoreFinal < 75) {
+    scoreFinal = 88;
+  }
+  if (
+    statusFinal === "APTO_COM_RESSALVAS" &&
+    escopoCompativel &&
+    qtdDocsVencidos === 0 &&
+    scoreFinal < 75
+  ) {
+    scoreFinal = 78;
+  }
+
+  function sanitizarTextoRelatorio(t?: string | null): string {
+    if (!t) return "";
+    return t
+      .replace(/\b(?:o\s+)?score\s+(?:de\s+)?\d+(?:\/\d+)?\s*(?:indica|exige|aponta|revela|mostra)?/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+,/g, ",")
+      .replace(/\(\s*\)/g, "")
+      .trim();
   }
 
   let resumoExecutivo =
@@ -1248,7 +1294,7 @@ export async function construirRelatorioParticipacaoHibrido(
     }
   }
 
-  const atestadosExigidos = atestadosEdital.length > 0
+  const atestadosEditalFallback = atestadosEdital.length > 0
     ? atestadosEdital
     : [`Atestado de Capacidade Técnica de fornecimento similar ao objeto (Art. 67 da Lei 14.133/2021)`];
 
@@ -1263,6 +1309,20 @@ export async function construirRelatorioParticipacaoHibrido(
     exigenciasEspeciais.push("Alvará Sanitário e Autorização de Funcionamento de Empresa (AFE/ANVISA)");
   }
 
+  const rawExig = enriquecidoLLM?.habilitacao?.exigenciasEspeciais ?? exigenciasEspeciais;
+  const normalizadasExigencias: string[] = Array.isArray(rawExig)
+    ? rawExig.map(String).map((s) => s.trim()).filter(Boolean)
+    : typeof rawExig === "string"
+      ? (rawExig as string).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
+  const rawAtest = enriquecidoLLM?.habilitacao?.atestadosExigidos ?? atestadosEditalFallback;
+  const normalizadosAtestados: string[] = Array.isArray(rawAtest)
+    ? rawAtest.map(String).map((s) => s.trim()).filter(Boolean)
+    : typeof rawAtest === "string"
+      ? (rawAtest as string).split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
   const destaqueMarcasFinal = Array.from(
     new Set([
       ...marcasDetectadas,
@@ -1274,31 +1334,28 @@ export async function construirRelatorioParticipacaoHibrido(
     parecer: statusFinal,
     scoreAderencia: scoreFinal,
     segmentoIdentificado: nomeSegmentoEdital,
-    resumoExecutivo,
+    resumoExecutivo: sanitizarTextoRelatorio(resumoExecutivo),
 
     // 1. Habilitação Documental Real
     habilitacao: {
       status: statusFinal,
       scoreConformidade: scoreFinal,
-      resumo:
+      resumo: sanitizarTextoRelatorio(
         enriquecidoLLM?.habilitacao?.resumo ||
         (statusFinal === "APTO"
           ? `A empresa possui documentação regularizada (${certidoesRegulares.length} documento(s) ativo(s)) e atende às exigências preliminares do edital.`
           : statusFinal === "APTO_COM_RESSALVAS"
             ? `Identificadas pendências documentais ou categorias ausentes em /documentacao que exigem saneamento antes da sessão.`
             : `Impedimento documental crítico detectado: certidões vencidas impedem a habilitação jurídica/fiscal.`),
-      certidoesRegulares: enriquecidoLLM?.habilitacao?.certidoesRegulares?.length
-        ? enriquecidoLLM.habilitacao.certidoesRegulares
+      ),
+      certidoesRegulares: Array.isArray(enriquecidoLLM?.habilitacao?.certidoesRegulares) && enriquecidoLLM.habilitacao.certidoesRegulares.length > 0
+        ? enriquecidoLLM.habilitacao.certidoesRegulares.map(String).map((s) => s.trim()).filter(Boolean)
         : certidoesRegulares,
-      certidoesVencidasOuPendentes: enriquecidoLLM?.habilitacao?.certidoesVencidasOuPendentes?.length
-        ? enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes
+      certidoesVencidasOuPendentes: Array.isArray(enriquecidoLLM?.habilitacao?.certidoesVencidasOuPendentes) && enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes.length > 0
+        ? enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes.map(String).map((s) => s.trim()).filter(Boolean)
         : certidoesVencidasOuPendentes,
-      atestadosExigidos: enriquecidoLLM?.habilitacao?.atestadosExigidos?.length
-        ? enriquecidoLLM.habilitacao.atestadosExigidos
-        : atestadosExigidos,
-      exigenciasEspeciais: enriquecidoLLM?.habilitacao?.exigenciasEspeciais?.length
-        ? enriquecidoLLM.habilitacao.exigenciasEspeciais
-        : exigenciasEspeciais,
+      atestadosExigidos: normalizadosAtestados,
+      exigenciasEspeciais: normalizadasExigencias,
     },
 
     // 2. Cronograma & Localização Física
@@ -1364,7 +1421,7 @@ export async function construirRelatorioParticipacaoHibrido(
 
     // 5. Matriz SWOT
     swot: {
-      forcas:
+      forcas: (
         enriquecidoLLM?.swot?.forcas?.length
           ? enriquecidoLLM.swot.forcas
           : [
@@ -1380,8 +1437,9 @@ export async function construirRelatorioParticipacaoHibrido(
                 : [
                     "Disputa em modalidade eletrônica sem custos de deslocamento inicial",
                   ]),
-            ],
-      fraquezas:
+            ]
+      ).map(sanitizarTextoRelatorio).filter(Boolean),
+      fraquezas: (
         enriquecidoLLM?.swot?.fraquezas?.length
           ? enriquecidoLLM.swot.fraquezas
           : [
@@ -1392,22 +1450,25 @@ export async function construirRelatorioParticipacaoHibrido(
                 ? [`Portal de disputa (${statusPortalDisputa.portalNome}) pendente de credenciamento ou renovação.`]
                 : []),
               "Necessidade de cotação prévia com distribuidores para assegurar disponibilidade em estoque",
-            ],
-      oportunidades:
+            ]
+      ).map(sanitizarTextoRelatorio).filter(Boolean),
+      oportunidades: (
         enriquecidoLLM?.swot?.oportunidades?.length
           ? enriquecidoLLM.swot.oportunidades
           : [
               `Valor de referência total estimado em ${fmtBRL(valorEstimado)}`,
               "Potencial de fornecimento contínuo via Ata de Registro de Preços pelo período de 12 meses",
               "Possibilidade de adesão à Ata ('carona') por outros órgãos públicos participantes",
-            ],
-      ameacas:
+            ]
+      ).map(sanitizarTextoRelatorio).filter(Boolean),
+      ameacas: (
         enriquecidoLLM?.swot?.ameacas?.length
           ? enriquecidoLLM.swot.ameacas
           : [
               "Disputa predatória na fase de lances no portal com risco de preços inexequíveis por concorrentes",
               "Possível morosidade burocrática na emissão das ordens de fornecimento ou empenhos pelo órgão",
-            ],
+            ]
+      ).map(sanitizarTextoRelatorio).filter(Boolean),
     },
 
     // Compatibilidade Legada

@@ -80,8 +80,24 @@ export const relatorioParticipacaoSchema = z.object({
       resumo: z.string(),
       certidoesRegulares: z.array(z.string()).default([]),
       certidoesVencidasOuPendentes: z.array(z.string()).default([]),
-      atestadosExigidos: z.array(z.string()).default([]),
-      exigenciasEspeciais: z.array(z.string()).default([]),
+      atestadosExigidos: z.preprocess((val) => {
+        if (Array.isArray(val)) return val.map(String).map((s) => s.trim()).filter(Boolean);
+        if (typeof val === "string") {
+          const t = val.trim();
+          if (!t) return [];
+          return t.split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean);
+        }
+        return [];
+      }, z.array(z.string()).default([])),
+      exigenciasEspeciais: z.preprocess((val) => {
+        if (Array.isArray(val)) return val.map(String).map((s) => s.trim()).filter(Boolean);
+        if (typeof val === "string") {
+          const t = val.trim();
+          if (!t) return [];
+          return t.split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean);
+        }
+        return [];
+      }, z.array(z.string()).default([])),
     })
     .default({
       status: "APTO",
