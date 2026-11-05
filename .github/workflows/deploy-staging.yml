@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Deploy to VPS Staging using SSH
         uses: appleboy/ssh-action@master
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: "gemini-3.5-flash"
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -27,6 +30,7 @@ jobs:
           port: 2000
           timeout: 60s
           command_timeout: 30m
+          envs: GEMINI_API_KEY,GEMINI_MODEL
           script: |
             set -e
             echo "Iniciando Deploy do ambiente de Staging (portal_licitacao_staging)..."
@@ -41,6 +45,24 @@ jobs:
             git fetch origin feat/saas-multi-tenant
             git checkout feat/saas-multi-tenant
             git reset --hard origin/feat/saas-multi-tenant
+
+            # Garante que as variáveis de IA estejam configuradas no ambiente de staging da VPS
+            touch .env
+            if [ -n "$GEMINI_API_KEY" ]; then
+              if grep -q "^GEMINI_API_KEY=" .env; then
+                sed -i "s|^GEMINI_API_KEY=.*|GEMINI_API_KEY=$GEMINI_API_KEY|" .env
+              else
+                echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> .env
+              fi
+            fi
+
+            if [ -n "$GEMINI_MODEL" ]; then
+              if grep -q "^GEMINI_MODEL=" .env; then
+                sed -i "s|^GEMINI_MODEL=.*|GEMINI_MODEL=$GEMINI_MODEL|" .env
+              else
+                echo "GEMINI_MODEL=$GEMINI_MODEL" >> .env
+              fi
+            fi
 
             # Sobe o stack de staging com container e porta isolados (3011)
             if [ -f docker-compose.staging.yml ]; then
