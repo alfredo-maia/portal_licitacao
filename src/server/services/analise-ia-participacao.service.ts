@@ -615,7 +615,7 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
         }
       }
     } else if (geminiKey) {
-      const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+      const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
         {
