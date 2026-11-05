@@ -620,22 +620,49 @@ function OportunidadesDetalheContent({
   };
 
   // Baixar Selecionados
-  const handleBaixarSelecionados = () => {
+  const handleBaixarSelecionados = async () => {
     const alvos = (oportunidade?.arquivos || []).filter((a) => arquivosSelecionados.includes(a.id));
-    alvos.forEach((arq) => {
+    for (let i = 0; i < alvos.length; i++) {
+      const arq = alvos[i];
+      const url = obterUrlDownload(arq);
       if (typeof window !== "undefined") {
-        window.open(obterUrlDownload(arq), "_blank");
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.download = arq.nome || `arquivo_${i + 1}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
-    });
+      if (i < alvos.length - 1) {
+        // Pausa de 500ms evita que o bloqueador de pop-ups/downloads múltiplos do navegador interrompa os arquivos
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
   };
 
   // Baixar Todos os Arquivos
-  const handleBaixarTodos = () => {
-    (oportunidade?.arquivos || []).forEach((arq) => {
+  const handleBaixarTodos = async () => {
+    const alvos = oportunidade?.arquivos || [];
+    for (let i = 0; i < alvos.length; i++) {
+      const arq = alvos[i];
+      const url = obterUrlDownload(arq);
       if (typeof window !== "undefined") {
-        window.open(obterUrlDownload(arq), "_blank");
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.download = arq.nome || `arquivo_${i + 1}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
-    });
+      if (i < alvos.length - 1) {
+        // Pausa de 500ms evita que o bloqueador de pop-ups/downloads múltiplos do navegador interrompa os arquivos
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
   };
 
   // Adicionar Repositório
