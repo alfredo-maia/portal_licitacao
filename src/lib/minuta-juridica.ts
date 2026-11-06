@@ -1,3 +1,4 @@
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { ImpugnacaoItem } from "@/server/schemas/impugnacao.schema";
 
 export interface DadosEmpresaMinuta {
@@ -17,31 +18,95 @@ export interface DadosEmpresaMinuta {
   papelTimbradoUrl?: string | null;
 }
 
-function escaparLiteralPdf(str: string): string {
-  return str
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
+export type DadosImpugnacaoMinuta = {
+  numeroEdital: string;
+  orgaoNome?: string | null;
+  motivoLegal: string;
+  fundamentacao: string;
+  pedidos: string;
+  objeto?: string | null;
+  dataAberturaSessao: Date | string;
+};
+
+function extrairBytesBase64(input?: string | null): Uint8Array | null {
+  if (!input || typeof input !== "string") return null;
+  const match = input.match(/^data:[^;]+;base64,(.+)$/);
+  const base64Str = match ? match[1] : input.replace(/\s+/g, "");
+  try {
+    const buf = Buffer.from(base64Str, "base64");
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } catch {
+    return null;
+  }
+}
+
+function isPdfBytes(buf: Uint8Array | null): boolean {
+  return Boolean(
+    buf &&
+    buf.length > 4 &&
+    buf[0] === 0x25 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x44 &&
+    buf[3] === 0x46,
+  );
+}
+
+function isPngBytes(buf: Uint8Array | null): boolean {
+  return Boolean(
+    buf &&
+    buf.length > 4 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47,
+  );
+}
+
+function isJpgBytes(buf: Uint8Array | null): boolean {
+  return Boolean(
+    buf &&
+    buf.length > 3 &&
+    buf[0] === 0xff &&
+    buf[1] === 0xd8 &&
+    buf[2] === 0xff,
+  );
+}
+
+function sanitizarTextoParaPdf(texto: string, font: any): string {
+  if (!texto) return "";
+  const cleaned = texto
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[\u2022\u00B7]/g, "*")
     .replace(/\r/g, "");
+
+  let res = "";
+  for (const ch of cleaned) {
+    try {
+      font.encodeText(ch);
+      res += ch;
+    } catch {
+      const norm = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      try {
+        font.encodeText(norm);
+        res += norm;
+      } catch {
+        res += " ";
+      }
+    }
+  }
+  return res;
 }
 
-function normalizarParaPdf(texto: string): string {
-  return texto
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/—/g, "-")
-    .replace(/–/g, "-")
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
-    .replace(/[•·]/g, "*")
-    .replace(/§/g, "Art.")
-    .replace(/[^\x20-\x7E\n]/g, " ");
-}
-
-function quebrarLinhasPdf(texto: string, maxChars = 84): string[] {
-  const limpo = normalizarParaPdf(texto || "").trim();
-  if (!limpo) return [];
-  const paragrafos = limpo.split("\n");
+function quebrarTextoEmLinhas(
+  texto: string,
+  maxLargura: number,
+  font: any,
+  fontSize: number,
+): string[] {
+  if (!texto) return [];
+  const paragrafos = texto.split("\n");
   const linhas: string[] = [];
 
   for (const par of paragrafos) {
@@ -51,24 +116,24 @@ function quebrarLinhasPdf(texto: string, maxChars = 84): string[] {
       continue;
     }
     const palavras = trimmed.split(/\s+/);
-    let atual = "";
+    let linhaAtual = "";
     for (const p of palavras) {
-      if (!atual) {
-        atual = p;
-      } else if (atual.length + 1 + p.length <= maxChars) {
-        atual += " " + p;
+      const candidato = linhaAtual ? `${linhaAtual} ${p}` : p;
+      const largura = font.widthOfTextAtSize(candidato, fontSize);
+      if (largura <= maxLargura) {
+        linhaAtual = candidato;
       } else {
-        linhas.push(atual);
-        atual = p;
+        if (linhaAtual) linhas.push(linhaAtual);
+        linhaAtual = p;
       }
     }
-    if (atual) linhas.push(atual);
+    if (linhaAtual) linhas.push(linhaAtual);
   }
   return linhas;
 }
 
 export function gerarMinutaJuridica(
-  impugnacao: ImpugnacaoItem,
+  impugnacao: DadosImpugnacaoMinuta | ImpugnacaoItem,
   empresaInput?: DadosEmpresaMinuta | null,
 ): { minutaHtml: string; minutaTexto: string } {
   const empresa = {
@@ -136,23 +201,39 @@ CNPJ: ${empresa.cnpj}
 ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.representanteCargo}` : ""}
 `.trim();
 
-  const logoHtml = empresa.logoUrl
+  const avisoTimbradoHtml = empresa.papelTimbradoUrl
+    ? `<div style="background: #edf5ff; border-left: 4px solid #0f62fe; padding: 12px 16px; margin-bottom: 24px; border-radius: 2px;">
+        <div style="font-weight: 600; font-size: 10pt; color: #0043ce; display: flex; align-items: center; gap: 6px;">
+          <span>📄 Folha de Papel Timbrado Oficial Anexada</span>
+        </div>
+        <p style="margin: 4px 0 0 0; font-size: 9pt; color: #393939;">
+          Esta empresa possui papel timbrado institucional (PDF) configurado. Ao clicar em <strong>"Baixar PDF Timbrado"</strong> ou <strong>"Imprimir Minuta Oficial"</strong>, o documento será diagramado diretamente sobre a folha timbrada oficial da empresa.
+        </p>
+      </div>`
+    : "";
+
+  const logoHtml = !empresa.papelTimbradoUrl && empresa.logoUrl
     ? `<div style="text-align: center; margin-bottom: 20px;">
         <img src="${empresa.logoUrl}" alt="${empresa.razaoSocial}" style="max-height: 70px; max-width: 240px; object-fit: contain;" />
       </div>`
     : "";
 
+  const headerHtml = !empresa.papelTimbradoUrl
+    ? `<header style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
+        <h2 style="font-size: 13pt; margin: 0; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">
+          ${empresa.razaoSocial}
+        </h2>
+        <p style="font-size: 9.5pt; margin: 4px 0 0 0; color: #525252;">
+          CNPJ: ${empresa.cnpj} • ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade} / ${empresa.uf}
+        </p>
+      </header>`
+    : "";
+
   const minutaHtml = `
 <div class="minuta-impugnacao" style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.6; color: #161616; padding: 2cm; background: #ffffff;">
+  ${avisoTimbradoHtml}
   ${logoHtml}
-  <header style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
-    <h2 style="font-size: 13pt; margin: 0; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">
-      ${empresa.razaoSocial}
-    </h2>
-    <p style="font-size: 9.5pt; margin: 4px 0 0 0; color: #525252;">
-      CNPJ: ${empresa.cnpj} • ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade} / ${empresa.uf}
-    </p>
-  </header>
+  ${headerHtml}
 
   <p style="text-align: center; font-weight: bold; margin-bottom: 24px;">
     ILMO(A). SR(A). PREGOEIRO(A) / AGENTE DE CONTRATAÇÃO<br>
@@ -208,20 +289,23 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
   return { minutaHtml, minutaTexto };
 }
 
-export function gerarPdfMinutaImpugnacao(params: {
-  impugnacao: ImpugnacaoItem;
+export async function gerarPdfMinutaImpugnacao(params: {
+  impugnacao: DadosImpugnacaoMinuta | ImpugnacaoItem;
   empresa?: DadosEmpresaMinuta | null;
   geradoEm?: Date;
-}): { pdfBuffer: Buffer; pdfNome: string } {
+}): Promise<{ pdfBuffer: Buffer; pdfNome: string }> {
   const { impugnacao, empresa: empresaInput, geradoEm } = params;
   const empresa = {
     razaoSocial: empresaInput?.razaoSocial?.trim() || "EMPRESA LICITANTE LTDA",
     cnpj: empresaInput?.cnpj?.trim() || "00.000.000/0001-00",
-    cidade: empresaInput?.cidade?.trim() || "Goiania",
+    cidade: empresaInput?.cidade?.trim() || "Goiânia",
     uf: empresaInput?.uf?.trim() || "GO",
     endereco: empresaInput?.endereco?.trim() || "",
     representanteNome: empresaInput?.representanteNome?.trim() || "Representante Legal",
-    representanteCargo: empresaInput?.representanteCargo?.trim() || "Socio-Administrador",
+    representanteCargo: empresaInput?.representanteCargo?.trim() || "Sócio-Administrador",
+    representanteCpf: empresaInput?.representanteCpf?.trim() || "",
+    logoUrl: empresaInput?.logoUrl?.trim() || null,
+    papelTimbradoUrl: empresaInput?.papelTimbradoUrl?.trim() || null,
   };
 
   const dataAberturaStr =
@@ -235,133 +319,405 @@ export function gerarPdfMinutaImpugnacao(params: {
     year: "numeric",
   });
 
-  type LinhaEstruturada = { bold?: boolean; size?: number; text: string };
-  const blocos: LinhaEstruturada[] = [
-    { bold: true, size: 12, text: normalizarParaPdf(empresa.razaoSocial.toUpperCase()) },
+  const timbradoBytes = extrairBytesBase64(empresa.papelTimbradoUrl);
+  let timbradoDoc: PDFDocument | null = null;
+  let hasTimbradoPdf = false;
+  if (timbradoBytes && isPdfBytes(timbradoBytes)) {
+    try {
+      timbradoDoc = await PDFDocument.load(timbradoBytes);
+      if (timbradoDoc.getPageCount() > 0) {
+        hasTimbradoPdf = true;
+      }
+    } catch (e) {
+      console.warn("Não foi possível carregar PDF de papel timbrado:", e);
+    }
+  }
+
+  const doc = await PDFDocument.create();
+  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  // Se não houver papel timbrado em PDF mas houver logo, incorpora a imagem no cabeçalho
+  let embeddedLogo: any = null;
+  let logoDims = { width: 0, height: 0 };
+  if (!hasTimbradoPdf && empresa.logoUrl) {
+    const logoBytes = extrairBytesBase64(empresa.logoUrl);
+    if (logoBytes) {
+      try {
+        if (isPngBytes(logoBytes)) {
+          embeddedLogo = await doc.embedPng(logoBytes);
+        } else if (isJpgBytes(logoBytes)) {
+          embeddedLogo = await doc.embedJpg(logoBytes);
+        } else {
+          try {
+            embeddedLogo = await doc.embedPng(logoBytes);
+          } catch {
+            embeddedLogo = await doc.embedJpg(logoBytes);
+          }
+        }
+      } catch (errLogo) {
+        console.warn("Erro ao incorporar logotipo no PDF:", errLogo);
+      }
+    }
+    if (embeddedLogo) {
+      const orig = embeddedLogo.scale(1);
+      const maxW = 160;
+      const maxH = 48;
+      const ratio = Math.min(maxW / orig.width, maxH / orig.height, 1);
+      logoDims = { width: orig.width * ratio, height: orig.height * ratio };
+    }
+  }
+
+  const marginX = 54;
+  const contentWidth = 595.28 - marginX * 2;
+  const bottomY = 70;
+
+  type Bloco = {
+    texto: string;
+    bold?: boolean;
+    size?: number;
+    align?: "left" | "center" | "right";
+    indent?: number;
+    spacingBefore?: number;
+    spacingAfter?: number;
+  };
+
+  const blocos: Bloco[] = [
     {
+      texto: "ILUSTRÍSSIMO(A) SENHOR(A) PREGOEIRO(A) / AGENTE DE CONTRATAÇÃO",
+      bold: true,
+      size: 9.5,
+      align: "center",
+    },
+    {
+      texto: (impugnacao.orgaoNome || "ÓRGÃO LICITANTE").toUpperCase(),
+      bold: true,
+      size: 9.5,
+      align: "center",
+    },
+    {
+      texto: `PROCESSO / EDITAL: ${impugnacao.numeroEdital} | SESSÃO PÚBLICA: ${dataAberturaStr}`,
       bold: false,
       size: 8.5,
-      text: normalizarParaPdf(`CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`),
+      align: "center",
+      spacingAfter: 16,
     },
-    { text: "----------------------------------------------------------------------------------------" },
     {
+      texto: "IMPUGNAÇÃO AO EDITAL DE LICITAÇÃO",
+      bold: true,
+      size: 12,
+      align: "center",
+    },
+    {
+      texto: "(Art. 164 da Lei Federal nº 14.133/2021)",
+      bold: false,
+      size: 9,
+      align: "center",
+      spacingAfter: 16,
+    },
+    {
+      texto: `${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}, com sede em ${empresa.cidade} - ${empresa.uf}${empresa.endereco ? ` (${empresa.endereco})` : ""}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente IMPUGNAÇÃO AO EDITAL, pelas razões fáticas e jurídicas que passa a expor:`,
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 12,
+    },
+    {
+      texto: "1. DA TEMPESTIVIDADE",
       bold: true,
       size: 10,
-      text: `AO(A) ILUSTRISSIMO(A) PREGOEIRO(A) / AGENTE DE CONTRATACAO - ${normalizarParaPdf((impugnacao.orgaoNome || "ORGAO").toUpperCase())}`,
+      spacingBefore: 6,
     },
-    { text: `Processo / Edital: ${normalizarParaPdf(impugnacao.numeroEdital)} | Data Abertura: ${dataAberturaStr}` },
-    { text: "" },
     {
+      texto: "A presente impugnação é manifestamente tempestiva, visto que protocolada dentro do prazo legal de até 3 (três) dias úteis que antecedem a data de abertura da sessão pública, em estrita obediência ao Art. 164 da Lei Federal nº 14.133/2021.",
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 10,
+    },
+    {
+      texto: "2. DA SÍNTESE DO OBJETO",
       bold: true,
-      size: 11,
-      text: "IMPUGNACAO AO EDITAL DE LICITACAO - ART. 164 DA LEI FEDERAL No 14.133/2021",
+      size: 10,
+      spacingBefore: 6,
     },
-    { text: "" },
-    { bold: true, size: 9.5, text: "1. DA TEMPESTIVIDADE" },
     {
-      text: "A presente impugnacao e tempestiva, visto que protocolada dentro do prazo legal de ate 3 (tres) dias uteis antes da abertura da sessao publica, em estrita observancia ao Art. 164 da Lei 14.133/2021.",
+      texto: impugnacao.objeto || "Fornecimento de bens ou prestação de serviços conforme especificações e anexos do Termo de Referência.",
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 10,
     },
-    { text: "" },
-    { bold: true, size: 9.5, text: "2. DA SINTESE DO OBJETO" },
-    ...quebrarLinhasPdf(
-      impugnacao.objeto || "Fornecimento de bens ou prestacao de servicos conforme termo de referencia.",
-      84,
-    ).map((t) => ({ text: t })),
-    { text: "" },
-    { bold: true, size: 9.5, text: "3. DAS IRREGULARIDADES APONTADAS E MOTIVO LEGAL" },
-    ...quebrarLinhasPdf(impugnacao.motivoLegal, 84).map((t) => ({ text: t })),
-    { text: "" },
-    { bold: true, size: 9.5, text: "4. DA FUNDAMENTACAO JURIDICA E JURISPRUDENCIA DO TCU" },
-    ...quebrarLinhasPdf(impugnacao.fundamentacao, 84).map((t) => ({ text: t })),
-    { text: "" },
-    { bold: true, size: 9.5, text: "5. DOS PEDIDOS FORMAIS" },
-    ...quebrarLinhasPdf(impugnacao.pedidos, 84).map((t) => ({ text: t })),
     {
-      text: "Requer-se, outrossim, a suspensao cautelar do certame e a republicacao do edital com reabertura de prazos nos termos do Art. 55, paragrafo 1o da Lei 14.133/2021.",
+      texto: "3. DAS IRREGULARIDADES APONTADAS E DO MOTIVO LEGAL",
+      bold: true,
+      size: 10,
+      spacingBefore: 6,
     },
-    { text: "" },
     {
-      text: normalizarParaPdf(`Nestes termos, pede e espera deferimento. ${empresa.cidade}/${empresa.uf}, ${dataGeracao}.`),
+      texto: impugnacao.motivoLegal,
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 10,
     },
-    { text: "" },
-    { text: "_________________________________________________________" },
-    { bold: true, size: 9.5, text: normalizarParaPdf(empresa.razaoSocial) },
-    { text: `CNPJ: ${empresa.cnpj}` },
-    { text: normalizarParaPdf(`${empresa.representanteNome} (${empresa.representanteCargo})`) },
+    {
+      texto: "4. DA FUNDAMENTAÇÃO JURÍDICA E SÚMULAS DO TCU",
+      bold: true,
+      size: 10,
+      spacingBefore: 6,
+    },
+    {
+      texto: impugnacao.fundamentacao,
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 6,
+    },
+    {
+      texto: "Conforme remansosa jurisprudência do Tribunal de Contas da União e os princípios insculpidos no Art. 5º e 11 da Lei nº 14.133/2021, é vedado à Administração estabelecer exigências que frustrem o caráter competitivo do certame, devendo prevalecer a isonomia e a proposta mais vantajosa.",
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 10,
+    },
+    {
+      texto: "5. DOS PEDIDOS FORMAIS",
+      bold: true,
+      size: 10,
+      spacingBefore: 6,
+    },
+    {
+      texto: impugnacao.pedidos,
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 6,
+    },
+    {
+      texto: "Requer-se, outrossim, a suspensão cautelar do certame até o julgamento definitivo e a republicação do edital com a devida reabertura dos prazos legais (Art. 55, § 1º da Lei 14.133/2021).",
+      bold: false,
+      size: 9.5,
+      indent: 28,
+      spacingAfter: 16,
+    },
+    {
+      texto: "Nestes termos, pede e espera deferimento.",
+      bold: false,
+      size: 9.5,
+      align: "right",
+      spacingAfter: 4,
+    },
+    {
+      texto: `${empresa.cidade} - ${empresa.uf}, ${dataGeracao}.`,
+      bold: false,
+      size: 9.5,
+      align: "right",
+      spacingAfter: 28,
+    },
+    {
+      texto: "_________________________________________________________",
+      bold: false,
+      size: 9.5,
+      align: "center",
+    },
+    {
+      texto: empresa.razaoSocial,
+      bold: true,
+      size: 10,
+      align: "center",
+    },
+    {
+      texto: `CNPJ: ${empresa.cnpj}`,
+      bold: false,
+      size: 9,
+      align: "center",
+    },
+    {
+      texto: empresa.representanteNome
+        ? `${empresa.representanteNome} (${empresa.representanteCargo})`
+        : "",
+      bold: false,
+      size: 8.5,
+      align: "center",
+    },
   ];
 
-  const LINHAS_POR_PAGINA = 46;
-  const paginas: LinhaEstruturada[][] = [];
-  for (let i = 0; i < blocos.length; i += LINHAS_POR_PAGINA) {
-    paginas.push(blocos.slice(i, i + LINHAS_POR_PAGINA));
-  }
-  if (paginas.length === 0) {
-    paginas.push([{ text: "Minuta de Impugnacao" }]);
-  }
+  let currentPage: any = null;
+  let pageIndex = 0;
+  let currentY = 0;
 
-  const objetos: string[] = [];
-  const pageObjNums: number[] = [];
-  for (let p = 0; p < paginas.length; p++) {
-    pageObjNums.push(5 + p * 2);
-  }
-
-  objetos.push(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`);
-  objetos.push(
-    `2 0 obj\n<< /Type /Pages /Kids [${pageObjNums.map((n) => `${n} 0 R`).join(" ")}] /Count ${paginas.length} >>\nendobj`,
-  );
-  objetos.push(
-    `3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj`,
-  );
-  objetos.push(
-    `4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj`,
-  );
-
-  for (let p = 0; p < paginas.length; p++) {
-    const pageObjId = 5 + p * 2;
-    const contentObjId = 6 + p * 2;
-    const linhasPagina = paginas[p];
-
-    const streamLines: string[] = ["BT", "42 795 Td", "14 TL"];
-    for (const linha of linhasPagina) {
-      const font = linha.bold ? "/F2" : "/F1";
-      const size = linha.size ?? 9.5;
-      streamLines.push(`${font} ${size} Tf`);
-      streamLines.push(`(${escaparLiteralPdf(linha.text)}) Tj`);
-      streamLines.push("T*");
+  const criarPagina = async (): Promise<any> => {
+    let p: any;
+    if (hasTimbradoPdf && timbradoDoc) {
+      const templateIdx = Math.min(pageIndex, timbradoDoc.getPageCount() - 1);
+      const [copied] = await doc.copyPages(timbradoDoc, [templateIdx]);
+      p = doc.addPage(copied);
+    } else {
+      p = doc.addPage([595.28, 841.89]);
     }
-    streamLines.push(
-      `/F1 8 Tf`,
-      `(Pagina ${p + 1} de ${paginas.length} - Impugnacao Edital ${escaparLiteralPdf(normalizarParaPdf(impugnacao.numeroEdital))}) Tj`,
-      "ET",
-    );
 
-    const streamContent = streamLines.join("\n");
-    const streamLength = Buffer.byteLength(streamContent, "ascii");
+    // Configuração inicial do cursor Y
+    if (pageIndex === 0) {
+      if (hasTimbradoPdf) {
+        currentY = 710;
+      } else if (embeddedLogo) {
+        // Estampa logo institucional
+        const logoY = 785 - logoDims.height;
+        p.drawImage(embeddedLogo, {
+          x: marginX,
+          y: logoY,
+          width: logoDims.width,
+          height: logoDims.height,
+        });
 
-    objetos.push(
-      `${pageObjId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjId} 0 R >>\nendobj`,
-    );
-    objetos.push(
-      `${contentObjId} 0 obj\n<< /Length ${streamLength} >>\nstream\n${streamContent}\nendstream\nendobj`,
-    );
+        // Estampa cabeçalho corporativo ao lado da logo
+        const headerX = marginX + logoDims.width + 16;
+        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial, fontBold);
+        p.drawText(textoRazao, {
+          x: headerX,
+          y: 775,
+          size: 11,
+          font: fontBold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+
+        const textoMeta = sanitizarTextoParaPdf(
+          `CNPJ: ${empresa.cnpj} | ${empresa.cidade}/${empresa.uf}`,
+          fontRegular,
+        );
+        p.drawText(textoMeta, {
+          x: headerX,
+          y: 760,
+          size: 8.5,
+          font: fontRegular,
+          color: rgb(0.35, 0.35, 0.35),
+        });
+
+        // Linha divisória
+        p.drawLine({
+          start: { x: marginX, y: 720 },
+          end: { x: marginX + contentWidth, y: 720 },
+          thickness: 1,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+        currentY = 700;
+      } else {
+        // Sem timbrado e sem logo: cabeçalho formal em texto
+        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
+        p.drawText(textoRazao, {
+          x: marginX,
+          y: 785,
+          size: 11,
+          font: fontBold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+
+        const metaText = sanitizarTextoParaPdf(
+          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          fontRegular,
+        );
+        p.drawText(metaText, {
+          x: marginX,
+          y: 770,
+          size: 8.5,
+          font: fontRegular,
+          color: rgb(0.35, 0.35, 0.35),
+        });
+
+        p.drawLine({
+          start: { x: marginX, y: 755 },
+          end: { x: marginX + contentWidth, y: 755 },
+          thickness: 1,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+        currentY = 735;
+      }
+    } else {
+      currentY = hasTimbradoPdf ? 725 : 765;
+    }
+
+    pageIndex++;
+    return p;
+  };
+
+  currentPage = await criarPagina();
+
+  for (const b of blocos) {
+    if (!b.texto.trim()) continue;
+
+    const font = b.bold ? fontBold : fontRegular;
+    const fontSize = b.size ?? 9.5;
+    const lineHeight = fontSize + 4;
+    const indent = b.indent ?? 0;
+    const maxWidthBloco = contentWidth - indent;
+
+    if (b.spacingBefore) {
+      currentY -= b.spacingBefore;
+    }
+
+    const linhas = quebrarTextoEmLinhas(b.texto, maxWidthBloco, font, fontSize);
+
+    for (let i = 0; i < linhas.length; i++) {
+      const linha = linhas[i];
+      if (linha === "") {
+        currentY -= lineHeight * 0.5;
+        continue;
+      }
+
+      if (currentY - lineHeight < bottomY) {
+        currentPage = await criarPagina();
+      }
+
+      const textoSanitizado = sanitizarTextoParaPdf(linha, font);
+      const textWidth = font.widthOfTextAtSize(textoSanitizado, fontSize);
+
+      let xPos = marginX;
+      if (b.align === "center") {
+        xPos = marginX + (contentWidth - textWidth) / 2;
+      } else if (b.align === "right") {
+        xPos = marginX + contentWidth - textWidth;
+      } else {
+        xPos = marginX + (i === 0 ? indent : 0);
+      }
+
+      currentPage.drawText(textoSanitizado, {
+        x: Math.max(marginX, xPos),
+        y: currentY,
+        size: fontSize,
+        font,
+        color: rgb(0.12, 0.12, 0.12),
+      });
+
+      currentY -= lineHeight;
+    }
+
+    if (b.spacingAfter) {
+      currentY -= b.spacingAfter;
+    }
   }
 
-  let pdfStr = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  for (const obj of objetos) {
-    offsets.push(Buffer.byteLength(pdfStr, "ascii"));
-    pdfStr += `${obj}\n`;
+  // Estampa numeração de página no rodapé de todas as páginas
+  const totalPages = doc.getPageCount();
+  for (let i = 0; i < totalPages; i++) {
+    const page = doc.getPage(i);
+    const editalLimpo = sanitizarTextoParaPdf(impugnacao.numeroEdital, fontRegular);
+    const numText = sanitizarTextoParaPdf(
+      `Página ${i + 1} de ${totalPages} — Impugnação Edital ${editalLimpo}`,
+      fontRegular,
+    );
+    const textWidth = fontRegular.widthOfTextAtSize(numText, 8);
+    page.drawText(numText, {
+      x: (595.28 - textWidth) / 2,
+      y: 32,
+      size: 8,
+      font: fontRegular,
+      color: rgb(0.45, 0.45, 0.45),
+    });
   }
 
-  const xrefOffset = Buffer.byteLength(pdfStr, "ascii");
-  pdfStr += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i <= objetos.length; i++) {
-    const off = String(offsets[i]).padStart(10, "0");
-    pdfStr += `${off} 00000 n \n`;
-  }
-  pdfStr += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  const pdfBuffer = Buffer.from(pdfStr, "ascii");
+  const pdfBytes = await doc.save();
+  const pdfBuffer = Buffer.from(pdfBytes);
   const slugEdital = (impugnacao.numeroEdital || "edital").replace(/[^a-zA-Z0-9_-]/g, "_");
   const pdfNome = `impugnacao_${slugEdital}_timbrada.pdf`;
 

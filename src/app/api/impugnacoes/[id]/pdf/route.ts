@@ -47,7 +47,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     let empresa = await obterConfiguracaoEmpresa(tenantId).catch(() => null);
 
-    const { pdfBuffer, pdfNome } = gerarPdfMinutaImpugnacao({
+    const { pdfBuffer, pdfNome } = await gerarPdfMinutaImpugnacao({
       impugnacao,
       empresa,
     });

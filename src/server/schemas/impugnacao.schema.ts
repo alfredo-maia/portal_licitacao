@@ -108,7 +108,7 @@ export const impugnacaoDetalheResponseSchema = z.object({
   impugnacao: impugnacaoItemSchema,
 });
 
-export type ImpugnacaoCriarInput = z.infer<typeof impugnacaoCriarInputSchema>;
+export type ImpugnacaoCriarInput = z.input<typeof impugnacaoCriarInputSchema>;
 export type ImpugnacaoAtualizarInput = z.infer<typeof impugnacaoAtualizarInputSchema>;
 export type ImpugnacaoListQuery = z.infer<typeof impugnacaoListQuerySchema>;
 export type ImpugnacaoItem = z.infer<typeof impugnacaoItemSchema>;

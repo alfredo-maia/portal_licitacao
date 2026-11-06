@@ -102,7 +102,7 @@ describe("Evolução do Módulo de Impugnações e Raio-X IA", () => {
     expect(minuta.minutaTexto).not.toContain("APONTA TECNOLOGIA E SERVICOS LTDA");
   });
 
-  it("4. Gera PDF Timbrado Corporativo 1.4 válido com os metadados do CNPJ ativo", () => {
+  it("4. Gera PDF Timbrado Corporativo válido com os metadados do CNPJ ativo", async () => {
     const imp = {
       id: "imp_pdf_456",
       numeroEdital: "PE 99/2026",
@@ -128,15 +128,60 @@ describe("Evolução do Módulo de Impugnações e Raio-X IA", () => {
       logoUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
     };
 
-    const { pdfBuffer, pdfNome } = gerarPdfMinutaImpugnacao({
+    const { pdfBuffer, pdfNome } = await gerarPdfMinutaImpugnacao({
       impugnacao: imp,
       empresa,
     });
 
     expect(pdfBuffer).toBeDefined();
     expect(pdfBuffer.byteLength).toBeGreaterThan(500);
-    expect(pdfBuffer.toString("utf8", 0, 8)).toContain("%PDF-1.4");
+    expect(pdfBuffer.toString("utf8", 0, 8)).toContain("%PDF-");
     expect(pdfNome).toContain("impugnacao_PE_99_2026_timbrada.pdf");
+  });
+
+  it("4b. Valida geração de PDF com Folha Timbrada em PDF e precedência sobre logotipo", async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const bgDoc = await PDFDocument.create();
+    const bgPage = bgDoc.addPage([595.28, 841.89]);
+    bgPage.drawText("CABECALHO TIMBRADO DA EMPRESA MODELO", { x: 54, y: 800, size: 10 });
+    const bgBytes = await bgDoc.save();
+    const bgBase64 = `data:application/pdf;base64,${Buffer.from(bgBytes).toString("base64")}`;
+
+    const imp = {
+      id: "imp_timbrado_test",
+      licitacaoId: null,
+      tenantId: "tenant_alpha",
+      numeroEdital: "PE 101/2026",
+      orgaoNome: "PREFEITURA MUNICIPAL DE EXEMPLO",
+      objeto: "Servicos especializados de engenharia",
+      status: "RASCUNHO" as const,
+      motivoLegal: "Exigencia descabida",
+      dataAberturaSessao: new Date("2026-11-20T10:00:00Z"),
+      prazoFatal: new Date("2026-11-17T18:00:00Z"),
+      fundamentacao: "Afronta a jurisprudencia consolidada do TCU.",
+      pedidos: "Requer-se retificacao do edital.",
+      horasRestantesPrazoFatal: 72,
+      prazoVencido: false,
+      criadoEm: new Date(),
+      atualizadoEm: new Date(),
+    };
+
+    const empresa = {
+      razaoSocial: "EMPRESA TIMBRADA LTDA",
+      cnpj: "11.222.333/0001-44",
+      papelTimbradoUrl: bgBase64,
+      logoUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    };
+
+    const { pdfBuffer, pdfNome } = await gerarPdfMinutaImpugnacao({
+      impugnacao: imp,
+      empresa,
+    });
+
+    expect(pdfBuffer).toBeDefined();
+    expect(pdfBuffer.byteLength).toBeGreaterThan(1000);
+    expect(pdfBuffer.toString("utf8", 0, 8)).toContain("%PDF-");
+    expect(pdfNome).toBe("impugnacao_PE_101_2026_timbrada.pdf");
   });
 
   it("5. Valida o novo contrato de Raio-X IA com sugestão de CNAEs e Certificações Especiais", () => {

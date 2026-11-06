@@ -282,6 +282,9 @@ async function bootstrapDatabase() {
       `CREATE INDEX IF NOT EXISTS "impugnacao_status_idx" ON "impugnacao"("status");`,
       `CREATE INDEX IF NOT EXISTS "impugnacao_prazoFatal_idx" ON "impugnacao"("prazoFatal");`,
       `CREATE INDEX IF NOT EXISTS "impugnacao_licitacaoId_idx" ON "impugnacao"("licitacaoId");`,
+      `ALTER TABLE "impugnacao" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "impugnacao_tenantId_idx" ON "impugnacao"("tenantId");`,
+      `DO $$ BEGIN ALTER TABLE "impugnacao" ADD CONSTRAINT "impugnacao_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `DO $$ BEGIN ALTER TABLE "impugnacao" ADD CONSTRAINT "impugnacao_licitacaoId_fkey" FOREIGN KEY ("licitacaoId") REFERENCES "Licitacao"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `DO $$ BEGIN ALTER TABLE "impugnacao" ADD CONSTRAINT "impugnacao_criadoPorId_fkey" FOREIGN KEY ("criadoPorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
     ];
@@ -460,6 +463,8 @@ async function bootstrapDatabase() {
       `CREATE INDEX IF NOT EXISTS "portal_tenantId_idx" ON "portal"("tenantId");`,
       `DO $$ BEGIN ALTER TABLE "portal" ADD CONSTRAINT "portal_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "nomeFantasia" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "papelTimbradoUrl" TEXT;`,
       `CREATE TABLE IF NOT EXISTS "audit_log" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "ocorridoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

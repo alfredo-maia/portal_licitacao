@@ -46,7 +46,7 @@ import { gerarMinutaJuridica } from "@/lib/minuta-juridica";
 
 const MOTIVOS_SUGERIDOS = [
   {
-    titulo: "1. Súmula 273/TCU — Vedação à indicação de marcas exclusivas sem similaridade",
+    titulo: "Súmula 273/TCU — Vedação à indicação de marcas exclusivas",
     motivo: "Exigência de marca ou tecnologia proprietária sem justificativa técnica robusta e sem previsão legal de similares",
     fundamentacao: "A exigência editalícia colide frontalmente com a Súmula nº 273 do Tribunal de Contas da União e com o Art. 41, inciso I da Lei Federal nº 14.133/2021, que vedam expressamente a indicação de marca, característica ou especificação exclusiva, salvo quando devidamente demonstrada a inexistência de similar de mercado.",
     pedidos: "Requer-se a exclusão da exigência restritiva de marca e a republicação do edital com a aceitação expressa de produtos e soluções similares ou equivalentes, com a reabertura do prazo de apresentação de propostas nos termos do Art. 55, § 1º da Lei 14.133/2021.",
@@ -181,42 +181,55 @@ export default function ImpugnacoesPage() {
     }
   }, [statusFiltro, busca, apenasCriticas, page, pageSize]);
 
+  const carregarOportunidadesPipeline = useCallback(async () => {
+    try {
+      // 1. Busca oportunidades no pipeline com status ativo (MINHAS)
+      const res = await fetch("/api/oportunidades?status=MINHAS&pageSize=100");
+      const data = await res.json();
+      let lista = Array.isArray(data?.oportunidades) ? data.oportunidades : [];
+
+      // 2. Se nenhuma no status MINHAS, busca geral para permitir seleção
+      if (lista.length === 0) {
+        const resFallback = await fetch("/api/oportunidades?status=TODAS&pageSize=100");
+        const dataFallback = await resFallback.json();
+        if (Array.isArray(dataFallback?.oportunidades)) {
+          lista = dataFallback.oportunidades;
+        }
+      }
+
+      const statusValidos = [
+        "ACEITA",
+        "ANALISE_TECNICA",
+        "ANALISE_FINANCEIRA",
+        "REVISAO_PROPOSTA",
+        "ENVIADA",
+        "EM_DISPUTA",
+        "IMPUGNADA",
+      ];
+      const filtradas = lista.filter((o: any) =>
+        statusValidos.includes(o.statusKanban || o.status),
+      );
+      setOportunidades(filtradas.length > 0 ? filtradas : lista);
+    } catch {
+      setOportunidades([]);
+    }
+  }, []);
+
   useEffect(() => {
     carregarImpugnacoes();
     carregarEmpresaAtiva();
-  }, [carregarImpugnacoes, carregarEmpresaAtiva]);
+    carregarOportunidadesPipeline();
+  }, [carregarImpugnacoes, carregarEmpresaAtiva, carregarOportunidadesPipeline]);
 
   useEffect(() => {
     const handleTenantChange = () => {
       carregarEmpresaAtiva();
       carregarImpugnacoes();
+      carregarOportunidadesPipeline();
     };
     window.addEventListener("tenantChanged", handleTenantChange);
     return () => window.removeEventListener("tenantChanged", handleTenantChange);
-  }, [carregarEmpresaAtiva, carregarImpugnacoes]);
-
-  useEffect(() => {
-    fetch("/api/oportunidades?pageSize=100")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.ok && Array.isArray(data.oportunidades)) {
-          const statusValidos = [
-            "ACEITA",
-            "ANALISE_TECNICA",
-            "ANALISE_FINANCEIRA",
-            "REVISAO_PROPOSTA",
-            "ENVIADA",
-            "EM_DISPUTA",
-            "IMPUGNADA",
-          ];
-          const filtradas = data.oportunidades.filter((o: any) =>
-            statusValidos.includes(o.statusKanban || o.status),
-          );
-          setOportunidades(filtradas);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  }, [carregarEmpresaAtiva, carregarImpugnacoes, carregarOportunidadesPipeline]);
 
   // Recalcula o prazo fatal preview quando data de abertura é alterada
   useEffect(() => {
@@ -251,13 +264,24 @@ export default function ImpugnacoesPage() {
   const handleSelecionarCertame = (licitacaoId: string) => {
     const cert = oportunidades.find((o) => o.id === licitacaoId);
     if (cert) {
-      setNovaEdital(cert.numeroEdital);
-      setNovaOrgao(cert.orgaoNome);
-      setNovaObjeto(cert.resumo || cert.miniResumo || "");
-      if (cert.dataAbertura) {
-        const iso = new Date(cert.dataAbertura).toISOString().substring(0, 16);
-        setNovaDataAbertura(iso);
+      setNovaEdital(cert.numeroEdital || "");
+      setNovaOrgao(cert.orgaoNome || "");
+      setNovaObjeto(cert.resumo || cert.miniResumo || cert.objeto || "");
+      const dataSessao = cert.dataEncerramentoProposta || cert.dataAbertura;
+      if (dataSessao) {
+        try {
+          const d = new Date(dataSessao);
+          if (!isNaN(d.getTime())) {
+            const ano = d.getFullYear();
+            const mes = String(d.getMonth() + 1).padStart(2, "0");
+            const dia = String(d.getDate()).padStart(2, "0");
+            const horas = String(d.getHours()).padStart(2, "0");
+            const minutos = String(d.getMinutes()).padStart(2, "0");
+            setNovaDataAbertura(`${ano}-${mes}-${dia}T${horas}:${minutos}`);
+          }
+        } catch {}
       }
+      if (erroModal) setErroModal(null);
     }
   };
 
@@ -271,7 +295,7 @@ export default function ImpugnacoesPage() {
     if (!novaPedidos.trim()) pendencias.push("Pedidos Formais");
 
     if (pendencias.length > 0) {
-      const msg = `Preencha todos os campos obrigatórios (*): ${pendencias.join(", ")}.`;
+      const msg = `Campos obrigatórios não preenchidos: ${pendencias.join(", ")}.`;
       setErroModal(msg);
       setNotificacao({ tipo: "error", texto: msg });
       return;
@@ -293,29 +317,30 @@ export default function ImpugnacoesPage() {
       });
 
       const data = await res.json();
-      if (res.ok && data.ok) {
-        setErroModal(null);
-        setModalNovaAberto(false);
-        setNotificacao({
-          tipo: "success",
-          texto: `Impugnação cadastrada com sucesso! Prazo fatal calculado para ${new Date(data.impugnacao.prazoFatal).toLocaleDateString("pt-BR")}.`,
-        });
-        // Reset form
-        setNovaEdital("");
-        setNovaOrgao("");
-        setNovaObjeto("");
-        setNovaMotivo("");
-        setNovaDataAbertura("");
-        setNovaFundamentacao("");
-        setNovaPedidos("");
-        carregarImpugnacoes();
-      } else {
-        const msg = data.error || "Falha ao cadastrar impugnação.";
+      if (!res.ok || !data.ok) {
+        const msg = data.error || data.message || "Erro ao salvar impugnação no servidor.";
         setErroModal(msg);
         setNotificacao({ tipo: "error", texto: msg });
+        return;
       }
+
+      setErroModal(null);
+      setModalNovaAberto(false);
+      setNotificacao({
+        tipo: "success",
+        texto: `Impugnação cadastrada com sucesso! Prazo fatal calculado para ${new Date(data.impugnacao.prazoFatal).toLocaleDateString("pt-BR")}.`,
+      });
+      // Reset form
+      setNovaEdital("");
+      setNovaOrgao("");
+      setNovaObjeto("");
+      setNovaMotivo("");
+      setNovaDataAbertura("");
+      setNovaFundamentacao("");
+      setNovaPedidos("");
+      await carregarImpugnacoes();
     } catch {
-      const msg = "Erro na comunicação com a API. Tente novamente.";
+      const msg = "Erro inesperado na comunicação com o servidor ao salvar impugnação.";
       setErroModal(msg);
       setNotificacao({ tipo: "error", texto: msg });
     }
@@ -766,29 +791,34 @@ export default function ImpugnacoesPage() {
             />
           )}
 
-          {oportunidades.length > 0 && (
-            <FormGroup legendText="" style={{ marginBottom: "1rem" }}>
-              <Select
-                id="select-certame-modal"
-                labelText="Vincular a uma Licitação do Pipeline (Opcional)"
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleSelecionarCertame(e.target.value);
-                  }
-                }}
-              >
-                <SelectItem value="" text="Preencher manualmente (sem vínculo) ou escolher certame..." />
-                {oportunidades.map((op) => (
-                  <SelectItem
-                    key={op.id}
-                    value={op.id}
-                    text={`${op.numeroEdital} — ${op.orgaoNome.substring(0, 45)}...`}
-                  />
-                ))}
-              </Select>
-            </FormGroup>
-          )}
+          <FormGroup legendText="" style={{ marginBottom: "1rem" }}>
+            <Select
+              id="select-certame-modal"
+              labelText="Vincular a uma Licitação do Pipeline (Opcional)"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleSelecionarCertame(e.target.value);
+                }
+              }}
+            >
+              <SelectItem
+                value=""
+                text={
+                  oportunidades.length > 0
+                    ? "Preencher manualmente (sem vínculo) ou escolher certame..."
+                    : "Preencher manualmente (sem certames no pipeline para vincular)"
+                }
+              />
+              {oportunidades.map((op) => (
+                <SelectItem
+                  key={op.id}
+                  value={op.id}
+                  text={`${op.numeroEdital || "Edital"} — ${(op.orgaoNome || "").substring(0, 45)}...`}
+                />
+              ))}
+            </Select>
+          </FormGroup>
 
           <Grid style={{ padding: 0, marginBottom: "1rem" }}>
             <Column lg={8} md={4} sm={4}>
@@ -861,7 +891,7 @@ export default function ImpugnacoesPage() {
           <FormGroup legendText="" style={{ marginBottom: "1rem" }}>
             <Select
               id="select-modelo-tcu"
-              labelText="Modelos Rápidos de Jurisprudência do TCU (Preenchimento Automático)"
+              labelText="Modelos Rápidos de Jurisprudência do TCU: Preenchimento Automático"
               defaultValue=""
               onChange={(e) => {
                 if (e.target.value !== "") {
@@ -959,9 +989,10 @@ export default function ImpugnacoesPage() {
                 kind="secondary"
                 size="sm"
                 renderIcon={Printer}
-                onClick={() => window.print()}
+                onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
+                id="btn-imprimir-minuta-oficial-modal"
               >
-                Imprimir Minuta
+                Imprimir Minuta Oficial
               </Button>
             </div>
 

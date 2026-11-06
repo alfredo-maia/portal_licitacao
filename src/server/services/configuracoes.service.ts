@@ -505,6 +505,8 @@ export async function obterConfiguracaoEmpresa(
           ufs: tenant.ufs || (tenant.uf ? [tenant.uf] : ["GO"]),
           brasilInteiro: tenant.brasilInteiro ?? true,
           preferenciasUpdatedAt: tenant.preferenciasUpdatedAt ?? null,
+          logoUrl: null,
+          papelTimbradoUrl: null,
         };
       }
     }
@@ -513,7 +515,13 @@ export async function obterConfiguracaoEmpresa(
       const config = await (prisma as any).configuracaoEmpresa.findUnique({
         where: { id: "default" },
       });
-      if (config) return config;
+      if (config) {
+        return {
+          ...config,
+          logoUrl: config.logoUrl || null,
+          papelTimbradoUrl: config.papelTimbradoUrl || null,
+        };
+      }
     }
 
     const memTenant = tenantId ? inMemoryTenants.get(tenantId) : null;
@@ -531,6 +539,8 @@ export async function obterConfiguracaoEmpresa(
       cidade: base?.cidade || memTenant?.cidade || "",
       uf: base?.uf || memTenant?.uf || "GO",
       cep: base?.cep || (memTenant as any)?.cep || "",
+      logoUrl: base?.logoUrl ?? null,
+      papelTimbradoUrl: base?.papelTimbradoUrl ?? null,
       segmentos: base?.segmentos || memTenant?.segmentos || [],
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
       ufs: base?.ufs || memTenant?.ufs || ["GO"],
@@ -553,6 +563,8 @@ export async function obterConfiguracaoEmpresa(
       cidade: base?.cidade || memTenant?.cidade || "",
       uf: base?.uf || memTenant?.uf || "GO",
       cep: base?.cep || (memTenant as any)?.cep || "",
+      logoUrl: base?.logoUrl ?? null,
+      papelTimbradoUrl: base?.papelTimbradoUrl ?? null,
       segmentos: base?.segmentos || memTenant?.segmentos || [],
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
       ufs: base?.ufs || memTenant?.ufs || ["GO"],

@@ -1354,7 +1354,7 @@ export default function ConfiguracoesPage() {
                       <Button
                         kind="ghost"
                         size="sm"
-                        onClick={() => setEmpresa({ ...empresa, logoUrl: null })}
+                        onClick={() => setEmpresa((prev) => ({ ...prev, logoUrl: null }))}
                       >
                         Remover Logo
                       </Button>
@@ -1375,7 +1375,8 @@ export default function ConfiguracoesPage() {
                           }
                           const reader = new FileReader();
                           reader.onload = () => {
-                            setEmpresa({ ...empresa, logoUrl: reader.result as string });
+                            setEmpresa((prev) => ({ ...prev, logoUrl: reader.result as string }));
+                            setNotificacao({ tipo: "success", texto: "Logomarca carregada. Clique em 'Salvar Alterações da Empresa' para gravar." });
                           };
                           reader.readAsDataURL(file);
                         }}
@@ -1393,20 +1394,23 @@ export default function ConfiguracoesPage() {
               <Column lg={8} md={4} sm={4}>
                 <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", border: "1px dashed var(--cds-border-subtle)", height: "100%" }}>
                   <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
-                    📄 Folha de Papel Timbrado A4 (Opcional - PNG / JPG / PDF)
+                    📄 Folha de Papel Timbrado Oficial (Apenas PDF)
                   </strong>
                   <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
-                    Se sua empresa já tem folha timbrada oficial em A4 com moldura/rodapé pré-impressos.
+                    Faça upload da folha timbrada oficial em formato PDF (A4 com cabeçalho e rodapé institucionais). Esse modelo será o plano de fundo dos documentos gerados.
+                  </p>
+                  <p style={{ fontSize: "0.6875rem", color: "var(--cds-text-helper)", marginBottom: "0.75rem", fontStyle: "italic" }}>
+                    💡 Se você anexar a Folha Timbrada em PDF, ela será o fundo oficial e o logo avulso não será duplicado por cima. A Logomarca ao lado é utilizada quando não houver papel timbrado em PDF.
                   </p>
                   {empresa.papelTimbradoUrl ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-start" }}>
                       <Tag type="teal" size="sm">
-                        ✓ Folha Timbrada Personalizada Anexada
+                        ✓ Folha Timbrada em PDF Anexada
                       </Tag>
                       <Button
                         kind="ghost"
                         size="sm"
-                        onClick={() => setEmpresa({ ...empresa, papelTimbradoUrl: null })}
+                        onClick={() => setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: null }))}
                       >
                         Remover Timbrado Personalizado
                       </Button>
@@ -1415,26 +1419,32 @@ export default function ConfiguracoesPage() {
                     <div>
                       <input
                         type="file"
-                        accept="image/png, image/jpeg, image/jpg, application/pdf"
+                        accept="application/pdf"
                         id="upload-timbrado-empresa"
                         style={{ display: "none" }}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          if (file.size > 4 * 1024 * 1024) {
-                            setNotificacao({ tipo: "error", texto: "O arquivo timbrado deve ter no máximo 4MB." });
+                          const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+                          if (!isPdf) {
+                            setNotificacao({ tipo: "error", texto: "Apenas arquivos em formato PDF (.pdf) são aceitos para a folha timbrada." });
+                            return;
+                          }
+                          if (file.size > 5 * 1024 * 1024) {
+                            setNotificacao({ tipo: "error", texto: "O arquivo PDF timbrado deve ter no máximo 5MB." });
                             return;
                           }
                           const reader = new FileReader();
                           reader.onload = () => {
-                            setEmpresa({ ...empresa, papelTimbradoUrl: reader.result as string });
+                            setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: reader.result as string }));
+                            setNotificacao({ tipo: "success", texto: "Folha timbrada em PDF carregada! Clique em 'Salvar Alterações da Empresa' para gravar." });
                           };
                           reader.readAsDataURL(file);
                         }}
                       />
                       <label htmlFor="upload-timbrado-empresa">
                         <Button kind="tertiary" size="sm" as="span">
-                          Selecionar Folha Timbrada
+                          Selecionar Folha Timbrada (PDF)
                         </Button>
                       </label>
                     </div>
@@ -1443,12 +1453,12 @@ export default function ConfiguracoesPage() {
               </Column>
             </Grid>
 
-            {/* SEÇÃO 6: TRIAGEM & ESCOPO DE LICITAÇÕES */}
+            {/* SEÇÃO 5: TRIAGEM & ESCOPO DE LICITAÇÕES */}
             <div style={{ marginTop: "2rem", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
                 <div>
                   <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
-                    6. Triagem & Escopo de Licitações (Segmentos, Sub-segmentos e UF)
+                    5. Triagem & Escopo de Licitações (Segmentos, Sub-segmentos e UF)
                   </h3>
                   <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.8125rem" }}>
                     As informações abaixo são de extrema importância para o sistema: Segmento, SubSegmento, UF. De acordo com o que o cliente preencher aqui é que o sistema vai buscar as licitações para ele.
