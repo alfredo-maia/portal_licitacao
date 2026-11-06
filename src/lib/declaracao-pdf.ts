@@ -366,7 +366,9 @@ export async function gerarPdfDeclaracao(params: {
           height: logoDims.height,
         });
 
-        const dadosTopY = logoY - 8;
+        // Espaçamento exato de 1.25 cm (35.4 pt) da logo com os dados da empresa
+        const espacamentoLogoDados = 35.4;
+        const dadosTopY = logoY - espacamentoLogoDados;
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
         const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10);
         const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);

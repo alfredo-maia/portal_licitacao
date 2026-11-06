@@ -217,7 +217,7 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
     ? `<header class="minuta-header-empresa" style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
         ${
           !opcoes?.apenasTextoFormal && empresa.logoUrl
-            ? `<div class="minuta-header-logo" style="margin-bottom: 10px;">
+            ? `<div class="minuta-header-logo" style="margin-bottom: 1.25cm;">
                 <img src="${empresa.logoUrl}" alt="${empresa.razaoSocial}" style="max-height: 42px; max-width: 180px; object-fit: contain; margin: 0 auto; display: block;" />
               </div>`
             : ""
@@ -232,48 +232,48 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
     : "";
 
   const minutaHtml = `
-<div class="minuta-impugnacao" style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.6; color: #161616; padding: 2cm; background: #ffffff;">
+<div class="minuta-impugnacao" style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; color: #161616; padding: 0; background: #ffffff; width: 100%; box-sizing: border-box;">
   ${avisoTimbradoHtml}
   ${headerHtml}
 
-  <p style="text-align: center; font-weight: bold; margin-bottom: 24px;">
+  <p style="text-align: center; font-weight: bold; margin-bottom: 24px; text-indent: 0;">
     ILMO(A). SR(A). PREGOEIRO(A) / AGENTE DE CONTRATAÇÃO<br>
     ${(impugnacao.orgaoNome || "ÓRGÃO LICITANTE").toUpperCase()}<br>
     EDITAL: ${impugnacao.numeroEdital} | DATA DA SESSÃO: ${dataAberturaStr}
   </p>
 
-  <p style="text-align: justify; text-indent: 2cm;">
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     <strong>${empresa.razaoSocial}</strong>, pessoa jurídica de direito privado inscrita no CNPJ sob o nº <strong>${empresa.cnpj}</strong>, com sede em ${empresa.cidade}/${empresa.uf}, vem respeitosamente, com fundamento no Art. 164 da Lei Federal nº 14.133/2021, interpor
   </p>
 
   <h2 style="text-align: center; font-size: 14pt; margin: 20px 0; font-weight: bold;">IMPUGNAÇÃO AO EDITAL DE LICITAÇÃO</h2>
 
-  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 16px;">1. DA TEMPESTIVIDADE</h3>
-  <p style="text-align: justify; text-indent: 2cm;">
+  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 18px; margin-bottom: 8px; text-align: left;">1. DA TEMPESTIVIDADE</h3>
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     A presente impugnação é manifestamente tempestiva, eis que submetida em prazo superior a 3 (três) dias úteis que antecedem a abertura do certame, nos termos do Art. 164 da Lei Federal nº 14.133/2021.
   </p>
 
-  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 16px;">2. DA SÍNTESE DO OBJETO</h3>
-  <p style="text-align: justify; text-indent: 2cm;">
+  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 18px; margin-bottom: 8px; text-align: left;">2. DA SÍNTESE DO OBJETO</h3>
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     O presente certame tem por objeto: ${impugnacao.objeto || "Fornecimento de bens ou prestação de serviços conforme especificações do Termo de Referência"}.
   </p>
 
-  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 16px;">3. DAS IRREGULARIDADES APONTADAS E DO MOTIVO LEGAL</h3>
-  <p style="text-align: justify; text-indent: 2cm;">
+  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 18px; margin-bottom: 8px; text-align: left;">3. DAS IRREGULARIDADES APONTADAS E DO MOTIVO LEGAL</h3>
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     ${impugnacao.motivoLegal}
   </p>
 
-  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 16px;">4. DA FUNDAMENTAÇÃO JURÍDICA E SÚMULAS DO TCU</h3>
-  <p style="text-align: justify; text-indent: 2cm;">
+  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 18px; margin-bottom: 8px; text-align: left;">4. DA FUNDAMENTAÇÃO JURÍDICA E SÚMULAS DO TCU</h3>
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     ${impugnacao.fundamentacao}
   </p>
 
-  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 16px;">5. DOS PEDIDOS</h3>
-  <p style="text-align: justify; text-indent: 2cm;">
+  <h3 style="font-size: 12pt; font-weight: bold; margin-top: 18px; margin-bottom: 8px; text-align: left;">5. DOS PEDIDOS</h3>
+  <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 14px;">
     ${impugnacao.pedidos}
   </p>
 
-  <p style="text-align: right; margin-top: 36px;">
+  <p style="text-align: right; margin-top: 36px; text-indent: 0;">
     ${empresa.cidade} - ${empresa.uf}, ${dataHoje}.
   </p>
 
@@ -602,7 +602,9 @@ export async function gerarPdfMinutaImpugnacao(params: {
           height: logoDims.height,
         });
 
-        const dadosTopY = logoY - 8;
+        // Espaçamento exato de 1.25 cm (35.4 pt) da logo com os dados da empresa
+        const espacamentoLogoDados = 35.4;
+        const dadosTopY = logoY - espacamentoLogoDados;
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
         const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10);
         const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);
