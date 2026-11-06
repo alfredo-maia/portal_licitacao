@@ -82,6 +82,10 @@ describe("Sprint New - Task 6: Declarações (Sem Erro ao Entrar, Molde A4 Imedi
       expect(screen.getByText("Texto atualizado pelo botão.")).toBeDefined();
       expect(screen.getByTestId("btn-imprimir-timbrado")).toBeDefined();
       expect(screen.getByTestId("btn-imprimir-a4")).toBeDefined();
+      expect(screen.getByTestId("btn-imprimir-a4").textContent).toContain("Imprimir Documento PDF");
+      expect(screen.getByTestId("btn-imprimir-timbrado").textContent).toContain("Imprimir PDF Timbrado");
+      expect((screen.getByTestId("btn-imprimir-timbrado") as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId("btn-baixar-txt").textContent).toContain("Exportar .TXT");
     });
   });
 });

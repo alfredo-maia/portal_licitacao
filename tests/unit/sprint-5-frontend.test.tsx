@@ -79,16 +79,16 @@ describe("Sprint 5 — Frontend: Declarações Oficiais A4 & Gestão de Impugna�
       ).toBeDefined();
       expect(screen.getByText("Anexo 5 • Lei nº 14.133/2021")).toBeDefined();
 
-      // Botões de ação no topo
-      expect(screen.getByText("Imprimir / PDF A4")).toBeDefined();
-      expect(screen.getByText("Copiar Texto")).toBeDefined();
-      expect(screen.getByText("Exportar .TXT")).toBeDefined();
-
-      // Aguarda renderização do molde inicial e atualiza a folha A4 ao clicar no botão
-      expect(screen.getByTestId("folha-a4-preview")).toBeDefined();
-      fireEvent.click(screen.getByText("Atualizar Folha A4"));
+      // Ao clicar em Visualizar Declaração Oficial, abre o modal com as ações e o documento
+      const btnVisualizar = screen.getByRole("button", { name: /Visualizar Declaração Oficial/i });
+      fireEvent.click(btnVisualizar);
 
       await waitFor(() => {
+        expect(screen.getByText("Imprimir Documento PDF")).toBeDefined();
+        expect(screen.getByText("Imprimir PDF Timbrado")).toBeDefined();
+        expect(screen.getByText("Copiar Texto")).toBeDefined();
+        expect(screen.getByText("Exportar .TXT")).toBeDefined();
+        expect(screen.getByTestId("folha-a4-preview")).toBeDefined();
         expect(screen.getByText("APONTA TECNOLOGIA LTDA")).toBeDefined();
         expect(screen.getByText("Cumpre plenamente todos os requisitos.")).toBeDefined();
       });

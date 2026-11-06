@@ -135,6 +135,7 @@ function quebrarTextoEmLinhas(
 export function gerarMinutaJuridica(
   impugnacao: DadosImpugnacaoMinuta | ImpugnacaoItem,
   empresaInput?: DadosEmpresaMinuta | null,
+  opcoes?: { apenasTextoFormal?: boolean },
 ): { minutaHtml: string; minutaTexto: string } {
   const empresa = {
     razaoSocial: empresaInput?.razaoSocial?.trim() || "EMPRESA LICITANTE LTDA",
@@ -145,8 +146,8 @@ export function gerarMinutaJuridica(
     representanteNome: empresaInput?.representanteNome?.trim() || "Representante Legal",
     representanteCargo: empresaInput?.representanteCargo?.trim() || "Sócio-Administrador",
     representanteCpf: empresaInput?.representanteCpf?.trim() || "",
-    logoUrl: empresaInput?.logoUrl?.trim() || "",
-    papelTimbradoUrl: empresaInput?.papelTimbradoUrl?.trim() || "",
+    logoUrl: opcoes?.apenasTextoFormal ? "" : empresaInput?.logoUrl?.trim() || "",
+    papelTimbradoUrl: opcoes?.apenasTextoFormal ? "" : empresaInput?.papelTimbradoUrl?.trim() || "",
   };
 
   const dataHoje = new Date().toLocaleDateString("pt-BR", {
@@ -201,25 +202,26 @@ CNPJ: ${empresa.cnpj}
 ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.representanteCargo}` : ""}
 `.trim();
 
-  const avisoTimbradoHtml = empresa.papelTimbradoUrl
+  const avisoTimbradoHtml = (!opcoes?.apenasTextoFormal && empresa.papelTimbradoUrl)
     ? `<div class="minuta-aviso-timbrado" style="background: #edf5ff; border-left: 4px solid #0f62fe; padding: 12px 16px; margin-bottom: 24px; border-radius: 2px;">
         <div style="font-weight: 600; font-size: 10pt; color: #0043ce; display: flex; align-items: center; gap: 6px;">
           <span>📄 Folha de Papel Timbrado Oficial Anexada</span>
         </div>
         <p style="margin: 4px 0 0 0; font-size: 9pt; color: #393939;">
-          Esta empresa possui papel timbrado institucional (PDF) configurado. Ao clicar em <strong>"Baixar PDF Timbrado"</strong> ou <strong>"Imprimir Minuta Oficial"</strong>, o documento será diagramado diretamente sobre a folha timbrada oficial da empresa.
+          Esta empresa possui papel timbrado institucional (PDF) configurado. Ao clicar em <strong>"Imprimir PDF Timbrado"</strong>, o documento será diagramado diretamente sobre a folha timbrada oficial da empresa.
         </p>
       </div>`
     : "";
 
-  const logoHtml = !empresa.papelTimbradoUrl && empresa.logoUrl
-    ? `<div style="text-align: center; margin-bottom: 20px;">
-        <img src="${empresa.logoUrl}" alt="${empresa.razaoSocial}" style="max-height: 70px; max-width: 240px; object-fit: contain;" />
-      </div>`
-    : "";
-
   const headerHtml = !empresa.papelTimbradoUrl
-    ? `<header style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
+    ? `<header class="minuta-header-empresa" style="border-bottom: 2px solid #161616; padding-bottom: 12px; margin-bottom: 24px; text-align: center;">
+        ${
+          !opcoes?.apenasTextoFormal && empresa.logoUrl
+            ? `<div class="minuta-header-logo" style="margin-bottom: 10px;">
+                <img src="${empresa.logoUrl}" alt="${empresa.razaoSocial}" style="max-height: 42px; max-width: 180px; object-fit: contain; margin: 0 auto; display: block;" />
+              </div>`
+            : ""
+        }
         <h2 style="font-size: 13pt; margin: 0; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">
           ${empresa.razaoSocial}
         </h2>
@@ -232,7 +234,6 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
   const minutaHtml = `
 <div class="minuta-impugnacao" style="font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.6; color: #161616; padding: 2cm; background: #ffffff;">
   ${avisoTimbradoHtml}
-  ${logoHtml}
   ${headerHtml}
 
   <p style="text-align: center; font-weight: bold; margin-bottom: 24px;">
@@ -361,8 +362,8 @@ export async function gerarPdfMinutaImpugnacao(params: {
     }
     if (embeddedLogo) {
       const orig = embeddedLogo.scale(1);
-      const maxW = 150;
-      const maxH = 45;
+      const maxW = 160;
+      const maxH = 42; // Limite vertical harmônico de 42px para cabeçalho
       const ratio = Math.min(maxW / orig.width, maxH / orig.height, 1);
       logoDims = { width: orig.width * ratio, height: orig.height * ratio };
     }
@@ -556,9 +557,9 @@ export async function gerarPdfMinutaImpugnacao(params: {
     estimativaLinhas += Math.max(linhas.length, 1);
   }
 
-  const cabeEmUmaPagina = estimativaLinhas <= 38;
-  const escalaGeral = cabeEmUmaPagina ? 0.90 : 1.0;
-  const spacingMultiplier = cabeEmUmaPagina ? 0.65 : 1.0;
+  const cabeEmUmaPagina = estimativaLinhas <= 44;
+  const escalaGeral = cabeEmUmaPagina ? (estimativaLinhas > 36 ? 0.88 : 0.92) : 1.0;
+  const spacingMultiplier = cabeEmUmaPagina ? (estimativaLinhas > 36 ? 0.52 : 0.65) : 1.0;
 
   let currentPage: any = null;
   let pageIndex = 0;
@@ -589,57 +590,26 @@ export async function gerarPdfMinutaImpugnacao(params: {
         // Margem de respiro superior ampliada (~1.2cm a mais) para nunca colar no logo do timbrado da empresa
         currentY = cabeEmUmaPagina ? 655 : 645;
       } else if (embeddedLogo) {
-        // Estampa logo institucional com proporção precisa e alinhamento vertical harmonioso
-        const headerTop = 790;
-        const headerBottom = 735;
-        const headerCenterY = (headerTop + headerBottom) / 2;
-        const logoY = headerCenterY - logoDims.height / 2;
+        // Logo centralizada no topo e dados corporativos centralizados logo abaixo da logo
+        const logoTop = 800;
+        const logoY = logoTop - logoDims.height;
+        const logoX = (595.28 - logoDims.width) / 2;
 
         p.drawImage(embeddedLogo, {
-          x: marginX,
+          x: logoX,
           y: logoY,
           width: logoDims.width,
           height: logoDims.height,
         });
 
-        // Estampa cabeçalho corporativo ao lado da logo
-        const headerX = marginX + logoDims.width + 16;
-        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial, fontBold);
-        p.drawText(textoRazao, {
-          x: headerX,
-          y: headerCenterY + 4,
-          size: 11,
-          font: fontBold,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-
-        const textoMeta = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.cidade}/${empresa.uf}`,
-          fontRegular,
-        );
-        p.drawText(textoMeta, {
-          x: headerX,
-          y: headerCenterY - 10,
-          size: 8.5,
-          font: fontRegular,
-          color: rgb(0.35, 0.35, 0.35),
-        });
-
-        // Linha divisória
-        p.drawLine({
-          start: { x: marginX, y: headerBottom },
-          end: { x: marginX + contentWidth, y: headerBottom },
-          thickness: 1,
-          color: rgb(0.8, 0.8, 0.8),
-        });
-        currentY = headerBottom - (cabeEmUmaPagina ? 14 : 20);
-      } else {
-        // Sem timbrado e sem logo: cabeçalho formal em texto
+        const dadosTopY = logoY - 8;
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
+        const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10);
+        const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);
         p.drawText(textoRazao, {
-          x: marginX,
-          y: 785,
-          size: 11,
+          x: razaoX,
+          y: dadosTopY,
+          size: 10,
           font: fontBold,
           color: rgb(0.1, 0.1, 0.1),
         });
@@ -648,21 +618,60 @@ export async function gerarPdfMinutaImpugnacao(params: {
           `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
           fontRegular,
         );
+        const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
+        const metaX = Math.max(marginX, (595.28 - metaW) / 2);
         p.drawText(metaText, {
-          x: marginX,
-          y: 770,
-          size: 8.5,
+          x: metaX,
+          y: dadosTopY - 11,
+          size: 8,
           font: fontRegular,
           color: rgb(0.35, 0.35, 0.35),
         });
 
+        const dividerY = dadosTopY - 18;
         p.drawLine({
-          start: { x: marginX, y: 755 },
-          end: { x: marginX + contentWidth, y: 755 },
-          thickness: 1,
+          start: { x: marginX, y: dividerY },
+          end: { x: marginX + contentWidth, y: dividerY },
+          thickness: 0.75,
           color: rgb(0.8, 0.8, 0.8),
         });
-        currentY = 735;
+        currentY = dividerY - (cabeEmUmaPagina ? 12 : 18);
+      } else {
+        // Sem timbrado e sem logo: cabeçalho formal em texto centralizado
+        const headerTop = 800;
+        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
+        const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10.5);
+        const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);
+        p.drawText(textoRazao, {
+          x: razaoX,
+          y: headerTop - 12,
+          size: 10.5,
+          font: fontBold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+
+        const metaText = sanitizarTextoParaPdf(
+          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          fontRegular,
+        );
+        const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
+        const metaX = Math.max(marginX, (595.28 - metaW) / 2);
+        p.drawText(metaText, {
+          x: metaX,
+          y: headerTop - 24,
+          size: 8,
+          font: fontRegular,
+          color: rgb(0.35, 0.35, 0.35),
+        });
+
+        const dividerY = headerTop - 32;
+        p.drawLine({
+          start: { x: marginX, y: dividerY },
+          end: { x: marginX + contentWidth, y: dividerY },
+          thickness: 0.75,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+        currentY = dividerY - (cabeEmUmaPagina ? 12 : 18);
       }
     } else {
       currentY = hasTimbradoPdf ? 665 : 765;
@@ -679,8 +688,8 @@ export async function gerarPdfMinutaImpugnacao(params: {
 
     const font = b.bold ? fontBold : fontRegular;
     const fontSize = (b.size ?? 9.5) * escalaGeral;
-    const lineHeight = fontSize + (cabeEmUmaPagina ? 2.8 : 3.8);
-    const indent = (b.indent ?? 0) * (cabeEmUmaPagina ? 0.8 : 1.0);
+    const lineHeight = fontSize + (cabeEmUmaPagina ? (estimativaLinhas > 36 ? 2.0 : 2.6) : 3.6);
+    const indent = (b.indent ?? 0) * (cabeEmUmaPagina ? 0.75 : 1.0);
     const maxWidthBloco = contentWidth - indent;
 
     if (b.spacingBefore) {

@@ -191,8 +191,8 @@ export async function gerarPdfDeclaracao(params: {
     }
     if (embeddedLogo) {
       const orig = embeddedLogo.scale(1);
-      const maxW = 150;
-      const maxH = 45;
+      const maxW = 160;
+      const maxH = 42; // Proporção áurea vertical restrita a 42px para cabeçalho
       const ratio = Math.min(maxW / orig.width, maxH / orig.height, 1);
       logoDims = { width: orig.width * ratio, height: orig.height * ratio };
     }
@@ -269,8 +269,8 @@ export async function gerarPdfDeclaracao(params: {
     bold: false,
     size: 9,
     align: "right",
-    spacingBefore: 12,
-    spacingAfter: 28,
+    spacingBefore: 10,
+    spacingAfter: 18,
   });
 
   // 5. Bloco de Assinatura
@@ -322,9 +322,9 @@ export async function gerarPdfDeclaracao(params: {
     estimativaLinhas += Math.max(linhas.length, 1);
   }
 
-  const cabeEmUmaPagina = estimativaLinhas <= 38;
-  const escalaGeral = cabeEmUmaPagina ? 0.94 : 1.0;
-  const spacingMultiplier = cabeEmUmaPagina ? 0.70 : 1.0;
+  const cabeEmUmaPagina = estimativaLinhas <= 46;
+  const escalaGeral = cabeEmUmaPagina ? (estimativaLinhas > 36 ? 0.90 : 0.94) : 1.0;
+  const spacingMultiplier = cabeEmUmaPagina ? (estimativaLinhas > 36 ? 0.55 : 0.68) : 1.0;
 
   let currentPage: any = null;
   let pageIndex = 0;
@@ -354,54 +354,26 @@ export async function gerarPdfDeclaracao(params: {
         // Respiro superior ampliado (~1.2cm extra) para não aproximar do logotipo da folha timbrada
         currentY = cabeEmUmaPagina ? 655 : 645;
       } else if (embeddedLogo) {
-        // Estampa logo institucional com proporção precisa e alinhamento vertical harmonioso
-        const headerTop = 790;
-        const headerBottom = 735;
-        const headerCenterY = (headerTop + headerBottom) / 2;
-        const logoY = headerCenterY - logoDims.height / 2;
+        // Logo centralizada no topo e dados corporativos centralizados logo abaixo da logo
+        const logoTop = 800;
+        const logoY = logoTop - logoDims.height;
+        const logoX = (595.28 - logoDims.width) / 2;
 
         p.drawImage(embeddedLogo, {
-          x: marginX,
+          x: logoX,
           y: logoY,
           width: logoDims.width,
           height: logoDims.height,
         });
 
-        const headerX = marginX + logoDims.width + 16;
-        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial, fontBold);
-        p.drawText(textoRazao, {
-          x: headerX,
-          y: headerCenterY + 4,
-          size: 11,
-          font: fontBold,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-
-        const textoMeta = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.cidade}/${empresa.uf}`,
-          fontRegular,
-        );
-        p.drawText(textoMeta, {
-          x: headerX,
-          y: headerCenterY - 10,
-          size: 8.5,
-          font: fontRegular,
-          color: rgb(0.35, 0.35, 0.35),
-        });
-
-        p.drawLine({
-          start: { x: marginX, y: headerBottom },
-          end: { x: marginX + contentWidth, y: headerBottom },
-          thickness: 1,
-          color: rgb(0.8, 0.8, 0.8),
-        });
-        currentY = headerBottom - (cabeEmUmaPagina ? 14 : 20);
-      } else {
+        const dadosTopY = logoY - 8;
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
+        const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10);
+        const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);
         p.drawText(textoRazao, {
-          x: marginX,
-          y: 785,
-          size: 11,
+          x: razaoX,
+          y: dadosTopY,
+          size: 10,
           font: fontBold,
           color: rgb(0.1, 0.1, 0.1),
         });
@@ -410,21 +382,59 @@ export async function gerarPdfDeclaracao(params: {
           `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
           fontRegular,
         );
+        const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
+        const metaX = Math.max(marginX, (595.28 - metaW) / 2);
         p.drawText(metaText, {
-          x: marginX,
-          y: 770,
-          size: 8.5,
+          x: metaX,
+          y: dadosTopY - 11,
+          size: 8,
           font: fontRegular,
           color: rgb(0.35, 0.35, 0.35),
         });
 
+        const dividerY = dadosTopY - 18;
         p.drawLine({
-          start: { x: marginX, y: 755 },
-          end: { x: marginX + contentWidth, y: 755 },
-          thickness: 1,
+          start: { x: marginX, y: dividerY },
+          end: { x: marginX + contentWidth, y: dividerY },
+          thickness: 0.75,
           color: rgb(0.8, 0.8, 0.8),
         });
-        currentY = 735;
+        currentY = dividerY - (cabeEmUmaPagina ? 12 : 18);
+      } else {
+        const headerTop = 800;
+        const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
+        const razaoW = fontBold.widthOfTextAtSize(textoRazao, 10.5);
+        const razaoX = Math.max(marginX, (595.28 - razaoW) / 2);
+        p.drawText(textoRazao, {
+          x: razaoX,
+          y: headerTop - 12,
+          size: 10.5,
+          font: fontBold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+
+        const metaText = sanitizarTextoParaPdf(
+          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          fontRegular,
+        );
+        const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
+        const metaX = Math.max(marginX, (595.28 - metaW) / 2);
+        p.drawText(metaText, {
+          x: metaX,
+          y: headerTop - 24,
+          size: 8,
+          font: fontRegular,
+          color: rgb(0.35, 0.35, 0.35),
+        });
+
+        const dividerY = headerTop - 32;
+        p.drawLine({
+          start: { x: marginX, y: dividerY },
+          end: { x: marginX + contentWidth, y: dividerY },
+          thickness: 0.75,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+        currentY = dividerY - (cabeEmUmaPagina ? 12 : 18);
       }
     } else {
       currentY = hasTimbradoPdf ? 665 : 765;
@@ -508,8 +518,8 @@ export async function gerarPdfDeclaracao(params: {
 
     const font = b.bold ? fontBold : b.oblique ? fontOblique : fontRegular;
     const fontSize = (b.size ?? 9.5) * escalaGeral;
-    const lineHeight = fontSize + (cabeEmUmaPagina ? 2.8 : 3.8);
-    const indent = (b.indent ?? 0) * (cabeEmUmaPagina ? 0.8 : 1.0);
+    const lineHeight = fontSize + (cabeEmUmaPagina ? (estimativaLinhas > 36 ? 2.2 : 2.8) : 3.8);
+    const indent = (b.indent ?? 0) * (cabeEmUmaPagina ? 0.75 : 1.0);
     const maxWidthBloco = contentWidth - indent;
 
     if (b.spacingBefore) {

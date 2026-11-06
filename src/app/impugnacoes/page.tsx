@@ -23,6 +23,7 @@ import {
   CloseOutline,
   Copy,
   Document,
+  DocumentDownload,
   DocumentPdf,
   Edit,
   Hourglass,
@@ -394,7 +395,7 @@ export default function ImpugnacoesPage() {
   };
 
   const handleImprimirMinutaHtml = (imp: ImpugnacaoItem) => {
-    const { minutaHtml } = gerarMinutaJuridica(imp, empresaAtiva || undefined);
+    const { minutaHtml } = gerarMinutaJuridica(imp, empresaAtiva || undefined, { apenasTextoFormal: true });
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -418,10 +419,19 @@ export default function ImpugnacoesPage() {
           <meta charset="utf-8">
           <title>Minuta de Impugnação - Edital ${imp.numeroEdital}</title>
           <style>
-            @page { size: A4 portrait; margin: 15mm 20mm; }
-            body { font-family: 'Times New Roman', Times, serif; color: #161616; margin: 0; padding: 0; background: #ffffff; }
+            @page {
+              size: A4 portrait;
+              margin: 0;
+            }
+            html, body {
+              font-family: 'Times New Roman', Times, serif;
+              color: #161616;
+              margin: 0 !important;
+              padding: 12mm 18mm !important;
+              background: #ffffff;
+            }
             * { box-sizing: border-box; }
-            .minuta-aviso-timbrado { display: none !important; }
+            .minuta-aviso-timbrado, .minuta-header-logo { display: none !important; }
           </style>
         </head>
         <body>${minutaHtml}</body>
@@ -438,6 +448,17 @@ export default function ImpugnacoesPage() {
         } catch {}
       }, 1500);
     }, 300);
+  };
+
+  const handleExportarTxt = (imp: ImpugnacaoItem) => {
+    const { minutaTexto } = gerarMinutaJuridica(imp, empresaAtiva || undefined);
+    const blob = new Blob([minutaTexto], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `minuta_impugnacao_${(imp.numeroEdital || "edital").replace(/[^a-zA-Z0-9_-]/g, "_")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const abrirAtualizacaoStatus = (imp: ImpugnacaoItem) => {
@@ -463,6 +484,7 @@ export default function ImpugnacoesPage() {
   ).length;
   const totalProtocoladas = impugnacoes.filter((i) => i.status === "PROTOCOLADA").length;
   const totalAcatadas = impugnacoes.filter((i) => i.status === "ACATADA").length;
+  const temTimbradoOuLogo = Boolean(empresaAtiva?.papelTimbradoUrl || empresaAtiva?.logoUrl);
 
   return (
     <ModulePageShell routePath="/impugnacoes">
@@ -1009,16 +1031,26 @@ export default function ImpugnacoesPage() {
               >
                 Imprimir Minuta Oficial
               </Button>
-              <Button
-                kind="primary"
-                size="sm"
-                renderIcon={DocumentPdf}
-                onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
-                id="btn-baixar-pdf-timbrado-modal"
-                data-testid="btn-baixar-pdf-timbrado-modal"
+              <div
+                title={
+                  !temTimbradoOuLogo
+                    ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
+                    : undefined
+                }
+                style={{ display: "inline-flex" }}
               >
-                Baixar PDF Timbrado
-              </Button>
+                <Button
+                  kind="primary"
+                  size="sm"
+                  renderIcon={DocumentPdf}
+                  disabled={!temTimbradoOuLogo}
+                  onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
+                  id="btn-baixar-pdf-timbrado-modal"
+                  data-testid="btn-baixar-pdf-timbrado-modal"
+                >
+                  Imprimir PDF Timbrado
+                </Button>
+              </div>
               <Button
                 kind="tertiary"
                 size="sm"
@@ -1030,7 +1062,17 @@ export default function ImpugnacoesPage() {
                 }}
                 id="btn-copiar-minuta-modal"
               >
-                Copiar Texto da Minuta
+                Copiar Texto
+              </Button>
+              <Button
+                kind="ghost"
+                size="sm"
+                renderIcon={DocumentDownload}
+                onClick={() => handleExportarTxt(impugnacaoSelecionada)}
+                id="btn-exportar-txt-minuta-modal"
+                data-testid="btn-exportar-txt-minuta-modal"
+              >
+                Exportar .TXT
               </Button>
             </div>
 

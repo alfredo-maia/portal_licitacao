@@ -136,11 +136,13 @@ export default function DeclaracoesPage() {
           if (emp.cidade) setCidade(emp.cidade);
           if (emp.uf) setUf(emp.uf);
           setTemPapelTimbrado(Boolean(emp.papelTimbradoUrl));
-          setTemLogo(Boolean(!emp.papelTimbradoUrl && emp.logoUrl));
+          setTemLogo(Boolean(emp.logoUrl));
         }
       })
       .catch(() => {});
   }, []);
+
+  const temTimbradoOuLogo = Boolean(temPapelTimbrado || temLogo);
 
   useEffect(() => {
     carregarDadosEmpresa();
@@ -268,13 +270,13 @@ export default function DeclaracoesPage() {
           <style>
             @page {
               size: A4 portrait;
-              margin: 10mm 14mm;
+              margin: 0;
             }
             html, body {
               font-family: 'Times New Roman', Times, serif;
               color: #161616;
               margin: 0 !important;
-              padding: 0 !important;
+              padding: 10mm 14mm !important;
               background: #ffffff;
               font-size: 10.5pt;
               line-height: 1.38;
@@ -723,19 +725,28 @@ export default function DeclaracoesPage() {
               id="btn-imprimir-a4"
               data-testid="btn-imprimir-a4"
             >
-              Imprimir / PDF A4
+              Imprimir Documento PDF
             </Button>
-            <Button
-              kind="primary"
-              size="sm"
-              renderIcon={DocumentPdf}
-              onClick={handleImprimirTimbrado}
-              disabled={gerandoPdf}
-              id="btn-imprimir-timbrado"
-              data-testid="btn-imprimir-timbrado"
+            <div
+              title={
+                !temTimbradoOuLogo
+                  ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
+                  : undefined
+              }
+              style={{ display: "inline-flex" }}
             >
-              {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir Timbrado"}
-            </Button>
+              <Button
+                kind="primary"
+                size="sm"
+                renderIcon={DocumentPdf}
+                onClick={handleImprimirTimbrado}
+                disabled={!temTimbradoOuLogo || gerandoPdf}
+                id="btn-imprimir-timbrado"
+                data-testid="btn-imprimir-timbrado"
+              >
+                {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir PDF Timbrado"}
+              </Button>
+            </div>
             <Button
               kind="tertiary"
               size="sm"

@@ -133,4 +133,99 @@ describe("Geração de PDF Timbrado de Declarações e Impugnações (A4 Garanti
     const doc = await PDFDocument.load(new Uint8Array(arrayBuffer));
     expect(doc.getPageCount()).toBe(1);
   });
+
+  it("Geração com Logomarca única posiciona dados corporativos abaixo da logo e cabe em 1 página", async () => {
+    // 1x1 PNG pixel base64
+    const logoPngBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    const resDeclaracao = await gerarPdfDeclaracao({
+      dados: {
+        tipo: "HABILITACAO_PLENA",
+        numeroEdital: "PE 88/2026",
+        orgaoNome: "Tribunal Regional Federal",
+        empresaRazaoSocial: "MINHA EMPRESA COM LOGO LTDA",
+        empresaCnpj: "12.345.678/0001-99",
+        representanteNome: "Vitor Henrique",
+        representanteCargo: "Diretor Executivo",
+        representanteCpf: "123.456.789-00",
+        cidade: "Brasília",
+        uf: "DF",
+      },
+      empresa: {
+        razaoSocial: "MINHA EMPRESA COM LOGO LTDA",
+        cnpj: "12.345.678/0001-99",
+        cidade: "Brasília",
+        uf: "DF",
+        logoUrl: logoPngBase64,
+      },
+    });
+
+    const docDec = await PDFDocument.load(new Uint8Array(resDeclaracao.pdfBuffer));
+    expect(docDec.getPageCount()).toBe(1);
+
+    const resImpugnacao = await gerarPdfMinutaImpugnacao({
+      impugnacao: {
+        numeroEdital: "PE 88/2026",
+        orgaoNome: "Tribunal Regional Federal",
+        motivoLegal: "Exigência restritiva no edital.",
+        fundamentacao: "Súmula 273 do TCU veda marca exclusiva.",
+        pedidos: "Revisão dos critérios técnicos.",
+        dataAberturaSessao: new Date("2026-11-25T10:00:00Z"),
+      },
+      empresa: {
+        razaoSocial: "MINHA EMPRESA COM LOGO LTDA",
+        cnpj: "12.345.678/0001-99",
+        cidade: "Brasília",
+        uf: "DF",
+        logoUrl: logoPngBase64,
+      },
+    });
+
+    const docImp = await PDFDocument.load(new Uint8Array(resImpugnacao.pdfBuffer));
+    expect(docImp.getPageCount()).toBe(1);
+  });
+
+  it("gerarMinutaJuridica com apenasTextoFormal omite logo e avisos de timbrado", async () => {
+    const { gerarMinutaJuridica } = await import("@/lib/minuta-juridica");
+    const logoPngBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    const minutaComLogo = gerarMinutaJuridica(
+      {
+        numeroEdital: "PE 12/2026",
+        orgaoNome: "Prefeitura de Goiânia",
+        motivoLegal: "Prazo exíguo.",
+        fundamentacao: "Art. 25 Lei 14.133.",
+        pedidos: "Dilação de prazo.",
+        dataAberturaSessao: new Date(),
+      },
+      {
+        razaoSocial: "TECH LTDA",
+        cnpj: "12.345.678/0001-90",
+        logoUrl: logoPngBase64,
+      },
+    );
+
+    expect(minutaComLogo.minutaHtml).toContain("minuta-header-logo");
+
+    const minutaLimpa = gerarMinutaJuridica(
+      {
+        numeroEdital: "PE 12/2026",
+        orgaoNome: "Prefeitura de Goiânia",
+        motivoLegal: "Prazo exíguo.",
+        fundamentacao: "Art. 25 Lei 14.133.",
+        pedidos: "Dilação de prazo.",
+        dataAberturaSessao: new Date(),
+      },
+      {
+        razaoSocial: "TECH LTDA",
+        cnpj: "12.345.678/0001-90",
+        logoUrl: logoPngBase64,
+      },
+      { apenasTextoFormal: true },
+    );
+
+    expect(minutaLimpa.minutaHtml).not.toContain("minuta-header-logo");
+    expect(minutaLimpa.minutaHtml).not.toContain("minuta-aviso-timbrado");
+    expect(minutaLimpa.minutaHtml).toContain("TECH LTDA");
+  });
 });
