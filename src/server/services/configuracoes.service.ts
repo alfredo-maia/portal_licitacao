@@ -451,7 +451,12 @@ export async function obterConfiguracaoEmpresa(
         where: { id: tenantId },
       });
       const config = await (prisma as any).configuracaoEmpresa.findFirst({
-        where: { tenantId },
+        where: {
+          OR: [
+            { tenantId },
+            { id: `cfg_${tenantId}` },
+          ],
+        },
       });
       if (config) {
         return {
@@ -472,6 +477,33 @@ export async function obterConfiguracaoEmpresa(
           ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
           brasilInteiro: tenant?.brasilInteiro ?? true,
           preferenciasUpdatedAt: tenant?.preferenciasUpdatedAt ?? (config as any)?.preferenciasUpdatedAt ?? null,
+          logoUrl: config.logoUrl || null,
+          papelTimbradoUrl: config.papelTimbradoUrl || null,
+        };
+      }
+
+      // Se o tenant existe mas ainda não possui configuracao_empresa salva no DB,
+      // verifica se há dados em memória antes de retornar defaults
+      const memConfig = getInMemoryConfiguracaoEmpresa(tenantId);
+      if (memConfig && (memConfig.logoUrl || memConfig.papelTimbradoUrl)) {
+        return {
+          ...memConfig,
+          razaoSocial: memConfig.razaoSocial || tenant?.razaoSocial || "EMPRESA LTDA",
+          nomeFantasia: memConfig.nomeFantasia || tenant?.nomeFantasia || "",
+          cnpj: memConfig.cnpj || tenant?.cnpj || "",
+          cnae: memConfig.cnae || tenant?.cnaePrincipal || "",
+          endereco: memConfig.endereco || tenant?.endereco || "",
+          numero: memConfig.numero || tenant?.numero || "",
+          complemento: memConfig.complemento || tenant?.complemento || "",
+          bairro: memConfig.bairro || tenant?.bairro || "",
+          cidade: memConfig.cidade || tenant?.cidade || "",
+          uf: memConfig.uf || tenant?.uf || "GO",
+          cep: memConfig.cep || tenant?.cep || "",
+          segmentos: normalizarSegmentosEntrada(tenant?.segmentos || []),
+          subsegmentos: tenant?.subsegmentos || [],
+          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
+          brasilInteiro: tenant?.brasilInteiro ?? true,
+          preferenciasUpdatedAt: tenant?.preferenciasUpdatedAt ?? (memConfig as any)?.preferenciasUpdatedAt ?? null,
         };
       }
 
@@ -643,20 +675,48 @@ export async function atualizarConfiguracaoEmpresa(
       });
 
       const configId = `cfg_${tenantId}`;
-      const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
-        where: { tenantId },
-        create: {
+      let atualizado: any;
+      try {
+        const existing = await (prisma as any).configuracaoEmpresa.findFirst({
+          where: {
+            OR: [
+              { tenantId },
+              { id: configId },
+            ],
+          },
+        });
+
+        if (existing) {
+          atualizado = await (prisma as any).configuracaoEmpresa.update({
+            where: { id: existing.id },
+            data: {
+              ...configData,
+              tenantId,
+              preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
+              atualizadoEm: new Date(),
+            },
+          });
+        } else {
+          atualizado = await (prisma as any).configuracaoEmpresa.create({
+            data: {
+              ...configData,
+              id: configId,
+              tenantId,
+              preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
+              atualizadoEm: new Date(),
+            },
+          });
+        }
+      } catch (errDb: any) {
+        console.warn("[ConfiguracoesService] Fallback db update:", errDb?.message);
+        atualizado = {
           ...configData,
           id: configId,
           tenantId,
           preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
-        },
-        update: {
-          ...configData,
-          preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
           atualizadoEm: new Date(),
-        },
-      });
+        };
+      }
 
       try {
         await (prisma as any).tenant.update({

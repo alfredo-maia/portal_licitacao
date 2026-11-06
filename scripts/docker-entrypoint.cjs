@@ -454,7 +454,8 @@ async function bootstrapDatabase() {
         "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "tenant_convite_tenantId_email_key" UNIQUE ("tenantId", "email")
       );`,
-      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT UNIQUE;`,
+      `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "configuracao_empresa_tenantId_key" ON "configuracao_empresa"("tenantId");`,
       `DO $$ BEGIN ALTER TABLE "configuracao_empresa" ADD CONSTRAINT "configuracao_empresa_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
       `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
       `DO $$ BEGIN ALTER TABLE "documento" ADD CONSTRAINT "documento_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,

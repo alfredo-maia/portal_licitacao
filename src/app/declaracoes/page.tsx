@@ -67,6 +67,9 @@ export default function DeclaracoesPage() {
   // Generated document state
   const [documentoGerado, setDocumentoGerado] = useState<DeclaracaoGeradaResponse | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [temPapelTimbrado, setTemPapelTimbrado] = useState(false);
+  const [temLogo, setTemLogo] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
 
@@ -129,6 +132,8 @@ export default function DeclaracoesPage() {
           if (emp.representanteCargo) setRepresentanteCargo(emp.representanteCargo);
           if (emp.cidade) setCidade(emp.cidade);
           if (emp.uf) setUf(emp.uf);
+          setTemPapelTimbrado(Boolean(emp.papelTimbradoUrl));
+          setTemLogo(Boolean(!emp.papelTimbradoUrl && emp.logoUrl));
         }
       })
       .catch(() => {});
@@ -308,6 +313,77 @@ export default function DeclaracoesPage() {
     }, 300);
   };
 
+  const handleImprimirTimbrado = useCallback(async () => {
+    setGerandoPdf(true);
+    setNotificacao(null);
+    try {
+      const payload = {
+        tipo: tipoSelecionado,
+        numeroEdital: numeroEdital.trim() || "PE 001/2026",
+        orgaoNome: orgaoNome.trim() || "Órgão Público Licitante",
+        objetoLicitacao: objetoLicitacao.trim(),
+        empresaRazaoSocial: empresaRazaoSocial.trim() || "EMPRESA LICITANTE LTDA",
+        empresaCnpj: empresaCnpj.trim() || "00.000.000/0001-00",
+        empresaEndereco: empresaEndereco.trim(),
+        representanteNome: representanteNome.trim() || "Representante Legal",
+        representanteCpf: representanteCpf.trim() || "000.000.000-00",
+        representanteRg: representanteRg.trim(),
+        representanteCargo: representanteCargo.trim() || "Representante Legal",
+        cidade: cidade.trim() || "Goiânia",
+        uf: uf.trim() || "GO",
+        dataDeclaracao,
+      };
+
+      const res = await fetch("/api/declaracoes/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const erroJson = await res.json().catch(() => ({}));
+        throw new Error(erroJson.error || "Falha ao gerar PDF timbrado");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+      if (!win) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `declaracao_${tipoSelecionado.toLowerCase()}_timbrada.pdf`;
+        a.click();
+      }
+      setNotificacao({
+        tipo: "success",
+        texto: "PDF timbrado oficial gerado com sucesso! Abrindo para impressão...",
+      });
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err: any) {
+      setNotificacao({
+        tipo: "error",
+        texto: err?.message || "Erro ao gerar PDF timbrado da declaração.",
+      });
+    } finally {
+      setGerandoPdf(false);
+    }
+  }, [
+    tipoSelecionado,
+    numeroEdital,
+    orgaoNome,
+    objetoLicitacao,
+    empresaRazaoSocial,
+    empresaCnpj,
+    empresaEndereco,
+    representanteNome,
+    representanteCpf,
+    representanteRg,
+    representanteCargo,
+    cidade,
+    uf,
+    dataDeclaracao,
+  ]);
+
   const handleBaixarTxt = () => {
     if (!documentoGerado?.conteudoTexto) return;
     const blob = new Blob([documentoGerado.conteudoTexto], { type: "text/plain;charset=utf-8" });
@@ -392,7 +468,7 @@ export default function DeclaracoesPage() {
               <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 600 }}>
                 Gerador dos 8 Modelos Oficiais de Declaração
               </h1>
-              <Tag type="purple" size="md" className="pncp-mono">
+              <Tag type="cyan" size="md" className="pncp-mono">
                 Anexo 5 • Lei nº 14.133/2021
               </Tag>
             </div>
@@ -626,6 +702,16 @@ export default function DeclaracoesPage() {
                 id="btn-imprimir-a4"
               >
                 Imprimir / PDF A4
+              </Button>
+              <Button
+                kind="tertiary"
+                size="md"
+                renderIcon={DocumentPdf}
+                onClick={handleImprimirTimbrado}
+                disabled={gerandoPdf}
+                id="btn-imprimir-timbrado"
+              >
+                {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir Timbrado"}
               </Button>
               <Button
                 kind="tertiary"

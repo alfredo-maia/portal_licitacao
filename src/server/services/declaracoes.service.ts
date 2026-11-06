@@ -7,7 +7,7 @@ import {
 } from "@/server/schemas/declaracao.schema";
 import { recordAuditLog } from "@/server/audit";
 
-function formatarDataExtenso(dataStr?: string, cidade = "Goiânia", uf = "GO"): string {
+export function formatarDataExtenso(dataStr?: string, cidade = "Goiânia", uf = "GO"): string {
   const data = dataStr ? new Date(dataStr) : new Date();
   const meses = [
     "janeiro",
@@ -33,7 +33,7 @@ export function obterTemplatesDeclaracoes(): typeof DECLARACAO_METADATA[Declarac
   return DECLARACAO_TIPOS.map((tipo) => DECLARACAO_METADATA[tipo]);
 }
 
-function gerarTextoEspecifico(tipo: DeclaracaoTipo, input: DeclaracaoGerarInput): { corpoHtml: string; corpoTexto: string } {
+export function gerarTextoEspecifico(tipo: DeclaracaoTipo, input: DeclaracaoGerarInput): { corpoHtml: string; corpoTexto: string } {
   const {
     empresaRazaoSocial,
     empresaCnpj,

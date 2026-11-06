@@ -361,8 +361,8 @@ export async function gerarPdfMinutaImpugnacao(params: {
     }
     if (embeddedLogo) {
       const orig = embeddedLogo.scale(1);
-      const maxW = 160;
-      const maxH = 48;
+      const maxW = 150;
+      const maxH = 45;
       const ratio = Math.min(maxW / orig.width, maxH / orig.height, 1);
       logoDims = { width: orig.width * ratio, height: orig.height * ratio };
     }
@@ -370,7 +370,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
 
   const marginX = 54;
   const contentWidth = 595.28 - marginX * 2;
-  const bottomY = 70;
+  const bottomY = 65;
 
   type Bloco = {
     texto: string;
@@ -400,137 +400,137 @@ export async function gerarPdfMinutaImpugnacao(params: {
       bold: false,
       size: 8.5,
       align: "center",
-      spacingAfter: 16,
+      spacingAfter: 12,
     },
     {
       texto: "IMPUGNAÇÃO AO EDITAL DE LICITAÇÃO",
       bold: true,
-      size: 12,
+      size: 11.5,
       align: "center",
     },
     {
       texto: "(Art. 164 da Lei Federal nº 14.133/2021)",
       bold: false,
-      size: 9,
+      size: 8.5,
       align: "center",
-      spacingAfter: 16,
+      spacingAfter: 12,
     },
     {
       texto: `${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}, com sede em ${empresa.cidade} - ${empresa.uf}${empresa.endereco ? ` (${empresa.endereco})` : ""}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente IMPUGNAÇÃO AO EDITAL, pelas razões fáticas e jurídicas que passa a expor:`,
       bold: false,
       size: 9.5,
-      indent: 28,
-      spacingAfter: 12,
+      indent: 24,
+      spacingAfter: 10,
     },
     {
       texto: "1. DA TEMPESTIVIDADE",
       bold: true,
-      size: 10,
-      spacingBefore: 6,
+      size: 9.5,
+      spacingBefore: 4,
     },
     {
       texto: "A presente impugnação é manifestamente tempestiva, visto que protocolada dentro do prazo legal de até 3 (três) dias úteis que antecedem a data de abertura da sessão pública, em estrita obediência ao Art. 164 da Lei Federal nº 14.133/2021.",
       bold: false,
-      size: 9.5,
-      indent: 28,
-      spacingAfter: 10,
+      size: 9,
+      indent: 24,
+      spacingAfter: 8,
     },
     {
       texto: "2. DA SÍNTESE DO OBJETO",
       bold: true,
-      size: 10,
-      spacingBefore: 6,
+      size: 9.5,
+      spacingBefore: 4,
     },
     {
       texto: impugnacao.objeto || "Fornecimento de bens ou prestação de serviços conforme especificações e anexos do Termo de Referência.",
       bold: false,
-      size: 9.5,
-      indent: 28,
-      spacingAfter: 10,
+      size: 9,
+      indent: 24,
+      spacingAfter: 8,
     },
     {
       texto: "3. DAS IRREGULARIDADES APONTADAS E DO MOTIVO LEGAL",
       bold: true,
-      size: 10,
-      spacingBefore: 6,
+      size: 9.5,
+      spacingBefore: 4,
     },
     {
       texto: impugnacao.motivoLegal,
       bold: false,
-      size: 9.5,
-      indent: 28,
-      spacingAfter: 10,
+      size: 9,
+      indent: 24,
+      spacingAfter: 8,
     },
     {
       texto: "4. DA FUNDAMENTAÇÃO JURÍDICA E SÚMULAS DO TCU",
       bold: true,
-      size: 10,
-      spacingBefore: 6,
+      size: 9.5,
+      spacingBefore: 4,
     },
     {
       texto: impugnacao.fundamentacao,
       bold: false,
-      size: 9.5,
-      indent: 28,
+      size: 9,
+      indent: 24,
       spacingAfter: 6,
     },
     {
       texto: "Conforme remansosa jurisprudência do Tribunal de Contas da União e os princípios insculpidos no Art. 5º e 11 da Lei nº 14.133/2021, é vedado à Administração estabelecer exigências que frustrem o caráter competitivo do certame, devendo prevalecer a isonomia e a proposta mais vantajosa.",
       bold: false,
-      size: 9.5,
-      indent: 28,
-      spacingAfter: 10,
+      size: 9,
+      indent: 24,
+      spacingAfter: 8,
     },
     {
       texto: "5. DOS PEDIDOS FORMAIS",
       bold: true,
-      size: 10,
-      spacingBefore: 6,
+      size: 9.5,
+      spacingBefore: 4,
     },
     {
       texto: impugnacao.pedidos,
       bold: false,
-      size: 9.5,
-      indent: 28,
+      size: 9,
+      indent: 24,
       spacingAfter: 6,
     },
     {
       texto: "Requer-se, outrossim, a suspensão cautelar do certame até o julgamento definitivo e a republicação do edital com a devida reabertura dos prazos legais (Art. 55, § 1º da Lei 14.133/2021).",
       bold: false,
-      size: 9.5,
-      indent: 28,
-      spacingAfter: 16,
+      size: 9,
+      indent: 24,
+      spacingAfter: 12,
     },
     {
       texto: "Nestes termos, pede e espera deferimento.",
       bold: false,
-      size: 9.5,
+      size: 9,
       align: "right",
       spacingAfter: 4,
     },
     {
       texto: `${empresa.cidade} - ${empresa.uf}, ${dataGeracao}.`,
       bold: false,
-      size: 9.5,
+      size: 9,
       align: "right",
-      spacingAfter: 28,
+      spacingAfter: 20,
     },
     {
       texto: "_________________________________________________________",
       bold: false,
-      size: 9.5,
+      size: 9,
       align: "center",
     },
     {
       texto: empresa.razaoSocial,
       bold: true,
-      size: 10,
+      size: 9.5,
       align: "center",
     },
     {
       texto: `CNPJ: ${empresa.cnpj}`,
       bold: false,
-      size: 9,
+      size: 8.5,
       align: "center",
     },
     {
@@ -538,32 +538,62 @@ export async function gerarPdfMinutaImpugnacao(params: {
         ? `${empresa.representanteNome} (${empresa.representanteCargo})`
         : "",
       bold: false,
-      size: 8.5,
+      size: 8,
       align: "center",
     },
   ];
+
+  // Avaliação dinâmica de altura para priorizar encaixe perfeito em 1 página
+  // caso o conteúdo seja curto, ou 2 páginas se for longo.
+  let estimativaLinhas = 0;
+  for (const b of blocos) {
+    if (!b.texto.trim()) continue;
+    const font = b.bold ? fontBold : fontRegular;
+    const size = b.size ?? 9;
+    const indent = b.indent ?? 0;
+    const maxWidth = contentWidth - indent;
+    const linhas = quebrarTextoEmLinhas(b.texto, maxWidth, font, size);
+    estimativaLinhas += Math.max(linhas.length, 1);
+  }
+
+  const cabeEmUmaPagina = estimativaLinhas <= 38;
+  const escalaGeral = cabeEmUmaPagina ? 0.90 : 1.0;
+  const spacingMultiplier = cabeEmUmaPagina ? 0.65 : 1.0;
 
   let currentPage: any = null;
   let pageIndex = 0;
   let currentY = 0;
 
   const criarPagina = async (): Promise<any> => {
-    let p: any;
+    // Sempre cria página padrão A4 (595.28 x 841.89)
+    const p = doc.addPage([595.28, 841.89]);
+
     if (hasTimbradoPdf && timbradoDoc) {
       const templateIdx = Math.min(pageIndex, timbradoDoc.getPageCount() - 1);
-      const [copied] = await doc.copyPages(timbradoDoc, [templateIdx]);
-      p = doc.addPage(copied);
-    } else {
-      p = doc.addPage([595.28, 841.89]);
+      try {
+        const [embedded] = await doc.embedPdf(timbradoDoc, [templateIdx]);
+        p.drawPage(embedded, {
+          x: 0,
+          y: 0,
+          width: 595.28,
+          height: 841.89,
+        });
+      } catch (errEmbed) {
+        console.warn("Falha ao embutir página do timbrado, utilizando fallback:", errEmbed);
+      }
     }
 
     // Configuração inicial do cursor Y
     if (pageIndex === 0) {
       if (hasTimbradoPdf) {
-        currentY = 710;
+        currentY = cabeEmUmaPagina ? 715 : 705;
       } else if (embeddedLogo) {
-        // Estampa logo institucional
-        const logoY = 785 - logoDims.height;
+        // Estampa logo institucional com proporção precisa e alinhamento vertical harmonioso
+        const headerTop = 790;
+        const headerBottom = 735;
+        const headerCenterY = (headerTop + headerBottom) / 2;
+        const logoY = headerCenterY - logoDims.height / 2;
+
         p.drawImage(embeddedLogo, {
           x: marginX,
           y: logoY,
@@ -576,7 +606,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial, fontBold);
         p.drawText(textoRazao, {
           x: headerX,
-          y: 775,
+          y: headerCenterY + 4,
           size: 11,
           font: fontBold,
           color: rgb(0.1, 0.1, 0.1),
@@ -588,7 +618,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
         );
         p.drawText(textoMeta, {
           x: headerX,
-          y: 760,
+          y: headerCenterY - 10,
           size: 8.5,
           font: fontRegular,
           color: rgb(0.35, 0.35, 0.35),
@@ -596,12 +626,12 @@ export async function gerarPdfMinutaImpugnacao(params: {
 
         // Linha divisória
         p.drawLine({
-          start: { x: marginX, y: 720 },
-          end: { x: marginX + contentWidth, y: 720 },
+          start: { x: marginX, y: headerBottom },
+          end: { x: marginX + contentWidth, y: headerBottom },
           thickness: 1,
           color: rgb(0.8, 0.8, 0.8),
         });
-        currentY = 700;
+        currentY = headerBottom - (cabeEmUmaPagina ? 14 : 20);
       } else {
         // Sem timbrado e sem logo: cabeçalho formal em texto
         const textoRazao = sanitizarTextoParaPdf(empresa.razaoSocial.toUpperCase(), fontBold);
@@ -647,13 +677,13 @@ export async function gerarPdfMinutaImpugnacao(params: {
     if (!b.texto.trim()) continue;
 
     const font = b.bold ? fontBold : fontRegular;
-    const fontSize = b.size ?? 9.5;
-    const lineHeight = fontSize + 4;
-    const indent = b.indent ?? 0;
+    const fontSize = (b.size ?? 9.5) * escalaGeral;
+    const lineHeight = fontSize + (cabeEmUmaPagina ? 2.8 : 3.8);
+    const indent = (b.indent ?? 0) * (cabeEmUmaPagina ? 0.8 : 1.0);
     const maxWidthBloco = contentWidth - indent;
 
     if (b.spacingBefore) {
-      currentY -= b.spacingBefore;
+      currentY -= b.spacingBefore * spacingMultiplier;
     }
 
     const linhas = quebrarTextoEmLinhas(b.texto, maxWidthBloco, font, fontSize);
@@ -661,7 +691,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
     for (let i = 0; i < linhas.length; i++) {
       const linha = linhas[i];
       if (linha === "") {
-        currentY -= lineHeight * 0.5;
+        currentY -= lineHeight * 0.4;
         continue;
       }
 
@@ -693,7 +723,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
     }
 
     if (b.spacingAfter) {
-      currentY -= b.spacingAfter;
+      currentY -= b.spacingAfter * spacingMultiplier;
     }
   }
 

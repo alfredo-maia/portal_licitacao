@@ -1346,42 +1346,54 @@ export default function ConfiguracoesPage() {
                   <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
                     Recomendado: Fundo transparente ou branco, altura de até 150px.
                   </p>
+
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg"
+                    id="upload-logo-empresa"
+                    style={{ display: "none" }}
+                    onClick={(e) => {
+                      (e.target as HTMLInputElement).value = "";
+                    }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 2 * 1024 * 1024) {
+                        setNotificacao({ tipo: "error", texto: "A logomarca deve ter no máximo 2MB." });
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setEmpresa((prev) => ({ ...prev, logoUrl: reader.result as string }));
+                        setNotificacao({ tipo: "success", texto: "Logomarca carregada. Clique em 'Salvar Alterações da Empresa' para gravar." });
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+
                   {empresa.logoUrl ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
                       <div style={{ padding: "0.5rem", background: "#ffffff", borderRadius: "4px", border: "1px solid #e0e0e0" }}>
                         <img src={empresa.logoUrl} alt="Logo da Empresa" style={{ maxHeight: "60px", maxWidth: "200px", objectFit: "contain", display: "block" }} />
                       </div>
-                      <Button
-                        kind="ghost"
-                        size="sm"
-                        onClick={() => setEmpresa((prev) => ({ ...prev, logoUrl: null }))}
-                      >
-                        Remover Logo
-                      </Button>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <label htmlFor="upload-logo-empresa" style={{ margin: 0 }}>
+                          <Button kind="tertiary" size="sm" as="span">
+                            Substituir Logomarca
+                          </Button>
+                        </label>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          onClick={() => setEmpresa((prev) => ({ ...prev, logoUrl: null }))}
+                        >
+                          Remover Logo
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div>
-                      <input
-                        type="file"
-                        accept="image/png, image/jpeg, image/jpg"
-                        id="upload-logo-empresa"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            setNotificacao({ tipo: "error", texto: "A logomarca deve ter no máximo 2MB." });
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setEmpresa((prev) => ({ ...prev, logoUrl: reader.result as string }));
-                            setNotificacao({ tipo: "success", texto: "Logomarca carregada. Clique em 'Salvar Alterações da Empresa' para gravar." });
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                      <label htmlFor="upload-logo-empresa">
+                      <label htmlFor="upload-logo-empresa" style={{ margin: 0 }}>
                         <Button kind="tertiary" size="sm" as="span">
                           Selecionar Imagem da Logo
                         </Button>
@@ -1402,47 +1414,59 @@ export default function ConfiguracoesPage() {
                   <p style={{ fontSize: "0.6875rem", color: "var(--cds-text-helper)", marginBottom: "0.75rem", fontStyle: "italic" }}>
                     💡 Se você anexar a Folha Timbrada em PDF, ela será o fundo oficial e o logo avulso não será duplicado por cima. A Logomarca ao lado é utilizada quando não houver papel timbrado em PDF.
                   </p>
+
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    id="upload-timbrado-empresa"
+                    style={{ display: "none" }}
+                    onClick={(e) => {
+                      (e.target as HTMLInputElement).value = "";
+                    }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+                      if (!isPdf) {
+                        setNotificacao({ tipo: "error", texto: "Apenas arquivos em formato PDF (.pdf) são aceitos para a folha timbrada." });
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        setNotificacao({ tipo: "error", texto: "O arquivo PDF timbrado deve ter no máximo 5MB." });
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: reader.result as string }));
+                        setNotificacao({ tipo: "success", texto: "Folha timbrada em PDF carregada! Clique em 'Salvar Alterações da Empresa' para gravar." });
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+
                   {empresa.papelTimbradoUrl ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
                       <Tag type="teal" size="sm">
                         ✓ Folha Timbrada em PDF Anexada
                       </Tag>
-                      <Button
-                        kind="ghost"
-                        size="sm"
-                        onClick={() => setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: null }))}
-                      >
-                        Remover Timbrado Personalizado
-                      </Button>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <label htmlFor="upload-timbrado-empresa" style={{ margin: 0 }}>
+                          <Button kind="tertiary" size="sm" as="span">
+                            Substituir Timbrado (PDF)
+                          </Button>
+                        </label>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          onClick={() => setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: null }))}
+                        >
+                          Remover Timbrado Personalizado
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        id="upload-timbrado-empresa"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-                          if (!isPdf) {
-                            setNotificacao({ tipo: "error", texto: "Apenas arquivos em formato PDF (.pdf) são aceitos para a folha timbrada." });
-                            return;
-                          }
-                          if (file.size > 5 * 1024 * 1024) {
-                            setNotificacao({ tipo: "error", texto: "O arquivo PDF timbrado deve ter no máximo 5MB." });
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: reader.result as string }));
-                            setNotificacao({ tipo: "success", texto: "Folha timbrada em PDF carregada! Clique em 'Salvar Alterações da Empresa' para gravar." });
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                      <label htmlFor="upload-timbrado-empresa">
+                      <label htmlFor="upload-timbrado-empresa" style={{ margin: 0 }}>
                         <Button kind="tertiary" size="sm" as="span">
                           Selecionar Folha Timbrada (PDF)
                         </Button>
