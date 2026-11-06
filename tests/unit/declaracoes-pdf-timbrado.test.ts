@@ -70,6 +70,9 @@ describe("Geração de PDF Timbrado de Declarações e Impugnações (A4 Garanti
     // Garante que mesmo com timbrado 315x424, o documento resultante é estritamente A4!
     expect(Math.round(dimsImp.width)).toBe(595);
     expect(Math.round(dimsImp.height)).toBe(842);
+    // Salva para inspeção visual
+    const fs = await import("fs");
+    fs.writeFileSync("/tmp/teste_timbrado_novo.pdf", resImpugnacao.pdfBuffer);
 
     // 2. Testa na Declaração Oficial
     const resDeclaracao = await gerarPdfDeclaracao({

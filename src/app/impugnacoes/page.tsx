@@ -393,6 +393,53 @@ export default function ImpugnacoesPage() {
     setModalMinutaAberto(true);
   };
 
+  const handleImprimirMinutaHtml = (imp: ImpugnacaoItem) => {
+    const { minutaHtml } = gerarMinutaJuridica(imp, empresaAtiva || undefined);
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Minuta de Impugnação - Edital ${imp.numeroEdital}</title>
+          <style>
+            @page { size: A4 portrait; margin: 15mm 20mm; }
+            body { font-family: 'Times New Roman', Times, serif; color: #161616; margin: 0; padding: 0; background: #ffffff; }
+            * { box-sizing: border-box; }
+            .minuta-aviso-timbrado { display: none !important; }
+          </style>
+        </head>
+        <body>${minutaHtml}</body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {}
+      }, 1500);
+    }, 300);
+  };
+
   const abrirAtualizacaoStatus = (imp: ImpugnacaoItem) => {
     setImpugnacaoSelecionada(imp);
     setStatusUpdate(imp.status);
@@ -714,16 +761,6 @@ export default function ImpugnacoesPage() {
                     Ver Minuta Jurídica (TCU)
                   </Button>
                   <Button
-                    kind="ghost"
-                    size="sm"
-                    renderIcon={DocumentPdf}
-                    onClick={() => window.open(`/api/impugnacoes/${imp.id}/pdf`, "_blank")}
-                    id={`btn-pdf-timbrado-${imp.id}`}
-                    data-testid={`btn-pdf-timbrado-${imp.id}`}
-                  >
-                    Baixar PDF Timbrado
-                  </Button>
-                  <Button
                     kind="secondary"
                     size="sm"
                     renderIcon={Edit}
@@ -962,7 +999,16 @@ export default function ImpugnacoesPage() {
       >
         {impugnacaoSelecionada && (
           <div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+              <Button
+                kind="secondary"
+                size="sm"
+                renderIcon={Printer}
+                onClick={() => handleImprimirMinutaHtml(impugnacaoSelecionada)}
+                id="btn-imprimir-minuta-oficial-modal"
+              >
+                Imprimir Minuta Oficial
+              </Button>
               <Button
                 kind="primary"
                 size="sm"
@@ -982,17 +1028,9 @@ export default function ImpugnacoesPage() {
                   navigator.clipboard.writeText(m.minutaTexto);
                   setNotificacao({ tipo: "success", texto: "Minuta jurídica copiada para a área de transferência!" });
                 }}
+                id="btn-copiar-minuta-modal"
               >
                 Copiar Texto da Minuta
-              </Button>
-              <Button
-                kind="secondary"
-                size="sm"
-                renderIcon={Printer}
-                onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
-                id="btn-imprimir-minuta-oficial-modal"
-              >
-                Imprimir Minuta Oficial
               </Button>
             </div>
 

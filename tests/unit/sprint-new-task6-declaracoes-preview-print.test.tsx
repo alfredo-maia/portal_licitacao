@@ -67,22 +67,21 @@ describe("Sprint New - Task 6: Declarações (Sem Erro ao Entrar, Molde A4 Imedi
     // Não deve exibir erro de dados inválidos ao entrar
     expect(screen.queryByText(/Dados inválidos para geração de declaração/i)).toBeNull();
 
-    // Deve exibir imediatamente o molde de pré-visualização na Folha A4
-    const preview = screen.getByTestId("folha-a4-preview");
-    expect(preview).toBeDefined();
-    expect(preview.textContent).toContain("Declaração de Pleno Atendimento aos Requisitos de Habilitação");
-
     // Não deve ter chamado /api/declaracoes/gerar automaticamente no mount
     expect(gerarSpy).not.toHaveBeenCalled();
 
-    // Quando o usuário clica no botão "Atualizar Folha A4", atualiza a Pré-visualização da Folha A4 Oficial
-    const btnAtualizar = screen.getByText("Atualizar Folha A4");
-    fireEvent.click(btnAtualizar);
+    // Quando o usuário clica no botão "Visualizar Declaração Oficial", abre o modal com a declaração oficial gerada
+    const btnVisualizar = screen.getByRole("button", { name: /Visualizar Declaração Oficial/i });
+    fireEvent.click(btnVisualizar);
 
     await waitFor(() => {
       expect(gerarSpy).toHaveBeenCalledTimes(1);
+      const preview = screen.getByTestId("folha-a4-preview");
+      expect(preview).toBeDefined();
       expect(screen.getByText("EMPRESA ATUALIZADA LTDA")).toBeDefined();
       expect(screen.getByText("Texto atualizado pelo botão.")).toBeDefined();
+      expect(screen.getByTestId("btn-imprimir-timbrado")).toBeDefined();
+      expect(screen.getByTestId("btn-imprimir-a4")).toBeDefined();
     });
   });
 });

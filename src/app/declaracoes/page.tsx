@@ -8,6 +8,7 @@ import {
   Grid,
   InlineLoading,
   InlineNotification,
+  Modal,
   Select,
   SelectItem,
   Tag,
@@ -19,6 +20,7 @@ import {
   Copy,
   DocumentDownload,
   DocumentPdf,
+  DocumentView,
   Information,
   Printer,
   Reset,
@@ -71,6 +73,7 @@ export default function DeclaracoesPage() {
   const [temPapelTimbrado, setTemPapelTimbrado] = useState(false);
   const [temLogo, setTemLogo] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [modalDeclaracaoAberto, setModalDeclaracaoAberto] = useState(false);
   const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
 
   // Carrega templates e oportunidades ativas
@@ -180,6 +183,7 @@ export default function DeclaracoesPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         setDocumentoGerado(data);
+        setModalDeclaracaoAberto(true);
       } else {
         setNotificacao({
           tipo: "error",
@@ -473,7 +477,7 @@ export default function DeclaracoesPage() {
               </Tag>
             </div>
             <p style={{ margin: 0, color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
-              Split-view dinâmico: preencha as variáveis à esquerda com vínculo aos certames e visualize a folha A4 em tempo real à direita para pronta impressão e assinatura digital.
+              Preencha as variáveis abaixo com vínculo automático aos certames e clique em &ldquo;Visualizar Declaração Oficial&rdquo; para revisar, imprimir com papel timbrado oficial ou exportar o texto.
             </p>
           </div>
         </div>
@@ -489,10 +493,8 @@ export default function DeclaracoesPage() {
         )}
       </div>
 
-      {/* Split View: Formulário à esquerda / Folha A4 à direita */}
       <Grid fullWidth style={{ padding: 0 }}>
-        {/* Coluna Esquerda: Formulário de Preenchimento */}
-        <Column lg={7} md={8} sm={4} className="pncp-split-form pncp-no-print" style={{ marginBottom: "2rem" }}>
+        <Column lg={16} md={8} sm={4} className="pncp-no-print" style={{ marginBottom: "2rem" }}>
           <Tile style={{ padding: "1.5rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
               <Template size={20} />
@@ -685,229 +687,96 @@ export default function DeclaracoesPage() {
               </Column>
             </Grid>
 
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "1.5rem" }}>
               <Button
                 kind="primary"
+                size="md"
+                renderIcon={DocumentView}
                 onClick={handleGerar}
                 disabled={carregando}
-                id="btn-atualizar-folha-a4"
+                id="btn-visualizar-declaracao"
+                data-testid="btn-visualizar-declaracao"
               >
-                {carregando ? <InlineLoading description="Processando..." /> : "Atualizar Folha A4"}
-              </Button>
-              <Button
-                kind="secondary"
-                size="md"
-                renderIcon={Printer}
-                onClick={handleImprimir}
-                id="btn-imprimir-a4"
-              >
-                Imprimir / PDF A4
-              </Button>
-              <Button
-                kind="tertiary"
-                size="md"
-                renderIcon={DocumentPdf}
-                onClick={handleImprimirTimbrado}
-                disabled={gerandoPdf}
-                id="btn-imprimir-timbrado"
-              >
-                {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir Timbrado"}
-              </Button>
-              <Button
-                kind="tertiary"
-                size="md"
-                renderIcon={Copy}
-                onClick={handleCopiarTexto}
-                id="btn-copiar-declaracao"
-              >
-                {copiado ? "Texto Copiado!" : "Copiar Texto"}
-              </Button>
-              <Button
-                kind="ghost"
-                size="md"
-                renderIcon={DocumentDownload}
-                onClick={handleBaixarTxt}
-                id="btn-baixar-txt"
-              >
-                Exportar .TXT
+                {carregando ? <InlineLoading description="Gerando documento..." /> : "Visualizar Declaração Oficial"}
               </Button>
             </div>
           </Tile>
         </Column>
+      </Grid>
 
-        {/* Coluna Direita: Folha A4 em Tempo Real */}
-        <Column lg={9} md={8} sm={4}>
-          <div className="pncp-no-print" style={{ marginBottom: "0.75rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
-              Pré-visualização da Folha A4 Oficial (Padrão Impressão / ICP-Brasil)
-            </span>
-            <Tag type="cool-gray" size="sm">210 × 297 mm</Tag>
+      {/* MODAL: Visualizar Declaração Oficial (Padrão Minuta Jurídica TCU) */}
+      <Modal
+        open={modalDeclaracaoAberto}
+        onRequestClose={() => setModalDeclaracaoAberto(false)}
+        modalHeading={`Declaração Oficial: ${metaAtual?.titulo || "Modelo Oficial (Lei 14.133/2021)"}`}
+        passiveModal
+        size="lg"
+      >
+        <div>
+          {/* Barra de Ações Superior do Modal (Remanejada) */}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+            <Button
+              kind="secondary"
+              size="sm"
+              renderIcon={Printer}
+              onClick={handleImprimir}
+              id="btn-imprimir-a4"
+              data-testid="btn-imprimir-a4"
+            >
+              Imprimir / PDF A4
+            </Button>
+            <Button
+              kind="primary"
+              size="sm"
+              renderIcon={DocumentPdf}
+              onClick={handleImprimirTimbrado}
+              disabled={gerandoPdf}
+              id="btn-imprimir-timbrado"
+              data-testid="btn-imprimir-timbrado"
+            >
+              {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir Timbrado"}
+            </Button>
+            <Button
+              kind="tertiary"
+              size="sm"
+              renderIcon={Copy}
+              onClick={handleCopiarTexto}
+              id="btn-copiar-declaracao"
+              data-testid="btn-copiar-declaracao"
+            >
+              {copiado ? "Texto Copiado!" : "Copiar Texto"}
+            </Button>
+            <Button
+              kind="ghost"
+              size="sm"
+              renderIcon={DocumentDownload}
+              onClick={handleBaixarTxt}
+              id="btn-baixar-txt"
+              data-testid="btn-baixar-txt"
+            >
+              Exportar .TXT
+            </Button>
           </div>
 
+          {/* Visualização da Folha Oficial no Modal */}
           <div
             id="a4-folha-oficial"
-            className="a4-container"
             data-testid="folha-a4-preview"
-          >
-            {documentoGerado?.conteudoHtml ? (
-              <div
-                dangerouslySetInnerHTML={{ __html: documentoGerado.conteudoHtml }}
-              />
-            ) : (
-              <div
-                className="declaracao-a4-documento"
-                style={{
-                  fontFamily: "'Times New Roman', Times, serif",
-                  fontSize: "11pt",
-                  lineHeight: 1.42,
-                  color: "#161616",
-                  padding: "1.2cm 1.6cm",
-                  maxWidth: "21cm",
-                  maxHeight: "27.2cm",
-                  overflow: "hidden",
-                  margin: "0 auto",
-                  background: "#ffffff",
-                  boxSizing: "border-box",
-                }}
-              >
-                <header
-                  style={{
-                    borderBottom: "2px solid #161616",
-                    paddingBottom: "8px",
-                    marginBottom: "14px",
-                    textAlign: "center",
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: "13pt",
-                      margin: 0,
-                      textTransform: "uppercase",
-                      fontWeight: "bold",
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    [RAZÃO SOCIAL DA EMPRESA LICITANTE]
-                  </h2>
-                  <p style={{ fontSize: "9.5pt", margin: "3px 0 0 0", color: "#525252" }}>
-                    CNPJ: 00.000.000/0001-00 • [Endereço Completo da Sede]
-                  </p>
-                </header>
-
-                <div
-                  style={{
-                    marginBottom: "14px",
-                    fontSize: "10pt",
-                    borderLeft: "3px solid #0f62fe",
-                    background: "#f4f4f4",
-                    padding: "6px 10px",
-                  }}
-                >
-                  <div>
-                    <strong>Órgão Licitante:</strong> [Nome do Órgão Licitante Convocatório]
-                  </div>
-                  <div>
-                    <strong>Processo / Edital:</strong> [Número do Edital / Pregão]
-                  </div>
-                  <div>
-                    <strong>Objeto:</strong> [Resumo do Objeto do Certame]
-                  </div>
-                </div>
-
-                <div style={{ textAlign: "center", margin: "16px 0 12px 0" }}>
-                  <h1
-                    style={{
-                      fontSize: "12pt",
-                      margin: 0,
-                      textTransform: "uppercase",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {metaAtual?.titulo ||
-                      "Declaração de Pleno Atendimento aos Requisitos de Habilitação"}
-                  </h1>
-                  <div
-                    style={{
-                      fontSize: "9.5pt",
-                      fontStyle: "italic",
-                      color: "#525252",
-                      marginTop: "3px",
-                    }}
-                  >
-                    Fundamento Legal:{" "}
-                    {metaAtual?.fundamentoLegal || "Art. 63, I da Lei nº 14.133/2021"}
-                  </div>
-                </div>
-
-                <section
-                  className="declaracao-corpo"
-                  style={{ textAlign: "justify", marginBottom: "20px" }}
-                >
-                  <p>
-                    A empresa <strong>[RAZÃO SOCIAL DA EMPRESA LICITANTE]</strong>, inscrita no
-                    CNPJ sob o nº <strong>[00.000.000/0001-00]</strong>, por meio de seu
-                    representante legal infra-assinado, <strong>DECLARA</strong> expressamente
-                    perante o órgão <strong>[Órgão Licitante]</strong>, para fins de habilitação
-                    no certame <strong>[Número do Edital]</strong>, sob as penas da lei (
-                    {metaAtual?.fundamentoLegal || "Lei Federal nº 14.133/2021"}), que cumpre
-                    integralmente todos os requisitos e exigências estabelecidos no Edital e seus
-                    anexos.
-                  </p>
-                  <p style={{ color: "#525252", fontStyle: "italic", fontSize: "10pt" }}>
-                    {metaAtual?.descricao ||
-                      "Preencha os campos à esquerda e clique em 'Atualizar Folha A4' para gerar o documento oficial com os dados da sua empresa."}
-                  </p>
-                </section>
-
-                <div
-                  style={{
-                    textAlign: "right",
-                    marginTop: "20px",
-                    marginBottom: "28px",
-                    fontSize: "10.5pt",
-                  }}
-                >
-                  [Cidade] - [UF], {new Date().toLocaleDateString("pt-BR")}
-                </div>
-
-                <div style={{ textAlign: "center", marginTop: "32px" }}>
-                  <div
-                    style={{
-                      display: "inline-block",
-                      minWidth: "320px",
-                      borderTop: "1px solid #161616",
-                      paddingTop: "6px",
-                    }}
-                  >
-                    <div style={{ fontWeight: "bold", fontSize: "10.5pt" }}>
-                      [Nome Completo do Declarante]
-                    </div>
-                    <div style={{ fontSize: "9.5pt", color: "#525252" }}>
-                      [Cargo / Função do Representante Legal]
-                    </div>
-                    <div style={{ fontSize: "9pt", color: "#525252" }}>CPF: 000.000.000-00</div>
-                  </div>
-                </div>
-
-                <footer
-                  style={{
-                    marginTop: "28px",
-                    paddingTop: "8px",
-                    borderTop: "1px dashed #c6c6c6",
-                    fontSize: "8pt",
-                    color: "#8d8d8d",
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>Molde de Pré-visualização Oficial (Lei 14.133/2021)</span>
-                  <span>Clique em &ldquo;Atualizar Folha A4&rdquo; para preencher os dados</span>
-                </footer>
-              </div>
-            )}
-          </div>
-        </Column>
-      </Grid>
+            style={{
+              background: "#ffffff",
+              color: "#161616",
+              padding: "2rem",
+              borderRadius: "2px",
+              border: "1px solid #c6c6c6",
+              maxHeight: "65vh",
+              overflowY: "auto",
+            }}
+            dangerouslySetInnerHTML={{
+              __html: documentoGerado?.conteudoHtml || "",
+            }}
+          />
+        </div>
+      </Modal>
     </ModulePageShell>
   );
 }

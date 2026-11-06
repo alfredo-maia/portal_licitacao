@@ -200,7 +200,7 @@ export async function gerarPdfDeclaracao(params: {
 
   const marginX = 54;
   const contentWidth = 595.28 - marginX * 2;
-  const bottomY = 65;
+  const bottomY = hasTimbradoPdf ? 85 : 65;
 
   type BlocoDeclaracao = {
     texto: string;
@@ -351,7 +351,8 @@ export async function gerarPdfDeclaracao(params: {
 
     if (pageIndex === 0) {
       if (hasTimbradoPdf) {
-        currentY = cabeEmUmaPagina ? 715 : 705;
+        // Respiro superior ampliado (~1.2cm extra) para não aproximar do logotipo da folha timbrada
+        currentY = cabeEmUmaPagina ? 655 : 645;
       } else if (embeddedLogo) {
         // Estampa logo institucional com proporção precisa e alinhamento vertical harmonioso
         const headerTop = 790;
@@ -426,7 +427,7 @@ export async function gerarPdfDeclaracao(params: {
         currentY = 735;
       }
     } else {
-      currentY = hasTimbradoPdf ? 725 : 765;
+      currentY = hasTimbradoPdf ? 665 : 765;
     }
 
     pageIndex++;
@@ -556,25 +557,27 @@ export async function gerarPdfDeclaracao(params: {
     }
   }
 
-  // Numeração e integridade no rodapé
-  const totalPages = doc.getPageCount();
-  for (let i = 0; i < totalPages; i++) {
-    const page = doc.getPage(i);
-    const editalLimpo = sanitizarTextoParaPdf(dados.numeroEdital, fontRegular);
-    const rodapeText = sanitizarTextoParaPdf(
-      totalPages === 1
-        ? `Documento Oficial — Lei nº 14.133/2021 • Edital ${editalLimpo}`
-        : `Página ${i + 1} de ${totalPages} — Declaração Oficial Edital ${editalLimpo}`,
-      fontRegular,
-    );
-    const textWidth = fontRegular.widthOfTextAtSize(rodapeText, 8);
-    page.drawText(rodapeText, {
-      x: (595.28 - textWidth) / 2,
-      y: 28,
-      size: 7.5,
-      font: fontRegular,
-      color: rgb(0.5, 0.5, 0.5),
-    });
+  // Numeração e integridade no rodapé (apenas se não houver papel timbrado institucional)
+  if (!hasTimbradoPdf) {
+    const totalPages = doc.getPageCount();
+    for (let i = 0; i < totalPages; i++) {
+      const page = doc.getPage(i);
+      const editalLimpo = sanitizarTextoParaPdf(dados.numeroEdital, fontRegular);
+      const rodapeText = sanitizarTextoParaPdf(
+        totalPages === 1
+          ? `Documento Oficial — Lei nº 14.133/2021 • Edital ${editalLimpo}`
+          : `Página ${i + 1} de ${totalPages} — Declaração Oficial Edital ${editalLimpo}`,
+        fontRegular,
+      );
+      const textWidth = fontRegular.widthOfTextAtSize(rodapeText, 8);
+      page.drawText(rodapeText, {
+        x: (595.28 - textWidth) / 2,
+        y: 28,
+        size: 7.5,
+        font: fontRegular,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+    }
   }
 
   const pdfBytes = await doc.save();

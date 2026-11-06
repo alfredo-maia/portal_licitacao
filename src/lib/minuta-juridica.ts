@@ -202,7 +202,7 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
 `.trim();
 
   const avisoTimbradoHtml = empresa.papelTimbradoUrl
-    ? `<div style="background: #edf5ff; border-left: 4px solid #0f62fe; padding: 12px 16px; margin-bottom: 24px; border-radius: 2px;">
+    ? `<div class="minuta-aviso-timbrado" style="background: #edf5ff; border-left: 4px solid #0f62fe; padding: 12px 16px; margin-bottom: 24px; border-radius: 2px;">
         <div style="font-weight: 600; font-size: 10pt; color: #0043ce; display: flex; align-items: center; gap: 6px;">
           <span>📄 Folha de Papel Timbrado Oficial Anexada</span>
         </div>
@@ -370,7 +370,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
 
   const marginX = 54;
   const contentWidth = 595.28 - marginX * 2;
-  const bottomY = 65;
+  const bottomY = hasTimbradoPdf ? 85 : 65;
 
   type Bloco = {
     texto: string;
@@ -586,7 +586,8 @@ export async function gerarPdfMinutaImpugnacao(params: {
     // Configuração inicial do cursor Y
     if (pageIndex === 0) {
       if (hasTimbradoPdf) {
-        currentY = cabeEmUmaPagina ? 715 : 705;
+        // Margem de respiro superior ampliada (~1.2cm a mais) para nunca colar no logo do timbrado da empresa
+        currentY = cabeEmUmaPagina ? 655 : 645;
       } else if (embeddedLogo) {
         // Estampa logo institucional com proporção precisa e alinhamento vertical harmonioso
         const headerTop = 790;
@@ -664,7 +665,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
         currentY = 735;
       }
     } else {
-      currentY = hasTimbradoPdf ? 725 : 765;
+      currentY = hasTimbradoPdf ? 665 : 765;
     }
 
     pageIndex++;
@@ -727,23 +728,26 @@ export async function gerarPdfMinutaImpugnacao(params: {
     }
   }
 
-  // Estampa numeração de página no rodapé de todas as páginas
-  const totalPages = doc.getPageCount();
-  for (let i = 0; i < totalPages; i++) {
-    const page = doc.getPage(i);
-    const editalLimpo = sanitizarTextoParaPdf(impugnacao.numeroEdital, fontRegular);
-    const numText = sanitizarTextoParaPdf(
-      `Página ${i + 1} de ${totalPages} — Impugnação Edital ${editalLimpo}`,
-      fontRegular,
-    );
-    const textWidth = fontRegular.widthOfTextAtSize(numText, 8);
-    page.drawText(numText, {
-      x: (595.28 - textWidth) / 2,
-      y: 32,
-      size: 8,
-      font: fontRegular,
-      color: rgb(0.45, 0.45, 0.45),
-    });
+  // Estampa numeração de página no rodapé apenas se NÃO for papel timbrado oficial
+  // (Folhas timbradas da empresa já possuem cabeçalho e rodapé corporativos próprios)
+  if (!hasTimbradoPdf) {
+    const totalPages = doc.getPageCount();
+    for (let i = 0; i < totalPages; i++) {
+      const page = doc.getPage(i);
+      const editalLimpo = sanitizarTextoParaPdf(impugnacao.numeroEdital, fontRegular);
+      const numText = sanitizarTextoParaPdf(
+        `Página ${i + 1} de ${totalPages} — Impugnação Edital ${editalLimpo}`,
+        fontRegular,
+      );
+      const textWidth = fontRegular.widthOfTextAtSize(numText, 8);
+      page.drawText(numText, {
+        x: (595.28 - textWidth) / 2,
+        y: 32,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+    }
   }
 
   const pdfBytes = await doc.save();
