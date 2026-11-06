@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${pdfNome}"`,
         "Content-Length": String(pdfBuffer.length),
-        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       },
     });
   } catch (err: any) {

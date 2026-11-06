@@ -270,35 +270,32 @@ export default function DeclaracoesPage() {
           <style>
             @page {
               size: A4 portrait;
-              margin: 0;
+              margin: 10mm 14mm;
             }
             html, body {
               font-family: 'Times New Roman', Times, serif;
               color: #161616;
               margin: 0 !important;
-              padding: 10mm 14mm !important;
+              padding: 0 !important;
               background: #ffffff;
               font-size: 10.5pt;
-              line-height: 1.38;
+              line-height: 1.35;
               width: 100%;
-              max-height: 274mm !important;
-              overflow: hidden !important;
-              page-break-after: avoid !important;
-              page-break-before: avoid !important;
-              break-inside: avoid !important;
+              overflow: visible !important;
             }
             * { box-sizing: border-box; }
             .declaracao-a4-documento {
-              padding: 6mm 8mm !important;
+              padding: 0 !important;
               max-width: 100% !important;
-              max-height: 270mm !important;
-              overflow: hidden !important;
+              width: 100% !important;
+              overflow: visible !important;
+            }
+            .declaracao-assinatura-bloco {
               page-break-inside: avoid !important;
               break-inside: avoid !important;
-              page-break-after: avoid !important;
             }
-            h1, h2, h3, h4 { color: #161616; margin-top: 0; margin-bottom: 0.35rem; }
-            p { margin-top: 0; margin-bottom: 0.5rem; }
+            h1, h2, h3, h4 { color: #161616; margin-top: 0; margin-bottom: 0.25rem; }
+            p { margin-top: 0; margin-bottom: 0.4rem; }
           </style>
         </head>
         <body>
@@ -423,15 +420,15 @@ export default function DeclaracoesPage() {
             width: 100% !important;
             max-width: 100% !important;
             min-height: 0 !important;
-            max-height: 272mm !important;
             height: auto !important;
-            overflow: hidden !important;
+            overflow: visible !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
+          }
+          .declaracao-assinatura-bloco {
             page-break-inside: avoid !important;
-            page-break-after: avoid !important;
             break-inside: avoid !important;
           }
           header, aside, nav, .cds--header, .cds--side-nav, .pncp-shell-header, .pncp-split-form, .pncp-no-print {
@@ -442,8 +439,7 @@ export default function DeclaracoesPage() {
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
-            max-height: 274mm !important;
-            overflow: hidden !important;
+            overflow: visible !important;
           }
         }
 

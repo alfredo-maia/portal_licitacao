@@ -569,29 +569,7 @@ export async function gerarPdfDeclaracao(params: {
     }
   }
 
-  // Numeração e integridade no rodapé (apenas se não houver papel timbrado institucional)
-  if (!hasTimbradoPdf) {
-    const totalPages = doc.getPageCount();
-    for (let i = 0; i < totalPages; i++) {
-      const page = doc.getPage(i);
-      const editalLimpo = sanitizarTextoParaPdf(dados.numeroEdital, fontRegular);
-      const rodapeText = sanitizarTextoParaPdf(
-        totalPages === 1
-          ? `Documento Oficial — Lei nº 14.133/2021 • Edital ${editalLimpo}`
-          : `Página ${i + 1} de ${totalPages} — Declaração Oficial Edital ${editalLimpo}`,
-        fontRegular,
-      );
-      const textWidth = fontRegular.widthOfTextAtSize(rodapeText, 8);
-      page.drawText(rodapeText, {
-        x: (595.28 - textWidth) / 2,
-        y: 28,
-        size: 7.5,
-        font: fontRegular,
-        color: rgb(0.5, 0.5, 0.5),
-      });
-    }
-  }
-
+  // Documentos oficiais não recebem carimbo de rodapé do sistema (sem Página X de Y institucional ou menções a URLs)
   const pdfBytes = await doc.save();
   const pdfBuffer = Buffer.from(pdfBytes);
   const slugTipo = dados.tipo.toLowerCase();

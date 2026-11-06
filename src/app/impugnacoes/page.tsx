@@ -421,16 +421,17 @@ export default function ImpugnacoesPage() {
           <style>
             @page {
               size: A4 portrait;
-              margin: 0;
+              margin: 12mm 15mm;
             }
             html, body {
               font-family: 'Times New Roman', Times, serif;
               color: #161616;
               margin: 0 !important;
-              padding: 15mm 20mm !important;
+              padding: 0 !important;
               background: #ffffff;
               width: 100% !important;
               box-sizing: border-box;
+              overflow: visible !important;
             }
             * { box-sizing: border-box; }
             .minuta-impugnacao {
@@ -438,14 +439,29 @@ export default function ImpugnacoesPage() {
               margin: 0 !important;
               width: 100% !important;
               max-width: 100% !important;
+              font-size: 10.5pt !important;
+              line-height: 1.35 !important;
             }
             .minuta-aviso-timbrado, .minuta-header-logo { display: none !important; }
+            .minuta-assinatura-bloco {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
             p {
               text-align: justify !important;
               text-justify: inter-word;
-              line-height: 1.5;
+              line-height: 1.35 !important;
               margin-top: 0;
-              margin-bottom: 12px;
+              margin-bottom: 6px !important;
+            }
+            h3 {
+              margin-top: 8px !important;
+              margin-bottom: 3px !important;
+              font-size: 10.5pt !important;
+            }
+            h2 {
+              margin: 10px 0 !important;
+              font-size: 12pt !important;
             }
           </style>
         </head>

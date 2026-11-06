@@ -61,7 +61,7 @@ export async function GET(request: Request, context: RouteContext) {
         "Content-Type": "application/pdf",
         "Content-Disposition": `${disposition}; filename="${encodeURIComponent(pdfNome)}"`,
         "Content-Length": String(pdfBuffer.byteLength),
-        "Cache-Control": "private, max-age=1800",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
       },
     });
   } catch (error: any) {
