@@ -75,9 +75,9 @@ export const NOTIFICACAO_MATRIZ = {
     antecedenciaDias: [30, 14, 1],
   },
   N8_PRAZO_IMPUGNACAO: {
-    destinatarios: "DIRETORIA",
+    destinatarios: "RESPONSAVEL_E_ATRIBUIDOS",
     severidade: "CRITICA",
-    antecedenciaDias: [2, 1],
+    antecedenciaDias: [4, 3, 2, 1],
   },
   /** Issue #36 — menção `@usuário` na aba Notas do Dossiê (disparo por evento). */
   N9_MENCAO_NOTA: {

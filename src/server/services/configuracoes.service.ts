@@ -94,6 +94,8 @@ async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "numero" TEXT;`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "complemento" TEXT;`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "bairro" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "papelTimbradoUrl" TEXT;`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS "configuracao_empresa_tenantId_key" ON "configuracao_empresa"("tenantId");`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cnaePrincipal" TEXT;`,

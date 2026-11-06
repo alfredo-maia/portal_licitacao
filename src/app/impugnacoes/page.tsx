@@ -46,22 +46,64 @@ import { gerarMinutaJuridica } from "@/lib/minuta-juridica";
 
 const MOTIVOS_SUGERIDOS = [
   {
-    titulo: "Súmula 273/TCU — Vedação à indicação de marcas exclusivas",
+    titulo: "1. Súmula 273/TCU — Vedação à indicação de marcas exclusivas sem similaridade",
     motivo: "Exigência de marca ou tecnologia proprietária sem justificativa técnica robusta e sem previsão legal de similares",
     fundamentacao: "A exigência editalícia colide frontalmente com a Súmula nº 273 do Tribunal de Contas da União e com o Art. 41, inciso I da Lei Federal nº 14.133/2021, que vedam expressamente a indicação de marca, característica ou especificação exclusiva, salvo quando devidamente demonstrada a inexistência de similar de mercado.",
     pedidos: "Requer-se a exclusão da exigência restritiva de marca e a republicação do edital com a aceitação expressa de produtos e soluções similares ou equivalentes, com a reabertura do prazo de apresentação de propostas nos termos do Art. 55, § 1º da Lei 14.133/2021.",
   },
   {
-    titulo: "Art. 67 Lei 14.133 — Qualificação técnica e atestados desproporcionais",
+    titulo: "2. Art. 67 Lei 14.133 / Súmula 263 TCU — Qualificação técnica e atestados desproporcionais (> 50%)",
     motivo: "Exigência cumulativa de atestados técnicos excessivos e quantitativos superiores a 50% do objeto licitado",
     fundamentacao: "A Súmula nº 263 do TCU e o Art. 67, § 2º da Lei nº 14.133/2021 estabelecem que a exigência de capacidade técnico-operacional deve limitar-se às parcelas de maior relevância e valor significativo, não podendo os quantitativos mínimos ultrapassar 50% dos quantitativos dos itens previstos, sob pena de violação ao princípio da ampla competitividade.",
     pedidos: "Requer-se a adequação dos parâmetros de qualificação técnica para adequá-los ao patamar máximo de 50% e a exclusão da cumulatividade injustificada de atestados.",
   },
   {
-    titulo: "Art. 25 Lei 14.133 — Prazo de entrega ou início da execução materialmente impossível",
+    titulo: "3. Art. 25 Lei 14.133 / Acórdão 1.542/2019-TCU — Prazo de entrega ou mobilização inexequível",
     motivo: "Prazo de mobilização e fornecimento de apenas 2 a 5 dias úteis, violando a razoabilidade",
     fundamentacao: "A estipulação de prazo exíguo para entrega de bens de alta complexidade tecnológica afronta o princípio da razoabilidade e da proporcionalidade (Art. 5º da Lei 14.133/2021) e a jurisprudência consolidada do TCU (Acórdão 1.542/2019-Plenário), favorecendo eventuais empresas locais ou fornecedores que detenham prévio estoque.",
     pedidos: "Requer-se a dilação do prazo de entrega para no mínimo 20 (vinte) dias corridos, garantindo a isonomia e a viabilidade operacional dos demais competidores.",
+  },
+  {
+    titulo: "4. Súmula 272/TCU e Art. 67, § 18 — Vistoria técnica presencial obrigatória indevida",
+    motivo: "Exigência de vistoria técnica presencial obrigatória como condição de habilitação sem opção de declaração formal",
+    fundamentacao: "A exigência de visita técnica obrigatória afronta a Súmula nº 272 do TCU e o Art. 67, § 18 da Lei Federal nº 14.133/2021, que determinam que a vistoria deve ser excepcional e substituível por declaração formal do responsável técnico de pleno conhecimento das condições locais de execução.",
+    pedidos: "Requer-se a supressão da obrigatoriedade de visita presencial e a inclusão expressa de modelo de declaração de conhecimento das condições locais, com a reabertura do prazo de abertura.",
+  },
+  {
+    titulo: "5. Súmula 275/TCU e Art. 69, § 4º — Exigência cumulativa de Patrimônio Líquido e Garantia de Proposta",
+    motivo: "Exigência cumulativa de Patrimônio Líquido mínimo e garantia de proposta para qualificação econômico-financeira",
+    fundamentacao: "Conforme Súmula nº 275 do TCU e o Art. 69, § 4º da Lei nº 14.133/2021, é vedada a cumulação de exigências de capital social/patrimônio líquido mínimo concomitante com garantia de proposta, cabendo à Administração optar motivadamente por apenas uma das modalidades.",
+    pedidos: "Requer-se a retificação do instrumento convocatório para que a exigência seja alternativa e não cumulativa, em obediência à jurisprudência do TCU.",
+  },
+  {
+    titulo: "6. IN SEGES/ME 73/2020 e Acórdão 2.299/2011-TCU — Índices contábeis (ILG/ILC/IS) > 1,0 sem justificativa",
+    motivo: "Fixação de índices de Liquidez Geral e Corrente superiores a 1,0 sem estudo econômico preliminar demonstrativo",
+    fundamentacao: "A exigência de índices contábeis (ILG, ILC e IS) superiores a 1,0 sem demonstração analítica nos Estudos Técnicos Preliminares colide com o Acórdão 2.299/2011-Plenário do TCU e o Art. 69, § 1º da Lei nº 14.133/2021, caracterizando restrição desarrazoada ao caráter competitivo.",
+    pedidos: "Requer-se a fixação dos índices de Liquidez Geral, Corrente e Solvência Geral no patamar padrão de 1,0 (um), ou a aceitação de comprovação por Patrimônio Líquido equivalente.",
+  },
+  {
+    titulo: "7. Súmula 247/TCU e Art. 40, V — Agrupamento indevido de itens distintos em lote único (Falta de Parcelamento)",
+    motivo: "Agrupamento indevido de itens e serviços de naturezas distintas em lote global único, impedindo a ampla concorrência",
+    fundamentacao: "A ausência de parcelamento do objeto em itens autônomos viola a Súmula nº 247 do TCU e o Art. 40, inciso V e Art. 47 da Lei nº 14.133/2021, segundo os quais o parcelamento é a regra quando técnica e economicamente viável para ampliar a competitividade sem perda de economia de escala.",
+    pedidos: "Requer-se a divisão do objeto em itens ou lotes individualizados e independentes, permitindo a participação de empresas especializadas em cada segmento.",
+  },
+  {
+    titulo: "8. Acórdão 1.237/2002-TCU e Art. 41, II — Exigência de amostra de todos os licitantes antes do julgamento",
+    motivo: "Exigência de envio de amostras ou protótipos físicos de todos os participantes no momento da apresentação das propostas",
+    fundamentacao: "A exigência de apresentação de amostra por todos os licitantes na fase de lances onera indevidamente os concorrentes e afronta o Acórdão 1.237/2002-Plenário do TCU e o Art. 41, II da Lei 14.133/2021, que autorizam a exigência apenas do licitante provisoriamente classificado em primeiro lugar.",
+    pedidos: "Requer-se a retificação da cláusula para que a apresentação de amostra seja restrita exclusivamente ao licitante classificado em primeiro lugar provisório.",
+  },
+  {
+    titulo: "9. Súmula 271/TCU e Art. 67, VI — Registro em conselho impróprio ou exigência de quitação de anuidade",
+    motivo: "Exigência de registro em conselho profissional não relacionado à atividade-fim ou certidão de quitação de anuidade",
+    fundamentacao: "A Súmula nº 271 do TCU e o Art. 67, VI da Lei nº 14.133/2021 vedam a exigência de quitação de anuidades perante conselhos como critério de habilitação, bem como exigência de registro em conselho não afeto à atividade preponderante do certame.",
+    pedidos: "Requer-se a exclusão da exigência de quitação de anuidade e a adequação do conselho de classe estritamente ao escopo principal do objeto licitado.",
+  },
+  {
+    titulo: "10. Súmula 259/TCU e Art. 24 — Ausência de orçamento estimado / planilha detalhada de custos",
+    motivo: "Termo de Referência desprovido de planilha de quantitativos e custos unitários que balizaram o valor de referência",
+    fundamentacao: "A ausência de planilha orçamentária detalhada com custos unitários, encargos sociais e BDI infringe frontalmente a Súmula nº 259 do TCU e os Artigos 18, § 1º e 24 da Lei nº 14.133/2021, tornando o valor de referência subjetivo e impossibilitando a formulação segura de propostas.",
+    pedidos: "Requer-se a divulgação integral da planilha orçamentária detalhada e a reabertura do prazo legal de apresentação de propostas nos termos do Art. 55, § 1º da Lei 14.133/2021.",
   },
 ];
 
@@ -76,8 +118,9 @@ export default function ImpugnacoesPage() {
   const [carregando, setCarregando] = useState(true);
   const [notificacao, setNotificacao] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
 
-  // Oportunidades do pipeline para associar
   const [oportunidades, setOportunidades] = useState<any[]>([]);
+  const [empresaAtiva, setEmpresaAtiva] = useState<any>(null);
+  const [erroModal, setErroModal] = useState<string | null>(null);
 
   // Modais
   const [modalNovaAberto, setModalNovaAberto] = useState(false);
@@ -101,6 +144,16 @@ export default function ImpugnacoesPage() {
   const [dataProtocoloUpdate, setDataProtocoloUpdate] = useState(new Date().toISOString().substring(0, 10));
   const [dataRespostaUpdate, setDataRespostaUpdate] = useState("");
   const [decisaoUpdate, setDecisaoUpdate] = useState("");
+
+  const carregarEmpresaAtiva = useCallback(async () => {
+    try {
+      const res = await fetch("/api/configuracoes/empresa");
+      const data = await res.json();
+      if (data.ok && data.empresa) {
+        setEmpresaAtiva(data.empresa);
+      }
+    } catch {}
+  }, []);
 
   const carregarImpugnacoes = useCallback(async () => {
     setCarregando(true);
@@ -130,14 +183,36 @@ export default function ImpugnacoesPage() {
 
   useEffect(() => {
     carregarImpugnacoes();
-  }, [carregarImpugnacoes]);
+    carregarEmpresaAtiva();
+  }, [carregarImpugnacoes, carregarEmpresaAtiva]);
 
   useEffect(() => {
-    fetch("/api/oportunidades?pageSize=20")
+    const handleTenantChange = () => {
+      carregarEmpresaAtiva();
+      carregarImpugnacoes();
+    };
+    window.addEventListener("tenantChanged", handleTenantChange);
+    return () => window.removeEventListener("tenantChanged", handleTenantChange);
+  }, [carregarEmpresaAtiva, carregarImpugnacoes]);
+
+  useEffect(() => {
+    fetch("/api/oportunidades?pageSize=100")
       .then((res) => res.json())
       .then((data) => {
         if (data.ok && Array.isArray(data.oportunidades)) {
-          setOportunidades(data.oportunidades);
+          const statusValidos = [
+            "ACEITA",
+            "ANALISE_TECNICA",
+            "ANALISE_FINANCEIRA",
+            "REVISAO_PROPOSTA",
+            "ENVIADA",
+            "EM_DISPUTA",
+            "IMPUGNADA",
+          ];
+          const filtradas = data.oportunidades.filter((o: any) =>
+            statusValidos.includes(o.statusKanban || o.status),
+          );
+          setOportunidades(filtradas);
         }
       })
       .catch(() => {});
@@ -158,6 +233,11 @@ export default function ImpugnacoesPage() {
       setPrazoCalculadoPreview(null);
     }
   }, [novaDataAbertura]);
+
+  const abrirModalNova = () => {
+    setErroModal(null);
+    setModalNovaAberto(true);
+  };
 
   const handleSelecionarMotivoSugerido = (idx: number) => {
     const sug = MOTIVOS_SUGERIDOS[idx];
@@ -182,8 +262,18 @@ export default function ImpugnacoesPage() {
   };
 
   const handleSalvarNovaImpugnacao = async () => {
-    if (!novaEdital || !novaOrgao || !novaMotivo || !novaDataAbertura || !novaFundamentacao || !novaPedidos) {
-      setNotificacao({ tipo: "error", texto: "Preencha todos os campos obrigatórios." });
+    const pendencias: string[] = [];
+    if (!novaEdital.trim()) pendencias.push("Número do Edital");
+    if (!novaOrgao.trim()) pendencias.push("Nome do Órgão Licitante");
+    if (!novaDataAbertura) pendencias.push("Data e Hora da Sessão de Abertura");
+    if (!novaMotivo.trim()) pendencias.push("Irregularidade / Motivo Legal");
+    if (!novaFundamentacao.trim()) pendencias.push("Fundamentação Fática e Jurídica");
+    if (!novaPedidos.trim()) pendencias.push("Pedidos Formais");
+
+    if (pendencias.length > 0) {
+      const msg = `Preencha todos os campos obrigatórios (*): ${pendencias.join(", ")}.`;
+      setErroModal(msg);
+      setNotificacao({ tipo: "error", texto: msg });
       return;
     }
 
@@ -192,18 +282,19 @@ export default function ImpugnacoesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          numeroEdital: novaEdital,
-          orgaoNome: novaOrgao,
-          objeto: novaObjeto || null,
-          motivoLegal: novaMotivo,
+          numeroEdital: novaEdital.trim(),
+          orgaoNome: novaOrgao.trim(),
+          objeto: novaObjeto.trim() || null,
+          motivoLegal: novaMotivo.trim(),
           dataAberturaSessao: new Date(novaDataAbertura).toISOString(),
-          fundamentacao: novaFundamentacao,
-          pedidos: novaPedidos,
+          fundamentacao: novaFundamentacao.trim(),
+          pedidos: novaPedidos.trim(),
         }),
       });
 
       const data = await res.json();
       if (res.ok && data.ok) {
+        setErroModal(null);
         setModalNovaAberto(false);
         setNotificacao({
           tipo: "success",
@@ -219,10 +310,14 @@ export default function ImpugnacoesPage() {
         setNovaPedidos("");
         carregarImpugnacoes();
       } else {
-        setNotificacao({ tipo: "error", texto: data.error || "Falha ao cadastrar impugnação." });
+        const msg = data.error || "Falha ao cadastrar impugnação.";
+        setErroModal(msg);
+        setNotificacao({ tipo: "error", texto: msg });
       }
     } catch {
-      setNotificacao({ tipo: "error", texto: "Erro na comunicação com a API." });
+      const msg = "Erro na comunicação com a API. Tente novamente.";
+      setErroModal(msg);
+      setNotificacao({ tipo: "error", texto: msg });
     }
   };
 
@@ -321,7 +416,7 @@ export default function ImpugnacoesPage() {
               kind="primary"
               size="md"
               renderIcon={Add}
-              onClick={() => setModalNovaAberto(true)}
+              onClick={abrirModalNova}
               id="btn-nova-impugnacao"
             >
               Nova Impugnação
@@ -465,7 +560,7 @@ export default function ImpugnacoesPage() {
               ? "Tente ajustar os filtros de busca para encontrar registros."
               : "Clique no botão acima para cadastrar a primeira impugnação com cálculo do prazo legal."}
           </p>
-          <Button kind="primary" size="md" onClick={() => setModalNovaAberto(true)}>
+          <Button kind="primary" size="md" onClick={abrirModalNova}>
             Cadastrar Nova Impugnação
           </Button>
         </Tile>
@@ -594,6 +689,16 @@ export default function ImpugnacoesPage() {
                     Ver Minuta Jurídica (TCU)
                   </Button>
                   <Button
+                    kind="ghost"
+                    size="sm"
+                    renderIcon={DocumentPdf}
+                    onClick={() => window.open(`/api/impugnacoes/${imp.id}/pdf`, "_blank")}
+                    id={`btn-pdf-timbrado-${imp.id}`}
+                    data-testid={`btn-pdf-timbrado-${imp.id}`}
+                  >
+                    Baixar PDF Timbrado
+                  </Button>
+                  <Button
                     kind="secondary"
                     size="sm"
                     renderIcon={Edit}
@@ -639,7 +744,10 @@ export default function ImpugnacoesPage() {
       {/* MODAL: Nova Impugnação */}
       <Modal
         open={modalNovaAberto}
-        onRequestClose={() => setModalNovaAberto(false)}
+        onRequestClose={() => {
+          setErroModal(null);
+          setModalNovaAberto(false);
+        }}
         modalHeading="Nova Impugnação ou Pedido de Esclarecimento (Art. 164 Lei 14.133)"
         primaryButtonText="Salvar Impugnação"
         secondaryButtonText="Cancelar"
@@ -647,15 +755,30 @@ export default function ImpugnacoesPage() {
         size="lg"
       >
         <div style={{ padding: "0.5rem 0" }}>
+          {erroModal && (
+            <InlineNotification
+              kind="error"
+              title="Atenção nos Campos Obrigatórios"
+              subtitle={erroModal}
+              onClose={() => setErroModal(null)}
+              lowContrast
+              style={{ marginBottom: "1.25rem" }}
+            />
+          )}
+
           {oportunidades.length > 0 && (
             <FormGroup legendText="" style={{ marginBottom: "1rem" }}>
               <Select
                 id="select-certame-modal"
                 labelText="Vincular a uma Licitação do Pipeline (Opcional)"
                 defaultValue=""
-                onChange={(e) => e.target.value && handleSelecionarCertame(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleSelecionarCertame(e.target.value);
+                  }
+                }}
               >
-                <SelectItem value="" text="Preencher manualmente ou escolher certame..." />
+                <SelectItem value="" text="Preencher manualmente (sem vínculo) ou escolher certame..." />
                 {oportunidades.map((op) => (
                   <SelectItem
                     key={op.id}
@@ -673,8 +796,13 @@ export default function ImpugnacoesPage() {
                 id="modal-edital"
                 labelText="Número do Edital / Processo *"
                 value={novaEdital}
-                onChange={(e) => setNovaEdital(e.target.value)}
+                onChange={(e) => {
+                  setNovaEdital(e.target.value);
+                  if (erroModal) setErroModal(null);
+                }}
                 placeholder="Ex: PE 104/2026"
+                invalid={Boolean(erroModal && !novaEdital.trim())}
+                invalidText="Informe o número do edital ou processo."
               />
             </Column>
             <Column lg={8} md={4} sm={4}>
@@ -682,17 +810,22 @@ export default function ImpugnacoesPage() {
                 id="modal-orgao"
                 labelText="Órgão Licitante *"
                 value={novaOrgao}
-                onChange={(e) => setNovaOrgao(e.target.value)}
+                onChange={(e) => {
+                  setNovaOrgao(e.target.value);
+                  if (erroModal) setErroModal(null);
+                }}
                 placeholder="Ex: Tribunal Regional Eleitoral"
+                invalid={Boolean(erroModal && !novaOrgao.trim())}
+                invalidText="Informe o nome do órgão licitante."
               />
             </Column>
             <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
               <TextInput
                 id="modal-objeto"
-                labelText="Objeto da Contratação"
+                labelText="Objeto da Contratação (Opcional)"
                 value={novaObjeto}
                 onChange={(e) => setNovaObjeto(e.target.value)}
-                placeholder="Descrição sucinta do objeto do edital"
+                placeholder="Descrição sucinta do objeto do certame"
               />
             </Column>
           </Grid>
@@ -704,7 +837,12 @@ export default function ImpugnacoesPage() {
                 type="datetime-local"
                 labelText="Data e Hora da Sessão de Abertura *"
                 value={novaDataAbertura}
-                onChange={(e) => setNovaDataAbertura(e.target.value)}
+                onChange={(e) => {
+                  setNovaDataAbertura(e.target.value);
+                  if (erroModal) setErroModal(null);
+                }}
+                invalid={Boolean(erroModal && !novaDataAbertura)}
+                invalidText="Selecione a data e horário de abertura da sessão pública."
               />
             </Column>
             <Column lg={8} md={4} sm={4}>
@@ -719,30 +857,37 @@ export default function ImpugnacoesPage() {
             </Column>
           </Grid>
 
-          {/* Modelos Sugeridos do TCU */}
-          <div style={{ marginBottom: "1rem" }}>
-            <div style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.5rem" }}>
-              Modelos Rápidos de Jurisprudência do TCU:
-            </div>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {/* Modelos Sugeridos do TCU (Select com 10 Opções) */}
+          <FormGroup legendText="" style={{ marginBottom: "1rem" }}>
+            <Select
+              id="select-modelo-tcu"
+              labelText="Modelos Rápidos de Jurisprudência do TCU (Preenchimento Automático)"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value !== "") {
+                  handleSelecionarMotivoSugerido(Number(e.target.value));
+                  if (erroModal) setErroModal(null);
+                }
+              }}
+            >
+              <SelectItem value="" text="Selecione um modelo fundamentado do TCU para preencher..." />
               {MOTIVOS_SUGERIDOS.map((sug, idx) => (
-                <Button
-                  key={idx}
-                  kind="ghost"
-                  size="sm"
-                  onClick={() => handleSelecionarMotivoSugerido(idx)}
-                >
-                  {sug.titulo}
-                </Button>
+                <SelectItem key={idx} value={String(idx)} text={sug.titulo} />
               ))}
-            </div>
-          </div>
+            </Select>
+          </FormGroup>
 
           <TextInput
             id="modal-motivo"
             labelText="Irregularidade / Motivo Legal *"
             value={novaMotivo}
-            onChange={(e) => setNovaMotivo(e.target.value)}
+            onChange={(e) => {
+              setNovaMotivo(e.target.value);
+              if (erroModal) setErroModal(null);
+            }}
+            placeholder="Ex: Cláusula restritiva de qualificação técnica desproporcional"
+            invalid={Boolean(erroModal && !novaMotivo.trim())}
+            invalidText="Descreva o motivo ou cláusula irregular."
             style={{ marginBottom: "1rem" }}
           />
 
@@ -750,8 +895,14 @@ export default function ImpugnacoesPage() {
             id="modal-fundamentacao"
             labelText="Fundamentação Fática e Jurídica (Súmulas TCU / Artigos da Lei 14.133) *"
             value={novaFundamentacao}
-            onChange={(e) => setNovaFundamentacao(e.target.value)}
+            onChange={(e) => {
+              setNovaFundamentacao(e.target.value);
+              if (erroModal) setErroModal(null);
+            }}
             rows={4}
+            placeholder="Argumentação legal, artigos violados e precedentes dos tribunais de contas..."
+            invalid={Boolean(erroModal && !novaFundamentacao.trim())}
+            invalidText="A fundamentação jurídica é obrigatória para a petição formal."
             style={{ marginBottom: "1rem" }}
           />
 
@@ -759,8 +910,14 @@ export default function ImpugnacoesPage() {
             id="modal-pedidos"
             labelText="Pedidos Formais (Exclusão de Cláusula, Republicação, Reabertura) *"
             value={novaPedidos}
-            onChange={(e) => setNovaPedidos(e.target.value)}
+            onChange={(e) => {
+              setNovaPedidos(e.target.value);
+              if (erroModal) setErroModal(null);
+            }}
             rows={3}
+            placeholder="Requerimentos formais formulados ao pregoeiro ou comissão de contratação..."
+            invalid={Boolean(erroModal && !novaPedidos.trim())}
+            invalidText="Informe os pedidos formais da impugnação."
           />
         </div>
       </Modal>
@@ -777,11 +934,21 @@ export default function ImpugnacoesPage() {
           <div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem" }}>
               <Button
+                kind="primary"
+                size="sm"
+                renderIcon={DocumentPdf}
+                onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
+                id="btn-baixar-pdf-timbrado-modal"
+                data-testid="btn-baixar-pdf-timbrado-modal"
+              >
+                Baixar PDF Timbrado
+              </Button>
+              <Button
                 kind="tertiary"
                 size="sm"
                 renderIcon={Copy}
                 onClick={() => {
-                  const m = gerarMinutaJuridica(impugnacaoSelecionada);
+                  const m = gerarMinutaJuridica(impugnacaoSelecionada, empresaAtiva || undefined);
                   navigator.clipboard.writeText(m.minutaTexto);
                   setNotificacao({ tipo: "success", texto: "Minuta jurídica copiada para a área de transferência!" });
                 }}
@@ -809,7 +976,7 @@ export default function ImpugnacoesPage() {
                 overflowY: "auto",
               }}
               dangerouslySetInnerHTML={{
-                __html: gerarMinutaJuridica(impugnacaoSelecionada).minutaHtml,
+                __html: gerarMinutaJuridica(impugnacaoSelecionada, empresaAtiva || undefined).minutaHtml,
               }}
             />
           </div>

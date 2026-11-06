@@ -472,6 +472,26 @@ export function gerarPdfRelatorioParticipacao(params: {
     }
   }
 
+  if (r.cnaesAptosSugeridos && r.cnaesAptosSugeridos.length > 0) {
+    blocos.push({ bold: true, size: 9, text: "CNAEs Aptos Sugeridos para este Certame (IBGE):" });
+    for (const c of r.cnaesAptosSugeridos) {
+      for (const l of quebrarLinhasPdf(`• ${c}`, 86)) blocos.push({ text: l });
+    }
+  }
+
+  if (
+    (r.certificacoesETempoAtuacao?.certificacoesEspeciais && r.certificacoesETempoAtuacao.certificacoesEspeciais.length > 0) ||
+    r.certificacoesETempoAtuacao?.tempoMinimoAtuacao
+  ) {
+    blocos.push({ bold: true, size: 9, text: "Certificacoes Especiais e Tempo de Atuacao no Mercado:" });
+    if (r.certificacoesETempoAtuacao?.tempoMinimoAtuacao) {
+      for (const l of quebrarLinhasPdf(`• Tempo Minimo: ${r.certificacoesETempoAtuacao.tempoMinimoAtuacao}`, 86)) blocos.push({ text: l });
+    }
+    for (const cert of (r.certificacoesETempoAtuacao?.certificacoesEspeciais || [])) {
+      for (const l of quebrarLinhasPdf(`• Certificacao: ${cert}`, 86)) blocos.push({ text: l });
+    }
+  }
+
   blocos.push(
     { text: "----------------------------------------------------------------------------------------" },
     { bold: true, size: 10.5, text: "3. CRONOGRAMA, PRAZOS POS-ASSINATURA E LOCALIZACAO FISICA" },
@@ -686,6 +706,11 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   };
   riscos?: Partial<RelatorioParticipacao["riscos"]>;
   swot?: Partial<RelatorioParticipacao["swot"]>;
+  cnaesAptosSugeridos?: string[];
+  certificacoesETempoAtuacao?: {
+    certificacoesEspeciais?: string[];
+    tempoMinimoAtuacao?: string | null;
+  };
   recomendacoesExtras?: string[];
   observacoesCustos?: string;
 } | null> {
@@ -705,10 +730,12 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
     "- 'APTO_COM_RESSALVAS' (Score entre 75 e 84): O escopo é plenamente compatível, mas existem exigências operacionais ou documentais pontuais que demandam atenção (ex: emitir certidão de falência/concordata, atestado de acervo técnico específico no conselho profissional CREA/CAU/CRF, realizar vistoria ou declaração substitutiva de conhecimento do local). A nota deve valorizar a aptidão real do licitante.\n" +
     "- 'APTO_COM_RESSALVAS_MODERADA' (Score entre 50 e 74): Apenas se houver pendências documentais substanciais ou indefinições relevantes de escopo.\n" +
     "- 'INAPTO' (Score entre 10 e 35): Exclusivamente se a empresa for de segmento totalmente alheio/incompatível ao objeto (ex: empresa de informática tentando executar obra civil pesada ou banco) ou houver impedimento legal flagrante.\n\n" +
-    "REGRAS DE FORMATAÇÃO E QUALIDADE (RIGOROSO):\n" +
-    "1. PROIBIDO MENCIONAR NÚMEROS DE SCORE OU A PALAVRA 'SCORE' nos textos de resumo, habilitação ou SWOT (ex: NUNCA escreva 'o score de 63 indica...', 'score de conformidade atual', etc.). A redação deve ser corporativa, técnica e executiva.\n" +
-    "2. 'exigenciasEspeciais' e 'atestadosExigidos' DEVEM ser arrays JSON de strings, contendo cada exigência como um item pontual e claro (NUNCA envie uma string única contínua).\n" +
-    "3. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU), jamais tautologias sobre o próprio relatório.\n\n" +
+    "ORIENTAÇÕES IMPORTANTES DE ANÁLISE:\n" +
+    "1. Análise executiva fundamentada: aponte os dados objetivos do certame, percentuais, prazos e embasamento na Lei 14.133/2021.\n" +
+    "2. 'exigenciasEspeciais' e 'atestadosExigidos' DEVEM ser arrays JSON de strings, contendo cada exigência como um item pontual e claro (NUNCA envie uma string única contínua quebrada).\n" +
+    "3. Caso a empresa NÃO possua CNAE configurado (empresaCnae nulo/vazio), NÃO penalize cegamente: identifique e liste no array 'cnaesAptosSugeridos' os códigos e descrições dos CNAEs do IBGE aptos para o objeto deste edital.\n" +
+    "4. Verifique minuciosamente se o edital exige CERTIFICAÇÕES ESPECIAIS (ex: ISO 9001, PBQP-H, AFE/ANVISA, Registro em Conselho Específico) ou TEMPO MÍNIMO DE MERCADO / ATUAÇÃO (ex: mínimo de 3 anos de constituição) e retorne no objeto 'certificacoesETempoAtuacao'.\n" +
+    "5. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU).\n\n" +
     "Retorne estritamente um JSON com a seguinte estrutura:\n" +
     "{\n" +
     '  "resumoExecutivo": "string com análise executiva em até 3 parágrafos claros",\n' +
@@ -721,6 +748,11 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
     '    "atestadosExigidos": ["Ex: Atestado de capacidade técnica com CAT/ART compatível com o objeto"],\n' +
     '    "exigenciasEspeciais": ["Ex: Registro no conselho profissional competente (CREA/CAU/CRF)", "Ex: Visita técnica ou declaração de conhecimento do local"]\n' +
     "  },\n" +
+    '  "cnaesAptosSugeridos": ["Ex: 4120-4/00 - Construção de edifícios", "Ex: 4321-5/00 - Instalação e manutenção elétrica"],\n' +
+    '  "certificacoesETempoAtuacao": {\n' +
+    '    "certificacoesEspeciais": ["Ex: Certificação ISO 9001:2015", "Ex: PBQP-H Nível A"],\n' +
+    '    "tempoMinimoAtuacao": "Ex: Mínimo de 3 anos de constituição jurídica ou null se não exigido"\n' +
+    '  },\n' +
     '  "cronograma": {\n' +
     '    "dataPrevisaoInicio": "data ou prazo previsto para início dos serviços/fornecimento",\n' +
     '    "prazoInicioPedidosAposAssinatura": "prazo após assinatura da Ata/Contrato para início das ordens",\n' +
@@ -1262,10 +1294,8 @@ export async function construirRelatorioParticipacaoHibrido(
   function sanitizarTextoRelatorio(t?: string | null): string {
     if (!t) return "";
     return t
-      .replace(/\b(?:o\s+)?score\s+(?:de\s+)?\d+(?:\/\d+)?\s*(?:indica|exige|aponta|revela|mostra)?/gi, "")
       .replace(/\s{2,}/g, " ")
       .replace(/\s+,/g, ",")
-      .replace(/\(\s*\)/g, "")
       .trim();
   }
 
@@ -1329,6 +1359,56 @@ export async function construirRelatorioParticipacaoHibrido(
       ...(enriquecidoLLM?.itens?.destaqueMarcasExigidas || []),
     ]),
   );
+
+  // 10. Sugestão de CNAEs Aptos (se empresa não configurou CNAE ou LLM sugeriu)
+  const cnaesFallbackPorSegmento: Record<string, string[]> = {
+    ENGENHARIA_E_OBRAS: [
+      "4120-4/00 - Construção de edifícios",
+      "4321-5/00 - Instalação e manutenção elétrica",
+      "4299-5/99 - Outras obras de engenharia civil",
+    ],
+    TI_E_SOFTWARE: [
+      "6201-5/01 - Desenvolvimento de programas de computador sob encomenda",
+      "6202-3/00 - Desenvolvimento e licenciamento de programas de computador customizáveis",
+      "6209-1/00 - Suporte técnico, manutenção e outros serviços em TI",
+    ],
+    SAUDE_MEDICAMENTOS: [
+      "4644-3/01 - Comércio atacadista de medicamentos e drogas de uso humano",
+      "4645-1/01 - Comércio atacadista de instrumentos e materiais para uso médico e hospitalar",
+    ],
+    ALIMENTACAO: [
+      "5620-1/01 - Fornecimento de alimentos preparados preponderantemente para empresas",
+      "4639-7/01 - Comércio atacadista de produtos alimentícios em geral",
+    ],
+    VEICULOS_E_PECAS: [
+      "4530-7/01 - Comércio por atacado de peças e acessórios novos para veículos automotores",
+    ],
+    SERVICOS_GERAIS: [
+      "8121-4/00 - Limpeza geral em prédios e em domicílios",
+      "8011-1/01 - Atividades de vigilância e segurança privada",
+    ],
+  };
+
+  const cnaesLLM = enriquecidoLLM?.cnaesAptosSugeridos;
+  const cnaesSugeridosFinal: string[] = Array.isArray(cnaesLLM) && cnaesLLM.length > 0
+    ? cnaesLLM.map(String).map((s) => s.trim()).filter(Boolean)
+    : !empresa?.cnae
+      ? (cnaesFallbackPorSegmento[oportunidade.segmentoMacro] || [
+          "Atividade econômica compatível com o objeto do certame nos termos da Classificação Nacional de Atividades Econômicas (CNAE/IBGE)",
+        ])
+      : [];
+
+  const certsLLM = enriquecidoLLM?.certificacoesETempoAtuacao;
+  const certificacoesEspeciaisFinal: string[] = Array.isArray(certsLLM?.certificacoesEspeciais) && certsLLM.certificacoesEspeciais.length > 0
+    ? certsLLM.certificacoesEspeciais.map(String).map((s) => s.trim()).filter(Boolean)
+    : oportunidade.segmentoMacro === "ENGENHARIA_E_OBRAS"
+      ? ["Registro e regularidade junto ao CREA/CAU", "Certificação PBQP-H (se aplicável ao porte de obras públicas)"]
+      : oportunidade.segmentoMacro === "SAUDE_MEDICAMENTOS"
+        ? ["Autorização de Funcionamento de Empresa (AFE/ANVISA)", "Alvará Sanitário Estadual ou Municipal"]
+        : [];
+
+  const tempoMinimoAtuacaoFinal: string | null =
+    certsLLM?.tempoMinimoAtuacao || null;
 
   const relatorio: RelatorioParticipacao = {
     parecer: statusFinal,
@@ -1469,6 +1549,13 @@ export async function construirRelatorioParticipacaoHibrido(
               "Possível morosidade burocrática na emissão das ordens de fornecimento ou empenhos pelo órgão",
             ]
       ).map(sanitizarTextoRelatorio).filter(Boolean),
+    },
+
+    // 6. CNAEs Aptos Sugeridos & Exigências Especiais
+    cnaesAptosSugeridos: cnaesSugeridosFinal,
+    certificacoesETempoAtuacao: {
+      certificacoesEspeciais: certificacoesEspeciaisFinal,
+      tempoMinimoAtuacao: tempoMinimoAtuacaoFinal,
     },
 
     // Compatibilidade Legada

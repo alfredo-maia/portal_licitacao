@@ -722,6 +722,7 @@ export function insertInMemoryImpugnacao(data: any): any {
     ...data,
     id,
     licitacaoId: data.licitacaoId ?? null,
+    tenantId: data.tenantId ?? null,
     numeroEdital: data.numeroEdital,
     orgaoNome: data.orgaoNome,
     objeto: data.objeto ?? null,
@@ -761,8 +762,12 @@ export function getInMemoryImpugnacao(id: string): any | null {
   return impugnacoesStore.get(id) || null;
 }
 
-export function listInMemoryImpugnacoes(): any[] {
-  return Array.from(impugnacoesStore.values());
+export function listInMemoryImpugnacoes(tenantId?: string | null): any[] {
+  const all = Array.from(impugnacoesStore.values());
+  if (tenantId) {
+    return all.filter((i) => !i.tenantId || i.tenantId === tenantId);
+  }
+  return all;
 }
 
 export function deleteInMemoryImpugnacao(id: string): boolean {
@@ -791,6 +796,8 @@ let configuracaoEmpresaStore: any = {
   agencia: "1234-5",
   contaCorrente: "98765-4",
   chavePix: "12.345.678/0001-90",
+  logoUrl: null,
+  papelTimbradoUrl: null,
   atualizadoEm: new Date(),
 };
 
@@ -876,6 +883,8 @@ export function getInMemoryConfiguracaoEmpresa(tenantId?: string | null): any {
       subsegmentos: [],
       ufs: ["GO"],
       brasilInteiro: true,
+      logoUrl: null,
+      papelTimbradoUrl: null,
       atualizadoEm: new Date(),
     };
   }

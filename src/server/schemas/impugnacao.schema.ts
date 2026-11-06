@@ -37,6 +37,7 @@ export function calcularPrazoFatalImpugnacao(dataAbertura: Date): Date {
 
 export const impugnacaoCriarInputSchema = z.object({
   licitacaoId: z.string().trim().optional().nullable(),
+  tenantId: z.string().trim().optional().nullable(),
   numeroEdital: z.string().trim().min(1, "Número do edital é obrigatório").max(100),
   orgaoNome: z.string().trim().min(2, "Nome do órgão é obrigatório").max(255),
   objeto: z.string().trim().max(5000).optional().nullable(),
@@ -63,6 +64,7 @@ export const impugnacaoAtualizarInputSchema = z.object({
 export const impugnacaoListQuerySchema = z.object({
   status: impugnacaoStatusSchema.optional(),
   busca: z.string().trim().optional(),
+  tenantId: z.string().trim().optional().nullable(),
   apenasCriticas: z.coerce.boolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(50).default(10),
@@ -71,6 +73,7 @@ export const impugnacaoListQuerySchema = z.object({
 export const impugnacaoItemSchema = z.object({
   id: z.string().min(1),
   licitacaoId: z.string().nullable(),
+  tenantId: z.string().nullable().optional(),
   numeroEdital: z.string(),
   orgaoNome: z.string(),
   objeto: z.string().nullable(),

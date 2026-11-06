@@ -19,6 +19,21 @@ import {
   updateInMemoryImpugnacao,
 } from "./licitacoes-store";
 
+let impugnacaoColumnsChecked = false;
+async function ensureImpugnacaoColumns(): Promise<void> {
+  if (impugnacaoColumnsChecked) return;
+  const queries = [
+    `ALTER TABLE "impugnacao" ADD COLUMN IF NOT EXISTS "tenantId" TEXT;`,
+    `CREATE INDEX IF NOT EXISTS "impugnacao_tenantId_idx" ON "impugnacao"("tenantId");`,
+  ];
+  for (const sql of queries) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {}
+  }
+  impugnacaoColumnsChecked = true;
+}
+
 function anexarMetricasPrazoFatal(imp: any): ImpugnacaoItem {
   const agora = Date.now();
   const prazoFatalDate = imp.prazoFatal instanceof Date ? imp.prazoFatal : new Date(imp.prazoFatal);
@@ -29,6 +44,7 @@ function anexarMetricasPrazoFatal(imp: any): ImpugnacaoItem {
   return {
     id: imp.id,
     licitacaoId: imp.licitacaoId ?? null,
+    tenantId: imp.tenantId ?? null,
     numeroEdital: imp.numeroEdital,
     orgaoNome: imp.orgaoNome,
     objeto: imp.objeto ?? null,
@@ -52,11 +68,17 @@ function anexarMetricasPrazoFatal(imp: any): ImpugnacaoItem {
 
 export async function listarImpugnacoes(
   rawQuery?: Partial<ImpugnacaoListQuery>,
+  tenantId?: string | null,
 ): Promise<ImpugnacaoListResponse> {
+  await ensureImpugnacaoColumns().catch(() => undefined);
   const query = impugnacaoListQuerySchema.parse(rawQuery ?? {});
+  const effectiveTenantId = tenantId || query.tenantId || null;
 
   try {
     const where: any = {};
+    if (effectiveTenantId) {
+      where.tenantId = effectiveTenantId;
+    }
     if (query.status) {
       where.status = query.status;
     }
@@ -96,7 +118,7 @@ export async function listarImpugnacoes(
     };
   } catch {
     // Fallback em memória resiliente
-    let memoria = listInMemoryImpugnacoes();
+    let memoria = listInMemoryImpugnacoes(effectiveTenantId);
     if (query.status) {
       memoria = memoria.filter((i) => i.status === query.status);
     }
@@ -135,22 +157,33 @@ export async function listarImpugnacoes(
   }
 }
 
-export async function obterImpugnacao(id: string): Promise<ImpugnacaoItem | null> {
+export async function obterImpugnacao(
+  id: string,
+  tenantId?: string | null,
+): Promise<ImpugnacaoItem | null> {
+  await ensureImpugnacaoColumns().catch(() => undefined);
   try {
-    const item = await prisma.impugnacao.findUnique({ where: { id } });
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    const item = await prisma.impugnacao.findFirst({ where });
     if (!item) return null;
     return anexarMetricasPrazoFatal(item);
   } catch {
     const item = getInMemoryImpugnacao(id);
-    return item ? anexarMetricasPrazoFatal(item) : null;
+    if (!item) return null;
+    if (tenantId && item.tenantId && item.tenantId !== tenantId) return null;
+    return anexarMetricasPrazoFatal(item);
   }
 }
 
 export async function criarImpugnacao(
   data: ImpugnacaoCriarInput,
   usuarioId?: string | null,
+  tenantId?: string | null,
 ): Promise<ImpugnacaoItem> {
+  await ensureImpugnacaoColumns().catch(() => undefined);
   const validado = impugnacaoCriarInputSchema.parse(data);
+  const effectiveTenantId = tenantId || validado.tenantId || null;
   const dataAbertura = new Date(validado.dataAberturaSessao);
   const prazoFatal = calcularPrazoFatalImpugnacao(dataAbertura);
 
@@ -158,6 +191,7 @@ export async function criarImpugnacao(
     const criada = await prisma.impugnacao.create({
       data: {
         licitacaoId: validado.licitacaoId || null,
+        tenantId: effectiveTenantId,
         numeroEdital: validado.numeroEdital,
         orgaoNome: validado.orgaoNome,
         objeto: validado.objeto || null,
@@ -180,6 +214,7 @@ export async function criarImpugnacao(
       usuarioId: usuarioId ?? null,
       depois: {
         numeroEdital: criada.numeroEdital,
+        tenantId: effectiveTenantId,
         status: criada.status,
         prazoFatal: criada.prazoFatal.toISOString(),
       },
@@ -189,6 +224,7 @@ export async function criarImpugnacao(
   } catch {
     const memoria = insertInMemoryImpugnacao({
       ...validado,
+      tenantId: effectiveTenantId,
       prazoFatal,
       criadoPorId: usuarioId ?? null,
     });
@@ -200,6 +236,7 @@ export async function criarImpugnacao(
       usuarioId: usuarioId ?? null,
       depois: {
         numeroEdital: memoria.numeroEdital,
+        tenantId: effectiveTenantId,
         status: memoria.status,
         prazoFatal: memoria.prazoFatal.toISOString(),
       },
@@ -213,12 +250,16 @@ export async function atualizarImpugnacao(
   id: string,
   data: ImpugnacaoAtualizarInput,
   usuarioId?: string | null,
+  tenantId?: string | null,
 ): Promise<ImpugnacaoItem | null> {
+  await ensureImpugnacaoColumns().catch(() => undefined);
   const validado = impugnacaoAtualizarInputSchema.parse(data);
 
   try {
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
     const atualizada = await prisma.impugnacao.update({
-      where: { id },
+      where,
       data: {
         ...(validado.status !== undefined ? { status: validado.status } : {}),
         ...(validado.motivoLegal !== undefined ? { motivoLegal: validado.motivoLegal } : {}),
@@ -243,6 +284,7 @@ export async function atualizarImpugnacao(
   } catch {
     const memoria = updateInMemoryImpugnacao(id, validado);
     if (!memoria) return null;
+    if (tenantId && memoria.tenantId && memoria.tenantId !== tenantId) return null;
 
     await recordAuditLog({
       acao: "IMPUGNACAO_ATUALIZADA",
@@ -259,19 +301,24 @@ export async function atualizarImpugnacao(
 export async function excluirImpugnacao(
   id: string,
   usuarioId?: string | null,
+  tenantId?: string | null,
 ): Promise<boolean> {
+  await ensureImpugnacaoColumns().catch(() => undefined);
   try {
-    await prisma.impugnacao.delete({ where: { id } });
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    await prisma.impugnacao.delete({ where });
     await recordAuditLog({
       acao: "IMPUGNACAO_EXCLUIDA",
       entidadeTipo: "IMPUGNACAO",
       entidadeId: id,
       usuarioId: usuarioId ?? null,
     });
+    deleteInMemoryImpugnacao(id);
     return true;
   } catch {
-    const deletado = deleteInMemoryImpugnacao(id);
-    if (deletado) {
+    const deleted = deleteInMemoryImpugnacao(id);
+    if (deleted) {
       await recordAuditLog({
         acao: "IMPUGNACAO_EXCLUIDA",
         entidadeTipo: "IMPUGNACAO",
@@ -279,7 +326,7 @@ export async function excluirImpugnacao(
         usuarioId: usuarioId ?? null,
       });
     }
-    return deletado;
+    return deleted;
   }
 }
 export { gerarMinutaJuridica } from "@/lib/minuta-juridica";

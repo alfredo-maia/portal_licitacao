@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getServerSession } from "next-auth/next";
 import { impugnacaoAtualizarInputSchema } from "@/server/schemas/impugnacao.schema";
 import {
@@ -10,12 +11,21 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
-    const impugnacao = await obterImpugnacao(id);
+    const session = await getServerSession().catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req.headers.get("x-tenant-id");
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.tenantId || null;
+
+    const impugnacao = await obterImpugnacao(id, tenantId);
 
     if (!impugnacao) {
       return NextResponse.json(
@@ -40,6 +50,14 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const session = await getServerSession().catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req.headers.get("x-tenant-id");
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.tenantId || null;
+
     const body = await req.json().catch(() => ({}));
     const parseResult = impugnacaoAtualizarInputSchema.safeParse(body);
 
@@ -58,6 +76,7 @@ export async function PATCH(
       id,
       parseResult.data,
       (session?.user as any)?.id,
+      tenantId,
     );
 
     if (!impugnacao) {
@@ -77,13 +96,21 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await context.params;
     const session = await getServerSession().catch(() => null);
-    const sucesso = await excluirImpugnacao(id, (session?.user as any)?.id);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req.headers.get("x-tenant-id");
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.tenantId || null;
+
+    const sucesso = await excluirImpugnacao(id, (session?.user as any)?.id, tenantId);
 
     if (!sucesso) {
       return NextResponse.json(

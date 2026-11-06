@@ -489,6 +489,7 @@ enum ImpugnacaoStatus {
 model Impugnacao {
   id                 String           @id @default(cuid())
   licitacaoId        String?
+  tenantId           String?
   numeroEdital       String
   orgaoNome          String
   objeto             String?          @db.Text
@@ -508,7 +509,9 @@ model Impugnacao {
 
   licitacao Licitacao? @relation(fields: [licitacaoId], references: [id], onDelete: SetNull)
   criadoPor User?      @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([status])
   @@index([prazoFatal])
   @@index([licitacaoId])
@@ -539,6 +542,8 @@ model ConfiguracaoEmpresa {
   agencia            String?  @default("1234-5")
   contaCorrente      String?  @default("98765-4")
   chavePix           String?  @default("12.345.678/0001-90")
+  logoUrl            String?  @db.Text
+  papelTimbradoUrl   String?  @db.Text
   tenantId           String?  @unique
   tenant             Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   preferenciasUpdatedAt DateTime?
@@ -592,6 +597,7 @@ model Tenant {
   portais       Portal[]
   arquivos      Arquivo[]
   configuracao  ConfiguracaoEmpresa?
+  impugnacoes   Impugnacao[]
   auditLogs     AuditLog[]
 
   @@index([cnpj])

@@ -1330,12 +1330,125 @@ export default function ConfiguracoesPage() {
               </Column>
             </Grid>
 
-            {/* SEÇÃO 5: TRIAGEM & ESCOPO DE LICITAÇÕES */}
+            {/* SEÇÃO 5: IDENTIDADE VISUAL & PAPEL TIMBRADO */}
+            <h3 style={{ fontSize: "0.9375rem", fontWeight: 600, marginTop: "2rem", marginBottom: "0.75rem", borderBottom: "1px solid var(--cds-border-subtle)", paddingBottom: "0.5rem" }}>
+              5. Identidade Visual & Papel Timbrado Oficial (Multi-CNPJ)
+            </h3>
+            <p style={{ margin: "0 0 1rem 0", color: "var(--cds-text-secondary)", fontSize: "0.8125rem" }}>
+              A logomarca e o papel timbrado cadastrados serão aplicados automaticamente nas Minutas de Impugnação (TCU), Declarações Oficiais e Relatórios Executivos deste CNPJ. Caso não faça upload de um arquivo, o sistema gera o timbrado padrão com os dados societários.
+            </p>
+            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+              <Column lg={8} md={4} sm={4}>
+                <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", border: "1px dashed var(--cds-border-subtle)", height: "100%" }}>
+                  <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
+                    🖼️ Logomarca da Empresa (PNG / JPG)
+                  </strong>
+                  <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                    Recomendado: Fundo transparente ou branco, altura de até 150px.
+                  </p>
+                  {empresa.logoUrl ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-start" }}>
+                      <div style={{ padding: "0.5rem", background: "#ffffff", borderRadius: "4px", border: "1px solid #e0e0e0" }}>
+                        <img src={empresa.logoUrl} alt="Logo da Empresa" style={{ maxHeight: "60px", maxWidth: "200px", objectFit: "contain", display: "block" }} />
+                      </div>
+                      <Button
+                        kind="ghost"
+                        size="sm"
+                        onClick={() => setEmpresa({ ...empresa, logoUrl: null })}
+                      >
+                        Remover Logo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg"
+                        id="upload-logo-empresa"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            setNotificacao({ tipo: "error", texto: "A logomarca deve ter no máximo 2MB." });
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setEmpresa({ ...empresa, logoUrl: reader.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      <label htmlFor="upload-logo-empresa">
+                        <Button kind="tertiary" size="sm" as="span">
+                          Selecionar Imagem da Logo
+                        </Button>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </Column>
+
+              <Column lg={8} md={4} sm={4}>
+                <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", border: "1px dashed var(--cds-border-subtle)", height: "100%" }}>
+                  <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
+                    📄 Folha de Papel Timbrado A4 (Opcional - PNG / JPG / PDF)
+                  </strong>
+                  <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                    Se sua empresa já tem folha timbrada oficial em A4 com moldura/rodapé pré-impressos.
+                  </p>
+                  {empresa.papelTimbradoUrl ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-start" }}>
+                      <Tag type="teal" size="sm">
+                        ✓ Folha Timbrada Personalizada Anexada
+                      </Tag>
+                      <Button
+                        kind="ghost"
+                        size="sm"
+                        onClick={() => setEmpresa({ ...empresa, papelTimbradoUrl: null })}
+                      >
+                        Remover Timbrado Personalizado
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/png, image/jpeg, image/jpg, application/pdf"
+                        id="upload-timbrado-empresa"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 4 * 1024 * 1024) {
+                            setNotificacao({ tipo: "error", texto: "O arquivo timbrado deve ter no máximo 4MB." });
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setEmpresa({ ...empresa, papelTimbradoUrl: reader.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                      <label htmlFor="upload-timbrado-empresa">
+                        <Button kind="tertiary" size="sm" as="span">
+                          Selecionar Folha Timbrada
+                        </Button>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </Column>
+            </Grid>
+
+            {/* SEÇÃO 6: TRIAGEM & ESCOPO DE LICITAÇÕES */}
             <div style={{ marginTop: "2rem", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.5rem" }}>
                 <div>
                   <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
-                    5. Triagem & Escopo de Licitações (Segmentos, Sub-segmentos e UF)
+                    6. Triagem & Escopo de Licitações (Segmentos, Sub-segmentos e UF)
                   </h3>
                   <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.8125rem" }}>
                     As informações abaixo são de extrema importância para o sistema: Segmento, SubSegmento, UF. De acordo com o que o cliente preencher aqui é que o sistema vai buscar as licitações para ele.

@@ -2006,50 +2006,208 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           </div>
                         </div>
 
-                        {/* Matriz SWOT (Se disponível) */}
+                        {/* CNAEs Sugeridos (quando ausentes na empresa ou detectados no certame) */}
+                        {r.cnaesAptosSugeridos && r.cnaesAptosSugeridos.length > 0 && (
+                          <div
+                            style={{
+                              marginBottom: "1rem",
+                              backgroundColor: "var(--cds-layer-02)",
+                              border: "1px solid #0072c3",
+                              borderLeft: "4px solid #0072c3",
+                              borderRadius: "4px",
+                              padding: "0.875rem 1rem",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                              <strong style={{ fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                                📋 CNAEs do IBGE Aptos / Sugeridos para este Edital:
+                              </strong>
+                              <span style={{ fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>
+                                Classificação Nacional de Atividades Econômicas
+                              </span>
+                            </div>
+                            <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", margin: "0 0 0.5rem 0" }}>
+                              Compare estas atividades com o Cartão CNPJ da sua empresa para assegurar habilitação sem ressalvas.
+                            </p>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                              {r.cnaesAptosSugeridos.map((cnae: string, idx: number) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    fontSize: "0.75rem",
+                                    fontWeight: 600,
+                                    padding: "0.25rem 0.625rem",
+                                    borderRadius: "3px",
+                                    backgroundColor: "rgba(0, 114, 195, 0.08)",
+                                    color: "var(--cds-text-primary)",
+                                    border: "1px solid rgba(0, 114, 195, 0.3)",
+                                  }}
+                                >
+                                  {cnae}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Certificações Especiais e Tempo de Atuação */}
+                        {r.certificacoesETempoAtuacao &&
+                          ((r.certificacoesETempoAtuacao.certificacoesEspeciais && r.certificacoesETempoAtuacao.certificacoesEspeciais.length > 0) ||
+                            r.certificacoesETempoAtuacao.tempoMinimoAtuacao) && (
+                            <div
+                              style={{
+                                marginBottom: "1rem",
+                                backgroundColor: "var(--cds-layer-02)",
+                                border: "1px solid var(--cds-border-subtle)",
+                                borderRadius: "4px",
+                                padding: "0.875rem 1rem",
+                              }}
+                            >
+                              <strong style={{ fontSize: "0.8125rem", display: "block", marginBottom: "0.5rem", color: "var(--cds-text-primary)" }}>
+                                🎖️ Certificações Especiais & Tempo de Atuação no Mercado:
+                              </strong>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
+                                {r.certificacoesETempoAtuacao.tempoMinimoAtuacao && (
+                                  <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                                    <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", display: "block" }}>
+                                      Tempo Mínimo Exigido de Mercado:
+                                    </span>
+                                    <strong>{r.certificacoesETempoAtuacao.tempoMinimoAtuacao}</strong>
+                                  </div>
+                                )}
+                                {r.certificacoesETempoAtuacao.certificacoesEspeciais && r.certificacoesETempoAtuacao.certificacoesEspeciais.length > 0 && (
+                                  <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                                    <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", display: "block" }}>
+                                      Certificações Especiais Requeridas:
+                                    </span>
+                                    <ul style={{ margin: "0.25rem 0 0 0", paddingLeft: "1.1rem", fontSize: "0.75rem", color: "var(--cds-text-primary)" }}>
+                                      {r.certificacoesETempoAtuacao.certificacoesEspeciais.map((cert: string, idx: number) => (
+                                        <li key={idx}><strong>{cert}</strong></li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* Matriz SWOT Cartesiana 2x2 */}
                         {r.swot && (
-                          <div style={{ marginBottom: "1rem", backgroundColor: "var(--cds-layer-02)", padding: "1rem", borderRadius: "4px", border: "1px solid var(--cds-border-subtle)" }}>
-                            <strong style={{ fontSize: "0.8125rem", display: "block", marginBottom: "0.5rem" }}>
-                              🧭 Matriz SWOT da Licitação:
-                            </strong>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
-                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
-                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-success, #24a148)" }}>
-                                  ✓ Forças:
+                          <div
+                            style={{
+                              marginBottom: "1rem",
+                              backgroundColor: "var(--cds-layer-02)",
+                              padding: "1rem",
+                              borderRadius: "4px",
+                              border: "1px solid var(--cds-border-subtle)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                              <div>
+                                <strong style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
+                                  🧭 Plano Cartesiano Estratégico (Matriz SWOT 2x2)
+                                </strong>
+                                <span style={{ display: "block", fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>
+                                  Eixo Vertical: Fatores Internos (Empresa) vs Externos (Edital) • Eixo Horizontal: Positivos vs Desafios
                                 </span>
-                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
-                                  {(r.swot.forcas || []).slice(0, 3).map((f: string, i: number) => (
-                                    <li key={i}>{f}</li>
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                                gap: "0.75rem",
+                              }}
+                            >
+                              {/* Quadrante 1: Forças (Interno / Positivo) */}
+                              <div
+                                style={{
+                                  padding: "0.875rem",
+                                  backgroundColor: "rgba(25, 128, 56, 0.04)",
+                                  border: "1px solid rgba(25, 128, 56, 0.25)",
+                                  borderTop: "3px solid #198038",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#198038", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    ✓ FORÇAS (INTERNO)
+                                  </span>
+                                  <span style={{ fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>Vantagem</span>
+                                </div>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.35rem 0 0 0", paddingLeft: "1.1rem", color: "var(--cds-text-primary)", lineHeight: 1.45 }}>
+                                  {(r.swot.forcas || []).map((f: string, i: number) => (
+                                    <li key={i} style={{ marginBottom: "0.25rem" }}>{f}</li>
                                   ))}
                                 </ul>
                               </div>
-                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
-                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-warning, #f1c21b)" }}>
-                                  ⚠ Fraquezas:
-                                </span>
-                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
-                                  {(r.swot.fraquezas || []).slice(0, 3).map((f: string, i: number) => (
-                                    <li key={i}>{f}</li>
+
+                              {/* Quadrante 2: Fraquezas (Interno / Desafio) */}
+                              <div
+                                style={{
+                                  padding: "0.875rem",
+                                  backgroundColor: "rgba(178, 134, 0, 0.04)",
+                                  border: "1px solid rgba(178, 134, 0, 0.25)",
+                                  borderTop: "3px solid #b28600",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#b28600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    ⚠ FRAQUEZAS (INTERNO)
+                                  </span>
+                                  <span style={{ fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>Atenção</span>
+                                </div>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.35rem 0 0 0", paddingLeft: "1.1rem", color: "var(--cds-text-primary)", lineHeight: 1.45 }}>
+                                  {(r.swot.fraquezas || []).map((f: string, i: number) => (
+                                    <li key={i} style={{ marginBottom: "0.25rem" }}>{f}</li>
                                   ))}
                                 </ul>
                               </div>
-                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
-                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-info, #0f62fe)" }}>
-                                  ★ Oportunidades:
-                                </span>
-                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
-                                  {(r.swot.oportunidades || []).slice(0, 3).map((o: string, i: number) => (
-                                    <li key={i}>{o}</li>
+
+                              {/* Quadrante 3: Oportunidades (Externo / Positivo) */}
+                              <div
+                                style={{
+                                  padding: "0.875rem",
+                                  backgroundColor: "rgba(0, 114, 195, 0.04)",
+                                  border: "1px solid rgba(0, 114, 195, 0.25)",
+                                  borderTop: "3px solid #0072c3",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0072c3", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    ★ OPORTUNIDADES (EXTERNO)
+                                  </span>
+                                  <span style={{ fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>Mercado</span>
+                                </div>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.35rem 0 0 0", paddingLeft: "1.1rem", color: "var(--cds-text-primary)", lineHeight: 1.45 }}>
+                                  {(r.swot.oportunidades || []).map((o: string, i: number) => (
+                                    <li key={i} style={{ marginBottom: "0.25rem" }}>{o}</li>
                                   ))}
                                 </ul>
                               </div>
-                              <div style={{ padding: "0.5rem 0.75rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px" }}>
-                                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--cds-support-error, #da1e28)" }}>
-                                  ! Ameaças:
-                                </span>
-                                <ul style={{ fontSize: "0.75rem", margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)" }}>
-                                  {(r.swot.ameacas || []).slice(0, 3).map((a: string, i: number) => (
-                                    <li key={i}>{a}</li>
+
+                              {/* Quadrante 4: Ameaças (Externo / Desafio) */}
+                              <div
+                                style={{
+                                  padding: "0.875rem",
+                                  backgroundColor: "rgba(218, 30, 40, 0.04)",
+                                  border: "1px solid rgba(218, 30, 40, 0.25)",
+                                  borderTop: "3px solid #da1e28",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#da1e28", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    ! AMEAÇAS (EXTERNO)
+                                  </span>
+                                  <span style={{ fontSize: "0.6875rem", color: "var(--cds-text-secondary)" }}>Risco</span>
+                                </div>
+                                <ul style={{ fontSize: "0.75rem", margin: "0.35rem 0 0 0", paddingLeft: "1.1rem", color: "var(--cds-text-primary)", lineHeight: 1.45 }}>
+                                  {(r.swot.ameacas || []).map((a: string, i: number) => (
+                                    <li key={i} style={{ marginBottom: "0.25rem" }}>{a}</li>
                                   ))}
                                 </ul>
                               </div>

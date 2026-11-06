@@ -184,6 +184,36 @@ export const relatorioParticipacaoSchema = z.object({
       ameacas: [],
     }),
 
+  // 6. CNAEs Aptos Sugeridos & Exigências Especiais (Certificações / Tempo de Atuação)
+  cnaesAptosSugeridos: z
+    .preprocess((val) => {
+      if (Array.isArray(val)) return val.map(String).map((s) => s.trim()).filter(Boolean);
+      if (typeof val === "string") {
+        const t = val.trim();
+        if (!t) return [];
+        return t.split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    }, z.array(z.string()).default([])),
+
+  certificacoesETempoAtuacao: z
+    .object({
+      certificacoesEspeciais: z.preprocess((val) => {
+        if (Array.isArray(val)) return val.map(String).map((s) => s.trim()).filter(Boolean);
+        if (typeof val === "string") {
+          const t = val.trim();
+          if (!t) return [];
+          return t.split(/[;\n•]+/).map((s) => s.trim()).filter(Boolean);
+        }
+        return [];
+      }, z.array(z.string()).default([])),
+      tempoMinimoAtuacao: z.string().nullable().default(null),
+    })
+    .default({
+      certificacoesEspeciais: [],
+      tempoMinimoAtuacao: null,
+    }),
+
   // Campos retrocompatíveis para não quebrar módulos anteriores
   aderenciaEscopo: z
     .object({

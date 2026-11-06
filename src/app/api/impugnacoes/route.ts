@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getServerSession } from "next-auth/next";
 import {
   impugnacaoCriarInputSchema,
@@ -13,16 +14,26 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession().catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req.headers.get("x-tenant-id");
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.tenantId || null;
+
     const { searchParams } = new URL(req.url);
     const query = impugnacaoListQuerySchema.parse({
       status: searchParams.get("status") || undefined,
       busca: searchParams.get("busca") || undefined,
+      tenantId: searchParams.get("tenantId") || undefined,
       apenasCriticas: searchParams.get("apenasCriticas") === "true",
       page: searchParams.get("page") || 1,
       pageSize: searchParams.get("pageSize") || 10,
     });
 
-    const resultado = await listarImpugnacoes(query);
+    const resultado = await listarImpugnacoes(query, tenantId);
     return NextResponse.json(resultado);
   } catch (error: any) {
     return NextResponse.json(
@@ -35,6 +46,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession().catch(() => null);
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const headerTenant = req.headers.get("x-tenant-id");
+    const tenantId = headerTenant || cookieTenant || (session?.user as any)?.tenantId || null;
+
     const body = await req.json().catch(() => ({}));
     const parseResult = impugnacaoCriarInputSchema.safeParse(body);
 
@@ -52,6 +71,7 @@ export async function POST(req: Request) {
     const impugnacao = await criarImpugnacao(
       parseResult.data,
       (session?.user as any)?.id,
+      tenantId,
     );
 
     return NextResponse.json(

@@ -448,6 +448,36 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: diretoriaEComercialIds,
       });
 
+      if (res.criada) contagens.N5_PENDENTE_CRITICA++;
+      else ignoradas++;
+    }
+
+    // N8 — Alerta Antecipado de Impugnação (D-4 da data limite / 1 dia antes do prazo fatal de 3 dias úteis)
+    if (
+      (STATUS_PIPELINE_ATIVO as readonly string[]).includes(lic.status) &&
+      diffDias === 4
+    ) {
+      const chave = montarChaveIdempotencia({
+        tipo: "N8_PRAZO_IMPUGNACAO",
+        entidadeId: `d4_${lic.id}`,
+        janela: dataBrtStr,
+      });
+
+      const assignados = await obterUsuariosAssignadosLicitacao(lic.id, lic.tenantId);
+      const destinatarios = assignados.length > 0 ? assignados : fallbackDestinatarios;
+
+      const res = await criarNotificacao({
+        tipo: "N8_PRAZO_IMPUGNACAO",
+        titulo: `Atenção: 1 dia antes do Prazo Fatal de Impugnação (${lic.numeroEdital})`,
+        descricao: `Faltam 4 dias para a abertura/encerramento da licitação ${lic.numeroEdital} (${lic.orgaoNome}). Amanhã encerra-se o prazo legal seguro de 3 dias úteis para protocolar impugnação ou pedido de esclarecimento (Art. 164 Lei 14.133/2021).`,
+        linkDestino: `/impugnacoes`,
+        licitacaoId: lic.id,
+        chaveIdempotencia: chave,
+        destinatarioIds: destinatarios,
+      });
+
+      if (res.criada) contagens.N8_PRAZO_IMPUGNACAO++;
+      else ignoradas++;
     }
   }
 
@@ -578,13 +608,18 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         janela: `${dataBrtStr}_D${diffDias}`,
       });
 
+      const assignados = imp.licitacaoId
+        ? await obterUsuariosAssignadosLicitacao(imp.licitacaoId, imp.tenantId)
+        : [];
+      const destinatarios = assignados.length > 0 ? assignados : diretoriaIds;
+
       const res = await criarNotificacao({
         tipo: "N8_PRAZO_IMPUGNACAO",
         titulo: `Prazo Fatal de Impugnação: ${imp.numeroEdital} expira em ${diffDias} dia(s)`,
         descricao: `O prazo fatal para protocolo de impugnação do edital ${imp.numeroEdital} (${imp.orgaoNome}) expira em ${diffDias} dia(s) (Art. 164 Lei 14.133/2021). Motivo: ${imp.motivoLegal}.`,
         linkDestino: `/impugnacoes`,
         chaveIdempotencia: chave,
-        destinatarioIds: diretoriaIds,
+        destinatarioIds: destinatarios,
       });
 
       if (res.criada) contagens.N8_PRAZO_IMPUGNACAO++;
