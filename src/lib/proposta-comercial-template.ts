@@ -67,9 +67,9 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
   if (cfg.modoEmissao === "VALOR_GLOBAL") {
     valorTotalNumero = cfg.valorGlobalManual && cfg.valorGlobalManual > 0
       ? cfg.valorGlobalManual
-      : isReadequada ? consolidado.pisoTotalGeral : consolidado.propostaTotalGeral;
+      : isReadequada ? consolidado.readequadaTotalGeral : consolidado.propostaTotalGeral;
   } else {
-    valorTotalNumero = isReadequada ? consolidado.pisoTotalGeral : consolidado.propostaTotalGeral;
+    valorTotalNumero = isReadequada ? consolidado.readequadaTotalGeral : consolidado.propostaTotalGeral;
   }
   const valorTotalFormatado = formatarMoedaBrl(valorTotalNumero);
 
@@ -121,8 +121,8 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
   } else {
     linhasTexto.push("PLANILHA DETALHADA DE ITENS:");
     for (const it of consolidado.itens) {
-      const vUnit = isReadequada ? it.pisoUnitarioSeguro : it.propostaUnitaria;
-      const vTotal = isReadequada ? it.pisoTotalSeguro : it.propostaTotal;
+      const vUnit = isReadequada ? it.valorUnitarioReadequado : it.propostaUnitaria;
+      const vTotal = isReadequada ? it.valorTotalReadequado : it.propostaTotal;
       const marcaTxt = it.marcaModelo ? ` [Marca/Modelo: ${it.marcaModelo}]` : "";
       linhasTexto.push(
         `- Item ${it.numeroItem}: ${it.descricao}${marcaTxt} | Qtd: ${it.quantidade} ${it.unidade} | Unit: ${formatarMoedaBrl(vUnit)} | Total: ${formatarMoedaBrl(vTotal)}`
@@ -163,8 +163,8 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
 
   // 2. GERAÇÃO HTML PARA VISUALIZAÇÃO A4 & IMPRESSÃO LIMPA
   const itensHtmlRows = consolidado.itens.map((it) => {
-    const vUnit = isReadequada ? it.pisoUnitarioSeguro : it.propostaUnitaria;
-    const vTotal = isReadequada ? it.pisoTotalSeguro : it.propostaTotal;
+    const vUnit = isReadequada ? it.valorUnitarioReadequado : it.propostaUnitaria;
+    const vTotal = isReadequada ? it.valorTotalReadequado : it.propostaTotal;
     return `
       <tr>
         <td style="padding: 6px 8px; border: 1px solid #d0d0d0; text-align: center; font-weight: 600;">${it.numeroItem}</td>
@@ -269,7 +269,9 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
           CONDIÇÕES COMERCIAIS:
         </h4>
         <ul style="margin: 0; padding-left: 1.25rem;">
-          <li><strong>Validade da Proposta:</strong> ${cfg.validadeDias} (sessenta) dias corridos a contar da data de sua entrega.</li>
+          <li><strong>Validade da Proposta:</strong> ${cfg.validadeDias}${
+            ({ 30: " (trinta)", 45: " (quarenta e cinco)", 60: " (sessenta)", 90: " (noventa)", 120: " (cento e vinte)", 180: " (cento e oitenta)" } as Record<number, string>)[cfg.validadeDias] || ""
+          } dias corridos a contar da data de sua entrega.</li>
           <li><strong>Prazo de Entrega / Execução:</strong> ${cfg.prazoEntrega}</li>
           <li><strong>Condições de Pagamento:</strong> ${cfg.condicoesPagamento}</li>
           ${cfg.garantiaObservacoes ? `<li><strong>Garantia e Observações:</strong> ${cfg.garantiaObservacoes}</li>` : ""}
@@ -299,3 +301,4 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
     valorTotalFormatado,
   };
 }
+

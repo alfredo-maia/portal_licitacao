@@ -599,6 +599,7 @@ model Tenant {
   configuracao  ConfiguracaoEmpresa?
   impugnacoes   Impugnacao[]
   auditLogs     AuditLog[]
+  precosSalvos  TenantPrecoSalvo[]
 
   @@index([cnpj])
   @@index([plano])
@@ -721,6 +722,37 @@ model WhatsAppOptOut {
 
   @@index([telefone])
   @@map("whatsapp_opt_out")
+}
+
+model TenantPrecoSalvo {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  nomeProduto         String
+  termoPesquisado     String
+  marcaReferencia     String?
+  catmat              String?
+  especificacaoResumo String?  @db.Text
+  ufFiltro            String   @default("TODOS")
+  modalidadeFiltro    String   @default("TODOS")
+  periodoMeses        Int      @default(12)
+  quantidadeAmostras  Int      @default(0)
+  precoMedio          Float    @default(0)
+  mediana             Float    @default(0)
+  menorPreco          Float    @default(0)
+  maiorPreco          Float    @default(0)
+  descontoMedio       Float    @default(0)
+  faixaSugeridaMin    Float    @default(0)
+  faixaSugeridaMax    Float    @default(0)
+  observacoes         String?  @db.Text
+  homologacoesJson    Json
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, criadoEm])
+  @@index([tenantId, nomeProduto])
+  @@map("tenant_preco_salvo")
 }
 
 

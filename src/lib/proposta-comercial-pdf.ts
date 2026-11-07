@@ -156,9 +156,9 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
   if (cfg.modoEmissao === "VALOR_GLOBAL") {
     valorTotalNumero = cfg.valorGlobalManual && cfg.valorGlobalManual > 0
       ? cfg.valorGlobalManual
-      : isReadequada ? consolidado.pisoTotalGeral : consolidado.propostaTotalGeral;
+      : isReadequada ? consolidado.readequadaTotalGeral : consolidado.propostaTotalGeral;
   } else {
-    valorTotalNumero = isReadequada ? consolidado.pisoTotalGeral : consolidado.propostaTotalGeral;
+    valorTotalNumero = isReadequada ? consolidado.readequadaTotalGeral : consolidado.propostaTotalGeral;
   }
   const valorTotalFormatado = formatarMoedaBrl(valorTotalNumero);
 
@@ -518,8 +518,8 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
     desenharCabecalhoTabela();
 
     for (const it of consolidado.itens) {
-      const vUnit = isReadequada ? it.pisoUnitarioSeguro : it.propostaUnitaria;
-      const vTotal = isReadequada ? it.pisoTotalSeguro : it.propostaTotal;
+      const vUnit = isReadequada ? it.valorUnitarioReadequado : it.propostaUnitaria;
+      const vTotal = isReadequada ? it.valorTotalReadequado : it.propostaTotal;
 
       const descComMarca = it.marcaModelo
         ? `${it.descricao}\n(Marca/Modelo: ${it.marcaModelo})`

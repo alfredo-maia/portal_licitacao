@@ -63,12 +63,14 @@ import {
   Settings,
   Printer,
   DocumentDownload,
+  Information,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
 import {
+  CALCULADORA_TOOLTIPS,
   calcularItemProposta,
   consolidarCalculadoraProposta,
   formatarMoedaBrl,
@@ -243,6 +245,161 @@ function formatarBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+function obterObjetoCertame(opp?: Partial<OportunidadeDetalhe> | null): string {
+  if (!opp) return "";
+  return (opp.objeto || opp.resumo || opp.miniResumo || "").trim();
+}
+
+interface CampoComHoverTooltipProps {
+  tooltipText: string;
+  children: React.ReactNode;
+  testId?: string;
+}
+
+function CampoComHoverTooltip({ tooltipText, children, testId }: CampoComHoverTooltipProps) {
+  const [visivel, setVisivel] = React.useState(false);
+
+  return (
+    <div
+      style={{ position: "relative" }}
+      onMouseEnter={() => setVisivel(true)}
+      onMouseLeave={() => setVisivel(false)}
+      onFocus={() => setVisivel(true)}
+      onBlur={() => setVisivel(false)}
+      data-testid={testId}
+    >
+      {visivel && (
+        <div
+          role="tooltip"
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: 0,
+            zIndex: 9999,
+            minWidth: "240px",
+            maxWidth: "320px",
+            backgroundColor: "#161616",
+            color: "#ffffff",
+            padding: "0.65rem 0.8rem",
+            borderRadius: "4px",
+            fontSize: "0.75rem",
+            lineHeight: 1.45,
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.28)",
+            pointerEvents: "none",
+          }}
+        >
+          {tooltipText}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+interface NumericCalcInputProps {
+  id: string;
+  labelText: React.ReactNode;
+  value: number | null | undefined;
+  onChangeValue: (val: number | null) => void;
+  placeholder?: string;
+  helperText?: string;
+  allowEmpty?: boolean;
+  min?: number;
+  max?: number;
+}
+
+function NumericCalcInput({
+  id,
+  labelText,
+  value,
+  onChangeValue,
+  placeholder,
+  helperText,
+  allowEmpty = false,
+  min = 0,
+  max,
+}: NumericCalcInputProps) {
+  const formatarNumero = (v: number | null | undefined) => {
+    if (v === null || v === undefined || Number.isNaN(v)) return "";
+    return String(v);
+  };
+
+  const [draft, setDraft] = React.useState<string>(() => formatarNumero(value));
+  const [focado, setFocado] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!focado) {
+      setDraft(formatarNumero(value));
+    }
+  }, [value, focado]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    if (!/^[0-9.,]*$/.test(raw)) return;
+    setDraft(raw);
+
+    const limpo = raw.trim().replace(",", ".");
+    if (!limpo || limpo === ".") {
+      onChangeValue(allowEmpty ? null : min);
+      return;
+    }
+
+    const parsed = Number.parseFloat(limpo);
+    if (!Number.isNaN(parsed)) {
+      let ajustado = Math.max(min, parsed);
+      if (max !== undefined) ajustado = Math.min(max, ajustado);
+      onChangeValue(ajustado);
+    }
+  };
+
+  const handleBlur = () => {
+    setFocado(false);
+    const limpo = draft.trim().replace(",", ".");
+    if (!limpo || limpo === ".") {
+      if (allowEmpty) {
+        setDraft("");
+        onChangeValue(null);
+      } else {
+        setDraft(String(min));
+        onChangeValue(min);
+      }
+      return;
+    }
+    const parsed = Number.parseFloat(limpo);
+    if (Number.isNaN(parsed)) {
+      setDraft(allowEmpty ? "" : String(min));
+      return;
+    }
+    let ajustado = Math.max(min, parsed);
+    if (max !== undefined) ajustado = Math.min(max, ajustado);
+    const arredondado = Math.round((ajustado + Number.EPSILON) * 100) / 100;
+    setDraft(String(arredondado));
+    onChangeValue(arredondado);
+  };
+
+  return (
+    <TextInput
+      id={id}
+      labelText={labelText}
+      placeholder={placeholder}
+      helperText={helperText}
+      value={draft}
+      onFocus={() => setFocado(true)}
+      onBlur={handleBlur}
+      onChange={handleChange}
+    />
+  );
+}
+
+function renderLabelTooltipIcon(texto: string) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+      <span>{texto}</span>
+      <Information size={14} style={{ color: "var(--cds-icon-secondary, #525252)", flexShrink: 0 }} />
+    </span>
+  );
+}
+
 function renderTextoComMencoes(texto: string) {
   if (!texto) return null;
   const parts = texto.split(/(@[a-zA-Z0-9_\u00C0-\u017F.-]+)/g);
@@ -408,6 +565,9 @@ function OportunidadesDetalheContent({
   });
 
   const [modalPropostaOpen, setModalPropostaOpen] = React.useState(false);
+  const [confirmarSaidaPropostaOpen, setConfirmarSaidaPropostaOpen] = React.useState(false);
+  const [salvandoPropostaComercial, setSalvandoPropostaComercial] = React.useState(false);
+  const [propostaSalvaSnapshot, setPropostaSalvaSnapshot] = React.useState<string | null>(null);
   const [gerandoPdfTimbradoProposta, setGerandoPdfTimbradoProposta] = React.useState(false);
   const [propostaFeedback, setPropostaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
   const [copiadoProposta, setCopiadoProposta] = React.useState(false);
@@ -502,20 +662,42 @@ function OportunidadesDetalheContent({
       setValorHomologadoTabInput(finalHomologado);
       setValorHomologarInput(finalHomologado);
 
+      const objetoCertame = obterObjetoCertame(opp);
+
       // Hidratação dos dados da Calculadora Multi-Item e Proposta
       if (opp.calculadoraDados) {
-        if (Array.isArray(opp.calculadoraDados.itens) && opp.calculadoraDados.itens.length > 0) {
-          setItensCalculadora(opp.calculadoraDados.itens);
+        const itensHidratados =
+          Array.isArray(opp.calculadoraDados.itens) && opp.calculadoraDados.itens.length > 0
+            ? opp.calculadoraDados.itens
+            : [];
+        if (itensHidratados.length > 0) {
+          setItensCalculadora(itensHidratados);
         }
         if (opp.calculadoraDados.parametrosPadrao) {
           setParametrosPadraoCalc(opp.calculadoraDados.parametrosPadrao);
         }
         if (opp.calculadoraDados.propostaConfig) {
-          setPropostaConfig((prev) => ({
-            ...prev,
+          const cfgHidratada: ConfiguracaoPropostaInput = {
+            modoEmissao: "ITENS_CALCULADORA",
+            tipoTabelaProposta: "PROPOSTA_INICIAL",
+            tipoAgrupamentoGlobal: "LOTE_01",
+            tituloGlobalCustomizado: "Lote 01",
+            valorGlobalManual: null,
+            validadeDias: 60,
+            prazoEntrega: "15 (quinze) dias úteis",
+            condicoesPagamento: "30 (trinta) dias após a liquidação da Nota Fiscal",
+            garantiaObservacoes: "Garantia legal de 90 dias acrescida da garantia contratual do fabricante.",
+            dadosBancariosPersonalizados: null,
+            dataEmissao: new Date().toISOString().split("T")[0],
             ...opp.calculadoraDados.propostaConfig,
-            descricaoGlobal: opp.calculadoraDados.propostaConfig.descricaoGlobal || opp.objeto || "",
-          }));
+            descricaoGlobal: opp.calculadoraDados.propostaConfig.descricaoGlobal || objetoCertame,
+          };
+          setPropostaConfig(cfgHidratada);
+          setPropostaSalvaSnapshot(
+            JSON.stringify({ itens: itensHidratados, propostaConfig: cfgHidratada })
+          );
+        } else {
+          setPropostaSalvaSnapshot(null);
         }
       } else {
         const vEst = opp.valorEstimado || 0;
@@ -524,7 +706,7 @@ function OportunidadesDetalheContent({
           {
             id: "item_01",
             numeroItem: "01",
-            descricao: opp.objeto || "Fornecimento de materiais/serviços conforme edital",
+            descricao: objetoCertame || "Fornecimento de materiais/serviços conforme edital",
             marcaModelo: "",
             unidade: "UN",
             quantidade: 1,
@@ -536,12 +718,14 @@ function OportunidadesDetalheContent({
             bdiPercentual: 25,
             margemMinimaPercentual: 10,
             margemAlvoPercentual: 20,
+            valorUnitarioArrematado: null,
           },
         ]);
         setPropostaConfig((prev) => ({
           ...prev,
-          descricaoGlobal: opp.objeto || "",
+          descricaoGlobal: objetoCertame,
         }));
+        setPropostaSalvaSnapshot(null);
       }
 
       if (usrRes.ok) {
@@ -621,12 +805,30 @@ function OportunidadesDetalheContent({
     return gerarConteudoPropostaComercial({
       orgaoNome: oportunidade.orgaoNome || "Órgão Licitante",
       numeroEdital: oportunidade.numeroEdital || "Edital",
-      objetoLicitacao: oportunidade.objeto || "",
+      objetoLicitacao: obterObjetoCertame(oportunidade),
       itens: itensCalculadora,
       configuracao: propostaConfig,
       empresa: empresaConfig,
     });
   }, [oportunidade, itensCalculadora, propostaConfig, empresaConfig]);
+
+  const snapshotAtualProposta = React.useMemo(
+    () => JSON.stringify({ itens: itensCalculadora, propostaConfig }),
+    [itensCalculadora, propostaConfig]
+  );
+
+  const propostaTemAlteracoesNaoSalvas =
+    propostaSalvaSnapshot === null || propostaSalvaSnapshot !== snapshotAtualProposta;
+
+  const aliquotasPadraoDivergemDosItens = React.useMemo(() => {
+    return itensCalculadora.some(
+      (it) =>
+        it.impostosPercentual !== parametrosPadraoCalc.impostosPercentual ||
+        it.bdiPercentual !== parametrosPadraoCalc.bdiPercentual ||
+        it.margemMinimaPercentual !== parametrosPadraoCalc.margemMinimaPercentual ||
+        it.margemAlvoPercentual !== parametrosPadraoCalc.margemAlvoPercentual
+    );
+  }, [itensCalculadora, parametrosPadraoCalc]);
 
   const handleAdicionarItemCalc = () => {
     const num = String(itensCalculadora.length + 1).padStart(2, "0");
@@ -717,6 +919,7 @@ function OportunidadesDetalheContent({
       }
       setLanceMinimoInput(String(consolidadoCalculadora.pisoTotalGeral));
       setValorPropostaInput(String(consolidadoCalculadora.propostaTotalGeral));
+      setPropostaSalvaSnapshot(JSON.stringify({ itens: itensCalculadora, propostaConfig }));
       setCalculadoraFeedback({
         tipo: "success",
         msg: "Calculadora salva! Piso Seguro e Valor da Proposta sincronizados com sucesso.",
@@ -730,6 +933,64 @@ function OportunidadesDetalheContent({
     } finally {
       setSalvandoCalculadoraCertame(false);
     }
+  };
+
+  const handleSalvarPropostaComercial = async (): Promise<boolean> => {
+    if (!id || !oportunidade) return false;
+    setSalvandoPropostaComercial(true);
+    setPropostaFeedback(null);
+    try {
+      const dadosCalculadora = {
+        parametrosPadrao: parametrosPadraoCalc,
+        itens: itensCalculadora,
+        propostaConfig,
+        atualizadoEm: new Date().toISOString(),
+      };
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: oportunidade.status,
+          lanceMinimo: consolidadoCalculadora.pisoTotalGeral,
+          valorProposta:
+            propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
+            propostaConfig.valorGlobalManual &&
+            propostaConfig.valorGlobalManual > 0
+              ? propostaConfig.valorGlobalManual
+              : propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"
+              ? consolidadoCalculadora.readequadaTotalGeral
+              : consolidadoCalculadora.propostaTotalGeral,
+          calculadoraDados: dadosCalculadora,
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Falha ao salvar a proposta comercial");
+      }
+      setPropostaSalvaSnapshot(JSON.stringify({ itens: itensCalculadora, propostaConfig }));
+      setPropostaFeedback({
+        tipo: "success",
+        msg: "Proposta Comercial salva com sucesso! Seus dados e condições comerciais estão protegidos.",
+      });
+      setTimeout(() => setPropostaFeedback(null), 5000);
+      return true;
+    } catch (err: any) {
+      setPropostaFeedback({
+        tipo: "error",
+        msg: err?.message || "Erro ao salvar a proposta comercial.",
+      });
+      return false;
+    } finally {
+      setSalvandoPropostaComercial(false);
+    }
+  };
+
+  const handleSolicitarFecharModalProposta = () => {
+    if (propostaTemAlteracoesNaoSalvas) {
+      setConfirmarSaidaPropostaOpen(true);
+      return;
+    }
+    setModalPropostaOpen(false);
   };
 
   const handleImprimirPropostaLimpa = () => {
@@ -794,7 +1055,7 @@ function OportunidadesDetalheContent({
       const payload = {
         orgaoNome: oportunidade.orgaoNome || "Órgão Licitante",
         numeroEdital: oportunidade.numeroEdital || "Edital",
-        objetoLicitacao: oportunidade.objeto || "",
+        objetoLicitacao: obterObjetoCertame(oportunidade),
         itens: itensCalculadora,
         configuracao: propostaConfig,
       };
@@ -2655,60 +2916,73 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.75rem" }}>
-                  <div>
-                    <TextInput
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: "0.75rem" }}>
+                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual} testId="tooltip-param-impostos">
+                    <NumericCalcInput
                       id="param-impostos"
-                      labelText="Impostos s/ Fat. (%)"
-                      value={String(parametrosPadraoCalc.impostosPercentual)}
-                      onChange={(e) =>
+                      labelText={renderLabelTooltipIcon("Impostos s/ Fat. (%)")}
+                      value={parametrosPadraoCalc.impostosPercentual}
+                      max={80}
+                      onChangeValue={(v) =>
                         setParametrosPadraoCalc({
                           ...parametrosPadraoCalc,
-                          impostosPercentual: parseFloat(e.target.value) || 0,
+                          impostosPercentual: v ?? 0,
                         })
                       }
                     />
-                  </div>
-                  <div>
-                    <TextInput
+                  </CampoComHoverTooltip>
+
+                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId="tooltip-param-bdi">
+                    <NumericCalcInput
                       id="param-bdi"
-                      labelText="Taxa de BDI (%)"
-                      value={String(parametrosPadraoCalc.bdiPercentual)}
-                      onChange={(e) =>
+                      labelText={renderLabelTooltipIcon("BDI / Desp. Indiretas (%)")}
+                      value={parametrosPadraoCalc.bdiPercentual}
+                      max={100}
+                      onChangeValue={(v) =>
                         setParametrosPadraoCalc({
                           ...parametrosPadraoCalc,
-                          bdiPercentual: parseFloat(e.target.value) || 0,
+                          bdiPercentual: v ?? 0,
                         })
                       }
                     />
-                  </div>
-                  <div>
-                    <TextInput
+                  </CampoComHoverTooltip>
+
+                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual} testId="tooltip-param-mmin">
+                    <NumericCalcInput
                       id="param-margem-min"
-                      labelText="Margem Mínima Piso (%)"
-                      value={String(parametrosPadraoCalc.margemMinimaPercentual)}
-                      onChange={(e) =>
+                      labelText={renderLabelTooltipIcon("Margem Mínima Piso (%)")}
+                      value={parametrosPadraoCalc.margemMinimaPercentual}
+                      max={80}
+                      onChangeValue={(v) =>
                         setParametrosPadraoCalc({
                           ...parametrosPadraoCalc,
-                          margemMinimaPercentual: parseFloat(e.target.value) || 0,
+                          margemMinimaPercentual: v ?? 0,
                         })
                       }
                     />
-                  </div>
-                  <div>
-                    <TextInput
+                  </CampoComHoverTooltip>
+
+                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual} testId="tooltip-param-malvo">
+                    <NumericCalcInput
                       id="param-margem-alvo"
-                      labelText="Margem Alvo Proposta (%)"
-                      value={String(parametrosPadraoCalc.margemAlvoPercentual)}
-                      onChange={(e) =>
+                      labelText={renderLabelTooltipIcon("Margem Alvo Proposta (%)")}
+                      value={parametrosPadraoCalc.margemAlvoPercentual}
+                      max={90}
+                      onChangeValue={(v) =>
                         setParametrosPadraoCalc({
                           ...parametrosPadraoCalc,
-                          margemAlvoPercentual: parseFloat(e.target.value) || 0,
+                          margemAlvoPercentual: v ?? 0,
                         })
                       }
                     />
-                  </div>
+                  </CampoComHoverTooltip>
                 </div>
+
+                {aliquotasPadraoDivergemDosItens && (
+                  <div style={{ marginTop: "0.65rem", fontSize: "0.75rem", color: "var(--cds-support-info, #0043ce)" }}>
+                    ℹ️ Para aplicar estas alíquotas padrão aos itens já listados abaixo, clique em <strong>&quot;Aplicar % a Todos os Itens&quot;</strong>.
+                  </div>
+                )}
               </Tile>
 
               {/* Lista Interativa de Itens */}
@@ -2762,39 +3036,43 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
                     {/* Campos de Entrada do Item */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <div style={{ minWidth: "100px" }}>
-                        <TextInput
-                          id={`item-num-${idx}`}
-                          labelText="Nº Item/Lote"
-                          value={it.numeroItem}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { numeroItem: e.target.value })}
-                        />
-                      </div>
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.numeroItem}>
+                        <div style={{ minWidth: "100px" }}>
+                          <TextInput
+                            id={`item-num-${idx}`}
+                            labelText={renderLabelTooltipIcon("Nº Item/Lote")}
+                            value={it.numeroItem}
+                            onChange={(e) => handleAtualizarItemCalc(idx, { numeroItem: e.target.value })}
+                          />
+                        </div>
+                      </CampoComHoverTooltip>
                       <div style={{ gridColumn: "span 2", minWidth: "260px" }}>
-                        <TextInput
-                          id={`item-desc-${idx}`}
-                          labelText="Descrição / Especificação do Item"
-                          placeholder="Ex: Fornecimento de Notebook Corporativo i7..."
-                          value={it.descricao}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { descricao: e.target.value })}
-                        />
+                        <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.descricao}>
+                          <TextInput
+                            id={`item-desc-${idx}`}
+                            labelText={renderLabelTooltipIcon("Descrição / Especificação do Item")}
+                            placeholder="Ex: Fornecimento de Notebook Corporativo i7..."
+                            value={it.descricao}
+                            onChange={(e) => handleAtualizarItemCalc(idx, { descricao: e.target.value })}
+                          />
+                        </CampoComHoverTooltip>
                       </div>
-                      <div>
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.marcaModelo}>
                         <TextInput
                           id={`item-marca-${idx}`}
-                          labelText="Marca / Modelo (Opcional)"
+                          labelText={renderLabelTooltipIcon("Marca / Modelo (Opcional)")}
                           placeholder="Ex: Dell Latitude 3440"
                           value={it.marcaModelo || ""}
                           onChange={(e) => handleAtualizarItemCalc(idx, { marcaModelo: e.target.value })}
                         />
-                      </div>
+                      </CampoComHoverTooltip>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.unidade}>
                         <Select
                           id={`item-unid-${idx}`}
-                          labelText="Unidade"
+                          labelText={renderLabelTooltipIcon("Unidade") as any}
                           value={it.unidade}
                           onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
                         >
@@ -2802,84 +3080,97 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             <SelectItem key={u} value={u} text={u} />
                           ))}
                         </Select>
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.quantidade}>
+                        <NumericCalcInput
                           id={`item-qtd-${idx}`}
-                          labelText="Quantidade"
-                          type="number"
-                          value={String(it.quantidade)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { quantidade: Math.max(1, parseFloat(e.target.value) || 1) })}
+                          labelText={renderLabelTooltipIcon("Quantidade")}
+                          value={it.quantidade}
+                          min={1}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { quantidade: Math.max(1, v ?? 1) })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.valorEstimadoUnitario}>
+                        <NumericCalcInput
                           id={`item-vest-${idx}`}
-                          labelText="Vlr. Estimado Edital (R$)"
+                          labelText={renderLabelTooltipIcon("Vlr. Estimado Edital (R$)")}
                           placeholder="Opcional"
-                          value={it.valorEstimadoUnitario != null ? String(it.valorEstimadoUnitario) : ""}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { valorEstimadoUnitario: e.target.value ? parseFloat(e.target.value) || null : null })}
+                          allowEmpty
+                          value={it.valorEstimadoUnitario}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { valorEstimadoUnitario: v })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.custoUnitario}>
+                        <NumericCalcInput
                           id={`item-custo-${idx}`}
-                          labelText="Custo Direto Unit. (R$)"
-                          value={String(it.custoUnitario)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { custoUnitario: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Custo Direto Unit. (R$)")}
+                          value={it.custoUnitario}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { custoUnitario: v ?? 0 })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.freteUnitario}>
+                        <NumericCalcInput
                           id={`item-frete-${idx}`}
-                          labelText="Frete Unit. (R$)"
-                          value={String(it.freteUnitario)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { freteUnitario: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Frete Unit. (R$)")}
+                          value={it.freteUnitario}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { freteUnitario: v ?? 0 })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.outrosCustosUnitario}>
+                        <NumericCalcInput
                           id={`item-outros-${idx}`}
-                          labelText="Outros Custos (R$)"
-                          value={String(it.outrosCustosUnitario)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { outrosCustosUnitario: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Outros Custos (R$)")}
+                          value={it.outrosCustosUnitario}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { outrosCustosUnitario: v ?? 0 })}
                         />
-                      </div>
+                      </CampoComHoverTooltip>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <div>
-                        <TextInput
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual}>
+                        <NumericCalcInput
                           id={`item-imp-${idx}`}
-                          labelText="Impostos (%)"
-                          value={String(it.impostosPercentual)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { impostosPercentual: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Impostos (%)")}
+                          value={it.impostosPercentual}
+                          max={80}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { impostosPercentual: v ?? 0 })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId={`tooltip-item-bdi-${idx}`}>
+                        <NumericCalcInput
                           id={`item-bdi-${idx}`}
-                          labelText="BDI (%)"
-                          value={String(it.bdiPercentual)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { bdiPercentual: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("BDI / Desp. Indiretas (%)")}
+                          value={it.bdiPercentual}
+                          max={100}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { bdiPercentual: v ?? 0 })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual}>
+                        <NumericCalcInput
                           id={`item-mmin-${idx}`}
-                          labelText="Margem Mín. (%)"
-                          value={String(it.margemMinimaPercentual)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { margemMinimaPercentual: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Margem Mín. (%)")}
+                          value={it.margemMinimaPercentual}
+                          max={80}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemMinimaPercentual: v ?? 0 })}
                         />
-                      </div>
-                      <div>
-                        <TextInput
+                      </CampoComHoverTooltip>
+
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual}>
+                        <NumericCalcInput
                           id={`item-malvo-${idx}`}
-                          labelText="Margem Alvo (%)"
-                          value={String(it.margemAlvoPercentual)}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { margemAlvoPercentual: parseFloat(e.target.value) || 0 })}
+                          labelText={renderLabelTooltipIcon("Margem Alvo (%)")}
+                          value={it.margemAlvoPercentual}
+                          max={90}
+                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemAlvoPercentual: v ?? 0 })}
                         />
-                      </div>
+                      </CampoComHoverTooltip>
                     </div>
 
                     {/* Resumo Instantâneo Calculado da Linha */}
@@ -2936,7 +3227,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         {formatarMoedaBrl(consolidadoCalculadora.custoTotalGeral)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                        Custos diretos + fretes + despesas
+                        Com BDI/Indiretos: {formatarMoedaBrl(consolidadoCalculadora.custoComBdiTotalGeral)}
                       </div>
                     </Tile>
                   </div>
@@ -2948,7 +3239,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         {formatarMoedaBrl(consolidadoCalculadora.pisoTotalGeral)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                        Limite mínimo inviolável na disputa
+                        Lucro Líq. no Piso: {formatarMoedaBrl(consolidadoCalculadora.lucroLiquidoEstimadoPiso)}
                       </div>
                     </Tile>
                   </div>
@@ -3045,12 +3336,17 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       id="select-modo-emissao"
                       labelText="Modo de Listagem dos Preços"
                       value={propostaConfig.modoEmissao}
-                      onChange={(e) =>
-                        setPropostaConfig({
-                          ...propostaConfig,
-                          modoEmissao: e.target.value as any,
-                        })
-                      }
+                      onChange={(e) => {
+                        const novoModo = e.target.value as any;
+                        setPropostaConfig((prev) => ({
+                          ...prev,
+                          modoEmissao: novoModo,
+                          descricaoGlobal:
+                            novoModo === "VALOR_GLOBAL" && !prev.descricaoGlobal?.trim()
+                              ? obterObjetoCertame(oportunidade)
+                              : prev.descricaoGlobal,
+                        }));
+                      }}
                     >
                       <SelectItem
                         value="ITENS_CALCULADORA"
@@ -3086,6 +3382,75 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     </Select>
                   </div>
                 </div>
+
+                {/* Lista Minimalista de Valores Arrematados (Proposta Readequada + Planilha Detalhada de Itens) */}
+                {propostaConfig.modoEmissao === "ITENS_CALCULADORA" &&
+                  propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA" && (
+                    <div
+                      data-testid="lista-itens-readequados"
+                      style={{
+                        padding: "1rem",
+                        backgroundColor: "var(--cds-layer, #fff)",
+                        borderRadius: "4px",
+                        border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      <div style={{ marginBottom: "0.75rem" }}>
+                        <strong style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
+                          🏆 Valores Arrematados por Item ({consolidadoCalculadora.totalItens} {consolidadoCalculadora.totalItens === 1 ? "item" : "itens"})
+                        </strong>
+                        <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", margin: "0.15rem 0 0 0" }}>
+                          O número e a especificação são somente visuais para evitar erros. Ajuste apenas o valor arrematado de cada item conforme a ata da disputa.
+                        </p>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {consolidadoCalculadora.itens.map((it, idx) => (
+                          <div
+                            key={it.id || idx}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "90px 1fr 220px",
+                              gap: "0.75rem",
+                              alignItems: "center",
+                              padding: "0.6rem 0.75rem",
+                              backgroundColor: "var(--cds-layer-01, #f9f9f9)",
+                              borderRadius: "4px",
+                              border: "1px solid var(--cds-border-subtle, #e8e8e8)",
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>Nº Item</div>
+                              <strong style={{ fontSize: "0.875rem" }}>{it.numeroItem}</strong>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>
+                                Descrição / Especificação do Item ({it.quantidade} {it.unidade})
+                              </div>
+                              <div style={{ fontSize: "0.85rem", color: "var(--cds-text-primary)", fontWeight: 500 }}>
+                                {it.descricao || "Sem descrição"}
+                              </div>
+                            </div>
+
+                            <div>
+                              <NumericCalcInput
+                                id={`item-arrematado-${idx}`}
+                                labelText={it.quantidade > 1 ? `Valor Unit. Arrematado (Total: ${formatarMoedaBrl(it.valorTotalReadequado)})` : "Valor Arrematado (R$)"}
+                                placeholder={String(it.pisoUnitarioSeguro)}
+                                allowEmpty
+                                value={it.valorUnitarioArrematado ?? it.pisoUnitarioSeguro}
+                                onChangeValue={(v) =>
+                                  handleAtualizarItemCalc(idx, { valorUnitarioArrematado: v })
+                                }
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                 {propostaConfig.modoEmissao === "VALOR_GLOBAL" && (
                   <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer, #fff)", borderRadius: "4px", border: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
@@ -3128,25 +3493,20 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       )}
 
                       <div>
-                        <TextInput
+                        <NumericCalcInput
                           id="input-valor-global-manual"
                           labelText="Valor Global da Proposta (R$)"
                           placeholder={formatarMoedaBrl(
                             propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"
-                              ? consolidadoCalculadora.pisoTotalGeral
+                              ? consolidadoCalculadora.readequadaTotalGeral
                               : consolidadoCalculadora.propostaTotalGeral
                           )}
-                          value={
-                            propostaConfig.valorGlobalManual != null
-                              ? String(propostaConfig.valorGlobalManual)
-                              : ""
-                          }
-                          onChange={(e) =>
+                          allowEmpty
+                          value={propostaConfig.valorGlobalManual}
+                          onChangeValue={(v) =>
                             setPropostaConfig({
                               ...propostaConfig,
-                              valorGlobalManual: e.target.value
-                                ? parseFloat(e.target.value) || null
-                                : null,
+                              valorGlobalManual: v,
                             })
                           }
                           helperText="Deixe vazio para usar a soma automática dos itens calculados"
@@ -3159,7 +3519,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         id="textarea-desc-global"
                         labelText="Descrição Resumida do Objeto para o Lote / Preço Global"
                         rows={2}
-                        value={propostaConfig.descricaoGlobal || oportunidade?.objeto || ""}
+                        value={propostaConfig.descricaoGlobal || obterObjetoCertame(oportunidade)}
                         onChange={(e) =>
                           setPropostaConfig({
                             ...propostaConfig,
@@ -3346,15 +3706,32 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   </div>
                 </div>
 
-                <Button
-                  kind="primary"
-                  size="lg"
-                  renderIcon={DocumentPdf}
-                  onClick={() => setModalPropostaOpen(true)}
-                  data-testid="btn-visualizar-proposta"
-                >
-                  Visualizar Proposta Comercial (A4)
-                </Button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <Button
+                    kind="primary"
+                    size="lg"
+                    renderIcon={DocumentPdf}
+                    onClick={() => setModalPropostaOpen(true)}
+                    data-testid="btn-visualizar-proposta"
+                  >
+                    Visualizar Proposta Comercial (A4)
+                  </Button>
+
+                  <Button
+                    kind="secondary"
+                    size="lg"
+                    renderIcon={Save}
+                    disabled={salvandoPropostaComercial}
+                    onClick={handleSalvarPropostaComercial}
+                    data-testid="btn-salvar-proposta-aba"
+                  >
+                    {salvandoPropostaComercial
+                      ? "Salvando..."
+                      : propostaTemAlteracoesNaoSalvas
+                      ? "Salvar Proposta"
+                      : "Proposta Salva ✓"}
+                  </Button>
+                </div>
               </div>
             </Tile>
           </TabPanel>
@@ -3476,28 +3853,45 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
         </TabPanels>
       </Tabs>
 
-      {/* Modal A4: Pré-visualização da Proposta Comercial com os 4 Botões Padronizados */}
+      {/* Modal A4: Pré-visualização da Proposta Comercial com os 4 Botões Padronizados + Salvar */}
       <Modal
         open={modalPropostaOpen}
-        onRequestClose={() => setModalPropostaOpen(false)}
+        onRequestClose={handleSolicitarFecharModalProposta}
         passiveModal
         size="lg"
         modalHeading={documentoProposta?.titulo || "Proposta Comercial"}
         aria-label="Pré-visualização da Proposta Comercial"
       >
         <div>
-          {/* Barra Superior com os 4 Botões Idênticos a Declarações e Impugnações */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+          {/* Barra Superior com Salvar Proposta + os 4 Botões Idênticos a Declarações e Impugnações */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
             <Button
-              kind="secondary"
+              kind={propostaTemAlteracoesNaoSalvas ? "primary" : "ghost"}
               size="sm"
-              renderIcon={Printer}
-              onClick={handleImprimirPropostaLimpa}
-              id="btn-imprimir-proposta-a4"
-              data-testid="btn-imprimir-proposta-a4"
+              renderIcon={Save}
+              disabled={salvandoPropostaComercial}
+              onClick={handleSalvarPropostaComercial}
+              id="btn-salvar-proposta-modal"
+              data-testid="btn-salvar-proposta-modal"
             >
-              Imprimir Documento PDF
+              {salvandoPropostaComercial
+                ? "Salvando..."
+                : propostaTemAlteracoesNaoSalvas
+                ? "Salvar Proposta"
+                : "Proposta Salva ✓"}
             </Button>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Button
+                kind="secondary"
+                size="sm"
+                renderIcon={Printer}
+                onClick={handleImprimirPropostaLimpa}
+                id="btn-imprimir-proposta-a4"
+                data-testid="btn-imprimir-proposta-a4"
+              >
+                Imprimir Documento PDF
+              </Button>
 
             <div
               title={
@@ -3541,6 +3935,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             >
               Exportar .TXT
             </Button>
+            </div>
           </div>
 
           {/* Visualização da Folha Oficial no Modal */}
@@ -3566,6 +3961,33 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             )}
           </div>
         </div>
+      </Modal>
+
+      {/* Modal de Confirmação ao fechar Proposta Comercial com alterações não salvas */}
+      <Modal
+        open={confirmarSaidaPropostaOpen}
+        modalHeading="Deseja salvar a Proposta Comercial?"
+        primaryButtonText={salvandoPropostaComercial ? "Salvando..." : "Salvar e Fechar"}
+        secondaryButtonText="Fechar sem Salvar"
+        onRequestClose={() => setConfirmarSaidaPropostaOpen(false)}
+        onSecondarySubmit={() => {
+          setConfirmarSaidaPropostaOpen(false);
+          setModalPropostaOpen(false);
+        }}
+        onRequestSubmit={async () => {
+          const ok = await handleSalvarPropostaComercial();
+          if (ok) {
+            setConfirmarSaidaPropostaOpen(false);
+            setModalPropostaOpen(false);
+          }
+        }}
+        primaryButtonDisabled={salvandoPropostaComercial}
+        size="sm"
+        data-testid="modal-confirmar-salvar-proposta"
+      >
+        <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", lineHeight: 1.5 }}>
+          Esta proposta ainda não foi salva ou teve alguma modificação recente (como prazo de validade, condições comerciais ou valores arrematados). Deseja salvar a proposta antes de sair para não perder os dados?
+        </p>
       </Modal>
 
       {/* Modal: Homologar Vitória no Certame (Contemplada 🏆) */}

@@ -18,6 +18,39 @@ export const UNIDADES_ITEM_OPCOES = [
 
 export type UnidadeItemLicitacao = (typeof UNIDADES_ITEM_OPCOES)[number];
 
+/**
+ * Dicionário oficial de textos explicativos (Tooltips / Hover) com exemplos práticos
+ * para todos os campos da Calculadora de Formação de Preços.
+ */
+export const CALCULADORA_TOOLTIPS = {
+  impostosPercentual:
+    "Alíquota efetiva de tributos descontados diretamente sobre o valor da Nota Fiscal emitida (Ex: DAS do Simples Nacional, ou soma de ISS/ICMS + PIS + COFINS + IRPJ/CSLL). Exemplo: 8,5% para empresa no Simples Nacional Anexo I.",
+  bdiPercentual:
+    "Benefícios e Despesas Indiretas (BDI) aplicados sobre o custo direto para cobrir os gastos fixos e operacionais da empresa: aluguel, energia elétrica, água, internet, contabilidade, equipe administrativa, seguros, garantias contratuais e riscos operacionais. (Obs: Impostos da NF e Margem de Lucro já possuem campos próprios ao lado). Exemplo: Se aluguel, luz, água e administrativo representam 15% da operação, sobre um custo direto de R$ 100 o sistema soma R$ 15 de rateio indireto.",
+  margemMinimaPercentual:
+    "Percentual mínimo de lucro líquido livre (já descontados custos diretos, BDI/despesas fixas e impostos) que sua empresa aceita ganhar no limite da disputa. Define o Piso Seguro inviolável (trava do robô). Exemplo: 10% garante lucro líquido mínimo de R$ 100 a cada R$ 1.000 faturados.",
+  margemAlvoPercentual:
+    "Percentual de lucro líquido desejado para cadastrar a Proposta Inicial antes da abertura dos lances, garantindo fôlego de negociação frente aos concorrentes. Exemplo: 20%.",
+  numeroItem:
+    "Número do item ou lote exatamente como identificado no Termo de Referência / Edital. Exemplo: 01, 02 ou Lote 01.",
+  descricao:
+    "Descrição técnica resumida ou integral do produto ou serviço licitado que sairá impressa na planilha da Proposta Comercial. Exemplo: Notebook Corporativo Core i7 16GB RAM SSD 512GB.",
+  marcaModelo:
+    "Marca e modelo ofertados pela sua empresa (exigido na maioria dos pregões de materiais/equipamentos). Exemplo: Dell Latitude 3440.",
+  unidade:
+    "Unidade de fornecimento exigida no edital (UN = Unidade, SV = Serviço, CX = Caixa, MES = Mensalidade, KG = Quilograma). Exemplo: UN.",
+  quantidade:
+    "Quantidade total demandada no edital para este item. Multiplica automaticamente os custos, o Piso Seguro e o total da Proposta. Exemplo: 10 unidades.",
+  valorEstimadoUnitario:
+    "Valor unitário máximo ou de referência estimado pelo órgão no edital. Serve para medir seu desconto, avisar se sua proposta está acima do teto e alertar risco de inexequibilidade (< 50% — Art. 59, §4º da Lei 14.133/2021). Exemplo: R$ 5.000,00.",
+  custoUnitario:
+    "Preço pago ao fornecedor/distribuidor ou custo direto de execução de 1 unidade do objeto, sem contar o frete. Exemplo: R$ 2.500,00 na cotação de fábrica.",
+  freteUnitario:
+    "Custo logístico de transporte/entrega (CIF) até o endereço do órgão dividido pela quantidade do item. Exemplo: Frete total de R$ 500 para 10 unidades = R$ 50,00 por unidade.",
+  outrosCustosUnitario:
+    "Despesas diretas extras por unidade exigidas pelo edital: instalação, montagem, envio de amostra, certificação/laudo, DIFAL ou embalagem especial. Exemplo: R$ 35,00 de montagem por unidade.",
+} as const;
+
 export const itemCalculadoraInputSchema = z.object({
   id: z.string().default(() => `item_${Math.random().toString(36).substring(2, 9)}`),
   numeroItem: z.string().trim().min(1, "Número do item é obrigatório"),
@@ -33,6 +66,7 @@ export const itemCalculadoraInputSchema = z.object({
   bdiPercentual: z.number().min(0).max(100).default(25),
   margemMinimaPercentual: z.number().min(0).max(80).default(10),
   margemAlvoPercentual: z.number().min(0).max(100).default(20),
+  valorUnitarioArrematado: z.number().nonnegative().nullable().optional(),
 });
 
 export type ItemCalculadoraInput = z.infer<typeof itemCalculadoraInputSchema>;
@@ -44,10 +78,16 @@ export interface ItemCalculadoProposta extends ItemCalculadoraInput {
   pisoTotalSeguro: number;
   propostaUnitaria: number;
   propostaTotal: number;
+  valorUnitarioReadequado: number;
+  valorTotalReadequado: number;
   lucroLiquidoPiso: number;
   lucroLiquidoProposta: number;
   alertaInexequivel: boolean;
+  alertaAcimaEstimado: boolean;
+  alertaMargemInvertida: boolean;
+  alertaSomaPercentualInvalida: boolean;
   motivoAlerta?: string;
+  avisosValidacao: string[];
 }
 
 export const configuracaoPropostaSchema = z.object({
@@ -99,8 +139,11 @@ export interface ConsolidadoCalculadoraProposta {
   itens: ItemCalculadoProposta[];
   totalItens: number;
   custoTotalGeral: number;
+  custoComBdiTotalGeral: number;
   pisoTotalGeral: number;
   propostaTotalGeral: number;
+  readequadaTotalGeral: number;
+  lucroLiquidoEstimadoPiso: number;
   lucroLiquidoEstimadoProposta: number;
   margemMediaLiquida: number;
   temAlertaInexequibilidade: boolean;
@@ -112,37 +155,68 @@ export function round2(num: number): number {
 }
 
 export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculadoProposta {
+  const quantidadeSegura = input.quantidade > 0 ? input.quantidade : 1;
   const custoTotalUnitario = round2(
-    input.custoUnitario + input.freteUnitario + input.outrosCustosUnitario,
+    Math.max(0, input.custoUnitario) +
+      Math.max(0, input.freteUnitario) +
+      Math.max(0, input.outrosCustosUnitario),
   );
   const custoComBdiUnitario = round2(
-    custoTotalUnitario * (1 + input.bdiPercentual / 100),
+    custoTotalUnitario * (1 + Math.max(0, input.bdiPercentual) / 100),
   );
+
+  const avisosValidacao: string[] = [];
+  const somaPercentualPiso = input.impostosPercentual + input.margemMinimaPercentual;
+  const somaPercentualAlvo = input.impostosPercentual + input.margemAlvoPercentual;
+
+  const alertaSomaPercentualInvalida =
+    somaPercentualPiso >= 95 || somaPercentualAlvo >= 95;
+  if (alertaSomaPercentualInvalida) {
+    avisosValidacao.push(
+      "A soma de Impostos (%) + Margem de Lucro (%) não deve atingir ou ultrapassar 95% do faturamento.",
+    );
+  }
+
+  const alertaMargemInvertida =
+    input.margemMinimaPercentual > input.margemAlvoPercentual;
+  if (alertaMargemInvertida) {
+    avisosValidacao.push(
+      "A Margem Mínima (Piso) está maior que a Margem Alvo da Proposta Inicial.",
+    );
+  }
 
   // Divisor para cálculo por dentro (Markup sobre o faturamento)
   // Preço = CustoComBDI / (1 - (Impostos% + Margem%) / 100)
-  const somaPiso = (input.impostosPercentual + input.margemMinimaPercentual) / 100;
+  const somaPiso = somaPercentualPiso / 100;
   const divisorPiso = Math.max(0.05, 1 - somaPiso);
   const pisoUnitarioSeguro = round2(custoComBdiUnitario / divisorPiso);
-  const pisoTotalSeguro = round2(pisoUnitarioSeguro * input.quantidade);
+  const pisoTotalSeguro = round2(pisoUnitarioSeguro * quantidadeSegura);
 
-  const somaAlvo = (input.impostosPercentual + input.margemAlvoPercentual) / 100;
+  const somaAlvo = somaPercentualAlvo / 100;
   const divisorAlvo = Math.max(0.05, 1 - somaAlvo);
   const propostaUnitaria = round2(custoComBdiUnitario / divisorAlvo);
-  const propostaTotal = round2(propostaUnitaria * input.quantidade);
+  const propostaTotal = round2(propostaUnitaria * quantidadeSegura);
 
-  // Lucro líquido em R$ = Faturamento Liquefeito de Impostos - Custos Operacionais
+  // Valor Readequado: prioriza o valor arrematado informado pelo cliente; senão usa o Piso Seguro
+  const valorUnitarioReadequado =
+    input.valorUnitarioArrematado != null && input.valorUnitarioArrematado > 0
+      ? round2(input.valorUnitarioArrematado)
+      : pisoUnitarioSeguro;
+  const valorTotalReadequado = round2(valorUnitarioReadequado * quantidadeSegura);
+
+  // Lucro líquido em R$ = Faturamento Líquido de Impostos - Custos Operacionais (Direto + BDI)
   const lucroLiquidoPiso = round2(
     pisoTotalSeguro * (1 - input.impostosPercentual / 100) -
-      custoComBdiUnitario * input.quantidade,
+      custoComBdiUnitario * quantidadeSegura,
   );
   const lucroLiquidoProposta = round2(
     propostaTotal * (1 - input.impostosPercentual / 100) -
-      custoComBdiUnitario * input.quantidade,
+      custoComBdiUnitario * quantidadeSegura,
   );
 
-  // Alerta de Inexequibilidade (Art. 59 §4º da Lei 14.133/2021)
+  // Alerta de Inexequibilidade (Art. 59 §4º da Lei 14.133/2021) e Teto do Edital
   let alertaInexequivel = false;
+  let alertaAcimaEstimado = false;
   let motivoAlerta: string | undefined;
 
   if (input.valorEstimadoUnitario && input.valorEstimadoUnitario > 0) {
@@ -150,24 +224,39 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
       alertaInexequivel = true;
       motivoAlerta =
         "Piso com desconto superior a 50% do valor de referência (Art. 59, §4º da Lei 14.133/2021). Sujeito à comprovação de exequibilidade.";
+    } else if (propostaUnitaria > input.valorEstimadoUnitario) {
+      alertaAcimaEstimado = true;
+      motivoAlerta =
+        "Proposta Inicial acima do Valor Estimado do Edital. Atenção ao risco de desclassificação se o orçamento for teto máximo.";
     } else if (pisoUnitarioSeguro < input.valorEstimadoUnitario * 0.75) {
       motivoAlerta =
         "Desconto expressivo superior a 25% frente ao valor estimado do edital.";
     }
   }
 
+  if (!motivoAlerta && avisosValidacao.length > 0) {
+    motivoAlerta = avisosValidacao[0];
+  }
+
   return {
     ...input,
+    quantidade: quantidadeSegura,
     custoTotalUnitario,
     custoComBdiUnitario,
     pisoUnitarioSeguro,
     pisoTotalSeguro,
     propostaUnitaria,
     propostaTotal,
+    valorUnitarioReadequado,
+    valorTotalReadequado,
     lucroLiquidoPiso,
     lucroLiquidoProposta,
     alertaInexequivel,
+    alertaAcimaEstimado,
+    alertaMargemInvertida,
+    alertaSomaPercentualInvalida,
     motivoAlerta,
+    avisosValidacao,
   };
 }
 
@@ -179,15 +268,21 @@ export function consolidarCalculadoraProposta(
 
   const totalItens = itensCalculados.length;
   let custoTotalGeral = 0;
+  let custoComBdiTotalGeral = 0;
   let pisoTotalGeral = 0;
   let propostaTotalGeral = 0;
+  let readequadaTotalGeral = 0;
+  let lucroLiquidoEstimadoPiso = 0;
   let lucroLiquidoEstimadoProposta = 0;
   let temAlertaInexequibilidade = false;
 
   for (const it of itensCalculados) {
     custoTotalGeral += round2(it.custoTotalUnitario * it.quantidade);
+    custoComBdiTotalGeral += round2(it.custoComBdiUnitario * it.quantidade);
     pisoTotalGeral += it.pisoTotalSeguro;
     propostaTotalGeral += it.propostaTotal;
+    readequadaTotalGeral += it.valorTotalReadequado;
+    lucroLiquidoEstimadoPiso += it.lucroLiquidoPiso;
     lucroLiquidoEstimadoProposta += it.lucroLiquidoProposta;
     if (it.alertaInexequivel) {
       temAlertaInexequibilidade = true;
@@ -195,8 +290,11 @@ export function consolidarCalculadoraProposta(
   }
 
   custoTotalGeral = round2(custoTotalGeral);
+  custoComBdiTotalGeral = round2(custoComBdiTotalGeral);
   pisoTotalGeral = round2(pisoTotalGeral);
   propostaTotalGeral = round2(propostaTotalGeral);
+  readequadaTotalGeral = round2(readequadaTotalGeral);
+  lucroLiquidoEstimadoPiso = round2(lucroLiquidoEstimadoPiso);
   lucroLiquidoEstimadoProposta = round2(lucroLiquidoEstimadoProposta);
 
   const margemMediaLiquida =
@@ -210,8 +308,11 @@ export function consolidarCalculadoraProposta(
     itens: itensCalculados,
     totalItens,
     custoTotalGeral,
+    custoComBdiTotalGeral,
     pisoTotalGeral,
     propostaTotalGeral,
+    readequadaTotalGeral,
+    lucroLiquidoEstimadoPiso,
     lucroLiquidoEstimadoProposta,
     margemMediaLiquida,
     temAlertaInexequibilidade,
