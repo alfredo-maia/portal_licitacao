@@ -15,6 +15,8 @@ import {
   SideNav,
   SideNavItems,
   SideNavLink,
+  SideNavMenu,
+  SideNavMenuItem,
   SkipToContent,
   Tag,
 } from "@carbon/react";
@@ -188,6 +190,72 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <SideNavItems>
             {APP_ROUTES.map((route) => {
+              if (route.id === "robo-de-lances") {
+                const isArsenalActive =
+                  pathname === "/robo-de-lances" ||
+                  pathname.startsWith("/robo-de-lances/") ||
+                  pathname === "/chat-pregoeiro" ||
+                  pathname.startsWith("/chat-pregoeiro/") ||
+                  pathname === "/inteligencia-precos" ||
+                  pathname.startsWith("/inteligencia-precos/");
+
+                return (
+                  <SideNavMenu
+                    key="arsenal-de-disputa"
+                    title="Arsenal de Disputa"
+                    renderIcon={Bot}
+                    isActive={isArsenalActive}
+                    defaultExpanded={true}
+                  >
+                    <SideNavMenuItem
+                      href="/robo-de-lances"
+                      isActive={
+                        pathname === "/robo-de-lances" ||
+                        pathname.startsWith("/robo-de-lances/")
+                      }
+                      aria-current={
+                        pathname === "/robo-de-lances" ? "page" : undefined
+                      }
+                    >
+                      <span>Robô de Lances</span>
+                      {route.badge ? (
+                        <Tag
+                          size="sm"
+                          type="cool-gray"
+                          style={{ marginLeft: "0.5rem" }}
+                        >
+                          {route.badge}
+                        </Tag>
+                      ) : null}
+                    </SideNavMenuItem>
+                    <SideNavMenuItem
+                      href="/chat-pregoeiro"
+                      isActive={
+                        pathname === "/chat-pregoeiro" ||
+                        pathname.startsWith("/chat-pregoeiro/")
+                      }
+                      aria-current={
+                        pathname === "/chat-pregoeiro" ? "page" : undefined
+                      }
+                    >
+                      <span>Chat do Pregoeiro</span>
+                    </SideNavMenuItem>
+                    <SideNavMenuItem
+                      href="/inteligencia-precos"
+                      isActive={
+                        pathname === "/inteligencia-precos" ||
+                        pathname.startsWith("/inteligencia-precos/")
+                      }
+                      aria-current={
+                        pathname === "/inteligencia-precos" ? "page" : undefined
+                      }
+                    >
+                      <span>Inteligência de Preços</span>
+                    </SideNavMenuItem>
+                  </SideNavMenu>
+                );
+              }
+
               const IconComponent = ROUTE_ICONS[route.id] ?? Document;
               const isActive =
                 pathname === route.path ||

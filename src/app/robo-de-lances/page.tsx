@@ -20,30 +20,31 @@ import {
 } from "@carbon/react";
 import {
   Analytics,
+  Bot,
   Calculator,
   Chat,
   Copy,
   DocumentPdf,
+  Launch,
+  Pause,
+  Play,
   Printer,
-  Scale,
   Send,
+  Settings,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import {
   calcularLanceMinimoEBdi,
   canUseArsenalFeature,
   consultarInteligenciaPrecosConcorrentes,
-  gerarMinutaImpugnacaoIA,
   gerarPropostaComercialTimbrada,
   gerarRelatorioExecutivoMensal,
   type CalculadoraLanceOutput,
   type InteligenciaPrecosOutput,
-  type MinutaImpugnacaoIaOutput,
   type MonitorChatPregoeiroOutput,
   type PlanoAssinaturaArsenal,
   type PropostaComercialGerada,
   type RelatorioExecutivoMensalOutput,
-  type TeseImpugnacaoIa,
   type TipoObjetoLicitacao,
 } from "@/server/schemas/arsenal.schema";
 
@@ -118,18 +119,11 @@ export default function RoboDeLancesPage() {
   const [resultadoChat, setResultadoChat] =
     useState<MonitorChatPregoeiroOutput | null>(null);
 
-  // 4. Estado Gerador de Impugnação com IA
-  const [impEdital, setImpEdital] = useState("PE 120/2026");
-  const [impOrgao, setImpOrgao] = useState("Secretaria Estadual de Saúde");
-  const [impDataAbertura, setImpDataAbertura] = useState("2026-11-12");
-  const [impTese, setImpTese] = useState<TeseImpugnacaoIa>(
-    "RESTRICAO_COMPETITIVIDADE_E_MARCA",
-  );
-  const [impClausula, setImpClausula] = useState(
-    "Item 8.4 do Termo de Referência exige marca exclusiva e atestado técnico de 80% do quantitativo total sem justificativa técnica no ETP.",
-  );
-  const [minutaIaGerada, setMinutaIaGerada] =
-    useState<MinutaImpugnacaoIaOutput | null>(null);
+  // 1. Estado Salas de Disputa Ativas (Robô de Lances)
+  const [motorAtivoGlobal, setMotorAtivoGlobal] = useState(true);
+  const [estrategiaGlobal, setEstrategiaGlobal] = useState("CENTAVO_1");
+  const [tempoDisparo, setTempoDisparo] = useState("RANDOM_2S");
+  const [preferenciaMe, setPreferenciaMe] = useState("ATIVO");
 
   // 5. Estado BI de Preços & Relatório Executivo
   const [biTermo, setBiTermo] = useState("Notebook Corporativo");
@@ -260,30 +254,7 @@ export default function RoboDeLancesPage() {
     }
   };
 
-  const handleGerarMinutaIA = () => {
-    try {
-      const res = gerarMinutaImpugnacaoIA({
-        planoTenant: planoAtivo,
-        numeroEdital: impEdital,
-        orgaoNome: impOrgao,
-        dataAberturaSessao: new Date(impDataAbertura).toISOString(),
-        clausulaQuestionada: impClausula,
-        tesePrincipal: impTese,
-        empresaImpugnante: "APONTA TECNOLOGIA E SERVICOS LTDA",
-        cnpjImpugnante: "12.345.678/0001-90",
-      });
-      setMinutaIaGerada(res);
-      setFeedback({
-        kind: "success",
-        text: "Minuta de Impugnação fundamentada na Lei 14.133/2021 e Súmulas do TCU gerada!",
-      });
-    } catch (err: unknown) {
-      setFeedback({
-        kind: "warning",
-        text: err instanceof Error ? err.message : "Erro ao gerar minuta.",
-      });
-    }
-  };
+
 
   const handleConsultarBiERelatorio = () => {
     try {
@@ -321,69 +292,8 @@ export default function RoboDeLancesPage() {
   return (
     <ModulePageShell
       routePath="/robo-de-lances"
-      subtitle="Arsenal de Disputa Pro & Enterprise: Calculadora de Lance Mínimo & BDI, Proposta Timbrada em PDF, Monitor de Chat do Pregoeiro no WhatsApp, Minutas de Impugnação com IA e Inteligência de Preços Homologados."
+      subtitle="Arsenal de Disputa: Painel Central de Salas Ativas do Robô de Lances, Calculadora de Lance Mínimo & BDI, Proposta Timbrada em PDF e Monitoramento Estratégico."
     >
-      {/* Barra de Simulação de Plano do Tenant */}
-      <Tile
-        style={{
-          marginBottom: "1.5rem",
-          padding: "1rem 1.5rem",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-        }}
-      >
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <strong style={{ fontSize: "0.95rem" }}>
-              Escada de Valor do Arsenal SaaS:
-            </strong>
-            <Tag
-              type={
-                planoAtivo === "ENTERPRISE"
-                  ? "purple"
-                  : planoAtivo === "PRO"
-                    ? "blue"
-                    : "cool-gray"
-              }
-            >
-              Plano {planoAtivo}
-            </Tag>
-          </div>
-          <p
-            style={{
-              margin: "0.25rem 0 0 0",
-              fontSize: "0.8125rem",
-              color: "var(--cds-text-secondary)",
-            }}
-          >
-            Básico (R$ 59,90): Calculadora BDI • Pro (R$ 97,00): + Proposta PDF
-            Timbrada • Enterprise (R$ 197,00): + Monitor Pregoeiro WhatsApp, IA
-            Impugnação & BI Preços.
-          </p>
-        </div>
-
-        <div style={{ minWidth: "240px" }}>
-          <Select
-            id="select-plano-arsenal"
-            labelText="Simular Visão do Plano"
-            value={planoAtivo}
-            onChange={(e) =>
-              setPlanoAtivo(e.target.value as PlanoAssinaturaArsenal)
-            }
-          >
-            <SelectItem value="BASICO" text="Plano Básico (R$ 59,90/mês)" />
-            <SelectItem value="PRO" text="Plano Pro (R$ 97,00/mês)" />
-            <SelectItem
-              value="ENTERPRISE"
-              text="Plano Enterprise (R$ 197,00/mês)"
-            />
-          </Select>
-        </div>
-      </Tile>
-
       {feedback && (
         <InlineNotification
           style={{ marginBottom: "1rem" }}
@@ -391,7 +301,7 @@ export default function RoboDeLancesPage() {
           title={
             feedback.kind === "success"
               ? "Operação Concluída"
-              : "Atenção de Plano / Validação"
+              : "Atenção de Validação"
           }
           subtitle={feedback.text}
           onCloseButtonClick={() => setFeedback(null)}
@@ -400,15 +310,243 @@ export default function RoboDeLancesPage() {
 
       <Tabs>
         <TabList aria-label="Módulos do Arsenal de Disputa">
+          <Tab renderIcon={Bot}>Salas de Disputa Ativas</Tab>
           <Tab renderIcon={Calculator}>Calculadora de Lance & BDI</Tab>
           <Tab renderIcon={DocumentPdf}>Proposta Comercial PDF</Tab>
           <Tab renderIcon={Chat}>Monitor Chat Pregoeiro</Tab>
-          <Tab renderIcon={Scale}>Impugnação com IA</Tab>
           <Tab renderIcon={Analytics}>BI Concorrentes & Relatório</Tab>
         </TabList>
 
         <TabPanels>
-          {/* ABA 1: Calculadora de Lance Mínimo & Simulador de BDI */}
+          {/* ABA 1: Salas de Disputa Ativas (Robô de Lances) */}
+          <TabPanel>
+            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "1.25rem",
+                  flexWrap: "wrap",
+                  gap: "1rem",
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "1.25rem" }}>
+                    Painel Central de Disputas em Tempo Real (Auto-Bidder)
+                  </h2>
+                  <p
+                    style={{
+                      margin: "0.25rem 0 0 0",
+                      fontSize: "0.875rem",
+                      color: "var(--cds-text-secondary)",
+                    }}
+                  >
+                    Monitoramento em tempo real de todas as salas públicas de disputa ativas no dia, acompanhamento do menor lance e controle inviolável do piso seguro contra inexequibilidade.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <Tag type={motorAtivoGlobal ? "green" : "cool-gray"} size="md">
+                    {motorAtivoGlobal ? "● Motor em Tempo Real ATIVO" : "⏸️ Motor PAUSADO"}
+                  </Tag>
+                  <Button
+                    size="sm"
+                    kind={motorAtivoGlobal ? "danger--tertiary" : "primary"}
+                    renderIcon={motorAtivoGlobal ? Pause : Play}
+                    onClick={() => setMotorAtivoGlobal(!motorAtivoGlobal)}
+                  >
+                    {motorAtivoGlobal ? "Pausar Motor Global" : "Ligar Motor Global"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Métricas do Robô */}
+              <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+                <Column lg={3} md={2} sm={4}>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Salas Monitoradas Hoje</div>
+                    <div style={{ fontSize: "1.6rem", fontWeight: 700, marginTop: "0.25rem" }}>3 Certames</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-support-success, #24a148)", marginTop: "0.25rem" }}>
+                      ● 2 em liderança (1º lugar)
+                    </div>
+                  </Tile>
+                </Column>
+                <Column lg={3} md={2} sm={4}>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Lances Disparados</div>
+                    <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)", marginTop: "0.25rem" }}>
+                      24 Lances
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Tempo médio de resposta: 1.8s
+                    </div>
+                  </Tile>
+                </Column>
+                <Column lg={3} md={2} sm={4}>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-info, #0043ce)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Economia / Margem Média</div>
+                    <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--cds-support-info, #0043ce)", marginTop: "0.25rem" }}>
+                      16.4%
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Preservada acima do piso mínimo
+                    </div>
+                  </Tile>
+                </Column>
+                <Column lg={3} md={2} sm={4}>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-warning, #f1c21b)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Proteção de Piso Seguro</div>
+                    <div style={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--cds-support-warning, #f1c21b)", marginTop: "0.25rem" }}>
+                      100% Inviolável
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Trava anti-inexequibilidade (Art. 59)
+                    </div>
+                  </Tile>
+                </Column>
+              </Grid>
+
+              {/* Tabela de Salas de Disputa Ativas */}
+              <div style={{ marginBottom: "1.5rem" }}>
+                <h4 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+                  ⚡ Salas em Disputa Hoje
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <Tile style={{ padding: "1.25rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <Tag type="green" size="sm">1º LUGAR</Tag>
+                          <Tag type="cool-gray" size="sm">Compras.gov.br</Tag>
+                          <strong style={{ fontSize: "0.95rem" }}>PE 099/2026 - TRE-GO</strong>
+                        </div>
+                        <div style={{ fontSize: "0.85rem", marginTop: "0.35rem" }}>
+                          Item 1: 50 Notebooks Corporativos i7 16GB SSD 512GB
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                          Última ação: Cobriu lance concorrente por R$ 0,01 há 2 min
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Seu Lance Atual</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)" }}>
+                          R$ 4.150,00
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                          Piso Seguro: R$ 3.850,00
+                        </div>
+                      </div>
+                    </div>
+                  </Tile>
+
+                  <Tile style={{ padding: "1.25rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <Tag type="blue" size="sm">2º LUGAR</Tag>
+                          <Tag type="cool-gray" size="sm">BBMNet</Tag>
+                          <strong style={{ fontSize: "0.95rem" }}>PE 045/2026 - Prefeitura de Anápolis/GO</strong>
+                        </div>
+                        <div style={{ fontSize: "0.85rem", marginTop: "0.35rem" }}>
+                          Lote 1: Suprimentos de TI e Periféricos
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                          Última ação: Aguardando encerramento randômico da rodada
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Seu Lance Atual</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 700 }}>
+                          R$ 89.200,00
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                          Menor Lance: R$ 88.500,00 • Piso: R$ 82.000,00
+                        </div>
+                      </div>
+                    </div>
+                  </Tile>
+
+                  <Tile style={{ padding: "1.25rem", borderLeft: "4px solid var(--cds-support-warning, #f1c21b)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <Tag type="warm-gray" size="sm">IMINÊNCIA</Tag>
+                          <Tag type="cool-gray" size="sm">BEC-SP</Tag>
+                          <strong style={{ fontSize: "0.95rem" }}>PE 112/2026 - Secretaria de Saúde SP</strong>
+                        </div>
+                        <div style={{ fontSize: "0.85rem", marginTop: "0.35rem" }}>
+                          Item 3: Insumos Hospitalares e Materiais de Apoio
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                          Última ação: Aviso de iminência emitido pelo pregoeiro
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Seu Lance Atual</div>
+                        <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)" }}>
+                          R$ 15.400,00
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                          Piso Seguro: R$ 14.200,00
+                        </div>
+                      </div>
+                    </div>
+                  </Tile>
+                </div>
+              </div>
+
+              {/* Configurações Padrão de Disparo */}
+              <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-accent, #f4f4f4)" }}>
+                <h4 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+                  ⚙️ Estratégia de Disparo do Motor de Lances
+                </h4>
+                <Grid style={{ padding: 0 }}>
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
+                    <Select
+                      id="select-decremento-padrao"
+                      labelText="Regra de Decremento (Cobrir Oferta)"
+                      value={estrategiaGlobal}
+                      onChange={(e) => setEstrategiaGlobal(e.target.value)}
+                    >
+                      <SelectItem value="CENTAVO_1" text="Cobrir por R$ 0,01 (Mínimo Permitido)" />
+                      <SelectItem value="REAL_1" text="Cobrir por R$ 1,00" />
+                      <SelectItem value="REAL_5" text="Cobrir por R$ 5,00" />
+                      <SelectItem value="PERCENTUAL_05" text="Cobrir por 0,5% do valor atual" />
+                    </Select>
+                  </Column>
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
+                    <Select
+                      id="select-tempo-disparo"
+                      labelText="Janela de Disparo do Lance"
+                      value={tempoDisparo}
+                      onChange={(e) => setTempoDisparo(e.target.value)}
+                    >
+                      <SelectItem value="IMEDIATO" text="Imediato (ao ser superado)" />
+                      <SelectItem value="RANDOM_2S" text="Randômico (1 a 3 segundos finais)" />
+                      <SelectItem value="ULTIMOS_SEGUNDOS" text="Sniper (Últimos 10 segundos da rodada)" />
+                    </Select>
+                  </Column>
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
+                    <Select
+                      id="select-empate-me"
+                      labelText="Direito de Preferência ME/EPP (LC 123)"
+                      value={preferenciaMe}
+                      onChange={(e) => setPreferenciaMe(e.target.value)}
+                    >
+                      <SelectItem value="ATIVO" text="Ativo: Cobrir menor lance em até 5min" />
+                      <SelectItem value="DESATIVO" text="Desativado" />
+                    </Select>
+                  </Column>
+                </Grid>
+              </Tile>
+            </Tile>
+          </TabPanel>
+
+          {/* ABA 2: Calculadora de Lance Mínimo & Simulador de BDI */}
           <TabPanel>
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
               <div
@@ -896,8 +1034,15 @@ export default function RoboDeLancesPage() {
                     WhatsApp.
                   </p>
                 </div>
-                <Tag type="purple">Exclusivo ENTERPRISE</Tag>
+                <Tag type="teal">Arsenal de Disputa</Tag>
               </div>
+
+              <InlineNotification
+                kind="info"
+                style={{ marginBottom: "1rem" }}
+                title="Módulo Dedicado Disponível:"
+                subtitle="Você pode gerenciar todas as mensagens recebidas de todas as salas em tempo real no novo módulo 'Chat do Pregoeiro' (/chat-pregoeiro) no menu lateral."
+              />
 
               <Grid style={{ padding: 0, marginBottom: "1rem" }}>
                 <Column lg={3} md={2} sm={4} style={{ marginBottom: "1rem" }}>
@@ -1007,128 +1152,6 @@ export default function RoboDeLancesPage() {
             </Tile>
           </TabPanel>
 
-          {/* ABA 4: Gerador de Minutas de Impugnação com IA (Art. 164 Lei 14.133) */}
-          <TabPanel>
-            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "1rem",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                }}
-              >
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "1.25rem" }}>
-                    Gerador de Minutas de Impugnação com IA (Art. 164 Lei
-                    14.133/2021)
-                  </h2>
-                  <p
-                    style={{
-                      margin: "0.25rem 0 0 0",
-                      fontSize: "0.875rem",
-                      color: "var(--cds-text-secondary)",
-                    }}
-                  >
-                    Redação jurídica estruturada com súmulas e acórdãos do TCU e
-                    cálculo automático do prazo fatal de 3 dias úteis.
-                  </p>
-                </div>
-                <Tag type="purple">Exclusivo ENTERPRISE</Tag>
-              </div>
-
-              <Grid style={{ padding: 0, marginBottom: "1rem" }}>
-                <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                  <TextInput
-                    id="imp-edital"
-                    labelText="Número do Edital"
-                    value={impEdital}
-                    onChange={(e) => setImpEdital(e.target.value)}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                  <TextInput
-                    id="imp-orgao"
-                    labelText="Órgão Licitante"
-                    value={impOrgao}
-                    onChange={(e) => setImpOrgao(e.target.value)}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                  <TextInput
-                    id="imp-data"
-                    type="date"
-                    labelText="Data da Sessão Pública"
-                    value={impDataAbertura}
-                    onChange={(e) => setImpDataAbertura(e.target.value)}
-                  />
-                </Column>
-                <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                  <Select
-                    id="imp-tese"
-                    labelText="Tese Jurídica Principal"
-                    value={impTese}
-                    onChange={(e) =>
-                      setImpTese(e.target.value as TeseImpugnacaoIa)
-                    }
-                  >
-                    <SelectItem
-                      value="RESTRICAO_COMPETITIVIDADE_E_MARCA"
-                      text="Direcionamento de Marca / Restrição (Súmula 270/273 TCU)"
-                    />
-                    <SelectItem
-                      value="QUALIFICACAO_TECNICA_EXCESSIVA"
-                      text="Excesso em Atestado Técnico > 50% (Art. 67 Lei 14.133)"
-                    />
-                    <SelectItem
-                      value="PRAZO_ENTREGA_INEXEQUIVEL"
-                      text="Prazo de Entrega Exíguo / Inexequível (Art. 5º Lei 14.133)"
-                    />
-                    <SelectItem
-                      value="ORCAMENTO_DEFASADO_OU_SIGILOSO_IRREGULAR"
-                      text="Preço Estimado Defasado (Art. 23 Lei 14.133)"
-                    />
-                  </Select>
-                </Column>
-                <Column lg={16} md={8} sm={4} style={{ marginBottom: "1rem" }}>
-                  <TextArea
-                    id="imp-clausula"
-                    labelText="Cláusula ou Exigência Questionada no Edital"
-                    rows={3}
-                    value={impClausula}
-                    onChange={(e) => setImpClausula(e.target.value)}
-                  />
-                </Column>
-              </Grid>
-
-              <Button
-                kind="primary"
-                renderIcon={Scale}
-                onClick={handleGerarMinutaIA}
-                data-testid="btn-gerar-minuta-ia"
-              >
-                Redigir Petição de Impugnação com IA
-              </Button>
-
-              {minutaIaGerada && (
-                <pre
-                  style={{
-                    marginTop: "1.5rem",
-                    background: "var(--cds-layer-02)",
-                    padding: "1.25rem",
-                    whiteSpace: "pre-wrap",
-                    fontSize: "0.8125rem",
-                    border: "1px solid var(--cds-border-subtle)",
-                  }}
-                >
-                  {minutaIaGerada.textoCompletoPeticao}
-                </pre>
-              )}
-            </Tile>
-          </TabPanel>
-
           {/* ABA 5: Inteligência de Preços dos Concorrentes & Relatório Executivo Mensal */}
           <TabPanel>
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
@@ -1158,8 +1181,15 @@ export default function RoboDeLancesPage() {
                     últimos 12 meses + consolidado mensal para a diretoria.
                   </p>
                 </div>
-                <Tag type="purple">Exclusivo ENTERPRISE</Tag>
+                <Tag type="teal">Arsenal de Disputa</Tag>
               </div>
+
+              <InlineNotification
+                kind="info"
+                style={{ marginBottom: "1rem" }}
+                title="Módulo Dedicado Disponível:"
+                subtitle="Você pode consultar histórico completo de homologações e média de preços praticados no novo módulo 'Inteligência de Preços' (/inteligencia-precos) no menu lateral."
+              />
 
               <Grid style={{ padding: 0, marginBottom: "1rem" }}>
                 <Column lg={8} md={4} sm={4} style={{ marginBottom: "1rem" }}>

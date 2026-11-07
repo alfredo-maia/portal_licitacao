@@ -12,6 +12,9 @@ describe("Sprint SaaS 5 — Frontend Arsenal Premium de Disputa (/robo-de-lances
     ).toBeInTheDocument();
 
     expect(
+      screen.getByRole("tab", { name: /Salas de Disputa Ativas/i }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("tab", { name: /Calculadora de Lance & BDI/i }),
     ).toBeInTheDocument();
     expect(
@@ -19,9 +22,6 @@ describe("Sprint SaaS 5 — Frontend Arsenal Premium de Disputa (/robo-de-lances
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /Monitor Chat Pregoeiro/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /Impugnação com IA/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: /BI Concorrentes & Relatório/i }),

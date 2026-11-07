@@ -6,18 +6,23 @@ import { APP_CONFIG } from "@/config/brand";
 import { getRouteByPath } from "@/config/routes";
 
 export interface ModulePageShellProps {
-  routePath: string;
+  routePath?: string;
+  title?: string;
+  badge?: string;
   subtitle?: string;
   children?: ReactNode;
 }
 
 export function ModulePageShell({
   routePath,
+  title,
+  badge,
   subtitle,
   children,
 }: ModulePageShellProps) {
-  const route = getRouteByPath(routePath);
-  const heading = route?.label ?? APP_CONFIG.brandName;
+  const route = routePath ? getRouteByPath(routePath) : undefined;
+  const heading = title ?? route?.label ?? APP_CONFIG.brandName;
+  const badgeLabel = badge ?? route?.badge;
   const description = subtitle ?? route?.description ?? APP_CONFIG.tagline;
 
   return (
@@ -47,15 +52,15 @@ export function ModulePageShell({
               >
                 {heading}
               </h1>
-              {route?.badge ? (
+              {badgeLabel ? (
                 <Tag type="cool-gray" size="md">
-                  {route.badge}
+                  {badgeLabel}
                 </Tag>
-              ) : (
+              ) : route?.order ? (
                 <Tag type="blue" size="sm" className="pncp-mono">
-                  Módulo #{route?.order ?? 0}
+                  Módulo #{route.order}
                 </Tag>
-              )}
+              ) : null}
             </div>
           </div>
           <p

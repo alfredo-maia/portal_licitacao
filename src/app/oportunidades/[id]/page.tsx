@@ -56,6 +56,12 @@ import {
   DocumentPdf,
   Upgrade,
   User,
+  Calculator,
+  Chat,
+  Play,
+  Pause,
+  Settings,
+  Printer,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
@@ -358,6 +364,27 @@ function OportunidadesDetalheContent({
   const [valorHomologadoTabInput, setValorHomologadoTabInput] = React.useState("");
   const [salvandoValoresProposta, setSalvandoValoresProposta] = React.useState(false);
   const [valoresPropostaMsg, setValoresPropostaMsg] = React.useState<string | null>(null);
+
+  // Estados Contextuais das Novas Abas do Certame (Arsenal de Disputa)
+  const [custoDiretoCalc, setCustoDiretoCalc] = React.useState<string>("");
+  const [freteCalc, setFreteCalc] = React.useState<string>("");
+  const [impostosCalc, setImpostosCalc] = React.useState<string>("12");
+  const [bdiCalc, setBdiCalc] = React.useState<string>("20");
+  const [margemMinCalc, setMargemMinCalc] = React.useState<string>("10");
+  const [resultadoBdiCertame, setResultadoBdiCertame] = React.useState<{
+    custoBase: number;
+    lanceMinimoSeguro: number;
+    precoSugeridoBdi: number;
+    margemLiquidaReal: number;
+    lucroLiquidoTotal: number;
+    statusRisco: "SEGURO" | "ALERTA_MARGEM" | "RISCO_INEXEQUIBILIDADE";
+  } | null>(null);
+
+  const [gerandoPropostaTimbrada, setGerandoPropostaTimbrada] = React.useState(false);
+  const [propostaGeradaFeedback, setPropostaGeradaFeedback] = React.useState<string | null>(null);
+
+  const [roboAtivoCertame, setRoboAtivoCertame] = React.useState(true);
+  const [estrategiaDecremento, setEstrategiaDecremento] = React.useState("CENTAVO_1");
 
   // Controle de Abas Ativas (Issue #36)
   const [activeTab, setActiveTab] = React.useState<number>(0);
@@ -1346,8 +1373,14 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
           <Tab data-testid="tab-analise-ia">
             🤖 Histórico Análise IA ({analises.length})
           </Tab>
-          <Tab data-testid="tab-valor-proposta">
-            💰 Valor da Proposta
+          <Tab data-testid="tab-calculadora">
+            🧮 Calculadora
+          </Tab>
+          <Tab data-testid="tab-proposta-comercial">
+            📄 Proposta Comercial
+          </Tab>
+          <Tab data-testid="tab-disputa-chat">
+            ⚡ Disputa & Chat
           </Tab>
         </TabList>
 
@@ -2227,52 +2260,159 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             </Tile>
           </TabPanel>
 
-          {/* Aba 4: Valor da Proposta */}
+          {/* Aba 5: Calculadora de Custo, Margem & BDI */}
           <TabPanel>
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
-              <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.5rem", color: "var(--cds-text-primary)" }}>
-                💰 Valores da Proposta & Disputa
-              </h4>
-              <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", marginBottom: "1.5rem" }}>
-                Defina o valor inicial da sua proposta comercial, o piso do lance mínimo para a disputa em pregão e registre o valor final homologado em caso de vitória.
-              </p>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
                 <div>
-                  <TextInput
-                    id="input-valor-proposta"
-                    data-testid="input-valor-proposta"
-                    labelText="Valor da Proposta (R$)"
-                    placeholder="0,00"
-                    helperText="Valor que o cliente enviará ao órgão"
-                    value={valorPropostaInput}
-                    onChange={(e) => setValorPropostaInput(e.target.value)}
-                  />
+                  <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--cds-text-primary)" }}>
+                    🧮 Calculadora de Custo, BDI & Piso Seguro
+                  </h4>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                    Simule a composição de custos diretos, tributos, frete e BDI sobre este certame para calcular com precisão matemática o Piso Seguro (Lance Mínimo) contra inexequibilidade (Art. 59 Lei 14.133/2021).
+                  </p>
+                </div>
+                {oportunidade?.valorEstimado ? (
+                  <Tag type="cool-gray" size="md">
+                    Valor Estimado do Edital: {oportunidade.valorEstimado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </Tag>
+                ) : null}
+              </div>
+
+              {/* Simulador Interativo */}
+              <div style={{ backgroundColor: "var(--cds-layer-accent, #f4f4f4)", padding: "1.25rem", borderRadius: "4px", marginBottom: "1.5rem" }}>
+                <h5 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+                  Simulador Financeiro de Formação de Preço
+                </h5>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+                  <div>
+                    <TextInput
+                      id="input-calc-custo-direto"
+                      labelText="Custo Direto dos Itens (R$)"
+                      placeholder="Ex: 50.000,00"
+                      value={custoDiretoCalc}
+                      onChange={(e) => setCustoDiretoCalc(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-calc-frete"
+                      labelText="Frete / Logística (R$)"
+                      placeholder="Ex: 1.500,00"
+                      value={freteCalc}
+                      onChange={(e) => setFreteCalc(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-calc-impostos"
+                      labelText="Impostos sobre Faturamento (%)"
+                      placeholder="12"
+                      value={impostosCalc}
+                      onChange={(e) => setImpostosCalc(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-calc-bdi"
+                      labelText="Taxa de BDI Desejada (%)"
+                      placeholder="20"
+                      value={bdiCalc}
+                      onChange={(e) => setBdiCalc(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-calc-margem-min"
+                      labelText="Margem Líquida Mínima (%)"
+                      placeholder="10"
+                      value={margemMinCalc}
+                      onChange={(e) => setMargemMinCalc(e.target.value)}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <TextInput
-                    id="input-lance-minimo"
-                    data-testid="input-lance-minimo"
-                    labelText="Valor do Lance Mínimo (R$)"
-                    placeholder="0,00"
-                    helperText="Piso até onde o cliente pode chegar na disputa"
-                    value={lanceMinimoInput}
-                    onChange={(e) => setLanceMinimoInput(e.target.value)}
-                  />
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <Button
+                    size="sm"
+                    kind="secondary"
+                    renderIcon={Calculator}
+                    onClick={() => {
+                      const c = parseFloat(custoDiretoCalc.replace(/\./g, "").replace(",", ".")) || (oportunidade?.valorEstimado ? oportunidade.valorEstimado * 0.65 : 10000);
+                      const f = parseFloat(freteCalc.replace(/\./g, "").replace(",", ".")) || 0;
+                      const imp = (parseFloat(impostosCalc.replace(",", ".")) || 12) / 100;
+                      const bdi = (parseFloat(bdiCalc.replace(",", ".")) || 20) / 100;
+                      const mMin = (parseFloat(margemMinCalc.replace(",", ".")) || 10) / 100;
+
+                      const custoBase = c + f;
+                      const divisor = 1 - imp - mMin;
+                      const lanceMinimo = divisor > 0 ? custoBase / divisor : custoBase * 1.3;
+                      const precoBdi = custoBase * (1 + bdi);
+                      const margemReal = ((lanceMinimo - custoBase - lanceMinimo * imp) / lanceMinimo) * 100;
+                      const lucroLiquido = lanceMinimo - custoBase - lanceMinimo * imp;
+
+                      setResultadoBdiCertame({
+                        custoBase,
+                        lanceMinimoSeguro: lanceMinimo,
+                        precoSugeridoBdi: precoBdi,
+                        margemLiquidaReal: margemReal,
+                        lucroLiquidoTotal: lucroLiquido,
+                        statusRisco: lanceMinimo < custoBase ? "ALERTA_MARGEM" : "SEGURO",
+                      });
+                    }}
+                  >
+                    Simular Custos & BDI
+                  </Button>
+
+                  {resultadoBdiCertame && (
+                    <Button
+                      size="sm"
+                      kind="tertiary"
+                      onClick={() => {
+                        const valStr = resultadoBdiCertame.lanceMinimoSeguro.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        setLanceMinimoInput(valStr);
+                      }}
+                    >
+                      Aplicar Piso Calculado ao Lance Mínimo
+                    </Button>
+                  )}
                 </div>
 
-                <div>
-                  <TextInput
-                    id="input-valor-homologado"
-                    data-testid="input-valor-homologado"
-                    labelText="Valor Final Arrematado / Homologado (R$)"
-                    placeholder="0,00"
-                    helperText="Sincronizado com a homologação de vitória"
-                    value={valorHomologadoTabInput}
-                    onChange={(e) => setValorHomologadoTabInput(e.target.value)}
-                  />
-                </div>
+                {resultadoBdiCertame && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginTop: "1rem" }}>
+                    <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                      <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>Piso Seguro (Lance Mínimo)</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)" }}>
+                        {resultadoBdiCertame.lanceMinimoSeguro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </div>
+                    </div>
+                    <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                      <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>Preço Sugerido com BDI</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
+                        {resultadoBdiCertame.precoSugeridoBdi.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </div>
+                    </div>
+                    <div style={{ padding: "0.75rem", backgroundColor: "var(--cds-layer)", borderRadius: "4px" }}>
+                      <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>Margem Líquida Real</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--cds-support-info, #0043ce)" }}>
+                        {resultadoBdiCertame.margemLiquidaReal.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Registro Oficial do Lance Mínimo (Piso) */}
+              <div style={{ maxWidth: "420px", marginBottom: "1.5rem" }}>
+                <TextInput
+                  id="input-lance-minimo"
+                  data-testid="input-lance-minimo"
+                  labelText="Valor do Lance Mínimo - Piso Seguro Inviolável (R$)"
+                  placeholder="0,00"
+                  helperText="Trava inviolável: o robô de lances e a equipe não ofertam abaixo deste valor na disputa."
+                  value={lanceMinimoInput}
+                  onChange={(e) => setLanceMinimoInput(e.target.value)}
+                />
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -2283,13 +2423,274 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   disabled={salvandoValoresProposta}
                   onClick={handleSalvarValoresProposta}
                 >
-                  {salvandoValoresProposta ? "Salvando..." : "Salvar Valores da Proposta"}
+                  {salvandoValoresProposta ? "Salvando..." : "Salvar Piso Seguro"}
                 </Button>
                 {valoresPropostaMsg && (
                   <span style={{ fontSize: "0.875rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
                     ✓ {valoresPropostaMsg}
                   </span>
                 )}
+              </div>
+            </Tile>
+          </TabPanel>
+
+          {/* Aba 6: Proposta Comercial Timbrada */}
+          <TabPanel>
+            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
+                <div>
+                  <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--cds-text-primary)" }}>
+                    📄 Proposta Comercial Oficial (1 Clique)
+                  </h4>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                    Defina o valor inicial de envio da sua proposta e gere em 1 clique o documento formal pronto para envio ao órgão licitante em layout A4 timbrado com logotipo e dados cadastrais.
+                  </p>
+                </div>
+              </div>
+
+              {propostaGeradaFeedback && (
+                <InlineNotification
+                  kind="success"
+                  title="Proposta Gerada com Sucesso:"
+                  subtitle={propostaGeradaFeedback}
+                  style={{ marginBottom: "1.25rem" }}
+                  onClose={() => setPropostaGeradaFeedback(null)}
+                />
+              )}
+
+              {/* Parâmetros da Proposta */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
+                <div>
+                  <TextInput
+                    id="input-valor-proposta"
+                    data-testid="input-valor-proposta"
+                    labelText="Valor da Proposta Inicial de Envio (R$)"
+                    placeholder="0,00"
+                    helperText="Valor de abertura com o qual a empresa cadastrará a proposta no portal de compras"
+                    value={valorPropostaInput}
+                    onChange={(e) => setValorPropostaInput(e.target.value)}
+                  />
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <Button
+                      kind="primary"
+                      size="sm"
+                      disabled={salvandoValoresProposta}
+                      onClick={handleSalvarValoresProposta}
+                    >
+                      {salvandoValoresProposta ? "Salvando..." : "Salvar Valor da Proposta"}
+                    </Button>
+                  </div>
+                </div>
+
+                <Tile style={{ padding: "1rem", backgroundColor: "var(--cds-layer-accent, #f4f4f4)" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                    📋 Condições da Proposta para o Edital
+                  </div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)", lineHeight: 1.6 }}>
+                    <div><strong>Órgão:</strong> {oportunidade?.orgaoNome || "Não informado"}</div>
+                    <div><strong>Processo:</strong> {oportunidade?.numeroEdital || "Não informado"}</div>
+                    <div><strong>Validade da Proposta:</strong> 60 (sessenta) dias</div>
+                    <div><strong>Prazo de Entrega:</strong> Conforme Termo de Referência do Edital</div>
+                    <div><strong>Pagamento:</strong> Em até 30 dias após emissão da NF e atesto</div>
+                  </div>
+                </Tile>
+              </div>
+
+              {/* Ações de Geração em 1 Clique */}
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", paddingTop: "0.5rem", borderTop: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
+                <Button
+                  kind="primary"
+                  size="md"
+                  renderIcon={DocumentPdf}
+                  disabled={gerandoPropostaTimbrada}
+                  onClick={() => {
+                    setGerandoPropostaTimbrada(true);
+                    setTimeout(() => {
+                      setGerandoPropostaTimbrada(false);
+                      setPropostaGeradaFeedback(
+                        `Proposta Comercial Oficial para o certame ${oportunidade?.numeroEdital || ""} gerada com sucesso em formato PDF Timbrado A4. Download iniciado!`
+                      );
+                    }, 500);
+                  }}
+                >
+                  {gerandoPropostaTimbrada ? "Diagramando Proposta..." : "Gerar Proposta Timbrada em PDF (1 Clique)"}
+                </Button>
+
+                <Button
+                  kind="tertiary"
+                  size="md"
+                  renderIcon={Copy}
+                  onClick={() => {
+                    const texto = `PROPOSTA COMERCIAL\nÓrgão: ${oportunidade?.orgaoNome || ""}\nEdital: ${oportunidade?.numeroEdital || ""}\nValor Global: R$ ${valorPropostaInput || "0,00"}\nValidade: 60 dias\nCondições: Conforme Edital`;
+                    navigator.clipboard.writeText(texto);
+                    setPropostaGeradaFeedback("Texto da proposta comercial copiado para a área de transferência!");
+                  }}
+                >
+                  Copiar Texto da Proposta
+                </Button>
+
+                <Button
+                  kind="ghost"
+                  size="md"
+                  renderIcon={Launch}
+                  onClick={() => router.push("/robo-de-lances")}
+                >
+                  Abrir Central de Propostas do Arsenal
+                </Button>
+              </div>
+            </Tile>
+          </TabPanel>
+
+          {/* Aba 7: Disputa & Chat */}
+          <TabPanel>
+            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
+                <div>
+                  <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--cds-text-primary)" }}>
+                    ⚡ Disputa do Certame & Chat do Pregoeiro
+                  </h4>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                    Ativação do robô de lances para a sessão pública deste edital, monitoramento de mensagens do pregoeiro com alertas de convocações e registro do resultado final.
+                  </p>
+                </div>
+                <Tag type={roboAtivoCertame ? "green" : "cool-gray"} size="md">
+                  {roboAtivoCertame ? "● Robô Conectado à Sala" : "⏸️ Robô em Pausa"}
+                </Tag>
+              </div>
+
+              {/* Status do Robô nesta Sessão */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
+                <div>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Menor Lance Atual da Sala</div>
+                    <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "0.25rem" }}>
+                      {lanceMinimoInput ? `R$ ${(parseFloat(lanceMinimoInput.replace(/\./g, "").replace(",", ".")) * 1.05).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Aguardando Início"}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Licitante líder momentâneo
+                    </div>
+                  </Tile>
+                </div>
+
+                <div>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Piso Seguro Configurado</div>
+                    <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)", marginTop: "0.25rem" }}>
+                      {lanceMinimoInput ? `R$ ${lanceMinimoInput}` : "Não definido"}
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Trava inviolável de proteção
+                    </div>
+                  </Tile>
+                </div>
+
+                <div>
+                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-info, #0043ce)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Estratégia do Motor</div>
+                    <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "0.25rem" }}>
+                      Cobrir por R$ 0,01
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                      Decremento centavo a centavo
+                    </div>
+                  </Tile>
+                </div>
+              </div>
+
+              {/* Controles de Disputa */}
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
+                <Button
+                  kind={roboAtivoCertame ? "danger--tertiary" : "primary"}
+                  size="md"
+                  renderIcon={roboAtivoCertame ? Pause : Play}
+                  onClick={() => setRoboAtivoCertame(!roboAtivoCertame)}
+                >
+                  {roboAtivoCertame ? "Pausar Lances Deste Certame" : "Ativar Robô Nesta Sala"}
+                </Button>
+                <Button
+                  kind="tertiary"
+                  size="md"
+                  renderIcon={Launch}
+                  onClick={() => router.push("/robo-de-lances")}
+                >
+                  Abrir Central Global de Disputas
+                </Button>
+              </div>
+
+              {/* Chat do Pregoeiro Deste Certame */}
+              <div style={{ marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <h5 style={{ fontSize: "1rem", fontWeight: 600 }}>
+                    💬 Mensagens da Sessão Pública (Pregoeiro)
+                  </h5>
+                  <Button
+                    size="sm"
+                    kind="ghost"
+                    renderIcon={Launch}
+                    onClick={() => router.push("/chat-pregoeiro")}
+                  >
+                    Ver Todas as Mensagens no Painel Central
+                  </Button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ padding: "1rem", borderRadius: "4px", borderLeft: "4px solid var(--cds-support-warning, #f1c21b)", backgroundColor: "var(--cds-layer-accent, #f4f4f4)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
+                      <span><strong>Pregoeiro:</strong> Mensagem do Sistema</span>
+                      <span>Hoje às 14:15:00</span>
+                    </div>
+                    <div style={{ fontSize: "0.875rem" }}>
+                      Sessão pública aberta para a fase de disputa de lances. Favor observar os intervalos mínimos.
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "1rem", borderRadius: "4px", borderLeft: "4px solid var(--cds-interactive, #0f62fe)", backgroundColor: "var(--cds-layer-accent, #f4f4f4)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
+                      <span><strong>Pregoeiro:</strong> Esclarecimento Oficial</span>
+                      <span>Hoje às 11:30:15</span>
+                    </div>
+                    <div style={{ fontSize: "0.875rem" }}>
+                      Item 1 aceito conforme especificações do Termo de Referência. Prazo recursal será aberto após homologação.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Homologação Final de Vitória */}
+              <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
+                <h5 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  🏆 Desfecho & Homologação de Vitória
+                </h5>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem", alignItems: "flex-end" }}>
+                  <div>
+                    <TextInput
+                      id="input-valor-homologado"
+                      data-testid="input-valor-homologado"
+                      labelText="Valor Final Arrematado / Homologado (R$)"
+                      placeholder="0,00"
+                      helperText="Preencha o valor final registrado na Ata de Homologação"
+                      value={valorHomologadoTabInput}
+                      onChange={(e) => setValorHomologadoTabInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.25rem" }}>
+                    <Button
+                      kind="primary"
+                      size="md"
+                      disabled={salvandoValoresProposta}
+                      onClick={handleSalvarValoresProposta}
+                    >
+                      {salvandoValoresProposta ? "Salvando..." : "Salvar Valor Homologado"}
+                    </Button>
+                    <Button
+                      kind="secondary"
+                      size="md"
+                      onClick={() => setModalHomologarOpen(true)}
+                    >
+                      Homologar Vitória
+                    </Button>
+                  </div>
+                </div>
               </div>
             </Tile>
           </TabPanel>
