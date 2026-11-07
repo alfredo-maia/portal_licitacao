@@ -635,6 +635,7 @@ model TenantLicitacao {
   motivoRecusa  String?         @db.Text
   dataDecisao   DateTime?
   responsavelId String?
+  calculadoraDados Json?
   criadoEm      DateTime        @default(now())
   atualizadoEm  DateTime        @updatedAt
 

@@ -194,8 +194,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                 const isArsenalActive =
                   pathname === "/robo-de-lances" ||
                   pathname.startsWith("/robo-de-lances/") ||
-                  pathname === "/chat-pregoeiro" ||
-                  pathname.startsWith("/chat-pregoeiro/") ||
                   pathname === "/inteligencia-precos" ||
                   pathname.startsWith("/inteligencia-precos/");
 
@@ -227,18 +225,6 @@ export function AppShell({ children }: { children: ReactNode }) {
                           {route.badge}
                         </Tag>
                       ) : null}
-                    </SideNavMenuItem>
-                    <SideNavMenuItem
-                      href="/chat-pregoeiro"
-                      isActive={
-                        pathname === "/chat-pregoeiro" ||
-                        pathname.startsWith("/chat-pregoeiro/")
-                      }
-                      aria-current={
-                        pathname === "/chat-pregoeiro" ? "page" : undefined
-                      }
-                    >
-                      <span>Chat do Pregoeiro</span>
                     </SideNavMenuItem>
                     <SideNavMenuItem
                       href="/inteligencia-precos"

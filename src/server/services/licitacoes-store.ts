@@ -341,6 +341,7 @@ export interface TenantLicitacaoRecord {
   dataDecisao?: Date | null;
   responsavelId?: string | null;
   membrosEquipeIds?: string[];
+  calculadoraDados?: any;
 }
 
 const tenantLicitacoesStore = new Map<string, TenantLicitacaoRecord>();
@@ -374,6 +375,7 @@ export function setInMemoryTenantLicitacao(
     dataDecisao: data.dataDecisao ?? existing?.dataDecisao ?? new Date(),
     responsavelId: data.responsavelId ?? existing?.responsavelId ?? null,
     membrosEquipeIds: data.membrosEquipeIds ?? existing?.membrosEquipeIds ?? [],
+    calculadoraDados: data.calculadoraDados !== undefined ? data.calculadoraDados : (existing?.calculadoraDados ?? null),
   };
   tenantLicitacoesStore.set(key, record);
   return record;

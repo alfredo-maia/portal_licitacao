@@ -825,6 +825,7 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
           lanceMinimo: dbTenantLic.lanceMinimo,
           valorProposta: (dbTenantLic as any).valorProposta ?? null,
           valorHomologado: (dbTenantLic as any).valorHomologado ?? null,
+          calculadoraDados: (dbTenantLic as any).calculadoraDados ?? null,
         };
       }
     } catch {}
@@ -966,6 +967,7 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
     lanceMinimo: tenantLic?.lanceMinimo ?? base.lanceMinimo ?? null,
     valorProposta: tenantLic?.valorProposta ?? (base as any).valorProposta ?? null,
     valorHomologado: tenantLic?.valorHomologado ?? (base as any).valorHomologado ?? base.valorArrematado ?? null,
+    calculadoraDados: tenantLic?.calculadoraDados ?? (base as any).calculadoraDados ?? null,
     responsavelId,
     responsavel,
     atribuidos,
@@ -1094,6 +1096,7 @@ export async function atualizarKanbanStatus(
   const finalLanceMinimo = input.lanceMinimo ?? input.valorMinimo ?? input.valorArrematado ?? (oportunidade as any).lanceMinimo ?? null;
   const finalValorProposta = input.valorProposta ?? (oportunidade as any).valorProposta ?? null;
   const finalValorHomologado = input.valorHomologado ?? input.valorArrematado ?? (oportunidade as any).valorHomologado ?? null;
+  const finalCalculadoraDados = input.calculadoraDados !== undefined ? input.calculadoraDados : ((oportunidade as any).calculadoraDados ?? null);
 
   let atualizado: any;
   if (tenantId) {
@@ -1106,6 +1109,7 @@ export async function atualizarKanbanStatus(
       lanceMinimo: finalLanceMinimo,
       valorProposta: finalValorProposta,
       valorHomologado: finalValorHomologado,
+      calculadoraDados: finalCalculadoraDados,
       dataDecisao: new Date(),
       responsavelId: respPreservado,
     });
@@ -1113,8 +1117,10 @@ export async function atualizarKanbanStatus(
     try {
       await prisma.$executeRawUnsafe(`ALTER TABLE "tenant_licitacao" ADD COLUMN IF NOT EXISTS "valorProposta" DOUBLE PRECISION;`).catch(() => undefined);
       await prisma.$executeRawUnsafe(`ALTER TABLE "tenant_licitacao" ADD COLUMN IF NOT EXISTS "valorHomologado" DOUBLE PRECISION;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "tenant_licitacao" ADD COLUMN IF NOT EXISTS "calculadoraDados" JSONB;`).catch(() => undefined);
       await prisma.$executeRawUnsafe(`ALTER TABLE "TenantLicitacao" ADD COLUMN IF NOT EXISTS "valorProposta" DOUBLE PRECISION;`).catch(() => undefined);
       await prisma.$executeRawUnsafe(`ALTER TABLE "TenantLicitacao" ADD COLUMN IF NOT EXISTS "valorHomologado" DOUBLE PRECISION;`).catch(() => undefined);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "TenantLicitacao" ADD COLUMN IF NOT EXISTS "calculadoraDados" JSONB;`).catch(() => undefined);
 
       await prisma.tenantLicitacao.upsert({
         where: {
@@ -1129,6 +1135,7 @@ export async function atualizarKanbanStatus(
           ...(finalLanceMinimo !== null ? { lanceMinimo: finalLanceMinimo } : {}),
           ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
           ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
+          ...(finalCalculadoraDados !== undefined ? { calculadoraDados: finalCalculadoraDados } : {}),
           dataDecisao: new Date(),
           ...(respPreservado ? { responsavelId: respPreservado } : {}),
         },
@@ -1140,6 +1147,7 @@ export async function atualizarKanbanStatus(
           ...(finalLanceMinimo !== null ? { lanceMinimo: finalLanceMinimo } : {}),
           ...(finalValorProposta !== null ? { valorProposta: finalValorProposta } : {}),
           ...(finalValorHomologado !== null ? { valorHomologado: finalValorHomologado } : {}),
+          ...(finalCalculadoraDados !== undefined ? { calculadoraDados: finalCalculadoraDados } : {}),
           dataDecisao: new Date(),
           responsavelId: respPreservado,
         },
@@ -1152,6 +1160,7 @@ export async function atualizarKanbanStatus(
       lanceMinimo: finalLanceMinimo,
       valorProposta: finalValorProposta,
       valorHomologado: finalValorHomologado,
+      calculadoraDados: finalCalculadoraDados,
       ...(input.motivoPerda ? { motivoRecusa: input.motivoPerda } : {}),
       ...(input.valorArrematado !== undefined ? { valorArrematado: input.valorArrematado } : {}),
     };
@@ -1177,6 +1186,7 @@ export async function atualizarKanbanStatus(
       lanceMinimo: finalLanceMinimo,
       valorProposta: finalValorProposta,
       valorHomologado: finalValorHomologado,
+      calculadoraDados: finalCalculadoraDados,
     };
   }
 

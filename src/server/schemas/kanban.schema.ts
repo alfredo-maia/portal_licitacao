@@ -21,6 +21,7 @@ export const kanbanStatusUpdateSchema = z
     valorMinimo: z.number().nonnegative().optional(),
     lanceMinimo: z.number().nonnegative().optional(),
     valorHomologado: z.number().nonnegative().optional(),
+    calculadoraDados: z.any().optional(),
   })
   .refine(
     (data) => {

@@ -3,43 +3,41 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import RoboDeLancesPage from "@/app/robo-de-lances/page";
 
-describe("Sprint SaaS 5 — Frontend Arsenal Premium de Disputa (/robo-de-lances)", () => {
-  it("deve renderizar o ModulePageShell de /robo-de-lances e as abas do Arsenal Pro & Enterprise", () => {
+describe("Sprint SaaS 5 — Frontend Arsenal de Disputa (/robo-de-lances)", () => {
+  it("deve renderizar o ModulePageShell de /robo-de-lances e o painel central de Auto-Bidder", () => {
     render(<RoboDeLancesPage />);
 
     expect(
-      screen.getByRole("heading", { name: /Robô de Lances/i }),
+      screen.getByRole("heading", { name: "Robô de Lances" }),
     ).toBeInTheDocument();
 
     expect(
-      screen.getByRole("tab", { name: /Salas de Disputa Ativas/i }),
+      screen.getByText("Painel Central de Disputas em Tempo Real (Auto-Bidder)"),
     ).toBeInTheDocument();
+
     expect(
-      screen.getByRole("tab", { name: /Calculadora de Lance & BDI/i }),
+      screen.getByText("PE 099/2026 - TRE-GO"),
     ).toBeInTheDocument();
+
     expect(
-      screen.getByRole("tab", { name: /Proposta Comercial PDF/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /Monitor Chat Pregoeiro/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /BI Concorrentes & Relatório/i }),
+      screen.getByText("PE 045/2026 - Prefeitura de Anápolis/GO"),
     ).toBeInTheDocument();
   });
 
-  it("deve permitir simular o lance mínimo e o BDI em tempo real na Calculadora", () => {
+  it("deve permitir pausar e reativar o motor global de lances em tempo real", () => {
     render(<RoboDeLancesPage />);
 
-    const btnCalcular = screen.getByTestId("btn-calcular-lance-bdi");
-    expect(btnCalcular).toBeInTheDocument();
+    expect(screen.getByText("● Motor em Tempo Real ATIVO")).toBeInTheDocument();
 
-    fireEvent.click(btnCalcular);
+    const btnPausar = screen.getByRole("button", { name: /Pausar Motor Global/i });
+    expect(btnPausar).toBeInTheDocument();
+    fireEvent.click(btnPausar);
 
-    expect(
-      screen.getByTestId("resultado-lance-minimo-seguro"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("status-risco-lance")).toBeInTheDocument();
+    expect(screen.getByText("⏸️ Motor PAUSADO")).toBeInTheDocument();
+
+    const btnLigar = screen.getByRole("button", { name: /Ligar Motor Global/i });
+    fireEvent.click(btnLigar);
+
+    expect(screen.getByText("● Motor em Tempo Real ATIVO")).toBeInTheDocument();
   });
 });
-
