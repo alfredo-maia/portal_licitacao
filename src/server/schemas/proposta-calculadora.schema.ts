@@ -55,10 +55,10 @@ export const itemCalculadoraInputSchema = z.object({
   id: z.string().default(() => `item_${Math.random().toString(36).substring(2, 9)}`),
   numeroItem: z.string().trim().min(1, "Número do item é obrigatório"),
   descricao: z.string().trim().min(2, "Descrição do item é obrigatória"),
-  marcaModelo: z.string().trim().optional().nullable().default(""),
+  marcaModelo: z.string().trim().nullable().optional(),
   unidade: z.string().trim().default("UN"),
   quantidade: z.number().positive("Quantidade deve ser maior que zero").default(1),
-  valorEstimadoUnitario: z.number().nonnegative().optional().nullable().default(null),
+  valorEstimadoUnitario: z.number().nonnegative().nullable().optional(),
   custoUnitario: z.number().nonnegative("Custo unitário não pode ser negativo").default(0),
   freteUnitario: z.number().nonnegative("Frete não pode ser negativo").default(0),
   outrosCustosUnitario: z.number().nonnegative("Outros custos não podem ser negativos").default(0),
@@ -116,6 +116,70 @@ export const configuracaoPropostaSchema = z.object({
 
 export type ConfiguracaoPropostaInput = z.infer<typeof configuracaoPropostaSchema>;
 
+export const PORTAIS_DISPUTA_OPCOES = [
+  "Compras.gov.br",
+  "Portal de Compras Públicas",
+  "Licitanet",
+  "BNC (Bolsa Nacional de Compras)",
+  "BLL Compras",
+  "BBMNet",
+  "BEC-SP",
+  "Licitações-e (Banco do Brasil)",
+  "Outro Portal",
+] as const;
+
+export type PortalDisputaNome = (typeof PORTAIS_DISPUTA_OPCOES)[number];
+
+export const TIPO_DECREMENTO_OPCOES = ["CENTAVOS_1", "FIXO_REAIS", "PERCENTUAL"] as const;
+export type TipoDecremento = (typeof TIPO_DECREMENTO_OPCOES)[number];
+
+export const TATICA_DISPUTA_OPCOES = ["IMEDIATO", "SNIPER", "MONITORAR"] as const;
+export type TaticaDisputa = (typeof TATICA_DISPUTA_OPCOES)[number];
+
+export const STATUS_DISPUTA_ITEM_OPCOES = [
+  "PRONTO",
+  "EM_DISPUTA",
+  "PAUSADO",
+  "PISO_ATINGIDO",
+  "VENCEDOR",
+  "FINALIZADO",
+] as const;
+export type StatusDisputaItem = (typeof STATUS_DISPUTA_ITEM_OPCOES)[number];
+
+export const disputaItemRegraSchema = z.object({
+  itemId: z.string(), // ID correspondente ao item da calculadora
+  numeroItem: z.string(),
+  descricao: z.string(),
+  unidade: z.string().default("UN"),
+  quantidade: z.number().default(1),
+  ativoNoRobo: z.boolean().default(true),
+  pisoUnitarioSeguro: z.number().nonnegative().default(0),
+  propostaUnitaria: z.number().nonnegative().default(0),
+  tipoDecremento: z.enum(TIPO_DECREMENTO_OPCOES).default("CENTAVOS_1"),
+  valorDecremento: z.number().nonnegative().default(0.01), // R$ 0,01 ou valor fixo ou %
+  tatica: z.enum(TATICA_DISPUTA_OPCOES).default("IMEDIATO"),
+  statusItem: z.enum(STATUS_DISPUTA_ITEM_OPCOES).default("PRONTO"),
+  melhorLanceSala: z.number().nonnegative().nullable().optional().default(null),
+  meuUltimoLance: z.number().nonnegative().nullable().optional().default(null),
+  minhaPosicao: z.number().int().positive().nullable().optional().default(null),
+  observacoes: z.string().optional().default(""),
+});
+
+export type DisputaItemRegra = z.infer<typeof disputaItemRegraSchema>;
+
+export const disputaConfigSchema = z.object({
+  portal: z.string().default("Compras.gov.br"),
+  identificadorSala: z.string().optional().default(""),
+  statusGeral: z.enum(["CONFIGURADA", "EM_DISPUTA", "PAUSADA", "CONCLUIDA"]).default("CONFIGURADA"),
+  pausaEmergencia: z.boolean().default(false),
+  tempoRespostaSegundos: z.number().min(1).max(60).default(3),
+  segundosFinaisSniper: z.number().min(2).max(120).default(10),
+  regrasItens: z.array(disputaItemRegraSchema).default([]),
+  atualizadoEm: z.string().optional().default(() => new Date().toISOString()),
+});
+
+export type DisputaConfig = z.infer<typeof disputaConfigSchema>;
+
 export const calculadoraDadosSchema = z.object({
   parametrosPadrao: z.object({
     impostosPercentual: z.number().min(0).max(80).default(12),
@@ -130,6 +194,7 @@ export const calculadoraDadosSchema = z.object({
   }),
   itens: z.array(itemCalculadoraInputSchema).default([]),
   propostaConfig: configuracaoPropostaSchema.default({}),
+  disputaConfig: disputaConfigSchema.optional().default({}),
   atualizadoEm: z.string().optional().default(() => new Date().toISOString()),
 });
 

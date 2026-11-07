@@ -342,11 +342,19 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
 
   currentPage = await criarPagina();
 
+  // Resolução resiliente do Objeto da Licitação (NUNCA fica em branco no PDF / Anexo I)
+  const objetoResolvido = (
+    cfg.descricaoGlobal?.trim() ||
+    objetoLicitacao?.trim() ||
+    itensRaw?.[0]?.descricao?.trim() ||
+    "Fornecimento de materiais e/ou serviços especializados conforme especificações do Edital e seus anexos."
+  );
+
   // 1. Box de Identificação do Certame
   const boxLinhas = [
     `Órgão Licitante: ${orgaoNome.toUpperCase()}`,
     `Processo / Edital: ${numeroEdital}`,
-    `Objeto: ${objetoLicitacao}`,
+    `Objeto: ${objetoResolvido}`,
   ];
   const boxFontSize = 8;
   const boxLineHeight = boxFontSize + 3;
@@ -427,7 +435,7 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
   // 4. Modalidade de Itens / Valor Global
   if (cfg.modoEmissao === "VALOR_GLOBAL") {
     const rotuloGlobal = cfg.tipoAgrupamentoGlobal === "PRECO_GLOBAL" ? "Preço Global Único" : (cfg.tituloGlobalCustomizado || "Lote 01");
-    const descGlobal = cfg.descricaoGlobal || objetoLicitacao;
+    const descGlobal = objetoResolvido;
     const descLinhas = quebrarTextoEmLinhas(`Objeto: ${descGlobal}`, contentWidth - 20, fontRegular, 8);
     const boxGHeight = descLinhas.length * 11 + 24;
 

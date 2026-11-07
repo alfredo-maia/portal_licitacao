@@ -5,6 +5,7 @@ import {
   Button,
   Column,
   Grid,
+  InlineLoading,
   InlineNotification,
   Modal,
   Select,
@@ -30,6 +31,7 @@ import {
   Download,
   Launch,
   Save,
+  Scale,
   Search as SearchIcon,
   TrashCan,
 } from "@carbon/icons-react";
@@ -180,25 +182,82 @@ function formatDataCurta(isoOuBr: string): string {
   return d.toLocaleDateString("pt-BR");
 }
 
+function CampoComHoverTooltip({
+  tooltipText,
+  children,
+}: {
+  tooltipText: string;
+  children: React.ReactNode;
+}) {
+  const [visivel, setVisivel] = useState(false);
+
+  return (
+    <span
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        cursor: "help",
+      }}
+      onMouseEnter={() => setVisivel(true)}
+      onMouseLeave={() => setVisivel(false)}
+    >
+      {children}
+      {visivel && (
+        <span
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#161616",
+            color: "#ffffff",
+            padding: "5px 9px",
+            borderRadius: "4px",
+            fontSize: "0.75rem",
+            lineHeight: 1.3,
+            whiteSpace: "normal",
+            width: "max-content",
+            maxWidth: "280px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.28)",
+            zIndex: 9999,
+            pointerEvents: "none",
+            textAlign: "center",
+          }}
+        >
+          {tooltipText}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function InteligenciaPrecosPage() {
   const [abaSelecionada, setAbaSelecionada] = useState(0);
 
-  // Filtros de pesquisa (Aba 1)
-  const [termoBusca, setTermoBusca] = useState("Notebook i7 16GB 512GB");
-  const [termoExibido, setTermoExibido] = useState("Notebook i7 16GB 512GB");
-  const [ufFiltro, setUfFiltro] = useState("TODOS");
+  // Filtros de pesquisa (Aba 1) — Inicia 100% limpo conforme solicitado
+  const [termoBusca, setTermoBusca] = useState("");
+  const [termoExibido, setTermoExibido] = useState("");
+  const [ufsSelecionadas, setUfsSelecionadas] = useState<string[]>([]);
+  const [modalUfAberto, setModalUfAberto] = useState(false);
   const [modalidadeFiltro, setModalidadeFiltro] = useState("TODOS");
   const [periodoMeses, setPeriodoMeses] = useState(12);
   const [limiteLastro, setLimiteLastro] = useState(20);
   const [fontePrincipal, setFontePrincipal] = useState<"PNCP_OFICIAL" | "BASE_REFERENCIA">(
     "PNCP_OFICIAL",
   );
+  const [buscaRealizada, setBuscaRealizada] = useState(false);
 
-  const [itens, setItens] = useState<HomologacaoItemPublico[]>(INICIAL_HISTORICO_PRECOS);
-  const [idsSelecionados, setIdsSelecionados] = useState<Set<string>>(
-    () => new Set(INICIAL_HISTORICO_PRECOS.map((i) => i.id)),
-  );
+  const [itens, setItens] = useState<HomologacaoItemPublico[]>([]);
+  const [idsSelecionados, setIdsSelecionados] = useState<Set<string>>(new Set());
+  const [filtroUnidadeAtiva, setFiltroUnidadeAtiva] = useState<string>("TODAS");
   const [carregandoBusca, setCarregandoBusca] = useState(false);
+
+  // Modal de Equiparar Unidade/Valor (Conversão de grandezas: ex UN para KG)
+  const [itemParaEquiparar, setItemParaEquiparar] = useState<HomologacaoItemPublico | null>(null);
+  const [novaUnidade, setNovaUnidade] = useState("KG");
+  const [novoValorUnitario, setNovoValorUnitario] = useState("");
+  const [obsEquiparacao, setObsEquiparacao] = useState("");
 
   const [feedback, setFeedback] = useState<{
     kind: "success" | "info" | "warning" | "error";
@@ -248,11 +307,29 @@ export default function InteligenciaPrecosPage() {
     return () => window.removeEventListener("tenant-changed", onTenantChange);
   }, [carregarItensSalvos]);
 
-  // Homologações marcadas para o cálculo dinâmico
+  // Agrupamento de contagem por unidade de medida para o seletor da UI
+  const unidadesCalculadas = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of itens) {
+      const u = it.unidade || "UN";
+      map.set(u, (map.get(u) || 0) + 1);
+    }
+    return Array.from(map.entries()).map(([unidade, contagem]) => ({
+      unidade,
+      contagem,
+    }));
+  }, [itens]);
+
+  const itensFiltradosPorUnidade = useMemo(() => {
+    if (filtroUnidadeAtiva === "TODAS") return itens;
+    return itens.filter((it) => it.unidade === filtroUnidadeAtiva);
+  }, [itens, filtroUnidadeAtiva]);
+
+  // Homologações marcadas para o cálculo dinâmico (respeita a unidade selecionada)
   const itensAtivosNoCalculo = useMemo(() => {
-    const filtrados = itens.filter((i) => idsSelecionados.has(i.id));
-    return filtrados.length > 0 ? filtrados : itens;
-  }, [itens, idsSelecionados]);
+    const filtrados = itensFiltradosPorUnidade.filter((i) => idsSelecionados.has(i.id));
+    return filtrados.length > 0 ? filtrados : itensFiltradosPorUnidade;
+  }, [itensFiltradosPorUnidade, idsSelecionados]);
 
   const estatisticas = useMemo(
     () => calcularEstatisticasPrecosHomologados(itensAtivosNoCalculo),
@@ -272,13 +349,13 @@ export default function InteligenciaPrecosPage() {
 
   const executarPesquisa = async (paramsOverride?: {
     q?: string;
-    uf?: string;
+    ufs?: string[];
     modalidade?: string;
     periodoMeses?: number;
     limite?: number;
   }) => {
     const qFinal = (paramsOverride?.q ?? termoBusca).trim();
-    const ufFinal = paramsOverride?.uf ?? ufFiltro;
+    const ufsFinal = paramsOverride?.ufs ?? ufsSelecionadas;
     const modFinal = paramsOverride?.modalidade ?? modalidadeFiltro;
     const perFinal = paramsOverride?.periodoMeses ?? periodoMeses;
     const limFinal = paramsOverride?.limite ?? limiteLastro;
@@ -293,15 +370,22 @@ export default function InteligenciaPrecosPage() {
 
     setCarregandoBusca(true);
     setFeedback(null);
+    setModalUfAberto(false);
 
     try {
       const qs = new URLSearchParams({
         q: qFinal,
-        uf: ufFinal,
         modalidade: modFinal,
         periodoMeses: String(perFinal),
         limite: String(limFinal),
       });
+
+      if (ufsFinal.length > 0) {
+        qs.set("ufs", ufsFinal.join("|"));
+        qs.set("uf", ufsFinal[0]);
+      } else {
+        qs.set("uf", "TODOS");
+      }
 
       const res = await fetch(`/api/inteligencia-precos/busca?${qs.toString()}`, {
         cache: "no-store",
@@ -316,16 +400,25 @@ export default function InteligenciaPrecosPage() {
       setItens(novosItens);
       setIdsSelecionados(new Set(novosItens.map((i) => i.id)));
       setTermoExibido(qFinal);
+      setBuscaRealizada(true);
+      setFiltroUnidadeAtiva("TODAS");
       setFontePrincipal(data.fontePrincipal || "PNCP_OFICIAL");
 
-      setFeedback({
-        kind: "success",
-        text: `Consulta concluída para "${qFinal}" nos últimos ${perFinal} meses: ${novosItens.length} homologações carregadas (${
-          data.fontePrincipal === "PNCP_OFICIAL"
-            ? "Dados Oficiais PNCP em Tempo Real"
-            : "Base de Referência Consolidada"
-        }).`,
-      });
+      if (novosItens.length > 0) {
+        setFeedback({
+          kind: "success",
+          text: `Consulta concluída para "${qFinal}" nos últimos ${perFinal} meses: ${novosItens.length} homologações carregadas (${
+            data.fontePrincipal === "PNCP_OFICIAL"
+              ? "Dados Oficiais PNCP em Tempo Real"
+              : "Base de Referência Consolidada"
+          }).`,
+        });
+      } else {
+        setFeedback({
+          kind: "info",
+          text: `Nenhum preço homologado encontrado para "${qFinal}" nos filtros atuais. Experimente selecionar "Todo o Brasil" ou ampliar a janela de tempo.`,
+        });
+      }
     } catch (err: any) {
       setFeedback({
         kind: "error",
@@ -334,6 +427,62 @@ export default function InteligenciaPrecosPage() {
     } finally {
       setCarregandoBusca(false);
     }
+  };
+
+  const abrirModalEquiparar = (item: HomologacaoItemPublico) => {
+    setItemParaEquiparar(item);
+    const uAtual = item.unidadeOriginalAntesConversao || item.unidade || "UN";
+    setNovaUnidade(uAtual === "UN" ? "KG" : (uAtual === "KG" ? "UN" : "KG"));
+    setNovoValorUnitario(String(item.valorHomologadoUnitario));
+    setObsEquiparacao(item.observacaoConversao || "");
+  };
+
+  const confirmarEquiparacao = () => {
+    if (!itemParaEquiparar) return;
+    const vNovo = parseFloat(novoValorUnitario.replace(/\./g, "").replace(",", "."));
+    if (Number.isNaN(vNovo) || vNovo <= 0) {
+      setFeedback({ kind: "warning", text: "Informe um valor unitário equiparado válido maior que zero." });
+      return;
+    }
+
+    setItens((prev) =>
+      prev.map((it) => {
+        if (it.id !== itemParaEquiparar.id) return it;
+        const vOriginal = it.valorHomologadoOriginal ?? it.valorHomologadoUnitario;
+        const uOriginal = it.unidadeOriginalAntesConversao ?? it.unidade;
+        return {
+          ...it,
+          valorHomologadoUnitario: vNovo,
+          unidade: novaUnidade.toUpperCase().trim() || "UN",
+          valorHomologadoOriginal: vOriginal,
+          unidadeOriginalAntesConversao: uOriginal,
+          unidadeConvertida: novaUnidade.toUpperCase().trim(),
+          observacaoConversao: obsEquiparacao.trim(),
+          editadoPeloUsuario: true,
+        };
+      })
+    );
+
+    if (homologacaoModal && homologacaoModal.id === itemParaEquiparar.id) {
+      const vOriginal = homologacaoModal.valorHomologadoOriginal ?? homologacaoModal.valorHomologadoUnitario;
+      const uOriginal = homologacaoModal.unidadeOriginalAntesConversao ?? homologacaoModal.unidade;
+      setHomologacaoModal({
+        ...homologacaoModal,
+        valorHomologadoUnitario: vNovo,
+        unidade: novaUnidade.toUpperCase().trim() || "UN",
+        valorHomologadoOriginal: vOriginal,
+        unidadeOriginalAntesConversao: uOriginal,
+        unidadeConvertida: novaUnidade.toUpperCase().trim(),
+        observacaoConversao: obsEquiparacao.trim(),
+        editadoPeloUsuario: true,
+      });
+    }
+
+    setItemParaEquiparar(null);
+    setFeedback({
+      kind: "success",
+      text: `Item equiparado para ${novaUnidade.toUpperCase()} com sucesso! As médias estatísticas foram recalculadas.`,
+    });
   };
 
   const abrirModalSalvarItem = () => {
@@ -370,11 +519,12 @@ export default function InteligenciaPrecosPage() {
     try {
       const payload = {
         nomeProduto: formSalvarNome.trim(),
+        unidadeReferencia: filtroUnidadeAtiva !== "TODAS" ? filtroUnidadeAtiva : (itensAtivosNoCalculo[0]?.unidade || "UN"),
         termoPesquisado: termoExibido || termoBusca.trim(),
         marcaReferencia: formSalvarMarca.trim(),
         catmat: formSalvarCatmat.trim(),
         especificacaoResumo: itensAtivosNoCalculo[0]?.itemDescricao?.slice(0, 280) || "",
-        ufFiltro,
+        ufFiltro: ufsSelecionadas.length === 0 ? "TODOS" : ufsSelecionadas.join(", "),
         modalidadeFiltro,
         periodoMeses,
         observacoes: formSalvarObs.trim(),
@@ -607,24 +757,128 @@ export default function InteligenciaPrecosPage() {
                     value={String(limiteLastro)}
                     onChange={(e) => setLimiteLastro(Number(e.target.value))}
                   >
-                    <SelectItem value="10" text="Até 10 homologações" />
-                    <SelectItem value="20" text="Até 20 homologações (Ideal)" />
-                    <SelectItem value="30" text="Até 30 homologações" />
+                    <SelectItem value="10" text="10 Homologações" />
+                    <SelectItem value="20" text="20 Homologações" />
+                    <SelectItem value="30" text="30 Homologações" />
+                    <SelectItem value="40" text="40 Homologações" />
+                    <SelectItem value="50" text="50 Homologações" />
                   </Select>
                 </Column>
 
-                <Column lg={2} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                  <Select
-                    id="select-uf-filtro"
-                    labelText="Região / UF"
-                    value={ufFiltro}
-                    onChange={(e) => setUfFiltro(e.target.value)}
+                <Column lg={3} md={2} sm={4} style={{ marginBottom: "1rem", position: "relative" }}>
+                  <label
+                    htmlFor="btn-toggle-multi-uf"
+                    className="cds--label"
+                    style={{ display: "block", marginBottom: "0.25rem" }}
                   >
-                    <SelectItem value="TODOS" text="Todo o Brasil" />
-                    {UFS_BRASIL.map((sigla) => (
-                      <SelectItem key={sigla} value={sigla} text={`Estado: ${sigla}`} />
-                    ))}
-                  </Select>
+                    Região / UFs (Múltipla Escolha)
+                  </label>
+                  <Button
+                    id="btn-toggle-multi-uf"
+                    kind="tertiary"
+                    size="md"
+                    onClick={() => setModalUfAberto(!modalUfAberto)}
+                    style={{ width: "100%", justifyContent: "space-between", textAlign: "left" }}
+                  >
+                    <span>
+                      {ufsSelecionadas.length === 0
+                        ? "Todo o Brasil (27 UFs)"
+                        : ufsSelecionadas.length === 1
+                        ? `UF: ${ufsSelecionadas[0]}`
+                        : `${ufsSelecionadas.slice(0, 3).join(", ")}${ufsSelecionadas.length > 3 ? ` (+${ufsSelecionadas.length - 3})` : ""}`}
+                    </span>
+                    <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>▾</span>
+                  </Button>
+
+                  {modalUfAberto && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        backgroundColor: "var(--cds-layer-01, #ffffff)",
+                        border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                        borderRadius: "4px",
+                        boxShadow: "0 6px 20px rgba(0,0,0,0.18)",
+                        zIndex: 1000,
+                        padding: "0.75rem",
+                        marginTop: "4px",
+                        maxHeight: "320px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.75rem", fontWeight: 600 }}>Escolha as UFs:</span>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          onClick={() => setUfsSelecionadas([])}
+                          style={{ minHeight: "24px", padding: "0 6px", fontSize: "0.72rem" }}
+                        >
+                          Todo o Brasil
+                        </Button>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, 1fr)",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        {UFS_BRASIL.map((sigla) => {
+                          const selecionada = ufsSelecionadas.includes(sigla);
+                          return (
+                            <label
+                              key={sigla}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                                fontSize: "0.8rem",
+                                padding: "0.25rem 0.35rem",
+                                borderRadius: "3px",
+                                backgroundColor: selecionada ? "var(--cds-layer-selected, #e8f0fe)" : "transparent",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selecionada}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setUfsSelecionadas((prev) => [...prev, sigla]);
+                                  } else {
+                                    setUfsSelecionadas((prev) => prev.filter((u) => u !== sigla));
+                                  }
+                                }}
+                              />
+                              <span style={{ fontWeight: selecionada ? 700 : 400 }}>{sigla}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ marginTop: "0.75rem", textAlign: "right" }}>
+                        <Button
+                          kind="primary"
+                          size="sm"
+                          onClick={() => setModalUfAberto(false)}
+                          style={{ minHeight: "26px", padding: "0 10px", fontSize: "0.75rem" }}
+                        >
+                          Aplicar Filtro
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </Column>
 
                 <Column lg={3} md={2} sm={4} style={{ marginBottom: "1rem" }}>
@@ -661,381 +915,563 @@ export default function InteligenciaPrecosPage() {
               </Grid>
             </Tile>
 
-            {/* Cards de Métricas e Análise de Dispersão Saneada */}
-            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
-              <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                <Tile
-                  style={{
-                    padding: "1.25rem",
-                    borderLeft: "4px solid var(--cds-interactive, #0f62fe)",
-                    height: "100%",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--cds-text-secondary)",
-                      marginBottom: "0.25rem",
-                    }}
-                  >
-                    Preço Médio Homologado (Saneado)
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1.55rem",
-                      fontWeight: 700,
-                      color: "var(--cds-text-primary)",
-                    }}
-                  >
-                    {formatBRL(estatisticas.precoMedio)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--cds-text-secondary)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Mediana: <strong>{formatBRL(estatisticas.mediana)}</strong> •{" "}
-                    {estatisticas.amostrasSaneadas} amostra(s) ativa(s)
-                    {estatisticas.outliersDescartados > 0
-                      ? ` (${estatisticas.outliersDescartados} outlier descartado)`
-                      : ""}
-                  </div>
-                </Tile>
-              </Column>
-
-              <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                <Tile
-                  style={{
-                    padding: "1.25rem",
-                    borderLeft: "4px solid var(--cds-support-success, #24a148)",
-                    height: "100%",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--cds-text-secondary)",
-                      marginBottom: "0.25rem",
-                    }}
-                  >
-                    Menor Preço Arrematado
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1.55rem",
-                      fontWeight: 700,
-                      color: "var(--cds-support-success, #24a148)",
-                    }}
-                  >
-                    {formatBRL(estatisticas.menorPreco)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--cds-text-secondary)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Lance vencedor mais agressivo na amostra
-                  </div>
-                </Tile>
-              </Column>
-
-              <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                <Tile
-                  style={{
-                    padding: "1.25rem",
-                    borderLeft: "4px solid var(--cds-support-warning, #f1c21b)",
-                    height: "100%",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--cds-text-secondary)",
-                      marginBottom: "0.25rem",
-                    }}
-                  >
-                    Maior Preço Homologado
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1.55rem",
-                      fontWeight: 700,
-                      color: "var(--cds-text-primary)",
-                    }}
-                  >
-                    {formatBRL(estatisticas.maiorPreco)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--cds-text-secondary)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Teto de aceitabilidade registrado
-                  </div>
-                </Tile>
-              </Column>
-
-              <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
-                <Tile
-                  style={{
-                    padding: "1.25rem",
-                    borderLeft: "4px solid var(--cds-support-info, #0043ce)",
-                    height: "100%",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--cds-text-secondary)",
-                      marginBottom: "0.25rem",
-                    }}
-                  >
-                    Desconto Médio Obtido
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1.55rem",
-                      fontWeight: 700,
-                      color: "var(--cds-support-info, #0043ce)",
-                    }}
-                  >
-                    {estatisticas.descontoMedio.toFixed(1)}%
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--cds-text-secondary)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Redução média frente ao valor estimado do edital
-                  </div>
-                </Tile>
-              </Column>
-            </Grid>
-
-            {/* Banner: Faixa de Lance Competitivo Sugerida + Salvar Item */}
-            <Tile
-              style={{
-                padding: "1.25rem 1.5rem",
-                marginBottom: "1.5rem",
-                backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
-                borderLeft: "4px solid #007d79",
-              }}
-            >
-              <div
+            {/* ESTADO 1: INICIAL LIMPO (NENHUMA CONSULTA FEITA) */}
+            {!buscaRealizada && itens.length === 0 && (
+              <Tile
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "1rem",
+                  padding: "3.5rem 2rem",
+                  textAlign: "center",
+                  backgroundColor: "var(--cds-layer-01, #ffffff)",
+                  border: "1px dashed var(--cds-border-subtle, #c6c6c6)",
+                  borderRadius: "4px",
                 }}
               >
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: "0.95rem", marginBottom: "0.25rem" }}>
-                    💡 Faixa de Lance Competitivo Sugerida para "{termoExibido}":
-                  </div>
-                  <div style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
-                    Com base no quartil vencedor e na mediana saneada ({estatisticas.amostrasSaneadas}{" "}
-                    homologações), lances entre{" "}
-                    <strong>{formatBRL(estatisticas.faixaSugeridaMin)}</strong> e{" "}
-                    <strong>{formatBRL(estatisticas.faixaSugeridaMax)}</strong> apresentam alta
-                    competitividade preservando margem operacional.
-                  </div>
+                <div style={{ fontSize: "2.2rem", marginBottom: "0.75rem" }}>🔍</div>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  Pesquisa Oficial de Preços Homologados no PNCP
+                </h3>
+                <p
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "var(--cds-text-secondary)",
+                    maxWidth: "580px",
+                    margin: "0 auto 1.5rem auto",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Digite o nome do produto, serviço, especificação técnica ou código CATMAT/CATSER no campo de busca acima e selecione os filtros desejados para consultar o histórico real de homologações públicas.
+                </p>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    gap: "0.5rem",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Tag type="cool-gray" size="md">Histórico Oficial PNCP</Tag>
+                  <Tag type="cool-gray" size="md">Filtro Multi-UF</Tag>
+                  <Tag type="cool-gray" size="md">Normalização de Unidades</Tag>
+                  <Tag type="cool-gray" size="md">Equiparação de Grandezas</Tag>
                 </div>
+              </Tile>
+            )}
 
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <Tag type="teal" size="md">
-                    Alta Competitividade
-                  </Tag>
-                  <Button
-                    id="btn-salvar-item-inteligencia"
-                    kind="primary"
-                    size="sm"
-                    renderIcon={Save}
-                    onClick={abrirModalSalvarItem}
-                    disabled={itens.length === 0}
-                  >
-                    Salvar Item na Minha Base
-                  </Button>
-                </div>
-              </div>
-            </Tile>
-
-            {/* Tabela de Homologações Oficiais */}
-            <Tile style={{ padding: "1.5rem" }}>
-              <div
+            {/* ESTADO 2: BUSCA REALIZADA MAS NENHUM PREÇO ENCONTRADO */}
+            {buscaRealizada && itens.length === 0 && (
+              <Tile
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "1rem",
-                  marginBottom: "1rem",
+                  padding: "3rem 1.5rem",
+                  textAlign: "center",
+                  backgroundColor: "var(--cds-layer-01, #ffffff)",
+                  border: "1px dashed var(--cds-border-subtle, #c6c6c6)",
+                  borderRadius: "4px",
                 }}
               >
-                <div>
-                  <h4 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0 }}>
-                    📋 Histórico de Homologações Públicas ({itens.length})
-                  </h4>
-                  <p
-                    style={{
-                      fontSize: "0.82rem",
-                      color: "var(--cds-text-secondary)",
-                      marginTop: "0.25rem",
-                    }}
-                  >
-                    Clique em qualquer linha para inspecionar a especificação completa, marca/modelo,
-                    vencedor e link oficial no PNCP. Desmarque itens de configuração diferente para
-                    recalcular a média na hora.
-                  </p>
-                </div>
-
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+                <div style={{ fontSize: "1.8rem", marginBottom: "0.5rem" }}>📦</div>
+                <h4 style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "0.35rem" }}>
+                  Nenhum preço homologado encontrado para "{termoExibido}"
+                </h4>
+                <p
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "var(--cds-text-secondary)",
+                    maxWidth: "520px",
+                    margin: "0 auto 1rem auto",
+                  }}
+                >
+                  Não foram encontradas atas ou compras homologadas com os filtros selecionados. Tente buscar um termo mais abrangente (ex: apenas o nome do produto sem marca específica) ou busque em Todo o Brasil.
+                </p>
+                {ufsSelecionadas.length > 0 && (
                   <Button
                     kind="tertiary"
                     size="sm"
-                    renderIcon={Download}
-                    onClick={() => handleExportarCsv(itensAtivosNoCalculo, termoExibido)}
+                    onClick={() => {
+                      setUfsSelecionadas([]);
+                      executarPesquisa({ ufs: [] });
+                    }}
                   >
-                    Exportar CSV
+                    Buscar em Todo o Brasil
                   </Button>
-                </div>
-              </div>
+                )}
+              </Tile>
+            )}
 
-              <div style={{ overflowX: "auto" }}>
-                <Table size="lg">
-                  <TableHead>
-                    <TableRow>
-                      <TableHeader style={{ width: "44px" }}>
-                        <input
-                          type="checkbox"
-                          aria-label="Selecionar todas as homologações para cálculo"
-                          checked={todasLinhasMarcadas}
-                          onChange={() => {
-                            if (todasLinhasMarcadas) {
-                              setIdsSelecionados(new Set(itens[0] ? [itens[0].id] : []));
-                            } else {
-                              setIdsSelecionados(new Set(itens.map((x) => x.id)));
-                            }
-                          }}
-                        />
-                      </TableHeader>
-                      <TableHeader>Órgão / UF</TableHeader>
-                      <TableHeader>Processo / Data</TableHeader>
-                      <TableHeader>Item, Marca & Especificação</TableHeader>
-                      <TableHeader>Empresa Vencedora</TableHeader>
-                      <TableHeader>Qtd</TableHeader>
-                      <TableHeader>Valor Estimado</TableHeader>
-                      <TableHeader>Valor Homologado</TableHeader>
-                      <TableHeader>Desconto</TableHeader>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {itens.map((row) => {
-                      const marcada = idsSelecionados.has(row.id);
-                      const marcaModelo = [row.marca, row.modelo].filter(Boolean).join(" • ");
+            {/* ESTADO 3: RESULTADOS ENCONTRADOS */}
+            {itens.length > 0 && (
+              <>
+                {/* Seletor Instantâneo de Unidades de Medida */}
+                {unidadesCalculadas.length > 1 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
+                      marginBottom: "1.25rem",
+                      padding: "0.75rem 1rem",
+                      backgroundColor: "var(--cds-layer-01, #ffffff)",
+                      border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+                      Filtrar por Grandeza / Unidade:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroUnidadeAtiva("TODAS")}
+                      style={{
+                        padding: "0.25rem 0.65rem",
+                        fontSize: "0.75rem",
+                        borderRadius: "14px",
+                        border: "1px solid",
+                        cursor: "pointer",
+                        fontWeight: filtroUnidadeAtiva === "TODAS" ? 700 : 500,
+                        backgroundColor: filtroUnidadeAtiva === "TODAS" ? "#0f62fe" : "transparent",
+                        color: filtroUnidadeAtiva === "TODAS" ? "#ffffff" : "var(--cds-text-primary)",
+                        borderColor: filtroUnidadeAtiva === "TODAS" ? "#0f62fe" : "var(--cds-border-subtle, #c6c6c6)",
+                      }}
+                    >
+                      Todas as Grandezas ({itens.length})
+                    </button>
+                    {unidadesCalculadas.map((u) => {
+                      const ativa = filtroUnidadeAtiva === u.unidade;
                       return (
-                        <TableRow
-                          key={row.id}
-                          onClick={() => setHomologacaoModal(row)}
+                        <button
+                          key={u.unidade}
+                          type="button"
+                          onClick={() => setFiltroUnidadeAtiva(u.unidade)}
                           style={{
+                            padding: "0.25rem 0.65rem",
+                            fontSize: "0.75rem",
+                            borderRadius: "14px",
+                            border: "1px solid",
                             cursor: "pointer",
-                            opacity: marcada ? 1 : 0.55,
+                            fontWeight: ativa ? 700 : 500,
+                            backgroundColor: ativa ? "#0043ce" : "transparent",
+                            color: ativa ? "#ffffff" : "var(--cds-text-primary)",
+                            borderColor: ativa ? "#0043ce" : "var(--cds-border-subtle, #c6c6c6)",
                           }}
-                          title="Clique para abrir todas as informações desta homologação"
                         >
-                          <TableCell
-                            onClick={(e) => {
-                              e.stopPropagation();
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              aria-label={`Considerar homologação ${row.numeroProcesso} no cálculo`}
-                              checked={marcada}
-                              onChange={() => toggleSelecionarLinha(row.id)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <strong>{row.orgaoNome}</strong>
-                            <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                              UF: {row.uf}
-                              {row.municipio ? ` (${row.municipio})` : ""} • {row.modalidade}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div style={{ fontWeight: 500 }}>{row.numeroProcesso}</div>
-                            <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                              {row.dataHomologacao}
-                            </div>
-                          </TableCell>
-                          <TableCell style={{ maxWidth: "340px" }}>
-                            <div
-                              style={{
-                                fontSize: "0.84rem",
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {row.itemDescricao}
-                            </div>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "0.35rem",
-                                flexWrap: "wrap",
-                                marginTop: "0.35rem",
-                              }}
-                            >
-                              {marcaModelo && (
-                                <Tag type="blue" size="sm">
-                                  Marca/Mod: {marcaModelo}
-                                </Tag>
-                              )}
-                              <Tag type="cool-gray" size="sm">
-                                CATMAT: {row.catmat}
-                              </Tag>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div style={{ fontSize: "0.84rem", fontWeight: 600 }}>
-                              {row.empresaVencedora}
-                            </div>
-                            <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                              CNPJ: {row.cnpjVencedor}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {row.quantidade} {row.unidade || "UN"}
-                          </TableCell>
-                          <TableCell>{formatBRL(row.valorEstimadoUnitario)}</TableCell>
-                          <TableCell>
-                            <strong style={{ color: "var(--cds-support-success, #24a148)" }}>
-                              {formatBRL(row.valorHomologadoUnitario)}
-                            </strong>
-                          </TableCell>
-                          <TableCell>
-                            <Tag type="green" size="sm">
-                              -{row.descontoPercentual.toFixed(1)}%
-                            </Tag>
-                          </TableCell>
-                        </TableRow>
+                          {u.unidade} ({u.contagem})
+                        </button>
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </div>
-            </Tile>
+                  </div>
+                )}
+
+                {/* Cards de Métricas e Análise de Dispersão Saneada */}
+                <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
+                    <Tile
+                      style={{
+                        padding: "1.25rem",
+                        borderLeft: "4px solid var(--cds-interactive, #0f62fe)",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--cds-text-secondary)",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Preço Médio Homologado (Saneado)
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "1.55rem",
+                          fontWeight: 700,
+                          color: "var(--cds-text-primary)",
+                        }}
+                      >
+                        {formatBRL(estatisticas.precoMedio)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "var(--cds-text-secondary)",
+                          marginTop: "0.25rem",
+                        }}
+                      >
+                        Mediana: <strong>{formatBRL(estatisticas.mediana)}</strong> •{" "}
+                        {estatisticas.amostrasSaneadas} amostra(s) ativa(s)
+                        {estatisticas.outliersDescartados > 0
+                          ? ` (${estatisticas.outliersDescartados} outlier descartado)`
+                          : ""}
+                      </div>
+                    </Tile>
+                  </Column>
+
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
+                    <Tile
+                      style={{
+                        padding: "1.25rem",
+                        borderLeft: "4px solid var(--cds-support-success, #24a148)",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--cds-text-secondary)",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Menor Preço Arrematado
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "1.55rem",
+                          fontWeight: 700,
+                          color: "var(--cds-support-success, #24a148)",
+                        }}
+                      >
+                        {formatBRL(estatisticas.menorPreco)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "var(--cds-text-secondary)",
+                          marginTop: "0.25rem",
+                        }}
+                      >
+                        Lance vencedor mais agressivo na amostra
+                      </div>
+                    </Tile>
+                  </Column>
+
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
+                    <Tile
+                      style={{
+                        padding: "1.25rem",
+                        borderLeft: "4px solid var(--cds-support-warning, #f1c21b)",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--cds-text-secondary)",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Maior Preço Homologado
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "1.55rem",
+                          fontWeight: 700,
+                          color: "var(--cds-text-primary)",
+                        }}
+                      >
+                        {formatBRL(estatisticas.maiorPreco)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "var(--cds-text-secondary)",
+                          marginTop: "0.25rem",
+                        }}
+                      >
+                        Teto de aceitabilidade registrado
+                      </div>
+                    </Tile>
+                  </Column>
+
+                  <Column lg={4} md={2} sm={4} style={{ marginBottom: "1rem" }}>
+                    <Tile
+                      style={{
+                        padding: "1.25rem",
+                        borderLeft: "4px solid var(--cds-support-info, #0043ce)",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--cds-text-secondary)",
+                          marginBottom: "0.25rem",
+                        }}
+                      >
+                        Desconto Médio Obtido
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "1.55rem",
+                          fontWeight: 700,
+                          color: "var(--cds-support-info, #0043ce)",
+                        }}
+                      >
+                        {estatisticas.descontoMedio.toFixed(1)}%
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.75rem",
+                          color: "var(--cds-text-secondary)",
+                          marginTop: "0.25rem",
+                        }}
+                      >
+                        Redução média frente ao valor estimado do edital
+                      </div>
+                    </Tile>
+                  </Column>
+                </Grid>
+
+                {/* Banner: Faixa de Lance Competitivo Sugerida + Salvar Item */}
+                <Tile
+                  style={{
+                    padding: "1.25rem 1.5rem",
+                    marginBottom: "1.5rem",
+                    backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                    borderLeft: "4px solid #007d79",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "1rem",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "0.95rem", marginBottom: "0.25rem" }}>
+                        💡 Faixa de Lance Competitivo Sugerida para "{termoExibido}":
+                      </div>
+                      <div style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                        Com base no quartil vencedor e na mediana saneada ({estatisticas.amostrasSaneadas}{" "}
+                        homologações), lances entre{" "}
+                        <strong>{formatBRL(estatisticas.faixaSugeridaMin)}</strong> e{" "}
+                        <strong>{formatBRL(estatisticas.faixaSugeridaMax)}</strong> apresentam alta
+                        competitividade preservando margem operacional.
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                      <Tag type="teal" size="md">
+                        Alta Competitividade
+                      </Tag>
+                      <Button
+                        id="btn-salvar-item-inteligencia"
+                        kind="primary"
+                        size="sm"
+                        renderIcon={Save}
+                        onClick={abrirModalSalvarItem}
+                        disabled={itens.length === 0}
+                      >
+                        Salvar Item na Minha Base
+                      </Button>
+                    </div>
+                  </div>
+                </Tile>
+
+                {/* Tabela de Homologações Oficiais */}
+                <Tile style={{ padding: "1.5rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "1rem",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    <div>
+                      <h4 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0 }}>
+                        📋 Histórico de Homologações Públicas ({itensAtivosNoCalculo.length} de {itens.length})
+                      </h4>
+                      <p
+                        style={{
+                          fontSize: "0.82rem",
+                          color: "var(--cds-text-secondary)",
+                          marginTop: "0.25rem",
+                        }}
+                      >
+                        Clique em qualquer linha para inspecionar a especificação completa, marca/modelo,
+                        vencedor e link oficial no PNCP. Use ⚖️ Equiparar para converter unidades diferentes (ex: UN para KG).
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <Button
+                        kind="tertiary"
+                        size="sm"
+                        renderIcon={Download}
+                        onClick={() => handleExportarCsv(itensAtivosNoCalculo, termoExibido)}
+                      >
+                        Exportar CSV
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: "auto" }}>
+                    <Table size="lg">
+                      <TableHead>
+                        <TableRow>
+                          <TableHeader style={{ width: "44px" }}>
+                            <input
+                              type="checkbox"
+                              aria-label="Selecionar todas as homologações para cálculo"
+                              checked={todasLinhasMarcadas}
+                              onChange={() => {
+                                if (todasLinhasMarcadas) {
+                                  setIdsSelecionados(new Set(itens[0] ? [itens[0].id] : []));
+                                } else {
+                                  setIdsSelecionados(new Set(itens.map((x) => x.id)));
+                                }
+                              }}
+                            />
+                          </TableHeader>
+                          <TableHeader>Órgão / UF</TableHeader>
+                          <TableHeader>Processo / Data</TableHeader>
+                          <TableHeader>Item, Marca & Especificação</TableHeader>
+                          <TableHeader>Empresa Vencedora</TableHeader>
+                          <TableHeader>Qtd</TableHeader>
+                          <TableHeader>Unidade</TableHeader>
+                          <TableHeader>Valor Estimado</TableHeader>
+                          <TableHeader>Valor Homologado</TableHeader>
+                          <TableHeader>Desconto</TableHeader>
+                          <TableHeader>Ações</TableHeader>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {itensFiltradosPorUnidade.map((row) => {
+                          const marcada = idsSelecionados.has(row.id);
+                          const marcaModelo = [row.marca, row.modelo].filter(Boolean).join(" • ");
+                          return (
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setHomologacaoModal(row)}
+                              style={{
+                                cursor: "pointer",
+                                opacity: marcada ? 1 : 0.55,
+                              }}
+                              title="Clique para abrir todas as informações desta homologação"
+                            >
+                              <TableCell
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Considerar homologação ${row.numeroProcesso} no cálculo`}
+                                  checked={marcada}
+                                  onChange={() => toggleSelecionarLinha(row.id)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <strong>{row.orgaoNome}</strong>
+                                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                  UF: {row.uf}
+                                  {row.municipio ? ` (${row.municipio})` : ""} • {row.modalidade}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div style={{ fontWeight: 500 }}>{row.numeroProcesso}</div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                  {row.dataHomologacao}
+                                </div>
+                              </TableCell>
+                              <TableCell style={{ maxWidth: "320px" }}>
+                                <div
+                                  style={{
+                                    fontSize: "0.84rem",
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  {row.itemDescricao}
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.35rem",
+                                    flexWrap: "wrap",
+                                    marginTop: "0.35rem",
+                                  }}
+                                >
+                                  {marcaModelo && (
+                                    <Tag type="blue" size="sm">
+                                      Marca/Mod: {marcaModelo}
+                                    </Tag>
+                                  )}
+                                  <Tag type="cool-gray" size="sm">
+                                    CATMAT: {row.catmat}
+                                  </Tag>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div style={{ fontSize: "0.84rem", fontWeight: 600 }}>
+                                  {row.empresaVencedora}
+                                </div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                  CNPJ: {row.cnpjVencedor}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {row.quantidade}
+                              </TableCell>
+                              <TableCell>
+                                <CampoComHoverTooltip
+                                  tooltipText={
+                                    row.unidadeOriginalAta
+                                      ? `Unidade original registrada na ata do PNCP: "${row.unidadeOriginalAta}"`
+                                      : `Unidade de medida: "${row.unidade || "UN"}"`
+                                  }
+                                >
+                                  <Tag type="cool-gray" size="sm">
+                                    {row.unidade || "UN"}
+                                  </Tag>
+                                </CampoComHoverTooltip>
+                              </TableCell>
+                              <TableCell>{formatBRL(row.valorEstimadoUnitario)}</TableCell>
+                              <TableCell>
+                                <strong style={{ color: "var(--cds-support-success, #24a148)" }}>
+                                  {formatBRL(row.valorHomologadoUnitario)}
+                                </strong>
+                                {row.editadoPeloUsuario && (
+                                  <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>
+                                    Ata: {formatBRL(row.valorHomologadoOriginal || 0)} / {row.unidadeOriginalAntesConversao || "UN"}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Tag type="green" size="sm">
+                                  -{row.descontoPercentual.toFixed(1)}%
+                                </Tag>
+                              </TableCell>
+                              <TableCell
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <Button
+                                  kind="ghost"
+                                  size="sm"
+                                  renderIcon={Scale}
+                                  onClick={() => abrirModalEquiparar(row)}
+                                  title="Equiparar unidade e valor unitário equivalente"
+                                >
+                                  Equiparar
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Tile>
+              </>
+            )}
           </TabPanel>
 
           {/* ================================================================= */}
@@ -1324,7 +1760,7 @@ export default function InteligenciaPrecosPage() {
                   {homologacaoModal.quantidade} {homologacaoModal.unidade} •{" "}
                   {formatBRL(
                     homologacaoModal.valorTotalHomologado ||
-                      homologacaoModal.valorHomologadoUnitario * homologacaoModal.quantidade,
+                      homologacaoModal.valorHomologadoUnitario * (homologacaoModal.quantidade || 1),
                   )}
                 </div>
               </Column>
@@ -1480,15 +1916,16 @@ export default function InteligenciaPrecosPage() {
         onRequestSubmit={() => {
           if (!itemSalvoModal) return;
           const alvo = itemSalvoModal;
+          const ufsAlvo = alvo.ufFiltro && alvo.ufFiltro !== "TODOS" ? [alvo.ufFiltro] : [];
           setTermoBusca(alvo.termoPesquisado);
-          setUfFiltro(alvo.ufFiltro || "TODOS");
+          setUfsSelecionadas(ufsAlvo);
           setModalidadeFiltro(alvo.modalidadeFiltro || "TODOS");
           setPeriodoMeses(alvo.periodoMeses || 12);
           setItemSalvoModal(null);
           setAbaSelecionada(0);
           executarPesquisa({
             q: alvo.termoPesquisado,
-            uf: alvo.ufFiltro || "TODOS",
+            ufs: ufsAlvo,
             modalidade: alvo.modalidadeFiltro || "TODOS",
             periodoMeses: alvo.periodoMeses || 12,
           });
@@ -1612,6 +2049,8 @@ export default function InteligenciaPrecosPage() {
                     <TableRow>
                       <TableHeader>Órgão / UF</TableHeader>
                       <TableHeader>Especificação & Marca</TableHeader>
+                      <TableHeader>Quantidade</TableHeader>
+                      <TableHeader>Unidade</TableHeader>
                       <TableHeader>Vencedor</TableHeader>
                       <TableHeader>Homologado</TableHeader>
                       <TableHeader>PNCP</TableHeader>
@@ -1626,13 +2065,29 @@ export default function InteligenciaPrecosPage() {
                             {h.uf} • {h.dataHomologacao}
                           </div>
                         </TableCell>
-                        <TableCell style={{ maxWidth: "260px" }}>
+                        <TableCell style={{ maxWidth: "240px" }}>
                           <div style={{ fontSize: "0.78rem" }}>{h.itemDescricao}</div>
                           {(h.marca || h.modelo) && (
                             <div style={{ fontSize: "0.72rem", color: "#0043ce", fontWeight: 600 }}>
                               {[h.marca, h.modelo].filter(Boolean).join(" • ")}
                             </div>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <span style={{ fontSize: "0.8rem" }}>{h.quantidade}</span>
+                        </TableCell>
+                        <TableCell>
+                          <CampoComHoverTooltip
+                            tooltipText={
+                              h.unidadeOriginalAta
+                                ? `Unidade original na ata do PNCP: ${h.unidadeOriginalAta}`
+                                : `Unidade: ${h.unidade || "UN"}`
+                            }
+                          >
+                            <Tag type="cool-gray" size="sm">
+                              {h.unidade || "UN"}
+                            </Tag>
+                          </CampoComHoverTooltip>
                         </TableCell>
                         <TableCell>
                           <div style={{ fontSize: "0.78rem" }}>{h.empresaVencedora}</div>
@@ -1644,6 +2099,11 @@ export default function InteligenciaPrecosPage() {
                           <strong style={{ color: "var(--cds-support-success, #24a148)" }}>
                             {formatBRL(h.valorHomologadoUnitario)}
                           </strong>
+                          {h.editadoPeloUsuario && (
+                            <div style={{ fontSize: "0.68rem", color: "var(--cds-text-secondary)" }}>
+                              Original: {formatBRL(h.valorHomologadoOriginal || 0)} / {h.unidadeOriginalAntesConversao || "UN"}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {h.linkPncp ? (
@@ -1667,6 +2127,96 @@ export default function InteligenciaPrecosPage() {
                 </Table>
               </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ===================================================================== */}
+      {/* MODAL 4: CARREGAMENTO EM PROGRESSO DA BUSCA PROFUNDA NO PNCP          */}
+      {/* ===================================================================== */}
+      <Modal
+        open={carregandoBusca}
+        passiveModal
+        modalHeading="Consultando Atas e Homologações no PNCP..."
+        onRequestClose={() => {}}
+        size="sm"
+      >
+        <div style={{ padding: "1.5rem 0", textAlign: "center" }}>
+          <InlineLoading
+            status="active"
+            description="Varrendo atas de registro de preços e compras públicas com filtros aplicados..."
+          />
+          <p
+            style={{
+              marginTop: "1rem",
+              fontSize: "0.82rem",
+              color: "var(--cds-text-secondary)",
+              lineHeight: 1.4,
+            }}
+          >
+            A busca profunda examina múltiplas páginas do portal oficial, extrai valores arrematados e saneia dados estatísticos para garantir um lastro representativo e sem distorções.
+          </p>
+        </div>
+      </Modal>
+
+      {/* ===================================================================== */}
+      {/* MODAL 5: EQUIPARAR UNIDADE E VALOR DO ITEM (EX: CONVERSÃO UN PARA KG) */}
+      {/* ===================================================================== */}
+      <Modal
+        open={Boolean(itemParaEquiparar)}
+        modalHeading="⚖️ Equiparar Unidade e Valor do Item"
+        modalLabel={
+          itemParaEquiparar
+            ? `${itemParaEquiparar.orgaoNome} — Item #${itemParaEquiparar.itemNumero}`
+            : ""
+        }
+        primaryButtonText="Confirmar Equiparação"
+        secondaryButtonText="Cancelar"
+        onRequestClose={() => setItemParaEquiparar(null)}
+        onRequestSubmit={confirmarEquiparacao}
+        size="sm"
+      >
+        {itemParaEquiparar && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", lineHeight: 1.4 }}>
+              Ajuste a unidade e o valor unitário equivalente para equalizar este preço na mesma base de comparação dos demais itens pesquisados (ex: converter 1 pão avulso de 50g a R$ 0,80 para 1 KG a R$ 16,00). O valor original da ata permanecerá preservado no histórico.
+            </p>
+
+            <Tile style={{ backgroundColor: "var(--cds-layer-02, #f4f4f4)", padding: "0.75rem 1rem" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>Item Homologado Original</div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 600, marginTop: "0.2rem" }}>
+                {itemParaEquiparar.itemDescricao}
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                Valor Original na Ata: <strong>{formatBRL(itemParaEquiparar.valorHomologadoOriginal ?? itemParaEquiparar.valorHomologadoUnitario)}</strong> por{" "}
+                <strong>{itemParaEquiparar.unidadeOriginalAntesConversao ?? itemParaEquiparar.unidade}</strong>
+              </div>
+            </Tile>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <TextInput
+                id="input-equiparar-unidade"
+                labelText="Nova Unidade de Medida"
+                placeholder="Ex: KG, UN, CX, PCT"
+                value={novaUnidade}
+                onChange={(e) => setNovaUnidade(e.target.value.toUpperCase())}
+              />
+              <TextInput
+                id="input-equiparar-valor"
+                labelText="Novo Valor Equivalente (R$)"
+                placeholder="Ex: 16.00"
+                value={novoValorUnitario}
+                onChange={(e) => setNovoValorUnitario(e.target.value)}
+              />
+            </div>
+
+            <TextInput
+              id="input-equiparar-obs"
+              labelText="Justificativa da Equiparação (Opcional)"
+              placeholder="Ex: Convertido 1 un de 50g para 1 kg (x20)"
+              value={obsEquiparacao}
+              onChange={(e) => setObsEquiparacao(e.target.value)}
+            />
           </div>
         )}
       </Modal>

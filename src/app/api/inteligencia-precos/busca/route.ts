@@ -7,9 +7,11 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const ufsParam = searchParams.get("ufs") || searchParams.get("uf") || "TODOS";
     const resultado = await pesquisarInteligenciaPrecos({
       q: searchParams.get("q") || "",
       uf: searchParams.get("uf") || "TODOS",
+      ufs: ufsParam,
       modalidade: searchParams.get("modalidade") || "TODOS",
       periodoMeses: searchParams.get("periodoMeses") || 12,
       limite: searchParams.get("limite") || 20,

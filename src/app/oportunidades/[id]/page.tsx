@@ -35,6 +35,7 @@ import {
   OverflowMenu,
   OverflowMenuItem,
   Pagination,
+  Toggle,
 } from "@carbon/react";
 import {
   ArrowLeft,
@@ -64,6 +65,7 @@ import {
   Printer,
   DocumentDownload,
   Information,
+  Locked,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
@@ -75,9 +77,16 @@ import {
   consolidarCalculadoraProposta,
   formatarMoedaBrl,
   UNIDADES_ITEM_OPCOES,
+  PORTAIS_DISPUTA_OPCOES,
+  TIPO_DECREMENTO_OPCOES,
+  TATICA_DISPUTA_OPCOES,
   type ItemCalculadoraInput,
   type ConfiguracaoPropostaInput,
   type UnidadeItemLicitacao,
+  type DisputaConfig,
+  type DisputaItemRegra,
+  type TipoDecremento,
+  type TaticaDisputa,
 } from "@/server/schemas/proposta-calculadora.schema";
 import { gerarConteudoPropostaComercial } from "@/lib/proposta-comercial-template";
 
@@ -245,9 +254,22 @@ function formatarBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-function obterObjetoCertame(opp?: Partial<OportunidadeDetalhe> | null): string {
-  if (!opp) return "";
-  return (opp.objeto || opp.resumo || opp.miniResumo || "").trim();
+function obterObjetoCertame(
+  opp?: Partial<OportunidadeDetalhe> | null,
+  cfg?: Partial<ConfiguracaoPropostaInput> | null,
+  itens?: ItemCalculadoraInput[]
+): string {
+  if (cfg?.descricaoGlobal?.trim()) {
+    return cfg.descricaoGlobal.trim();
+  }
+  if (opp) {
+    const txt = (opp.objeto || opp.resumo || opp.miniResumo || (opp as any).descricao || "").trim();
+    if (txt) return txt;
+  }
+  if (itens && itens.length > 0 && itens[0]?.descricao?.trim()) {
+    return itens[0].descricao.trim();
+  }
+  return "Fornecimento de materiais e/ou serviços especializados conforme especificações do Edital e seus anexos.";
 }
 
 export interface CampoComHoverTooltipProps {
@@ -583,8 +605,21 @@ function OportunidadesDetalheContent({
   const [propostaFeedback, setPropostaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
   const [copiadoProposta, setCopiadoProposta] = React.useState(false);
 
-  const [roboAtivoCertame, setRoboAtivoCertame] = React.useState(true);
-  const [estrategiaDecremento, setEstrategiaDecremento] = React.useState("CENTAVO_1");
+  // Disputa & Robô de Lances Multi-Item (Aba 7)
+  const [portalDisputa, setPortalDisputa] = React.useState<string>("Compras.gov.br");
+  const [identificadorSalaDisputa, setIdentificadorSalaDisputa] = React.useState<string>("");
+  const [statusGeralDisputa, setStatusGeralDisputa] = React.useState<"CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA">("CONFIGURADA");
+  const [pausaEmergenciaDisputa, setPausaEmergenciaDisputa] = React.useState<boolean>(false);
+  const [tempoRespostaSegundos, setTempoRespostaSegundos] = React.useState<number>(3);
+  const [segundosFinaisSniper, setSegundosFinaisSniper] = React.useState<number>(10);
+  const [regrasDisputaItens, setRegrasDisputaItens] = React.useState<DisputaItemRegra[]>([]);
+  const [salvandoDisputaCertame, setSalvandoDisputaCertame] = React.useState(false);
+  const [disputaFeedback, setDisputaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
+
+  // Estados da barra de aplicação de regra em massa
+  const [massaTipoDecremento, setMassaTipoDecremento] = React.useState<TipoDecremento>("CENTAVOS_1");
+  const [massaValorDecremento, setMassaValorDecremento] = React.useState<string>("0.01");
+  const [massaTatica, setMassaTatica] = React.useState<TaticaDisputa>("IMEDIATO");
 
   // Controle de Abas Ativas (Issue #36)
   const [activeTab, setActiveTab] = React.useState<number>(0);
@@ -623,8 +658,12 @@ function OportunidadesDetalheContent({
       setActiveTab(3);
     } else if (abaParam === "arquivos") {
       setActiveTab(1);
-    } else if (abaParam === "proposta" || abaParam === "valor-proposta") {
+    } else if (abaParam === "calculadora") {
       setActiveTab(4);
+    } else if (abaParam === "proposta" || abaParam === "valor-proposta") {
+      setActiveTab(5);
+    } else if (abaParam === "disputa" || abaParam === "robo") {
+      setActiveTab(6);
     } else if (abaParam === "visao-geral") {
       setActiveTab(0);
     }
@@ -710,7 +749,23 @@ function OportunidadesDetalheContent({
         } else {
           setPropostaSalvaSnapshot(null);
         }
+
+        if (opp.calculadoraDados.disputaConfig) {
+          const disp = opp.calculadoraDados.disputaConfig;
+          if (disp.portal) setPortalDisputa(disp.portal);
+          setIdentificadorSalaDisputa(disp.identificadorSala || opp.numeroEdital || "");
+          if (disp.statusGeral) setStatusGeralDisputa(disp.statusGeral);
+          setPausaEmergenciaDisputa(Boolean(disp.pausaEmergencia));
+          if (disp.tempoRespostaSegundos) setTempoRespostaSegundos(disp.tempoRespostaSegundos);
+          if (disp.segundosFinaisSniper) setSegundosFinaisSniper(disp.segundosFinaisSniper);
+          if (Array.isArray(disp.regrasItens) && disp.regrasItens.length > 0) {
+            setRegrasDisputaItens(disp.regrasItens);
+          }
+        } else {
+          setIdentificadorSalaDisputa(opp.numeroEdital || "");
+        }
       } else {
+        setIdentificadorSalaDisputa(opp.numeroEdital || "");
         const vEst = opp.valorEstimado || 0;
         const cUnit = vEst > 0 ? Math.round(vEst * 0.6) : 5000;
         setItensCalculadora([
@@ -816,7 +871,7 @@ function OportunidadesDetalheContent({
     return gerarConteudoPropostaComercial({
       orgaoNome: oportunidade.orgaoNome || "Órgão Licitante",
       numeroEdital: oportunidade.numeroEdital || "Edital",
-      objetoLicitacao: obterObjetoCertame(oportunidade),
+      objetoLicitacao: obterObjetoCertame(oportunidade, propostaConfig, itensCalculadora),
       itens: itensCalculadora,
       configuracao: propostaConfig,
       empresa: empresaConfig,
@@ -912,6 +967,16 @@ function OportunidadesDetalheContent({
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
+        disputaConfig: {
+          portal: portalDisputa,
+          identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+          statusGeral: statusGeralDisputa,
+          pausaEmergencia: pausaEmergenciaDisputa,
+          tempoRespostaSegundos,
+          segundosFinaisSniper,
+          regrasItens: regrasDisputaItens,
+          atualizadoEm: new Date().toISOString(),
+        },
         atualizadoEm: new Date().toISOString(),
       };
       const res = await fetch(`/api/oportunidades/${id}/status`, {
@@ -955,6 +1020,16 @@ function OportunidadesDetalheContent({
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
+        disputaConfig: {
+          portal: portalDisputa,
+          identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+          statusGeral: statusGeralDisputa,
+          pausaEmergencia: pausaEmergenciaDisputa,
+          tempoRespostaSegundos,
+          segundosFinaisSniper,
+          regrasItens: regrasDisputaItens,
+          atualizadoEm: new Date().toISOString(),
+        },
         atualizadoEm: new Date().toISOString(),
       };
       const res = await fetch(`/api/oportunidades/${id}/status`, {
@@ -993,6 +1068,114 @@ function OportunidadesDetalheContent({
       return false;
     } finally {
       setSalvandoPropostaComercial(false);
+    }
+  };
+
+  // Sincroniza a grade multi-item do Robô de Lances com os itens e pisos da Calculadora
+  React.useEffect(() => {
+    if (!consolidadoCalculadora.itens || consolidadoCalculadora.itens.length === 0) return;
+    setRegrasDisputaItens((prevRegras) => {
+      return consolidadoCalculadora.itens.map((calcItem) => {
+        const existing = prevRegras.find((r) => r.itemId === calcItem.id);
+        return {
+          itemId: calcItem.id,
+          numeroItem: calcItem.numeroItem,
+          descricao: calcItem.descricao,
+          unidade: calcItem.unidade,
+          quantidade: calcItem.quantidade,
+          ativoNoRobo: existing ? existing.ativoNoRobo : true,
+          pisoUnitarioSeguro: calcItem.pisoUnitarioSeguro,
+          propostaUnitaria: calcItem.propostaUnitaria,
+          tipoDecremento: existing?.tipoDecremento || "CENTAVOS_1",
+          valorDecremento: existing?.valorDecremento ?? 0.01,
+          tatica: existing?.tatica || "IMEDIATO",
+          statusItem: existing?.statusItem || "PRONTO",
+          melhorLanceSala: existing?.melhorLanceSala ?? null,
+          meuUltimoLance: existing?.meuUltimoLance ?? null,
+          minhaPosicao: existing?.minhaPosicao ?? null,
+          observacoes: existing?.observacoes || "",
+        };
+      });
+    });
+  }, [consolidadoCalculadora.itens]);
+
+  const aplicarRegraEmMassa = () => {
+    const vDec = parseFloat(massaValorDecremento.replace(/\./g, "").replace(",", "."));
+    const valorFinal = Number.isNaN(vDec) || vDec <= 0 ? (massaTipoDecremento === "CENTAVOS_1" ? 0.01 : 1.0) : vDec;
+
+    setRegrasDisputaItens((prev) =>
+      prev.map((r) => ({
+        ...r,
+        tipoDecremento: massaTipoDecremento,
+        valorDecremento: massaTipoDecremento === "CENTAVOS_1" ? 0.01 : valorFinal,
+        tatica: massaTatica,
+      }))
+    );
+    setDisputaFeedback({
+      tipo: "success",
+      msg: `Regra em massa (${
+        massaTipoDecremento === "CENTAVOS_1"
+          ? "R$ 0,01"
+          : massaTipoDecremento === "FIXO_REAIS"
+          ? `R$ ${valorFinal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+          : `${valorFinal}%`
+      }, Tática: ${massaTatica}) aplicada a todos os itens.`,
+    });
+    setTimeout(() => setDisputaFeedback(null), 4000);
+  };
+
+  const handleSalvarConfiguracaoDisputa = async () => {
+    if (!id || !oportunidade) return;
+    setSalvandoDisputaCertame(true);
+    setDisputaFeedback(null);
+    try {
+      const configDisputa: DisputaConfig = {
+        portal: portalDisputa,
+        identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+        statusGeral: statusGeralDisputa,
+        pausaEmergencia: pausaEmergenciaDisputa,
+        tempoRespostaSegundos,
+        segundosFinaisSniper,
+        regrasItens: regrasDisputaItens,
+        atualizadoEm: new Date().toISOString(),
+      };
+
+      const dadosCalculadora = {
+        parametrosPadrao: parametrosPadraoCalc,
+        itens: itensCalculadora,
+        propostaConfig,
+        disputaConfig: configDisputa,
+        atualizadoEm: new Date().toISOString(),
+      };
+
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: statusGeralDisputa === "EM_DISPUTA" ? "EM_DISPUTA" : oportunidade.status,
+          lanceMinimo: consolidadoCalculadora.pisoTotalGeral,
+          valorProposta: consolidadoCalculadora.propostaTotalGeral,
+          calculadoraDados: dadosCalculadora,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Falha ao salvar configuração da disputa");
+      }
+
+      setDisputaFeedback({
+        tipo: "success",
+        msg: "Configuração do Robô de Lances salva com sucesso para todos os itens deste certame!",
+      });
+      setTimeout(() => setDisputaFeedback(null), 5000);
+    } catch (err: any) {
+      setDisputaFeedback({
+        tipo: "error",
+        msg: err?.message || "Erro ao salvar configuração da disputa.",
+      });
+    } finally {
+      setSalvandoDisputaCertame(false);
     }
   };
 
@@ -1066,7 +1249,7 @@ function OportunidadesDetalheContent({
       const payload = {
         orgaoNome: oportunidade.orgaoNome || "Órgão Licitante",
         numeroEdital: oportunidade.numeroEdital || "Edital",
-        objetoLicitacao: obterObjetoCertame(oportunidade),
+        objetoLicitacao: obterObjetoCertame(oportunidade, propostaConfig, itensCalculadora),
         itens: itensCalculadora,
         configuracao: propostaConfig,
       };
@@ -3388,7 +3571,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           modoEmissao: novoModo,
                           descricaoGlobal:
                             novoModo === "VALOR_GLOBAL" && !prev.descricaoGlobal?.trim()
-                              ? obterObjetoCertame(oportunidade)
+                              ? obterObjetoCertame(oportunidade, null, itensCalculadora)
                               : prev.descricaoGlobal,
                         }));
                       }}
@@ -3426,6 +3609,24 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       />
                     </Select>
                   </div>
+                </div>
+
+                {/* Objeto Oficial do Certame na Proposta Comercial (Sempre Visível e Editável) */}
+                <div style={{ marginTop: "0.25rem", marginBottom: "1rem" }}>
+                  <TextArea
+                    id="textarea-objeto-proposta-geral"
+                    data-testid="textarea-objeto-proposta-geral"
+                    labelText="Descrição do Objeto da Licitação (Impresso no cabeçalho da Proposta e Anexo I)"
+                    helperText="Carregado automaticamente dos dados do edital ou do 1º item calculado. Edite livremente para constar exatamente como exige o edital."
+                    rows={2}
+                    value={propostaConfig.descricaoGlobal || obterObjetoCertame(oportunidade, null, itensCalculadora)}
+                    onChange={(e) =>
+                      setPropostaConfig((prev) => ({
+                        ...prev,
+                        descricaoGlobal: e.target.value,
+                      }))
+                    }
+                  />
                 </div>
 
                 {/* Lista Minimalista de Valores Arrematados (Proposta Readequada + Planilha Detalhada de Itens) */}
@@ -3564,7 +3765,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         id="textarea-desc-global"
                         labelText="Descrição Resumida do Objeto para o Lote / Preço Global"
                         rows={2}
-                        value={propostaConfig.descricaoGlobal || obterObjetoCertame(oportunidade)}
+                        value={propostaConfig.descricaoGlobal || obterObjetoCertame(oportunidade, null, itensCalculadora)}
                         onChange={(e) =>
                           setPropostaConfig({
                             ...propostaConfig,
@@ -3781,88 +3982,575 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             </Tile>
           </TabPanel>
 
-          {/* Aba 7: Disputa do Certame */}
+          {/* Aba 7: Disputa do Certame & Auto-Bidder Multi-Item */}
           <TabPanel>
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
+              {disputaFeedback && (
+                <InlineNotification
+                  style={{ marginBottom: "1rem" }}
+                  kind={disputaFeedback.tipo}
+                  title={disputaFeedback.tipo === "success" ? "Configuração Atualizada" : "Aviso de Disputa"}
+                  subtitle={disputaFeedback.msg}
+                  onCloseButtonClick={() => setDisputaFeedback(null)}
+                />
+              )}
+
+              {/* Cabeçalho da Disputa */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: "1rem",
+                  marginBottom: "1.25rem",
+                }}
+              >
                 <div>
-                  <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--cds-text-primary)" }}>
-                    ⚡ Disputa do Certame & Sala do Auto-Bidder
+                  <h4
+                    style={{
+                      fontSize: "1.125rem",
+                      fontWeight: 600,
+                      marginBottom: "0.25rem",
+                      color: "var(--cds-text-primary)",
+                    }}
+                  >
+                    ⚡ Disputa do Certame & Robô de Lances Multi-Item
                   </h4>
-                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
-                    Ativação do robô de lances para a sessão pública deste edital, proteção inviolável do preço piso calculado e homologação formal de vitória.
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0 }}>
+                    Configuração individual por item/lote sincronizada com a Calculadora. Trava inviolável de proteção contra inexequibilidade (Art. 59 da Lei 14.133/2021).
                   </p>
                 </div>
-                <Tag type={roboAtivoCertame ? "green" : "cool-gray"} size="md">
-                  {roboAtivoCertame ? "● Robô Conectado à Sala" : "⏸️ Robô em Pausa"}
-                </Tag>
-              </div>
 
-              {/* Status do Robô nesta Sessão */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
-                <div>
-                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Menor Lance Atual da Sala</div>
-                    <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                      {lanceMinimoInput ? `R$ ${(parseFloat(lanceMinimoInput.replace(/\./g, "").replace(",", ".")) * 1.05).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Aguardando Início"}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                      Licitante líder momentâneo
-                    </div>
-                  </Tile>
-                </div>
-
-                <div>
-                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Piso Seguro Configurado</div>
-                    <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)", marginTop: "0.25rem" }}>
-                      {lanceMinimoInput ? `R$ ${lanceMinimoInput}` : "Não definido"}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                      Trava inviolável de proteção
-                    </div>
-                  </Tile>
-                </div>
-
-                <div>
-                  <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-info, #0043ce)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Estratégia do Motor</div>
-                    <div style={{ fontSize: "1.4rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                      Cobrir por R$ 0,01
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                      Decremento centavo a centavo
-                    </div>
-                  </Tile>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <Tag
+                    type={
+                      pausaEmergenciaDisputa
+                        ? "red"
+                        : statusGeralDisputa === "EM_DISPUTA"
+                        ? "green"
+                        : statusGeralDisputa === "PAUSADA"
+                        ? "warm-gray"
+                        : "teal"
+                    }
+                    size="md"
+                  >
+                    {pausaEmergenciaDisputa
+                      ? "🛑 Pausa de Emergência"
+                      : statusGeralDisputa === "EM_DISPUTA"
+                      ? "● Sala em Disputa ao Vivo"
+                      : statusGeralDisputa === "PAUSADA"
+                      ? "⏸️ Disputa Pausada"
+                      : "⚙️ Robô Configurado"}
+                  </Tag>
+                  <Button
+                    size="sm"
+                    kind="primary"
+                    renderIcon={Save}
+                    disabled={salvandoDisputaCertame}
+                    onClick={handleSalvarConfiguracaoDisputa}
+                    data-testid="btn-salvar-disputa-topo"
+                  >
+                    {salvandoDisputaCertame ? "Salvando..." : "Salvar Configuração de Disputa"}
+                  </Button>
                 </div>
               </div>
 
-              {/* Controles de Disputa */}
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
-                <Button
-                  kind={roboAtivoCertame ? "danger--tertiary" : "primary"}
-                  size="md"
-                  renderIcon={roboAtivoCertame ? Pause : Play}
-                  onClick={() => setRoboAtivoCertame(!roboAtivoCertame)}
+              {/* Configuração Geral da Sala no Portal */}
+              <div
+                style={{
+                  padding: "1rem 1.25rem",
+                  backgroundColor: "var(--cds-layer-01, #ffffff)",
+                  border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                  borderRadius: "4px",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
+                  🌐 Dados da Sessão Pública & Conexão ao Portal
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "1rem",
+                    alignItems: "flex-end",
+                  }}
                 >
-                  {roboAtivoCertame ? "Pausar Lances Deste Certame" : "Ativar Robô Nesta Sala"}
-                </Button>
-                <Button
-                  kind="tertiary"
-                  size="md"
-                  renderIcon={Launch}
-                  onClick={() => router.push("/robo-de-lances")}
+                  <div>
+                    <Select
+                      id="select-portal-disputa"
+                      labelText="Portal Eletrônico de Disputa"
+                      value={portalDisputa}
+                      onChange={(e) => setPortalDisputa(e.target.value)}
+                    >
+                      {PORTAIS_DISPUTA_OPCOES.map((p) => (
+                        <SelectItem key={p} value={p} text={p} />
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <TextInput
+                      id="input-identificador-sala"
+                      labelText="Identificador da Sala / UASG / Link da Sessão"
+                      placeholder="Ex: UASG 158123 • PE 088/2026"
+                      value={identificadorSalaDisputa}
+                      onChange={(e) => setIdentificadorSalaDisputa(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <Select
+                      id="select-status-sala"
+                      labelText="Status Operacional da Sala"
+                      value={statusGeralDisputa}
+                      onChange={(e) =>
+                        setStatusGeralDisputa(
+                          e.target.value as "CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA",
+                        )
+                      }
+                    >
+                      <SelectItem value="CONFIGURADA" text="⚙️ Configurada (Pronta para Iniciar)" />
+                      <SelectItem value="EM_DISPUTA" text="🟢 Em Disputa ao Vivo (Sessão Aberta)" />
+                      <SelectItem value="PAUSADA" text="⏸️ Pausada Preventivamente" />
+                      <SelectItem value="CONCLUIDA" text="🏁 Disputa Concluída / Encerrada" />
+                    </Select>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", paddingBottom: "0.4rem" }}>
+                    <Toggle
+                      id="toggle-pausa-emergencia"
+                      size="sm"
+                      labelText="Pausa de Emergência"
+                      labelA="Desativada"
+                      labelB="Ativa"
+                      toggled={pausaEmergenciaDisputa}
+                      onToggle={(checked) => setPausaEmergenciaDisputa(checked)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Cards de Métricas da Disputa */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "1rem",
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                    Itens Ativos no Robô
+                  </div>
+                  <div style={{ fontSize: "1.45rem", fontWeight: 700, marginTop: "0.25rem" }}>
+                    {regrasDisputaItens.filter((r) => r.ativoNoRobo).length} de {regrasDisputaItens.length} itens
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                    Itens monitorados automaticamente
+                  </div>
+                </Tile>
+
+                <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                    Piso Seguro Total (Inviolável)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "1.45rem",
+                      fontWeight: 700,
+                      color: "var(--cds-support-success, #24a148)",
+                      marginTop: "0.25rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                    }}
+                  >
+                    <Locked size={18} />
+                    {formatarMoedaBrl(consolidadoCalculadora.pisoTotalGeral)}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                    Trava automática da Calculadora (Aba 5)
+                  </div>
+                </Tile>
+
+                <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-info, #0043ce)" }}>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                    Proposta Inicial Total
+                  </div>
+                  <div style={{ fontSize: "1.45rem", fontWeight: 700, marginTop: "0.25rem" }}>
+                    {formatarMoedaBrl(consolidadoCalculadora.propostaTotalGeral)}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                    Valor de abertura cadastrado no edital
+                  </div>
+                </Tile>
+
+                <Tile style={{ padding: "1rem", borderLeft: "4px solid #007d79" }}>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                    Parâmetros de Disparo
+                  </div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 700, marginTop: "0.35rem", color: "#007d79" }}>
+                    {tempoRespostaSegundos}s Resposta • {segundosFinaisSniper}s Sniper
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                    Cadência anti-detecção randômica
+                  </div>
+                </Tile>
+              </div>
+
+              {/* Barra de Regra em Massa */}
+              <Tile
+                style={{
+                  padding: "1rem 1.25rem",
+                  marginBottom: "1.5rem",
+                  backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                  borderLeft: "4px solid #0f62fe",
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
+                  ⚡ Aplicar Regras de Disputa em Massa (Para Todos os {regrasDisputaItens.length} Itens)
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: "0.75rem",
+                    alignItems: "flex-end",
+                  }}
                 >
-                  Abrir Central Global de Disputas
-                </Button>
+                  <div>
+                    <Select
+                      id="select-massa-tipo-decremento"
+                      labelText="Regra de Decremento"
+                      value={massaTipoDecremento}
+                      onChange={(e) => setMassaTipoDecremento(e.target.value as TipoDecremento)}
+                    >
+                      <SelectItem value="CENTAVOS_1" text="Cobrir por R$ 0,01 (Mínimo)" />
+                      <SelectItem value="FIXO_REAIS" text="Valor Fixo em Reais (R$)" />
+                      <SelectItem value="PERCENTUAL" text="Percentual sobre o menor lance (%)" />
+                    </Select>
+                  </div>
+
+                  <div>
+                    <TextInput
+                      id="input-massa-valor-decremento"
+                      labelText="Valor do Decremento"
+                      placeholder={massaTipoDecremento === "CENTAVOS_1" ? "0,01" : massaTipoDecremento === "FIXO_REAIS" ? "10,00" : "0,5%"}
+                      disabled={massaTipoDecremento === "CENTAVOS_1"}
+                      value={massaTipoDecremento === "CENTAVOS_1" ? "0,01" : massaValorDecremento}
+                      onChange={(e) => setMassaValorDecremento(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <Select
+                      id="select-massa-tatica"
+                      labelText="Tática de Disparo"
+                      value={massaTatica}
+                      onChange={(e) => setMassaTatica(e.target.value as TaticaDisputa)}
+                    >
+                      <SelectItem value="IMEDIATO" text="Imediato (Cobrir ao perder 1º lugar)" />
+                      <SelectItem value="SNIPER" text="Sniper (Segundos finais da rodada)" />
+                      <SelectItem value="MONITORAR" text="Apenas Monitorar (Sem disparos)" />
+                    </Select>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <Button kind="tertiary" size="md" onClick={aplicarRegraEmMassa}>
+                      Aplicar a Todos
+                    </Button>
+                  </div>
+                </div>
+              </Tile>
+
+              {/* Tabela de Grade Multi-Item */}
+              <div style={{ marginBottom: "1.5rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "1rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <h5 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>
+                    📋 Grade de Itens da Disputa ({regrasDisputaItens.length})
+                  </h5>
+                  <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                    Piso Seguro Travado 🔒 puxado em tempo real da Calculadora (Aba 5)
+                  </div>
+                </div>
+
+                <div style={{ overflowX: "auto" }}>
+                  <Table size="lg">
+                    <TableHead>
+                      <TableRow>
+                        <TableHeader style={{ width: "90px" }}>Robô</TableHeader>
+                        <TableHeader style={{ width: "70px" }}>Item</TableHeader>
+                        <TableHeader>Descrição do Objeto</TableHeader>
+                        <TableHeader>Qtd / Un</TableHeader>
+                        <TableHeader>Piso Seguro 🔒</TableHeader>
+                        <TableHeader>Proposta Inicial</TableHeader>
+                        <TableHeader style={{ minWidth: "210px" }}>Regra de Decremento</TableHeader>
+                        <TableHeader style={{ minWidth: "170px" }}>Tática</TableHeader>
+                        <TableHeader>Status</TableHeader>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {regrasDisputaItens.map((item, idx) => (
+                        <TableRow
+                          key={item.itemId || idx}
+                          style={{
+                            opacity: item.ativoNoRobo ? 1 : 0.5,
+                            backgroundColor: item.ativoNoRobo ? "inherit" : "var(--cds-layer-accent, #fbfbfb)",
+                          }}
+                        >
+                          {/* Toggle Robô Ativo */}
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              id={`check-robo-item-${item.itemId}`}
+                              aria-label={`Ativar robô no item ${item.numeroItem}`}
+                              checked={item.ativoNoRobo}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setRegrasDisputaItens((prev) =>
+                                  prev.map((r) =>
+                                    r.itemId === item.itemId ? { ...r, ativoNoRobo: checked } : r,
+                                  ),
+                                );
+                              }}
+                              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                            />
+                          </TableCell>
+
+                          {/* Número Item */}
+                          <TableCell>
+                            <strong>#{item.numeroItem}</strong>
+                          </TableCell>
+
+                          {/* Descrição */}
+                          <TableCell style={{ maxWidth: "260px" }}>
+                            <div
+                              style={{
+                                fontSize: "0.84rem",
+                                fontWeight: 500,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {item.descricao}
+                            </div>
+                          </TableCell>
+
+                          {/* Quantidade e Unidade */}
+                          <TableCell>
+                            <span style={{ fontSize: "0.85rem" }}>
+                              {item.quantidade} {item.unidade}
+                            </span>
+                          </TableCell>
+
+                          {/* Piso Seguro Travado */}
+                          <TableCell>
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                                fontWeight: 700,
+                                color: "var(--cds-support-success, #24a148)",
+                                backgroundColor: "var(--cds-layer-02, #f4f4f4)",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "3px",
+                                border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                              }}
+                              title="Piso mínimo seguro calculado na Aba 5 (Calculadora). O robô é bloqueado automaticamente caso os lances atinjam esse valor."
+                            >
+                              <Locked size={14} />
+                              {formatarMoedaBrl(item.pisoUnitarioSeguro)}
+                            </div>
+                          </TableCell>
+
+                          {/* Proposta Inicial */}
+                          <TableCell>
+                            <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                              {formatarMoedaBrl(item.propostaUnitaria)}
+                            </span>
+                          </TableCell>
+
+                          {/* Regra de Decremento */}
+                          <TableCell>
+                            <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                              <select
+                                value={item.tipoDecremento}
+                                onChange={(e) => {
+                                  const t = e.target.value as TipoDecremento;
+                                  setRegrasDisputaItens((prev) =>
+                                    prev.map((r) =>
+                                      r.itemId === item.itemId
+                                        ? {
+                                            ...r,
+                                            tipoDecremento: t,
+                                            valorDecremento: t === "CENTAVOS_1" ? 0.01 : r.valorDecremento || 1.0,
+                                          }
+                                        : r,
+                                    ),
+                                  );
+                                }}
+                                style={{
+                                  fontSize: "0.78rem",
+                                  padding: "0.25rem 0.4rem",
+                                  borderRadius: "3px",
+                                  border: "1px solid var(--cds-border-subtle, #8d8d8d)",
+                                  backgroundColor: "var(--cds-field-01, #ffffff)",
+                                }}
+                              >
+                                <option value="CENTAVOS_1">R$ 0,01</option>
+                                <option value="FIXO_REAIS">Fixo (R$)</option>
+                                <option value="PERCENTUAL">% Desc</option>
+                              </select>
+
+                              {item.tipoDecremento !== "CENTAVOS_1" && (
+                                <input
+                                  type="text"
+                                  value={item.valorDecremento}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setRegrasDisputaItens((prev) =>
+                                      prev.map((r) =>
+                                        r.itemId === item.itemId ? { ...r, valorDecremento: val } : r,
+                                      ),
+                                    );
+                                  }}
+                                  style={{
+                                    width: "65px",
+                                    fontSize: "0.78rem",
+                                    padding: "0.25rem 0.4rem",
+                                    borderRadius: "3px",
+                                    border: "1px solid var(--cds-border-subtle, #8d8d8d)",
+                                    backgroundColor: "var(--cds-field-01, #ffffff)",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </TableCell>
+
+                          {/* Tática de Disparo */}
+                          <TableCell>
+                            <select
+                              value={item.tatica}
+                              onChange={(e) => {
+                                const t = e.target.value as TaticaDisputa;
+                                setRegrasDisputaItens((prev) =>
+                                  prev.map((r) => (r.itemId === item.itemId ? { ...r, tatica: t } : r)),
+                                );
+                              }}
+                              style={{
+                                fontSize: "0.78rem",
+                                padding: "0.25rem 0.4rem",
+                                borderRadius: "3px",
+                                border: "1px solid var(--cds-border-subtle, #8d8d8d)",
+                                backgroundColor: "var(--cds-field-01, #ffffff)",
+                              }}
+                            >
+                              <option value="IMEDIATO">Imediato</option>
+                              <option value="SNIPER">Sniper</option>
+                              <option value="MONITORAR">Monitorar</option>
+                            </select>
+                          </TableCell>
+
+                          {/* Status */}
+                          <TableCell>
+                            <Tag
+                              type={
+                                item.statusItem === "EM_DISPUTA"
+                                  ? "green"
+                                  : item.statusItem === "PISO_ATINGIDO"
+                                  ? "red"
+                                  : item.statusItem === "VENCEDOR"
+                                  ? "teal"
+                                  : item.statusItem === "PAUSADO"
+                                  ? "warm-gray"
+                                  : "cool-gray"
+                              }
+                              size="sm"
+                            >
+                              {item.statusItem === "PISO_ATINGIDO"
+                                ? "🛑 Piso Atingido"
+                                : item.statusItem === "EM_DISPUTA"
+                                ? "● Em Disputa"
+                                : item.statusItem === "VENCEDOR"
+                                ? "🏆 Vencedor"
+                                : item.statusItem === "PAUSADO"
+                                ? "Pausado"
+                                : "Pronto"}
+                            </Tag>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Botões de Ação da Aba Disputa */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  marginBottom: "1.5rem",
+                  paddingTop: "0.5rem",
+                }}
+              >
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <Button
+                    kind="primary"
+                    size="md"
+                    renderIcon={Save}
+                    disabled={salvandoDisputaCertame}
+                    onClick={handleSalvarConfiguracaoDisputa}
+                    data-testid="btn-salvar-disputa-rodape"
+                  >
+                    {salvandoDisputaCertame ? "Salvando..." : "Salvar Configuração de Disputa"}
+                  </Button>
+                  <Button
+                    kind="tertiary"
+                    size="md"
+                    renderIcon={Launch}
+                    onClick={() => router.push("/robo-de-lances")}
+                  >
+                    Abrir Central Global de Disputas
+                  </Button>
+                </div>
+
+                <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                  As alterações salvam o portal, regras e status de todos os itens em banco de dados.
+                </div>
               </div>
 
               {/* Homologação Final de Vitória */}
-              <div style={{ paddingTop: "1rem", borderTop: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
+              <div style={{ paddingTop: "1.25rem", borderTop: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
                 <h5 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem" }}>
                   🏆 Desfecho & Homologação de Vitória
                 </h5>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem", alignItems: "flex-end" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: "1rem",
+                    alignItems: "flex-end",
+                  }}
+                >
                   <div>
                     <TextInput
                       id="input-valor-homologado"

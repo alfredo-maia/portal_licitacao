@@ -57,6 +57,14 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
   const consolidado = consolidarCalculadoraProposta(itensRaw, configuracao);
   const cfg = consolidado.propostaConfig;
 
+  // Resolução resiliente do Objeto da Licitação (NUNCA fica em branco no Anexo I / Proposta)
+  const objetoResolvido = (
+    cfg.descricaoGlobal?.trim() ||
+    objetoLicitacao?.trim() ||
+    itensRaw?.[0]?.descricao?.trim() ||
+    "Fornecimento de materiais e/ou serviços especializados conforme especificações do Edital e seus anexos."
+  );
+
   const isReadequada = cfg.tipoTabelaProposta === "PROPOSTA_READEQUADA";
   const tituloDocumento = isReadequada
     ? "PROPOSTA COMERCIAL DE PREÇOS READEQUADA"
@@ -105,7 +113,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
     `AO ILUSTRÍSSIMO PREGOEIRO E EQUIPE DE CONTRATAÇÃO`,
     `Órgão: ${orgaoNome.toUpperCase()}`,
     `Processo / Edital: ${numeroEdital}`,
-    `Objeto: ${objetoLicitacao}`,
+    `Objeto: ${objetoResolvido}`,
     "--------------------------------------------------------------------------------",
     tituloDocumento,
     "",
@@ -116,7 +124,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
   if (cfg.modoEmissao === "VALOR_GLOBAL") {
     const rotulo = cfg.tipoAgrupamentoGlobal === "PRECO_GLOBAL" ? "Preço Global" : (cfg.tituloGlobalCustomizado || "Lote 01");
     linhasTexto.push(`AGRUPAMENTO: ${rotulo}`);
-    linhasTexto.push(`DESCRIÇÃO DO OBJETO: ${cfg.descricaoGlobal || objetoLicitacao}`);
+    linhasTexto.push(`DESCRIÇÃO DO OBJETO: ${objetoResolvido}`);
     linhasTexto.push(`VALOR TOTAL PROPOSTO: ${valorTotalFormatado}`);
   } else {
     linhasTexto.push("PLANILHA DETALHADA DE ITENS:");
@@ -190,7 +198,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
           <span style="font-weight: 700; font-size: 1.1rem; color: #0f62fe;">${valorTotalFormatado}</span>
         </div>
         <p style="margin: 0; font-size: 0.85rem; color: #393939; line-height: 1.4;">
-          ${cfg.descricaoGlobal || objetoLicitacao}
+          ${objetoResolvido}
         </p>
       </div>
     `
@@ -246,7 +254,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
       <div style="border-left: 3.5px solid #0f62fe; background-color: #f4f7fb; padding: 10px 14px; margin-bottom: 18px; font-size: 0.825rem;">
         <div style="margin-bottom: 3px;"><strong>Órgão Licitante:</strong> ${orgaoNome.toUpperCase()}</div>
         <div style="margin-bottom: 3px;"><strong>Processo / Edital:</strong> ${numeroEdital}</div>
-        <div><strong>Objeto:</strong> ${objetoLicitacao}</div>
+        <div><strong>Objeto:</strong> ${objetoResolvido}</div>
       </div>
 
       <!-- Título da Proposta -->

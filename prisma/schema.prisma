@@ -732,6 +732,7 @@ model TenantPrecoSalvo {
   marcaReferencia     String?
   catmat              String?
   especificacaoResumo String?  @db.Text
+  unidadeReferencia   String   @default("UN")
   ufFiltro            String   @default("TODOS")
   modalidadeFiltro    String   @default("TODOS")
   periodoMeses        Int      @default(12)

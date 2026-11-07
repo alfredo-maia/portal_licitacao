@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CALCULADORA_TOOLTIPS,
   calcularItemProposta,
@@ -209,6 +209,103 @@ describe("Proposta Comercial — Objeto Preenchido no Anexo 1 e Valores Arremata
     });
     expect(pdf.pdfBuffer.length).toBeGreaterThan(500);
   });
+
+  it("deve garantir que o campo Objeto NUNCA venha em branco mesmo se objetoLicitacao for vazio ou omitido", async () => {
+    // Cenário 1: objetoLicitacao vazio, mas descricaoGlobal fornecida
+    const docComDescGlobal = gerarConteudoPropostaComercial({
+      orgaoNome: "SECRETARIA DE ESTADO DE INFRAESTRUTURA E MOBILIDADE (SIE)",
+      numeroEdital: "145",
+      objetoLicitacao: "",
+      itens: [
+        {
+          id: "it-1",
+          numeroItem: "01",
+          descricao: "Item com descrição própria",
+          marcaModelo: "Marca X",
+          unidade: "UN",
+          quantidade: 1,
+          custoUnitario: 100,
+          freteUnitario: 0,
+          outrosCustosUnitario: 0,
+          impostosPercentual: 12,
+          bdiPercentual: 25,
+          margemMinimaPercentual: 10,
+          margemAlvoPercentual: 20,
+        },
+      ],
+      configuracao: {
+        descricaoGlobal: "Objeto customizado pelo licitante na aba proposta",
+      },
+      empresa: {
+        razaoSocial: "TESTE NOVA 04",
+        cnpj: "91.205.461/0001-56",
+      },
+    });
+    expect(docComDescGlobal.conteudoHtml).toContain("Objeto customizado pelo licitante na aba proposta");
+    expect(docComDescGlobal.conteudoHtml).not.toContain("<strong>Objeto:</strong> </div>");
+
+    // Cenário 2: objetoLicitacao vazio e sem descricaoGlobal -> herda da descrição do 1º item
+    const docFallbackItem = gerarConteudoPropostaComercial({
+      orgaoNome: "SECRETARIA DE ESTADO DE INFRAESTRUTURA E MOBILIDADE (SIE)",
+      numeroEdital: "145",
+      objetoLicitacao: "",
+      itens: [
+        {
+          id: "it-1",
+          numeroItem: "01",
+          descricao: "Fornecimento e instalação de servidores rack 2U",
+          marcaModelo: "Dell PowerEdge",
+          unidade: "UN",
+          quantidade: 2,
+          custoUnitario: 10000,
+          freteUnitario: 0,
+          outrosCustosUnitario: 0,
+          impostosPercentual: 12,
+          bdiPercentual: 25,
+          margemMinimaPercentual: 10,
+          margemAlvoPercentual: 20,
+        },
+      ],
+      configuracao: {},
+      empresa: {
+        razaoSocial: "TESTE NOVA 04",
+        cnpj: "91.205.461/0001-56",
+      },
+    });
+    expect(docFallbackItem.conteudoHtml).toContain("Fornecimento e instalação de servidores rack 2U");
+    expect(docFallbackItem.conteudoHtml).not.toContain("<strong>Objeto:</strong> </div>");
+
+    // Cenário 3: Totalmente vazio -> fallback formal legal
+    const docFallbackLegal = gerarConteudoPropostaComercial({
+      orgaoNome: "SECRETARIA DE ESTADO DE INFRAESTRUTURA E MOBILIDADE (SIE)",
+      numeroEdital: "145",
+      objetoLicitacao: "",
+      itens: [],
+      configuracao: {},
+      empresa: {
+        razaoSocial: "TESTE NOVA 04",
+        cnpj: "91.205.461/0001-56",
+      },
+    });
+    expect(docFallbackLegal.conteudoHtml).toContain("Fornecimento de materiais e/ou serviços especializados");
+    expect(docFallbackLegal.conteudoHtml).not.toContain("<strong>Objeto:</strong> </div>");
+
+    // Valida também no PDF gerado
+    const pdfResolvido = await gerarPdfPropostaComercial({
+      orgaoNome: "SECRETARIA DE ESTADO DE INFRAESTRUTURA E MOBILIDADE (SIE)",
+      numeroEdital: "145",
+      objetoLicitacao: "",
+      itens: [],
+      configuracao: {
+        descricaoGlobal: "Objeto do PDF Garantido",
+      },
+      empresa: {
+        razaoSocial: "TESTE NOVA 04",
+        cnpj: "91.205.461/0001-56",
+      },
+    });
+    expect(pdfResolvido.pdfBuffer.length).toBeGreaterThan(500);
+  });
 });
 
 describe("Inteligência de Preços — Estatísticas Saneadas e Base Multi-Tenant de Itens Salvos", () => {
@@ -380,8 +477,57 @@ describe("Inteligência de Preços — Estatísticas Saneadas e Base Multi-Tenan
   });
 });
 
-describe("Página /inteligencia-precos — Abas, Faixa Competitiva e Modais de Detalhes", () => {
-  it("deve renderizar as abas, a Faixa de Lance Competitivo Sugerida e abrir o modal de detalhes ao clicar na linha", () => {
+describe("Página /inteligencia-precos — Estado Inicial Limpo, Pesquisa e Faixa Competitiva", () => {
+  it("deve renderizar com estado inicial 100% limpo e após busca exibir resultados, métricas e modal de equiparação", async () => {
+    // Mock do fetch para consulta de preços e itens salvos
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/inteligencia-precos/salvos")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, itens: [] }),
+        });
+      }
+      if (url.includes("/api/inteligencia-precos/busca")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ok: true,
+            fontePrincipal: "PNCP_OFICIAL",
+            itens: [
+              {
+                id: "hom-1",
+                catmat: "452109",
+                itemNumero: 1,
+                itemDescricao: "Pão Francês Tradicional 50g crocante",
+                marca: "Padaria Modelo",
+                modelo: "50g",
+                unidade: "UN",
+                unidadeOriginalAta: "UNIDADE",
+                quantidade: 1000,
+                orgaoNome: "Prefeitura Municipal de Goiânia",
+                orgaoCnpj: "01.234.567/0001-89",
+                uf: "GO",
+                municipio: "Goiânia",
+                modalidade: "Pregão Eletrônico",
+                numeroProcesso: "PE 010/2026",
+                dataHomologacao: "28/10/2026",
+                empresaVencedora: "PANIFICADORA GOIANA LTDA",
+                cnpjVencedor: "11.222.333/0001-44",
+                valorEstimadoUnitario: 1.0,
+                valorHomologadoUnitario: 0.8,
+                valorTotalHomologado: 800.0,
+                descontoPercentual: 20.0,
+                linkPncp: "https://pncp.gov.br",
+                fonte: "PNCP_OFICIAL",
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
     render(<InteligenciaPrecosPage />);
 
     expect(
@@ -390,24 +536,31 @@ describe("Página /inteligencia-precos — Abas, Faixa Competitiva e Modais de D
 
     expect(screen.getByRole("tab", { name: /Pesquisar no Banco Público/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Meus Itens Salvos/i })).toBeInTheDocument();
+
+    // 1. Estado Inicial Limpo: Nenhuma consulta feita
     expect(
-      screen.getByText(/Faixa de Lance Competitivo Sugerida para/i),
+      screen.getByText(/Pesquisa Oficial de Preços Homologados no PNCP/i),
     ).toBeInTheDocument();
 
-    // Clicar em uma linha abre o modal de detalhes da homologação com marca e modelo
-    const celulaOrgao = screen.getByText("Tribunal Regional Eleitoral de Goiás");
-    fireEvent.click(celulaOrgao);
+    // 2. Executa pesquisa digitando no input
+    const inputBusca = screen.getByLabelText(/Descrição do Item, Marca\/Configuração ou CATMAT/i);
+    fireEvent.change(inputBusca, { target: { value: "Pão Francês" } });
 
-    expect(
-      screen.getByText(/Especificação Técnica Completa do Item/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Marca: Dell/i)).toBeInTheDocument();
+    const btnPesquisar = screen.getByRole("button", { name: /Pesquisar/i });
+    fireEvent.click(btnPesquisar);
 
-    // Botão de Salvar Item abre o modal de salvamento
-    const btnSalvar = screen.getByRole("button", { name: /Salvar Item na Minha Base/i });
-    fireEvent.click(btnSalvar);
-    expect(
-      screen.getByText(/Salvar Item na Base de Inteligência de Preços/i),
-    ).toBeInTheDocument();
+    // Aguarda carregar os resultados
+    await screen.findByText(/Faixa de Lance Competitivo Sugerida para/i);
+
+    expect(screen.getByText("Prefeitura Municipal de Goiânia")).toBeInTheDocument();
+    expect(screen.getByText("PANIFICADORA GOIANA LTDA")).toBeInTheDocument();
+
+    // Verifica que o botão Equiparar está presente
+    const btnEquiparar = screen.getByRole("button", { name: /Equiparar/i });
+    expect(btnEquiparar).toBeInTheDocument();
+    fireEvent.click(btnEquiparar);
+
+    // Modal de equiparação abre
+    expect(screen.getByText(/⚖️ Equiparar Unidade e Valor do Item/i)).toBeInTheDocument();
   });
 });
