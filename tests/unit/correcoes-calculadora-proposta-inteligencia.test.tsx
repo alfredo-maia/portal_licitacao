@@ -22,6 +22,7 @@ import {
   salvarItemPrecoTenant,
 } from "@/server/services/inteligencia-precos.service";
 import InteligenciaPrecosPage from "@/app/inteligencia-precos/page";
+import { CampoComHoverTooltip } from "@/app/oportunidades/[id]/page";
 
 describe("Calculadora — Tooltips Explicativos (BDI com Energia, Água e Aluguel) e Validações", () => {
   const itemBase: ItemCalculadoraInput = {
@@ -98,6 +99,46 @@ describe("Calculadora — Tooltips Explicativos (BDI com Energia, Água e Alugue
       margemAlvoPercentual: 46,
     });
     expect(somaInvalida.alertaSomaPercentualInvalida).toBe(true);
+  });
+
+  it("deve exibir o tooltip APENAS ao passar o mouse sobre o texto/label e NÃO sobre o campo de digitação", () => {
+    render(
+      <div>
+        <label htmlFor="input-bdi">
+          <CampoComHoverTooltip
+            tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual}
+            testId="tooltip-label-bdi"
+          >
+            BDI / Desp. Indiretas (%)
+          </CampoComHoverTooltip>
+        </label>
+        <input id="input-bdi" data-testid="input-digitacao-bdi" defaultValue="25" />
+      </div>
+    );
+
+    const labelTexto = screen.getByTestId("tooltip-label-bdi");
+    const inputDigitacao = screen.getByTestId("input-digitacao-bdi");
+
+    // Inicialmente sem tooltip visível
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Passar o mouse ou focar no campo que iremos digitar NÃO deve exibir o tooltip
+    fireEvent.mouseEnter(inputDigitacao);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.focus(inputDigitacao);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Passar o mouse sobre o texto do campo deve exibir a explicação + exemplo (com aluguel, luz, água)
+    fireEvent.mouseEnter(labelTexto);
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip.textContent?.toLowerCase()).toContain("aluguel");
+    expect(tooltip.textContent?.toLowerCase()).toContain("energia elétrica");
+    expect(tooltip.textContent?.toLowerCase()).toContain("água");
+
+    // Retirar o mouse do texto deve fechar o tooltip
+    fireEvent.mouseLeave(labelTexto);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });
 

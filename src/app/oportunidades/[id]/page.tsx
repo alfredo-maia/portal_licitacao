@@ -250,49 +250,60 @@ function obterObjetoCertame(opp?: Partial<OportunidadeDetalhe> | null): string {
   return (opp.objeto || opp.resumo || opp.miniResumo || "").trim();
 }
 
-interface CampoComHoverTooltipProps {
+export interface CampoComHoverTooltipProps {
   tooltipText: string;
   children: React.ReactNode;
   testId?: string;
 }
 
-function CampoComHoverTooltip({ tooltipText, children, testId }: CampoComHoverTooltipProps) {
+export function CampoComHoverTooltip({ tooltipText, children, testId }: CampoComHoverTooltipProps) {
   const [visivel, setVisivel] = React.useState(false);
 
   return (
-    <div
-      style={{ position: "relative" }}
+    <span
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.25rem",
+        cursor: "help",
+      }}
       onMouseEnter={() => setVisivel(true)}
       onMouseLeave={() => setVisivel(false)}
-      onFocus={() => setVisivel(true)}
-      onBlur={() => setVisivel(false)}
       data-testid={testId}
     >
+      <span>{children}</span>
+      <Information
+        size={14}
+        style={{ color: "var(--cds-icon-secondary, #525252)", flexShrink: 0 }}
+      />
       {visivel && (
-        <div
+        <span
           role="tooltip"
           style={{
             position: "absolute",
-            bottom: "calc(100% + 6px)",
+            bottom: "calc(100% + 4px)",
             left: 0,
-            zIndex: 9999,
+            zIndex: 99999,
             minWidth: "240px",
-            maxWidth: "320px",
+            maxWidth: "340px",
             backgroundColor: "#161616",
             color: "#ffffff",
             padding: "0.65rem 0.8rem",
             borderRadius: "4px",
             fontSize: "0.75rem",
             lineHeight: 1.45,
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.28)",
+            boxShadow: "0 4px 14px rgba(0, 0, 0, 0.35)",
             pointerEvents: "none",
+            whiteSpace: "normal",
+            fontWeight: 400,
+            textAlign: "left",
           }}
         >
           {tooltipText}
-        </div>
+        </span>
       )}
-      {children}
-    </div>
+    </span>
   );
 }
 
@@ -2917,65 +2928,73 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: "0.75rem" }}>
-                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual} testId="tooltip-param-impostos">
-                    <NumericCalcInput
-                      id="param-impostos"
-                      labelText={renderLabelTooltipIcon("Impostos s/ Fat. (%)")}
-                      value={parametrosPadraoCalc.impostosPercentual}
-                      max={80}
-                      onChangeValue={(v) =>
-                        setParametrosPadraoCalc({
-                          ...parametrosPadraoCalc,
-                          impostosPercentual: v ?? 0,
-                        })
-                      }
-                    />
-                  </CampoComHoverTooltip>
+                  <NumericCalcInput
+                    id="param-impostos"
+                    labelText={
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual} testId="tooltip-param-impostos">
+                        Impostos s/ Fat. (%)
+                      </CampoComHoverTooltip>
+                    }
+                    value={parametrosPadraoCalc.impostosPercentual}
+                    max={80}
+                    onChangeValue={(v) =>
+                      setParametrosPadraoCalc({
+                        ...parametrosPadraoCalc,
+                        impostosPercentual: v ?? 0,
+                      })
+                    }
+                  />
 
-                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId="tooltip-param-bdi">
-                    <NumericCalcInput
-                      id="param-bdi"
-                      labelText={renderLabelTooltipIcon("BDI / Desp. Indiretas (%)")}
-                      value={parametrosPadraoCalc.bdiPercentual}
-                      max={100}
-                      onChangeValue={(v) =>
-                        setParametrosPadraoCalc({
-                          ...parametrosPadraoCalc,
-                          bdiPercentual: v ?? 0,
-                        })
-                      }
-                    />
-                  </CampoComHoverTooltip>
+                  <NumericCalcInput
+                    id="param-bdi"
+                    labelText={
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId="tooltip-param-bdi">
+                        BDI / Desp. Indiretas (%)
+                      </CampoComHoverTooltip>
+                    }
+                    value={parametrosPadraoCalc.bdiPercentual}
+                    max={100}
+                    onChangeValue={(v) =>
+                      setParametrosPadraoCalc({
+                        ...parametrosPadraoCalc,
+                        bdiPercentual: v ?? 0,
+                      })
+                    }
+                  />
 
-                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual} testId="tooltip-param-mmin">
-                    <NumericCalcInput
-                      id="param-margem-min"
-                      labelText={renderLabelTooltipIcon("Margem Mínima Piso (%)")}
-                      value={parametrosPadraoCalc.margemMinimaPercentual}
-                      max={80}
-                      onChangeValue={(v) =>
-                        setParametrosPadraoCalc({
-                          ...parametrosPadraoCalc,
-                          margemMinimaPercentual: v ?? 0,
-                        })
-                      }
-                    />
-                  </CampoComHoverTooltip>
+                  <NumericCalcInput
+                    id="param-margem-min"
+                    labelText={
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual} testId="tooltip-param-mmin">
+                        Margem Mínima Piso (%)
+                      </CampoComHoverTooltip>
+                    }
+                    value={parametrosPadraoCalc.margemMinimaPercentual}
+                    max={80}
+                    onChangeValue={(v) =>
+                      setParametrosPadraoCalc({
+                        ...parametrosPadraoCalc,
+                        margemMinimaPercentual: v ?? 0,
+                      })
+                    }
+                  />
 
-                  <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual} testId="tooltip-param-malvo">
-                    <NumericCalcInput
-                      id="param-margem-alvo"
-                      labelText={renderLabelTooltipIcon("Margem Alvo Proposta (%)")}
-                      value={parametrosPadraoCalc.margemAlvoPercentual}
-                      max={90}
-                      onChangeValue={(v) =>
-                        setParametrosPadraoCalc({
-                          ...parametrosPadraoCalc,
-                          margemAlvoPercentual: v ?? 0,
-                        })
-                      }
-                    />
-                  </CampoComHoverTooltip>
+                  <NumericCalcInput
+                    id="param-margem-alvo"
+                    labelText={
+                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual} testId="tooltip-param-malvo">
+                        Margem Alvo Proposta (%)
+                      </CampoComHoverTooltip>
+                    }
+                    value={parametrosPadraoCalc.margemAlvoPercentual}
+                    max={90}
+                    onChangeValue={(v) =>
+                      setParametrosPadraoCalc({
+                        ...parametrosPadraoCalc,
+                        margemAlvoPercentual: v ?? 0,
+                      })
+                    }
+                  />
                 </div>
 
                 {aliquotasPadraoDivergemDosItens && (
@@ -3036,141 +3055,167 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
                     {/* Campos de Entrada do Item */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.numeroItem}>
-                        <div style={{ minWidth: "100px" }}>
-                          <TextInput
-                            id={`item-num-${idx}`}
-                            labelText={renderLabelTooltipIcon("Nº Item/Lote")}
-                            value={it.numeroItem}
-                            onChange={(e) => handleAtualizarItemCalc(idx, { numeroItem: e.target.value })}
-                          />
-                        </div>
-                      </CampoComHoverTooltip>
-                      <div style={{ gridColumn: "span 2", minWidth: "260px" }}>
-                        <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.descricao}>
-                          <TextInput
-                            id={`item-desc-${idx}`}
-                            labelText={renderLabelTooltipIcon("Descrição / Especificação do Item")}
-                            placeholder="Ex: Fornecimento de Notebook Corporativo i7..."
-                            value={it.descricao}
-                            onChange={(e) => handleAtualizarItemCalc(idx, { descricao: e.target.value })}
-                          />
-                        </CampoComHoverTooltip>
-                      </div>
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.marcaModelo}>
+                      <div style={{ minWidth: "100px" }}>
                         <TextInput
-                          id={`item-marca-${idx}`}
-                          labelText={renderLabelTooltipIcon("Marca / Modelo (Opcional)")}
-                          placeholder="Ex: Dell Latitude 3440"
-                          value={it.marcaModelo || ""}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { marcaModelo: e.target.value })}
+                          id={`item-num-${idx}`}
+                          labelText={
+                            <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.numeroItem}>
+                              Nº Item/Lote
+                            </CampoComHoverTooltip>
+                          }
+                          value={it.numeroItem}
+                          onChange={(e) => handleAtualizarItemCalc(idx, { numeroItem: e.target.value })}
                         />
-                      </CampoComHoverTooltip>
+                      </div>
+                      <div style={{ gridColumn: "span 2", minWidth: "260px" }}>
+                        <TextInput
+                          id={`item-desc-${idx}`}
+                          labelText={
+                            <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.descricao}>
+                              Descrição / Especificação do Item
+                            </CampoComHoverTooltip>
+                          }
+                          placeholder="Ex: Fornecimento de Notebook Corporativo i7..."
+                          value={it.descricao}
+                          onChange={(e) => handleAtualizarItemCalc(idx, { descricao: e.target.value })}
+                        />
+                      </div>
+                      <TextInput
+                        id={`item-marca-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.marcaModelo}>
+                            Marca / Modelo (Opcional)
+                          </CampoComHoverTooltip>
+                        }
+                        placeholder="Ex: Dell Latitude 3440"
+                        value={it.marcaModelo || ""}
+                        onChange={(e) => handleAtualizarItemCalc(idx, { marcaModelo: e.target.value })}
+                      />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.unidade}>
-                        <Select
-                          id={`item-unid-${idx}`}
-                          labelText={renderLabelTooltipIcon("Unidade") as any}
-                          value={it.unidade}
-                          onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
-                        >
-                          {UNIDADES_ITEM_OPCOES.map((u) => (
-                            <SelectItem key={u} value={u} text={u} />
-                          ))}
-                        </Select>
-                      </CampoComHoverTooltip>
+                      <Select
+                        id={`item-unid-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.unidade}>
+                            Unidade
+                          </CampoComHoverTooltip> as any
+                        }
+                        value={it.unidade}
+                        onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
+                      >
+                        {UNIDADES_ITEM_OPCOES.map((u) => (
+                          <SelectItem key={u} value={u} text={u} />
+                        ))}
+                      </Select>
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.quantidade}>
-                        <NumericCalcInput
-                          id={`item-qtd-${idx}`}
-                          labelText={renderLabelTooltipIcon("Quantidade")}
-                          value={it.quantidade}
-                          min={1}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { quantidade: Math.max(1, v ?? 1) })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-qtd-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.quantidade}>
+                            Quantidade
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.quantidade}
+                        min={1}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { quantidade: Math.max(1, v ?? 1) })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.valorEstimadoUnitario}>
-                        <NumericCalcInput
-                          id={`item-vest-${idx}`}
-                          labelText={renderLabelTooltipIcon("Vlr. Estimado Edital (R$)")}
-                          placeholder="Opcional"
-                          allowEmpty
-                          value={it.valorEstimadoUnitario}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { valorEstimadoUnitario: v })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-vest-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.valorEstimadoUnitario}>
+                            Vlr. Estimado Edital (R$)
+                          </CampoComHoverTooltip>
+                        }
+                        placeholder="Opcional"
+                        allowEmpty
+                        value={it.valorEstimadoUnitario}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { valorEstimadoUnitario: v })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.custoUnitario}>
-                        <NumericCalcInput
-                          id={`item-custo-${idx}`}
-                          labelText={renderLabelTooltipIcon("Custo Direto Unit. (R$)")}
-                          value={it.custoUnitario}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { custoUnitario: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-custo-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.custoUnitario}>
+                            Custo Direto Unit. (R$)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.custoUnitario}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { custoUnitario: v ?? 0 })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.freteUnitario}>
-                        <NumericCalcInput
-                          id={`item-frete-${idx}`}
-                          labelText={renderLabelTooltipIcon("Frete Unit. (R$)")}
-                          value={it.freteUnitario}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { freteUnitario: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-frete-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.freteUnitario}>
+                            Frete Unit. (R$)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.freteUnitario}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { freteUnitario: v ?? 0 })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.outrosCustosUnitario}>
-                        <NumericCalcInput
-                          id={`item-outros-${idx}`}
-                          labelText={renderLabelTooltipIcon("Outros Custos (R$)")}
-                          value={it.outrosCustosUnitario}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { outrosCustosUnitario: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-outros-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.outrosCustosUnitario}>
+                            Outros Custos (R$)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.outrosCustosUnitario}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { outrosCustosUnitario: v ?? 0 })}
+                      />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual}>
-                        <NumericCalcInput
-                          id={`item-imp-${idx}`}
-                          labelText={renderLabelTooltipIcon("Impostos (%)")}
-                          value={it.impostosPercentual}
-                          max={80}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { impostosPercentual: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-imp-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.impostosPercentual}>
+                            Impostos (%)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.impostosPercentual}
+                        max={80}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { impostosPercentual: v ?? 0 })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId={`tooltip-item-bdi-${idx}`}>
-                        <NumericCalcInput
-                          id={`item-bdi-${idx}`}
-                          labelText={renderLabelTooltipIcon("BDI / Desp. Indiretas (%)")}
-                          value={it.bdiPercentual}
-                          max={100}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { bdiPercentual: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-bdi-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.bdiPercentual} testId={`tooltip-item-bdi-${idx}`}>
+                            BDI / Desp. Indiretas (%)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.bdiPercentual}
+                        max={100}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { bdiPercentual: v ?? 0 })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual}>
-                        <NumericCalcInput
-                          id={`item-mmin-${idx}`}
-                          labelText={renderLabelTooltipIcon("Margem Mín. (%)")}
-                          value={it.margemMinimaPercentual}
-                          max={80}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemMinimaPercentual: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-mmin-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemMinimaPercentual}>
+                            Margem Mín. (%)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.margemMinimaPercentual}
+                        max={80}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemMinimaPercentual: v ?? 0 })}
+                      />
 
-                      <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual}>
-                        <NumericCalcInput
-                          id={`item-malvo-${idx}`}
-                          labelText={renderLabelTooltipIcon("Margem Alvo (%)")}
-                          value={it.margemAlvoPercentual}
-                          max={90}
-                          onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemAlvoPercentual: v ?? 0 })}
-                        />
-                      </CampoComHoverTooltip>
+                      <NumericCalcInput
+                        id={`item-malvo-${idx}`}
+                        labelText={
+                          <CampoComHoverTooltip tooltipText={CALCULADORA_TOOLTIPS.margemAlvoPercentual}>
+                            Margem Alvo (%)
+                          </CampoComHoverTooltip>
+                        }
+                        value={it.margemAlvoPercentual}
+                        max={90}
+                        onChangeValue={(v) => handleAtualizarItemCalc(idx, { margemAlvoPercentual: v ?? 0 })}
+                      />
                     </div>
 
                     {/* Resumo Instantâneo Calculado da Linha */}
