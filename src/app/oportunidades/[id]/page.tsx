@@ -67,7 +67,9 @@ import {
   Information,
   Locked,
   Renew,
+  Flash,
 } from "@carbon/icons-react";
+import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
@@ -646,6 +648,7 @@ function OportunidadesDetalheContent({
   const [regrasDisputaItens, setRegrasDisputaItens] = React.useState<DisputaItemRegra[]>([]);
   const [salvandoDisputaCertame, setSalvandoDisputaCertame] = React.useState(false);
   const [disputaFeedback, setDisputaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
+  const [modalSimuladorDisputaAberto, setModalSimuladorDisputaAberto] = React.useState(false);
 
   // Estados da barra de aplicação de regra em massa
   const [massaTipoDecremento, setMassaTipoDecremento] = React.useState<TipoDecremento>("CENTAVOS_1");
@@ -4754,6 +4757,15 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   </Tag>
                   <Button
                     size="sm"
+                    kind="secondary"
+                    renderIcon={Flash}
+                    onClick={() => setModalSimuladorDisputaAberto(true)}
+                    data-testid="btn-simular-disputa-certame"
+                  >
+                    🎮 Simular Disputa Deste Certame
+                  </Button>
+                  <Button
+                    size="sm"
                     kind="primary"
                     renderIcon={Save}
                     disabled={salvandoDisputaCertame}
@@ -6028,6 +6040,26 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             <InlineLoading status="active" description={loadingModalMsg} />
           </div>
         </Modal>
+      )}
+
+      {/* Modal da Sala Simulada de Pregão (Auto-Bidder Sandbox) */}
+      {modalSimuladorDisputaAberto && (
+        <SalaSimuladaModal
+          open={modalSimuladorDisputaAberto}
+          onRequestClose={() => setModalSimuladorDisputaAberto(false)}
+          licitacaoInicial={
+            oportunidade
+              ? {
+                  id: oportunidade.id,
+                  numeroEdital: oportunidade.numeroEdital,
+                  orgao: oportunidade.orgaoNome,
+                  portal: portalDisputa,
+                  regrasItens: regrasDisputaItens,
+                }
+              : null
+          }
+          planoTenant={(cotaIA?.plano as any) || "PRO"}
+        />
       )}
     </ModulePageShell>
   );

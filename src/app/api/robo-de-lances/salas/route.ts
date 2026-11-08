@@ -5,6 +5,7 @@ import { authOptions } from "@/server/auth";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { listOportunidades, atualizarKanbanStatus } from "@/server/services/oportunidades.service";
 import { disputaConfigSchema } from "@/server/schemas/proposta-calculadora.schema";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -84,9 +85,14 @@ export async function GET(req: Request) {
         };
       });
 
+    const tenantRecord = await prisma.tenant
+      .findUnique({ where: { id: tenantId }, select: { plano: true } })
+      .catch(() => null);
+
     return NextResponse.json({
       ok: true,
       activeTenantId: tenantId,
+      plano: tenantRecord?.plano || "PRO",
       totalSalas: salas.length,
       salas,
     });

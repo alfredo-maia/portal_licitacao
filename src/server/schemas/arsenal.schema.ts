@@ -18,6 +18,7 @@ export const arsenalFeatureSchema = z.enum([
   "MINUTA_IMPUGNACAO_IA",
   "INTELIGENCIA_PRECOS",
   "RELATORIO_EXECUTIVO_MENSAL",
+  "ROBO_LANCES_SIMULADOR",
 ]);
 export type ArsenalFeature = z.infer<typeof arsenalFeatureSchema>;
 
@@ -30,6 +31,7 @@ export const ARSENAL_PLAN_MATRIX: Readonly<
   MINUTA_IMPUGNACAO_IA: ["ENTERPRISE"],
   INTELIGENCIA_PRECOS: ["ENTERPRISE"],
   RELATORIO_EXECUTIVO_MENSAL: ["ENTERPRISE"],
+  ROBO_LANCES_SIMULADOR: ["PRO", "ENTERPRISE"],
 } as const;
 
 export function canUseArsenalFeature(

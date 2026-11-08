@@ -25,8 +25,10 @@ import {
   Play,
   Settings,
   Renew,
+  Flash,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
 
 interface SalaDisputaTenant {
   id: string;
@@ -118,6 +120,11 @@ export default function RoboDeLancesPage() {
   const [tempoDisparo, setTempoDisparo] = useState("RANDOM_2S");
   const [preferenciaMe, setPreferenciaMe] = useState("ATIVO");
 
+  // Estado da Sala Simulada (Sandbox)
+  const [modalSimuladorAberto, setModalSimuladorAberto] = useState(false);
+  const [salaSimuladaAlvo, setSalaSimuladaAlvo] = useState<SalaDisputaTenant | null>(null);
+  const [planoTenant, setPlanoTenant] = useState<"BASICO" | "PRO" | "ENTERPRISE">("PRO");
+
   const carregarSalasDisputa = useCallback(async () => {
     setCarregandoSalas(true);
     try {
@@ -125,6 +132,9 @@ export default function RoboDeLancesPage() {
       const data = await res.json();
       if (res.ok && data?.ok && Array.isArray(data.salas)) {
         setSalas(data.salas);
+        if (data.plano) {
+          setPlanoTenant(data.plano);
+        }
       }
     } catch {
       // Falha silenciosa em caso de offline
@@ -230,6 +240,18 @@ export default function RoboDeLancesPage() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <Button
+              size="sm"
+              kind="secondary"
+              renderIcon={Flash}
+              onClick={() => {
+                setSalaSimuladaAlvo(null);
+                setModalSimuladorAberto(true);
+              }}
+              data-testid="btn-abrir-sala-simulada"
+            >
+              🎮 Simular Disputa (Sandbox)
+            </Button>
             <Button
               size="sm"
               kind="ghost"
@@ -450,6 +472,17 @@ export default function RoboDeLancesPage() {
                       <TableCell>
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <Button
+                            kind="ghost"
+                            size="sm"
+                            hasIconOnly
+                            renderIcon={Flash}
+                            iconDescription="Simular disputa deste certame (Sandbox)"
+                            onClick={() => {
+                              setSalaSimuladaAlvo(sala);
+                              setModalSimuladorAberto(true);
+                            }}
+                          />
+                          <Button
                             kind={sala.pausaEmergencia ? "primary" : "ghost"}
                             size="sm"
                             hasIconOnly
@@ -523,6 +556,25 @@ export default function RoboDeLancesPage() {
           </Grid>
         </Tile>
       </Tile>
+
+      {modalSimuladorAberto && (
+        <SalaSimuladaModal
+          open={modalSimuladorAberto}
+          onRequestClose={() => {
+            setModalSimuladorAberto(false);
+            setSalaSimuladaAlvo(null);
+          }}
+          licitacaoInicial={salaSimuladaAlvo}
+          planoTenant={planoTenant}
+          salasDisponiveis={salas.map((s) => ({
+            id: s.id,
+            numeroEdital: s.numeroEdital,
+            orgao: s.orgao,
+            portal: s.portal,
+            regrasItens: s.regrasItens || [],
+          }))}
+        />
+      )}
     </ModulePageShell>
   );
 }
