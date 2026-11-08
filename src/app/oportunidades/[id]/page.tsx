@@ -66,6 +66,7 @@ import {
   DocumentDownload,
   Information,
   Locked,
+  Renew,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
@@ -89,6 +90,12 @@ import {
   type TaticaDisputa,
 } from "@/server/schemas/proposta-calculadora.schema";
 import { gerarConteudoPropostaComercial } from "@/lib/proposta-comercial-template";
+import {
+  gerarConteudoPedidoCotacao,
+  type ConfigPedidoCotacao,
+  type ItemPedidoCotacao,
+} from "@/lib/pedido-cotacao-template";
+import type { ItemDisputaEdital } from "@/server/schemas/analise-ia.schema";
 
 const MOTIVOS_RECUSA_GENERICOS = [
   "Não se encaixa no perfil ou core business da empresa",
@@ -605,9 +612,33 @@ function OportunidadesDetalheContent({
   const [propostaFeedback, setPropostaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
   const [copiadoProposta, setCopiadoProposta] = React.useState(false);
 
-  // Disputa & Robô de Lances Multi-Item (Aba 7)
+  // Pedido de Cotação (RFQ para Fornecedores)
+  const [configCotacao, setConfigCotacao] = React.useState<ConfigPedidoCotacao>({
+    fornecedorNome: "",
+    contatoFornecedor: "",
+    emailFornecedor: "",
+    telefoneFornecedor: "",
+    prazoResposta: "Até 3 dias úteis",
+    modalidadeFrete: "CIF",
+    localEntregaCidade: "",
+    localEntregaUf: "",
+    condicoesPagamento: "Conforme faturamento / entrega",
+    prazoGarantia: "12 meses padrão de fábrica",
+    observacoes: "",
+    ocultarOrgaoEdital: true, // Sigilo Comercial ativado por padrão
+  });
+  const [itensSelecionadosCotacao, setItensSelecionadosCotacao] = React.useState<Record<string, boolean>>({});
+  const [modalVisualizarCotacaoAberto, setModalVisualizarCotacaoAberto] = React.useState(false);
+  const [gerandoPdfCotacao, setGerandoPdfCotacao] = React.useState(false);
+  const [copiadoCotacao, setCopiadoCotacao] = React.useState(false);
+  const [cotacaoFeedback, setCotacaoFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
+  const [consultandoItensCertame, setConsultandoItensCertame] = React.useState(false);
+
+  // Disputa & Robô de Lances Multi-Item
   const [portalDisputa, setPortalDisputa] = React.useState<string>("Compras.gov.br");
   const [identificadorSalaDisputa, setIdentificadorSalaDisputa] = React.useState<string>("");
+  const [modoDisputaEdital, setModoDisputaEdital] = React.useState<"ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO">("ABERTO");
+  const [intervaloMinimoLances, setIntervaloMinimoLances] = React.useState<string>("R$ 0,01");
   const [statusGeralDisputa, setStatusGeralDisputa] = React.useState<"CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA">("CONFIGURADA");
   const [pausaEmergenciaDisputa, setPausaEmergenciaDisputa] = React.useState<boolean>(false);
   const [tempoRespostaSegundos, setTempoRespostaSegundos] = React.useState<number>(3);
@@ -656,14 +687,16 @@ function OportunidadesDetalheContent({
       setActiveTab(2);
     } else if (abaParam === "analise-ia" || abaParam === "historico-ia") {
       setActiveTab(3);
+    } else if (abaParam === "cotacao" || abaParam === "pedido-cotacao") {
+      setActiveTab(4);
+    } else if (abaParam === "calculadora") {
+      setActiveTab(5);
+    } else if (abaParam === "proposta" || abaParam === "valor-proposta") {
+      setActiveTab(6);
+    } else if (abaParam === "disputa" || abaParam === "robo") {
+      setActiveTab(7);
     } else if (abaParam === "arquivos") {
       setActiveTab(1);
-    } else if (abaParam === "calculadora") {
-      setActiveTab(4);
-    } else if (abaParam === "proposta" || abaParam === "valor-proposta") {
-      setActiveTab(5);
-    } else if (abaParam === "disputa" || abaParam === "robo") {
-      setActiveTab(6);
     } else if (abaParam === "visao-geral") {
       setActiveTab(0);
     }
@@ -750,10 +783,27 @@ function OportunidadesDetalheContent({
           setPropostaSalvaSnapshot(null);
         }
 
+        if (opp.calculadoraDados.cotacaoConfig) {
+          setConfigCotacao((prev) => ({
+            ...prev,
+            ...opp.calculadoraDados.cotacaoConfig,
+            localEntregaCidade: opp.calculadoraDados.cotacaoConfig.localEntregaCidade || opp.municipio || opp.cidade || "",
+            localEntregaUf: opp.calculadoraDados.cotacaoConfig.localEntregaUf || opp.uf || "",
+          }));
+        } else {
+          setConfigCotacao((prev) => ({
+            ...prev,
+            localEntregaCidade: opp.municipio || opp.cidade || "",
+            localEntregaUf: opp.uf || "",
+          }));
+        }
+
         if (opp.calculadoraDados.disputaConfig) {
           const disp = opp.calculadoraDados.disputaConfig;
           if (disp.portal) setPortalDisputa(disp.portal);
           setIdentificadorSalaDisputa(disp.identificadorSala || opp.numeroEdital || "");
+          if (disp.modoDisputaEdital) setModoDisputaEdital(disp.modoDisputaEdital);
+          if (disp.intervaloMinimoLances) setIntervaloMinimoLances(disp.intervaloMinimoLances);
           if (disp.statusGeral) setStatusGeralDisputa(disp.statusGeral);
           setPausaEmergenciaDisputa(Boolean(disp.pausaEmergencia));
           if (disp.tempoRespostaSegundos) setTempoRespostaSegundos(disp.tempoRespostaSegundos);
@@ -967,9 +1017,12 @@ function OportunidadesDetalheContent({
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
+        cotacaoConfig: configCotacao,
         disputaConfig: {
           portal: portalDisputa,
           identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+          modoDisputaEdital,
+          intervaloMinimoLances,
           statusGeral: statusGeralDisputa,
           pausaEmergencia: pausaEmergenciaDisputa,
           tempoRespostaSegundos,
@@ -1020,9 +1073,12 @@ function OportunidadesDetalheContent({
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
+        cotacaoConfig: configCotacao,
         disputaConfig: {
           portal: portalDisputa,
           identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+          modoDisputaEdital,
+          intervaloMinimoLances,
           statusGeral: statusGeralDisputa,
           pausaEmergencia: pausaEmergenciaDisputa,
           tempoRespostaSegundos,
@@ -1132,6 +1188,8 @@ function OportunidadesDetalheContent({
       const configDisputa: DisputaConfig = {
         portal: portalDisputa,
         identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+        modoDisputaEdital,
+        intervaloMinimoLances,
         statusGeral: statusGeralDisputa,
         pausaEmergencia: pausaEmergenciaDisputa,
         tempoRespostaSegundos,
@@ -1144,6 +1202,7 @@ function OportunidadesDetalheContent({
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
+        cotacaoConfig: configCotacao,
         disputaConfig: configDisputa,
         atualizadoEm: new Date().toISOString(),
       };
@@ -1306,6 +1365,301 @@ function OportunidadesDetalheContent({
     const slug = (oportunidade?.numeroEdital || "edital").replace(/[^a-zA-Z0-9]/g, "_");
     a.download = `proposta_comercial_${slug}.txt`;
     a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Itens Selecionados para Cotação
+  const itensParaCotacao = React.useMemo<ItemPedidoCotacao[]>(() => {
+    return itensCalculadora
+      .filter((it, idx) => itensSelecionadosCotacao[String(it.numeroItem || idx + 1)] !== false)
+      .map((it, idx) => ({
+        numeroItem: it.numeroItem || idx + 1,
+        descricao: it.descricao,
+        quantidade: it.quantidade,
+        unidadeMedida: it.unidade,
+        marcaSugerida: it.marcaModelo || null,
+      }));
+  }, [itensCalculadora, itensSelecionadosCotacao]);
+
+  // Consulta e sincronização de todos os itens do certame (PNCP / IA)
+  const handleConsultarTodosItensCertame = React.useCallback(async () => {
+    if (!id) return;
+    setConsultandoItensCertame(true);
+    try {
+      const res = await fetch(`/api/oportunidades/${id}/itens-certame`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        if (data?.error === "PLANO_INSUFICIENTE") {
+          const msg = data.message || "A extração automática de itens é exclusiva dos planos Pro e Enterprise.";
+          setCalculadoraFeedback({ tipo: "error", msg });
+          setCotacaoFeedback({ tipo: "error", msg });
+          setDisputaFeedback({ tipo: "error", msg });
+        } else {
+          const msg = data?.message || "Ocorreu um erro interno no sistema ao processar esta solicitação automática para esta licitação. Por favor, entre em contato com o nosso suporte técnico.";
+          setCalculadoraFeedback({ tipo: "error", msg });
+          setCotacaoFeedback({ tipo: "error", msg });
+          setDisputaFeedback({ tipo: "error", msg });
+        }
+        return;
+      }
+
+      const novosItensExtraidos: ItemDisputaEdital[] = data.itens || [];
+      if (novosItensExtraidos.length === 0) {
+        setCotacaoFeedback({
+          tipo: "error",
+          msg: "Nenhum item foi encontrado para este certame.",
+        });
+        return;
+      }
+
+      // 1. Atualiza itensCalculadora preservando o que o usuário já editou se coincidir numeroItem
+      setItensCalculadora((prev) => {
+        const mapaPrev = new Map<string, ItemCalculadoraInput>();
+        for (const it of prev) {
+          mapaPrev.set(String(it.numeroItem).trim(), it);
+        }
+
+        return novosItensExtraidos.map((ext, idx) => {
+          const numStr = String(ext.numeroItem ?? idx + 1).padStart(2, "0");
+          const existente = mapaPrev.get(numStr) || mapaPrev.get(String(ext.numeroItem));
+
+          if (existente) {
+            return {
+              ...existente,
+              numeroItem: numStr,
+              descricao: existente.descricao || ext.descricao,
+              unidade: existente.unidade || ext.unidadeMedida || "UN",
+              quantidade: existente.quantidade || ext.quantidade || 1,
+              valorEstimadoUnitario: existente.valorEstimadoUnitario ?? ext.valorUnitarioEstimado ?? null,
+              marcaModelo: existente.marcaModelo || ext.marcaExigidaOuReferencia || null,
+            };
+          }
+
+          return {
+            id: `item_calc_${Date.now()}_${idx}`,
+            numeroItem: numStr,
+            descricao: ext.descricao,
+            marcaModelo: ext.marcaExigidaOuReferencia || null,
+            unidade: ext.unidadeMedida || "UN",
+            quantidade: ext.quantidade || 1,
+            valorEstimadoUnitario: ext.valorUnitarioEstimado ?? null,
+            custoUnitario: 0,
+            freteUnitario: 0,
+            outrosCustosUnitario: 0,
+            impostosPercentual: parametrosPadraoCalc.impostosPercentual,
+            bdiPercentual: parametrosPadraoCalc.bdiPercentual,
+            margemMinimaPercentual: parametrosPadraoCalc.margemMinimaPercentual,
+            margemAlvoPercentual: parametrosPadraoCalc.margemAlvoPercentual,
+            valorUnitarioArrematado: null,
+          };
+        });
+      });
+
+      // 2. Atualiza regras de Disputa Multi-Item
+      setRegrasDisputaItens((prev) => {
+        const mapaPrev = new Map<string, DisputaItemRegra>();
+        for (const r of prev) {
+          mapaPrev.set(String(r.numeroItem).trim(), r);
+        }
+
+        return novosItensExtraidos.map((ext, idx) => {
+          const numStr = String(ext.numeroItem ?? idx + 1).padStart(2, "0");
+          const existente = mapaPrev.get(numStr) || mapaPrev.get(String(ext.numeroItem));
+
+          if (existente) {
+            return {
+              ...existente,
+              descricao: existente.descricao || ext.descricao,
+              unidade: existente.unidade || ext.unidadeMedida || "UN",
+              quantidade: existente.quantidade || ext.quantidade || 1,
+            };
+          }
+
+          return {
+            itemId: `item_calc_${Date.now()}_${idx}`,
+            numeroItem: numStr,
+            descricao: ext.descricao,
+            unidade: ext.unidadeMedida || "UN",
+            quantidade: ext.quantidade || 1,
+            ativoNoRobo: true,
+            pisoUnitarioSeguro: (ext.valorUnitarioEstimado ? ext.valorUnitarioEstimado * 0.7 : 0),
+            propostaUnitaria: ext.valorUnitarioEstimado ?? 0,
+            tipoDecremento: "CENTAVOS_1",
+            valorDecremento: 0.01,
+            tatica: "IMEDIATO",
+            statusItem: "PRONTO",
+            melhorLanceSala: null,
+            meuUltimoLance: null,
+            minhaPosicao: null,
+            observacoes: "",
+          };
+        });
+      });
+
+      // 3. Seleciona todos os itens para cotação
+      setItensSelecionadosCotacao((prev) => {
+        const novo: Record<string, boolean> = { ...prev };
+        novosItensExtraidos.forEach((_, idx) => {
+          const numStr = String(idx + 1).padStart(2, "0");
+          if (novo[numStr] === undefined) novo[numStr] = true;
+        });
+        return novo;
+      });
+
+      const msgSucesso = `${novosItensExtraidos.length} itens sincronizados com sucesso da grade oficial (${data.origem}) para a Cotação, Calculadora, Proposta e Robô de Disputa!`;
+      setCotacaoFeedback({ tipo: "success", msg: msgSucesso });
+      setCalculadoraFeedback({ tipo: "success", msg: msgSucesso });
+      setDisputaFeedback({ tipo: "success", msg: msgSucesso });
+    } catch (err: any) {
+      setCotacaoFeedback({
+        tipo: "error",
+        msg: "Falha de conexão ao sincronizar itens do certame.",
+      });
+    } finally {
+      setConsultandoItensCertame(false);
+    }
+  }, [id, parametrosPadraoCalc]);
+
+  const handleImprimirCotacaoLimpa = () => {
+    const itensEfetivos = itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+      numeroItem: it.numeroItem || idx + 1,
+      descricao: it.descricao,
+      quantidade: it.quantidade,
+      unidadeMedida: it.unidade,
+      marcaSugerida: it.marcaModelo || null,
+    }));
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const conteudo = gerarConteudoPedidoCotacao({
+      orgaoNome: oportunidade?.orgaoNome,
+      numeroEdital: oportunidade?.numeroEdital,
+      itens: itensEfetivos,
+      configuracao: {
+        ...configCotacao,
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+      },
+      empresa: empresaConfig,
+    });
+    win.document.write(conteudo.conteudoHtml);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 350);
+  };
+
+  const handleBaixarPdfTimbradoCotacao = async () => {
+    setGerandoPdfCotacao(true);
+    setCotacaoFeedback(null);
+    try {
+      const itensEfetivos = itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+        numeroItem: it.numeroItem || idx + 1,
+        descricao: it.descricao,
+        quantidade: it.quantidade,
+        unidadeMedida: it.unidade,
+        marcaSugerida: it.marcaModelo || null,
+      }));
+
+      const res = await fetch("/api/cotacoes/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgaoNome: configCotacao.ocultarOrgaoEdital ? "Órgão Público (Sigilo Comercial Ativo)" : oportunidade?.orgaoNome,
+          numeroEdital: configCotacao.ocultarOrgaoEdital ? "Edital Sob Sigilo Comercial" : oportunidade?.numeroEdital,
+          itens: itensEfetivos,
+          configuracao: {
+            ...configCotacao,
+            localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
+            localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Falha ao gerar PDF de cotação");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Pedido_Cotacao_${new Date().toISOString().split("T")[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setCotacaoFeedback({
+        tipo: "error",
+        msg: "Não foi possível gerar o PDF timbrado da cotação. Verifique a conexão com o servidor.",
+      });
+    } finally {
+      setGerandoPdfCotacao(false);
+    }
+  };
+
+  const handleCopiarWhatsAppCotacao = async () => {
+    const itensEfetivos = itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+      numeroItem: it.numeroItem || idx + 1,
+      descricao: it.descricao,
+      quantidade: it.quantidade,
+      unidadeMedida: it.unidade,
+      marcaSugerida: it.marcaModelo || null,
+    }));
+
+    const conteudo = gerarConteudoPedidoCotacao({
+      orgaoNome: oportunidade?.orgaoNome,
+      numeroEdital: oportunidade?.numeroEdital,
+      itens: itensEfetivos,
+      configuracao: {
+        ...configCotacao,
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+      },
+      empresa: empresaConfig,
+    });
+
+    try {
+      await navigator.clipboard.writeText(conteudo.whatsappTexto);
+      setCopiadoCotacao(true);
+      setTimeout(() => setCopiadoCotacao(false), 2500);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleBaixarHtmlCotacao = () => {
+    const itensEfetivos = itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+      numeroItem: it.numeroItem || idx + 1,
+      descricao: it.descricao,
+      quantidade: it.quantidade,
+      unidadeMedida: it.unidade,
+      marcaSugerida: it.marcaModelo || null,
+    }));
+
+    const conteudo = gerarConteudoPedidoCotacao({
+      orgaoNome: oportunidade?.orgaoNome,
+      numeroEdital: oportunidade?.numeroEdital,
+      itens: itensEfetivos,
+      configuracao: {
+        ...configCotacao,
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+      },
+      empresa: empresaConfig,
+    });
+
+    const blob = new Blob([conteudo.conteudoHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Pedido_Cotacao_${new Date().toISOString().split("T")[0]}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
@@ -2166,6 +2520,9 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
           <Tab data-testid="tab-analise-ia">
             🤖 Histórico Análise IA ({analises.length})
           </Tab>
+          <Tab data-testid="tab-pedido-cotacao">
+            📦 Pedido de Cotação
+          </Tab>
           <Tab data-testid="tab-calculadora">
             🧮 Calculadora
           </Tab>
@@ -2700,6 +3057,18 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                 : `Gerado em ${new Date(an.criadoEm).toLocaleString("pt-BR")}`}
                             </span>
                             <Button
+                              kind="tertiary"
+                              size="sm"
+                              renderIcon={Renew}
+                              onClick={() => handleConsultarTodosItensCertame()}
+                              disabled={consultandoItensCertame}
+                              data-testid={`btn-sincronizar-itens-${an.id}`}
+                            >
+                              {consultandoItensCertame
+                                ? "Sincronizando..."
+                                : "📥 Sincronizar Itens com Cotação, Calculadora e Robô"}
+                            </Button>
+                            <Button
                               kind="secondary"
                               size="sm"
                               renderIcon={DocumentPdf}
@@ -3053,7 +3422,337 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             </Tile>
           </TabPanel>
 
-          {/* Aba 5: Calculadora de Custos, BDI & Piso Seguro */}
+          {/* Aba 5: Pedido de Cotação de Preços (RFQ para Fornecedores) */}
+          <TabPanel>
+            <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
+                <div>
+                  <h4 style={{ fontSize: "1.125rem", fontWeight: 600, marginBottom: "0.25rem", color: "var(--cds-text-primary)" }}>
+                    📦 Pedido de Cotação de Preços (RFQ para Fornecedores)
+                  </h4>
+                  <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+                    Solicite propostas comerciais formais a distribuidores e indústrias com sigilo comercial inteligente, frete CIF por destino e exportação imediata para PDF e WhatsApp.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <Button
+                    size="sm"
+                    kind="secondary"
+                    renderIcon={Renew}
+                    onClick={() => handleConsultarTodosItensCertame()}
+                    disabled={consultandoItensCertame}
+                    data-testid="btn-consultar-itens-cotacao"
+                  >
+                    {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    kind="tertiary"
+                    renderIcon={Add}
+                    onClick={handleAdicionarItemCalc}
+                    data-testid="btn-adicionar-item-cotacao"
+                  >
+                    + Adicionar Item
+                  </Button>
+                  <Button
+                    size="sm"
+                    kind="primary"
+                    renderIcon={DocumentPdf}
+                    onClick={() => setModalVisualizarCotacaoAberto(true)}
+                    disabled={itensCalculadora.length === 0}
+                    data-testid="btn-visualizar-cotacao"
+                  >
+                    Visualizar Pedido de Cotação (A4 / PDF)
+                  </Button>
+                </div>
+              </div>
+
+              {cotacaoFeedback && (
+                <InlineNotification
+                  kind={cotacaoFeedback.tipo}
+                  title={cotacaoFeedback.tipo === "success" ? "Sucesso:" : "Atenção:"}
+                  subtitle={cotacaoFeedback.msg}
+                  style={{ marginBottom: "1.25rem" }}
+                  onClose={() => setCotacaoFeedback(null)}
+                />
+              )}
+
+              {/* Barra de Parâmetros da Cotação & Sigilo Comercial */}
+              <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-accent, #f4f4f4)", marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Settings size={18} />
+                    <strong style={{ fontSize: "0.95rem" }}>Parâmetros da Solicitação de Cotação</strong>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", backgroundColor: "var(--cds-layer-01, #fff)", padding: "0.5rem 0.75rem", borderRadius: "4px", border: "1px solid var(--cds-border-subtle, #e0e0e0)" }}>
+                    <Toggle
+                      id="toggle-sigilo-comercial"
+                      size="sm"
+                      labelText="🔒 Sigilo Comercial (Ocultar Órgão e Edital no PDF)"
+                      labelA="Exibir"
+                      labelB="Ocultar"
+                      toggled={configCotacao.ocultarOrgaoEdital}
+                      onToggle={(checked) => setConfigCotacao((prev) => ({ ...prev, ocultarOrgaoEdital: checked }))}
+                    />
+                    <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", maxWidth: "280px" }}>
+                      Oculta órgão e edital no PDF, preservando Cidade/UF para cálculo de frete CIF.
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-fornecedor-nome"
+                      labelText="Fornecedor / Distribuidor / Fábrica"
+                      placeholder="Ex: Distribuidora Nacional de Tecnologia Ltda"
+                      value={configCotacao.fornecedorNome || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, fornecedorNome: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-contato-nome"
+                      labelText="Nome do Vendedor / Representante"
+                      placeholder="Ex: Carlos Oliveira (Gerente Comercial)"
+                      value={configCotacao.contatoFornecedor || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, contatoFornecedor: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-email"
+                      labelText="E-mail de Contato"
+                      placeholder="Ex: comercial@distribuidora.com.br"
+                      value={configCotacao.emailFornecedor || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, emailFornecedor: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-telefone"
+                      labelText="Telefone / WhatsApp"
+                      placeholder="Ex: (11) 98765-4321"
+                      value={configCotacao.telefoneFornecedor || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, telefoneFornecedor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
+                  <div>
+                    <Select
+                      id="select-cotacao-frete"
+                      labelText="Modalidade de Frete Requerida"
+                      value={configCotacao.modalidadeFrete || "CIF"}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, modalidadeFrete: e.target.value as any }))}
+                    >
+                      <SelectItem value="CIF" text="CIF (Frete e Seguro Inclusos até o Destino)" />
+                      <SelectItem value="FOB" text="FOB (Retirada por conta da nossa empresa)" />
+                    </Select>
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-cidade-entrega"
+                      labelText="Cidade de Entrega (Destino)"
+                      placeholder="Ex: Goiânia"
+                      value={configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, localEntregaCidade: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-uf-entrega"
+                      labelText="UF de Entrega"
+                      placeholder="Ex: GO"
+                      value={configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, localEntregaUf: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-prazo-resposta"
+                      labelText="Prazo para Retorno da Cotação"
+                      placeholder="Ex: Até 3 dias úteis"
+                      value={configCotacao.prazoResposta || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, prazoResposta: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-cond-pagto"
+                      labelText="Condições de Pagamento Desejadas"
+                      placeholder="Ex: 28 DDL faturado ou conforme empenho"
+                      value={configCotacao.condicoesPagamento || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, condicoesPagamento: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <TextInput
+                      id="input-cotacao-obs"
+                      labelText="Observações / Exigências Técnicas Especiais"
+                      placeholder="Ex: Enviar ficha técnica ou comprovação de garantia"
+                      value={configCotacao.observacoes || ""}
+                      onChange={(e) => setConfigCotacao((prev) => ({ ...prev, observacoes: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </Tile>
+
+              {/* Tabela de Itens para Cotação */}
+              {itensCalculadora.length === 0 ? (
+                <Tile style={{ padding: "2rem", textAlign: "center", backgroundColor: "var(--cds-layer-01)" }}>
+                  <p style={{ color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
+                    Nenhum item adicionado ainda para solicitar cotação.
+                  </p>
+                  <div style={{ display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap" }}>
+                    <Button
+                      kind="secondary"
+                      renderIcon={Renew}
+                      onClick={() => handleConsultarTodosItensCertame()}
+                      disabled={consultandoItensCertame}
+                    >
+                      {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                    </Button>
+                    <Button
+                      kind="primary"
+                      renderIcon={Add}
+                      onClick={handleAdicionarItemCalc}
+                    >
+                      + Adicionar Item Manual
+                    </Button>
+                  </div>
+                </Tile>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <strong style={{ fontSize: "0.9rem" }}>
+                      Itens Selecionados para Cotação: ({itensParaCotacao.length} de {itensCalculadora.length})
+                    </strong>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <Button
+                        size="sm"
+                        kind="ghost"
+                        onClick={() => {
+                          const todos: Record<string, boolean> = {};
+                          itensCalculadora.forEach((it, idx) => {
+                            todos[String(it.numeroItem || idx + 1)] = true;
+                          });
+                          setItensSelecionadosCotacao(todos);
+                        }}
+                      >
+                        Selecionar Todos
+                      </Button>
+                      <Button
+                        size="sm"
+                        kind="ghost"
+                        onClick={() => setItensSelecionadosCotacao({})}
+                      >
+                        Desmarcar Todos
+                      </Button>
+                    </div>
+                  </div>
+
+                  <TableContainer style={{ backgroundColor: "var(--cds-layer-01)" }}>
+                    <Table size="md" aria-label="Tabela de Itens para Cotação">
+                      <TableHead>
+                        <TableRow>
+                          <TableHeader style={{ width: "40px" }}>Incluir</TableHeader>
+                          <TableHeader style={{ width: "80px" }}>Item</TableHeader>
+                          <TableHeader>Descrição do Produto / Especificação</TableHeader>
+                          <TableHeader style={{ width: "180px" }}>Marca Sugerida</TableHeader>
+                          <TableHeader style={{ width: "110px", textAlign: "right" }}>Quantidade</TableHeader>
+                          <TableHeader style={{ width: "95px" }}>Unidade</TableHeader>
+                          <TableHeader style={{ width: "80px", textAlign: "center" }}>Ação</TableHeader>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {itensCalculadora.map((it, idx) => {
+                          const numKey = String(it.numeroItem || idx + 1);
+                          const selecionado = itensSelecionadosCotacao[numKey] !== false;
+                          return (
+                            <TableRow key={it.id || idx}>
+                              <TableCell>
+                                <Checkbox
+                                  id={`chk-cotacao-${it.id || idx}`}
+                                  labelText=""
+                                  checked={selecionado}
+                                  onChange={(_, { checked }) => {
+                                    setItensSelecionadosCotacao((prev) => ({
+                                      ...prev,
+                                      [numKey]: checked,
+                                    }));
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell style={{ fontWeight: 600 }}>{it.numeroItem || idx + 1}</TableCell>
+                              <TableCell>
+                                <TextInput
+                                  id={`cotacao-desc-${it.id}`}
+                                  labelText=""
+                                  hideLabel
+                                  value={it.descricao}
+                                  onChange={(e) => handleAtualizarItemCalc(idx, { descricao: e.target.value })}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <TextInput
+                                  id={`cotacao-marca-${it.id}`}
+                                  labelText=""
+                                  hideLabel
+                                  placeholder="Ex: Dell / HP"
+                                  value={it.marcaModelo || ""}
+                                  onChange={(e) => handleAtualizarItemCalc(idx, { marcaModelo: e.target.value })}
+                                />
+                              </TableCell>
+                              <TableCell style={{ textAlign: "right" }}>
+                                <TextInput
+                                  id={`cotacao-qtd-${it.id}`}
+                                  labelText=""
+                                  hideLabel
+                                  type="number"
+                                  value={it.quantidade}
+                                  onChange={(e) => handleAtualizarItemCalc(idx, { quantidade: Number(e.target.value) || 1 })}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  id={`cotacao-un-${it.id}`}
+                                  labelText=""
+                                  hideLabel
+                                  value={it.unidade}
+                                  onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
+                                >
+                                  {UNIDADES_ITEM_OPCOES.map((u) => (
+                                    <SelectItem key={u} value={u} text={u} />
+                                  ))}
+                                </Select>
+                              </TableCell>
+                              <TableCell style={{ textAlign: "center" }}>
+                                <Button
+                                  hasIconOnly
+                                  renderIcon={TrashCan}
+                                  iconDescription="Remover Item"
+                                  kind="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoverItemCalc(idx)}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </div>
+              )}
+            </Tile>
+          </TabPanel>
+
+          {/* Aba 6: Calculadora de Custos, BDI & Piso Seguro */}
           <TabPanel>
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
@@ -3089,7 +3788,17 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <Settings size={18} />
                     <strong style={{ fontSize: "0.9rem" }}>Alíquotas Padrão de Formação de Preço do Certame</strong>
                   </div>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <Button
+                      size="sm"
+                      kind="secondary"
+                      renderIcon={Renew}
+                      onClick={() => handleConsultarTodosItensCertame()}
+                      disabled={consultandoItensCertame}
+                      data-testid="btn-consultar-itens-certame-calc"
+                    >
+                      {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                    </Button>
                     <Button
                       size="sm"
                       kind="tertiary"
@@ -3503,7 +4212,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   kind="secondary"
                   size="md"
                   renderIcon={DocumentPdf}
-                  onClick={() => setActiveTab(5)}
+                  onClick={() => setActiveTab(6)}
                 >
                   Ir para Proposta Comercial →
                 </Button>
@@ -4091,6 +4800,33 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   </div>
 
                   <div>
+                    <Select
+                      id="select-modo-disputa-edital"
+                      labelText="Modo de Disputa do Edital"
+                      value={modoDisputaEdital}
+                      onChange={(e) =>
+                        setModoDisputaEdital(
+                          e.target.value as "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO",
+                        )
+                      }
+                    >
+                      <SelectItem value="ABERTO" text="Modo Aberto (10 min + prorrogações de 2 min)" />
+                      <SelectItem value="ABERTO_FECHADO" text="Modo Aberto e Fechado (15 min + até 10 min fechado)" />
+                      <SelectItem value="FECHADO_ABERTO" text="Modo Fechado e Aberto (Lances sigilosos + disputa aberta)" />
+                    </Select>
+                  </div>
+
+                  <div>
+                    <TextInput
+                      id="input-intervalo-minimo-lances"
+                      labelText="Intervalo Mínimo entre Lances Exigido pelo Edital"
+                      placeholder="Ex: R$ 0,05 ou 0,5%"
+                      value={intervaloMinimoLances}
+                      onChange={(e) => setIntervaloMinimoLances(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
                     <TextInput
                       id="input-identificador-sala"
                       labelText="Identificador da Sala / UASG / Link da Sessão"
@@ -4586,6 +5322,100 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
         </TabPanels>
       </Tabs>
 
+      {/* Modal A4: Pré-visualização e Exportação do Pedido de Cotação */}
+      <Modal
+        open={modalVisualizarCotacaoAberto}
+        onRequestClose={() => setModalVisualizarCotacaoAberto(false)}
+        passiveModal
+        size="lg"
+        modalHeading="Visualização da Solicitação de Cotação (RFQ para Fornecedores)"
+        aria-label="Pré-visualização do Pedido de Cotação"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {/* Barra Superior com as 4 Ações de Exportação */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem", backgroundColor: "var(--cds-layer-01)", padding: "0.75rem", borderRadius: "4px" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Button
+                kind="secondary"
+                size="sm"
+                renderIcon={Printer}
+                onClick={handleImprimirCotacaoLimpa}
+                data-testid="btn-imprimir-cotacao-limpa"
+              >
+                📄 Imprimir PDF Limpo (A4)
+              </Button>
+              <Button
+                kind="secondary"
+                size="sm"
+                renderIcon={DocumentPdf}
+                disabled={gerandoPdfCotacao}
+                onClick={handleBaixarPdfTimbradoCotacao}
+                data-testid="btn-imprimir-cotacao-timbrada"
+              >
+                {gerandoPdfCotacao ? "Gerando PDF..." : "📑 Imprimir PDF Timbrado Oficial"}
+              </Button>
+              <Button
+                kind="tertiary"
+                size="sm"
+                renderIcon={Copy}
+                onClick={handleCopiarWhatsAppCotacao}
+                data-testid="btn-copiar-whatsapp-cotacao"
+              >
+                {copiadoCotacao ? "Copiado para Área de Transferência! ✓" : "📋 Copiar Texto para WhatsApp / E-mail"}
+              </Button>
+              <Button
+                kind="ghost"
+                size="sm"
+                renderIcon={DocumentDownload}
+                onClick={handleBaixarHtmlCotacao}
+                data-testid="btn-baixar-html-cotacao"
+              >
+                💾 Baixar HTML
+              </Button>
+            </div>
+
+            {configCotacao.ocultarOrgaoEdital ? (
+              <Tag type="green" size="sm">🔒 Sigilo Comercial Ativo</Tag>
+            ) : (
+              <Tag type="cool-gray" size="sm">Órgão / Edital Visível</Tag>
+            )}
+          </div>
+
+          {/* Preview do documento formatado */}
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              color: "#161616",
+              padding: "2rem",
+              border: "1px solid #e0e0e0",
+              borderRadius: "4px",
+              maxHeight: "550px",
+              overflowY: "auto",
+              fontFamily: "var(--cds-font-family, sans-serif)",
+            }}
+            dangerouslySetInnerHTML={{
+              __html: gerarConteudoPedidoCotacao({
+                orgaoNome: oportunidade?.orgaoNome,
+                numeroEdital: oportunidade?.numeroEdital,
+                itens: itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+                  numeroItem: it.numeroItem || idx + 1,
+                  descricao: it.descricao,
+                  quantidade: it.quantidade,
+                  unidadeMedida: it.unidade,
+                  marcaSugerida: it.marcaModelo || null,
+                })),
+                configuracao: {
+                  ...configCotacao,
+                  localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
+                  localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+                },
+                empresa: empresaConfig,
+              }).conteudoHtml,
+            }}
+          />
+        </div>
+      </Modal>
+
       {/* Modal A4: Pré-visualização da Proposta Comercial com os 4 Botões Padronizados + Salvar */}
       <Modal
         open={modalPropostaOpen}
@@ -4789,7 +5619,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     Precisa de mais análises analíticas de IA para este certame?
                   </strong>
                   <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
-                    Faça upgrade agora mesmo para o plano <strong>Pro (10 análises/mês)</strong> ou <strong>Enterprise (20 análises/mês)</strong> para continuar acelerando suas deliberações.
+                    Faça upgrade agora mesmo para o plano <strong>Pro (15 análises/mês)</strong> ou <strong>Enterprise (30 análises/mês)</strong> para continuar acelerando suas deliberações.
                   </p>
                   <Button
                     kind="primary"
@@ -4809,10 +5639,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 <Tile style={{ padding: "1.5rem", backgroundColor: "var(--cds-layer-02)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem", textAlign: "center" }}>
                   <Bot size={32} style={{ color: "var(--cds-support-info, #0f62fe)" }} />
                   <strong style={{ fontSize: "1rem" }}>
-                    Plano Enterprise: Limite Mensal de 20 Análises Atingido
+                    Plano Enterprise: Limite Mensal de 30 Análises Atingido
                   </strong>
                   <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
-                    Você atingiu o teto mensal de 20 análises do plano Enterprise. Para contratar cotas adicionais ou suporte customizado, entre em contato direto com nossa equipe comercial.
+                    Você atingiu o teto mensal de 30 análises do plano Enterprise. Para contratar cotas adicionais ou suporte customizado, entre em contato direto com nossa equipe comercial.
                   </p>
                   <Button
                     kind="tertiary"
@@ -4830,7 +5660,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", marginBottom: "1rem" }}>
               <Bot size={20} style={{ color: "var(--cds-support-info, #0f62fe)" }} />
               <span style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
-                Consumo Mensal: <strong>{cotaIA?.usadas ?? 0}/{cotaIA?.limite ?? 10} análises utilizadas</strong> (Plano {cotaIA?.plano || "PRO"}). Restantes neste mês: <strong>{cotaIA?.restantes ?? 10}</strong>.
+                Consumo Mensal: <strong>{cotaIA?.usadas ?? 0}/{cotaIA?.limite ?? 15} análises utilizadas</strong> (Plano {cotaIA?.plano || "PRO"}). Restantes neste mês: <strong>{cotaIA?.restantes ?? 15}</strong>.
               </span>
             </div>
           )}

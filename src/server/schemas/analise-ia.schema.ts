@@ -337,7 +337,7 @@ export function proximoMesCivilBRT(ref: Date = new Date()): Date {
 }
 
 /**
- * Cota mensal de análises de IA por plano: Básico 5, Pro/Trial 10, Enterprise 20
+ * Cota mensal de análises de IA por plano: Básico 5, Pro/Trial 15, Enterprise 30
  * (`PLAN_LIMITS.aiAnalisesMes`). O contador zera a cada mês civil (BRT).
  * Ao atingir o limite: Básico/Pro são orientados a fazer upgrade; Enterprise
  * (plano mais alto) é orientado a falar com a equipe de vendas.

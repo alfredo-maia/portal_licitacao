@@ -102,6 +102,7 @@ export const homologacaoItemPublicoSchema = z.object({
   modalidade: z.string().optional(),
   numeroProcesso: z.string(),
   dataHomologacao: z.string(),
+  dataHomologacaoIso: z.string().nullable().optional(),
   empresaVencedora: z.string(),
   cnpjVencedor: z.string(),
   porteFornecedor: z.string().nullable().optional(),

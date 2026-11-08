@@ -56,6 +56,77 @@ export class AnaliseIAParticipacaoError extends Error {
 }
 
 const pendingBackgroundJobs = new Map<string, Promise<any>>();
+const contadorIaLicitacaoMap = new Map<string, number>();
+
+/**
+ * Trava silenciosa anti-abuso de IA por licitação (Máximo 5 execuções de IA por licitação).
+ * Na 6ª tentativa em diante, bloqueia com erro genérico de sistema orientando contato com o suporte,
+ * sem expor nenhum contador visual na interface.
+ */
+export function verificarEIncrementarLimiteSilenciosoLicitacao(
+  licitacaoId: string,
+  accountKey: string = "default",
+): void {
+  const key = `${accountKey}:${licitacaoId}`;
+  const atual = contadorIaLicitacaoMap.get(key) || 0;
+  if (atual >= 5) {
+    throw new AnaliseIAParticipacaoError(
+      "ERRO_PROCESSAMENTO_SISTEMA",
+      "Ocorreu um erro interno no sistema ao processar esta solicitação automática para esta licitação. Por favor, entre em contato com o nosso suporte técnico.",
+      500,
+    );
+  }
+  contadorIaLicitacaoMap.set(key, atual + 1);
+}
+
+/**
+ * Verifica se a licitação já foi analisada ou desbloqueada para a conta/usuário.
+ * Licitações já desbloqueadas não consomem nova cota mensal ao reconsultar itens ou gerar novas análises.
+ */
+export async function isLicitacaoDesbloqueadaParaIa(
+  licitacaoId: string,
+  tenantId?: string | null,
+  userId?: string | null,
+): Promise<boolean> {
+  const { accountTenantIds, candidateUserIds } =
+    await resolverContextoContaCota(tenantId, userId);
+
+  // 1. Memória
+  const memList = listAllInMemoryAnalisesIA();
+  const emMem = memList.some(
+    (item) =>
+      item &&
+      item.status !== "ERRO" &&
+      item.licitacaoId === licitacaoId &&
+      ((item.tenantId && accountTenantIds.has(item.tenantId)) ||
+        (item.executadoPorId && candidateUserIds.has(item.executadoPorId)) ||
+        (!userId && !tenantId)),
+  );
+  if (emMem) return true;
+
+  // 2. Banco
+  try {
+    const tArray = Array.from(accountTenantIds).filter(Boolean);
+    const uArray = Array.from(candidateUserIds).filter(Boolean);
+    const orConditions: any[] = [];
+    if (tArray.length > 0) orConditions.push({ tenantId: { in: tArray } });
+    if (uArray.length > 0) orConditions.push({ executadoPorId: { in: uArray } });
+
+    if (orConditions.length > 0) {
+      const achou = await prisma.analiseStatusParticipacao.findFirst({
+        where: {
+          licitacaoId,
+          status: { not: "ERRO" },
+          OR: orConditions,
+        },
+        select: { id: true },
+      });
+      if (achou) return true;
+    }
+  } catch {}
+
+  return false;
+}
 
 async function ensureAnaliseIAColumns(): Promise<void> {
   const queries = [
@@ -1713,6 +1784,9 @@ export async function iniciarAnaliseParticipacaoAssincrona(
       cotaAntes,
     );
   }
+
+  // 2.1 Trava silenciosa anti-abuso de no máximo 5 execuções de IA por licitação
+  verificarEIncrementarLimiteSilenciosoLicitacao(realId, String(effectiveUserId || tenantId || "anonimo"));
 
   // 2. Cria registro imediato com status PROCESSANDO (incrementando a cota 0/X -> 1/X)
   const analiseId = `ia_${randomUUID()}`;

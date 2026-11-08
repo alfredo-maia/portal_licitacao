@@ -281,6 +281,32 @@ export default function InteligenciaPrecosPage() {
   const [buscaSalvos, setBuscaSalvos] = useState("");
   const [itemSalvoModal, setItemSalvoModal] = useState<ItemPrecoSalvoRecord | null>(null);
 
+  // Ordenação de colunas da tabela de homologações (Aba 1)
+  const [colunaOrdenacao, setColunaOrdenacao] = useState<string>("data");
+  const [direcaoOrdenacao, setDirecaoOrdenacao] = useState<"asc" | "desc">("desc");
+
+  // Ordenação de colunas da tabela de itens salvos (Aba 2)
+  const [colunaSalvosOrdenacao, setColunaSalvosOrdenacao] = useState<string>("data");
+  const [direcaoSalvosOrdenacao, setDirecaoSalvosOrdenacao] = useState<"asc" | "desc">("desc");
+
+  const alternarOrdenacao = (coluna: string) => {
+    if (colunaOrdenacao === coluna) {
+      setDirecaoOrdenacao((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setColunaOrdenacao(coluna);
+      setDirecaoOrdenacao(coluna === "data" ? "desc" : "asc");
+    }
+  };
+
+  const alternarOrdenacaoSalvos = (coluna: string) => {
+    if (colunaSalvosOrdenacao === coluna) {
+      setDirecaoSalvosOrdenacao((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setColunaSalvosOrdenacao(coluna);
+      setDirecaoSalvosOrdenacao(coluna === "data" ? "desc" : "asc");
+    }
+  };
+
   const carregarItensSalvos = useCallback(async () => {
     setCarregandoSalvos(true);
     try {
@@ -336,16 +362,114 @@ export default function InteligenciaPrecosPage() {
     [itensAtivosNoCalculo],
   );
 
+  const itensOrdenados = useMemo(() => {
+    const list = [...itensFiltradosPorUnidade];
+    list.sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+
+      switch (colunaOrdenacao) {
+        case "orgao":
+          valA = (a.orgaoNome || "").toLowerCase();
+          valB = (b.orgaoNome || "").toLowerCase();
+          break;
+        case "data": {
+          const timeA = a.dataHomologacaoIso ? new Date(a.dataHomologacaoIso).getTime() : 0;
+          const timeB = b.dataHomologacaoIso ? new Date(b.dataHomologacaoIso).getTime() : 0;
+          return direcaoOrdenacao === "asc" ? timeA - timeB : timeB - timeA;
+        }
+        case "item":
+          valA = (a.itemDescricao || "").toLowerCase();
+          valB = (b.itemDescricao || "").toLowerCase();
+          break;
+        case "vencedor":
+          valA = (a.empresaVencedora || "").toLowerCase();
+          valB = (b.empresaVencedora || "").toLowerCase();
+          break;
+        case "quantidade":
+          valA = a.quantidade || 0;
+          valB = b.quantidade || 0;
+          break;
+        case "unidade":
+          valA = a.unidade || "";
+          valB = b.unidade || "";
+          break;
+        case "valorEstimado":
+          valA = a.valorEstimadoUnitario || 0;
+          valB = b.valorEstimadoUnitario || 0;
+          break;
+        case "valorHomologado":
+          valA = a.valorHomologadoUnitario || 0;
+          valB = b.valorHomologadoUnitario || 0;
+          break;
+        case "desconto":
+          valA = a.descontoPercentual || 0;
+          valB = b.descontoPercentual || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return direcaoOrdenacao === "asc" ? valA - valB : valB - valA;
+      }
+      return direcaoOrdenacao === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+    return list;
+  }, [itensFiltradosPorUnidade, colunaOrdenacao, direcaoOrdenacao]);
+
   const itensSalvosFiltrados = useMemo(() => {
     const q = buscaSalvos.trim().toLowerCase();
-    if (!q) return itensSalvos;
-    return itensSalvos.filter((item) => {
-      const alvo = `${item.nomeProduto} ${item.termoPesquisado} ${item.marcaReferencia || ""} ${
-        item.catmat || ""
-      } ${item.especificacaoResumo || ""} ${item.observacoes || ""}`.toLowerCase();
-      return alvo.includes(q);
+    const filtrados = !q
+      ? itensSalvos
+      : itensSalvos.filter((item) => {
+          const alvo = `${item.nomeProduto} ${item.termoPesquisado} ${item.marcaReferencia || ""} ${
+            item.catmat || ""
+          } ${item.especificacaoResumo || ""} ${item.observacoes || ""}`.toLowerCase();
+          return alvo.includes(q);
+        });
+
+    const ordenados = [...filtrados];
+    ordenados.sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+      switch (colunaSalvosOrdenacao) {
+        case "produto":
+          valA = (a.nomeProduto || "").toLowerCase();
+          valB = (b.nomeProduto || "").toLowerCase();
+          break;
+        case "lastro":
+          valA = a.quantidadeAmostras || 0;
+          valB = b.quantidadeAmostras || 0;
+          break;
+        case "precoMedio":
+          valA = a.precoMedio || 0;
+          valB = b.precoMedio || 0;
+          break;
+        case "menorPreco":
+          valA = a.menorPreco || 0;
+          valB = b.menorPreco || 0;
+          break;
+        case "data":
+        default: {
+          const timeA = a.criadoEm ? new Date(a.criadoEm).getTime() : 0;
+          const timeB = b.criadoEm ? new Date(b.criadoEm).getTime() : 0;
+          return direcaoSalvosOrdenacao === "asc" ? timeA - timeB : timeB - timeA;
+        }
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return direcaoSalvosOrdenacao === "asc" ? valA - valB : valB - valA;
+      }
+      return direcaoSalvosOrdenacao === "asc"
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
     });
-  }, [itensSalvos, buscaSalvos]);
+
+    return ordenados;
+  }, [itensSalvos, buscaSalvos, colunaSalvosOrdenacao, direcaoSalvosOrdenacao]);
 
   const executarPesquisa = async (paramsOverride?: {
     q?: string;
@@ -1327,20 +1451,74 @@ export default function InteligenciaPrecosPage() {
                               }}
                             />
                           </TableHeader>
-                          <TableHeader>Órgão / UF</TableHeader>
-                          <TableHeader>Processo / Data</TableHeader>
-                          <TableHeader>Item, Marca & Especificação</TableHeader>
-                          <TableHeader>Empresa Vencedora</TableHeader>
-                          <TableHeader>Qtd</TableHeader>
-                          <TableHeader>Unidade</TableHeader>
-                          <TableHeader>Valor Estimado</TableHeader>
-                          <TableHeader>Valor Homologado</TableHeader>
-                          <TableHeader>Desconto</TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("orgao")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Órgão"
+                          >
+                            Órgão / UF {colunaOrdenacao === "orgao" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("data")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Data de Homologação (Padrão: Mais recentes primeiro)"
+                          >
+                            Processo / Data {colunaOrdenacao === "data" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("item")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Descrição do Item"
+                          >
+                            Item, Marca & Especificação {colunaOrdenacao === "item" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("vencedor")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Empresa Vencedora"
+                          >
+                            Empresa Vencedora {colunaOrdenacao === "vencedor" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("quantidade")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Quantidade"
+                          >
+                            Qtd {colunaOrdenacao === "quantidade" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("unidade")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Unidade de Medida"
+                          >
+                            Unidade {colunaOrdenacao === "unidade" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("valorEstimado")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Valor Estimado"
+                          >
+                            Valor Estimado {colunaOrdenacao === "valorEstimado" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("valorHomologado")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Valor Homologado"
+                          >
+                            Valor Homologado {colunaOrdenacao === "valorHomologado" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
+                          <TableHeader
+                            onClick={() => alternarOrdenacao("desconto")}
+                            style={{ cursor: "pointer", userSelect: "none" }}
+                            title="Clique para ordenar por Percentual de Desconto"
+                          >
+                            Desconto {colunaOrdenacao === "desconto" ? (direcaoOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                          </TableHeader>
                           <TableHeader>Ações</TableHeader>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {itensFiltradosPorUnidade.map((row) => {
+                        {itensOrdenados.map((row) => {
                           const marcada = idsSelecionados.has(row.id);
                           const marcaModelo = [row.marca, row.modelo].filter(Boolean).join(" • ");
                           return (
@@ -1549,13 +1727,42 @@ export default function InteligenciaPrecosPage() {
                   <Table size="lg">
                     <TableHead>
                       <TableRow>
-                        <TableHeader>Produto / Item Salvo</TableHeader>
-                        <TableHeader>Marca / Especificação & CATMAT</TableHeader>
-                        <TableHeader>Lastro</TableHeader>
-                        <TableHeader>Preço Médio / Mediana</TableHeader>
-                        <TableHeader>Menor Preço</TableHeader>
+                        <TableHeader
+                          onClick={() => alternarOrdenacaoSalvos("produto")}
+                          style={{ cursor: "pointer", userSelect: "none" }}
+                          title="Clique para ordenar por Nome do Produto"
+                        >
+                          Produto / Item de Referência {colunaSalvosOrdenacao === "produto" ? (direcaoSalvosOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                        </TableHeader>
+                        <TableHeader
+                          onClick={() => alternarOrdenacaoSalvos("lastro")}
+                          style={{ cursor: "pointer", userSelect: "none" }}
+                          title="Clique para ordenar por Lastro"
+                        >
+                          Lastro / Unidade {colunaSalvosOrdenacao === "lastro" ? (direcaoSalvosOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                        </TableHeader>
+                        <TableHeader
+                          onClick={() => alternarOrdenacaoSalvos("precoMedio")}
+                          style={{ cursor: "pointer", userSelect: "none" }}
+                          title="Clique para ordenar por Preço Médio"
+                        >
+                          Preço Médio / Mediana {colunaSalvosOrdenacao === "precoMedio" ? (direcaoSalvosOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                        </TableHeader>
+                        <TableHeader
+                          onClick={() => alternarOrdenacaoSalvos("menorPreco")}
+                          style={{ cursor: "pointer", userSelect: "none" }}
+                          title="Clique para ordenar por Menor Preço"
+                        >
+                          Menor Preço {colunaSalvosOrdenacao === "menorPreco" ? (direcaoSalvosOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                        </TableHeader>
                         <TableHeader>Faixa Competitiva Sugerida</TableHeader>
-                        <TableHeader>Salvo em</TableHeader>
+                        <TableHeader
+                          onClick={() => alternarOrdenacaoSalvos("data")}
+                          style={{ cursor: "pointer", userSelect: "none" }}
+                          title="Clique para ordenar por Data de Salvamento (Padrão: Mais recentes primeiro)"
+                        >
+                          Salvo em {colunaSalvosOrdenacao === "data" ? (direcaoSalvosOrdenacao === "asc" ? "▲" : "▼") : "⇅"}
+                        </TableHeader>
                         <TableHeader>Ações</TableHeader>
                       </TableRow>
                     </TableHead>
@@ -1568,41 +1775,31 @@ export default function InteligenciaPrecosPage() {
                           title="Clique para abrir todas as informações e homologações deste item salvo"
                         >
                           <TableCell>
-                            <strong style={{ fontSize: "0.9rem" }}>{salvo.nomeProduto}</strong>
-                            <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                            <strong style={{ fontSize: "0.92rem", color: "var(--cds-text-primary)" }}>{salvo.nomeProduto}</strong>
+                            <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.2rem" }}>
                               Busca: "{salvo.termoPesquisado}"
                             </div>
-                          </TableCell>
-                          <TableCell style={{ maxWidth: "300px" }}>
-                            <div
-                              style={{
-                                fontSize: "0.82rem",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {salvo.especificacaoResumo || "—"}
-                            </div>
-                            <div style={{ display: "flex", gap: "0.35rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
-                              {salvo.marcaReferencia && (
-                                <Tag type="blue" size="sm">
-                                  {salvo.marcaReferencia}
-                                </Tag>
-                              )}
-                              {salvo.catmat && (
-                                <Tag type="cool-gray" size="sm">
-                                  CATMAT: {salvo.catmat}
-                                </Tag>
-                              )}
-                            </div>
+                            {(salvo.marcaReferencia || salvo.catmat) && (
+                              <div style={{ display: "flex", gap: "0.35rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                                {salvo.marcaReferencia && (
+                                  <Tag type="blue" size="sm">
+                                    {salvo.marcaReferencia}
+                                  </Tag>
+                                )}
+                                {salvo.catmat && (
+                                  <Tag type="cool-gray" size="sm">
+                                    CATMAT: {salvo.catmat}
+                                  </Tag>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Tag type="teal" size="sm">
                               {salvo.quantidadeAmostras} certame(s)
                             </Tag>
                             <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)", marginTop: "0.2rem" }}>
-                              {salvo.periodoMeses}m • UF: {salvo.ufFiltro}
+                              {salvo.unidadeReferencia ? `Unid: ${salvo.unidadeReferencia} • ` : ""}{salvo.periodoMeses}m • UF: {salvo.ufFiltro}
                             </div>
                           </TableCell>
                           <TableCell>

@@ -275,3 +275,4 @@ describe("Página /robo-de-lances — Painel Central Conectado ao Tenant", () =>
     expect(screen.getByRole("button", { name: /Abrir Sala/i })).toBeInTheDocument();
   });
 });
+

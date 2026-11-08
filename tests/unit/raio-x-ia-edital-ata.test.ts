@@ -208,10 +208,10 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
         status: 400,
       });
 
-      // Verifica que a cota permaneceu intacta (0/10)
+      // Verifica que a cota permaneceu intacta (0/15)
       const cotaDepois = await obterStatusCotaAnaliseIA(TENANT_ID, refNovembro);
       expect(cotaDepois.usadas).toBe(0);
-      expect(cotaDepois.restantes).toBe(10);
+      expect(cotaDepois.restantes).toBe(15);
     });
 
     it("inicia a análise com sucesso e incrementa a cota quando arquivos estão presentes", async () => {
@@ -229,7 +229,7 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
 
       expect(inicio.status).toBe("PROCESSANDO");
       expect(inicio.cota.usadas).toBe(1);
-      expect(inicio.cota.limite).toBe(10);
+      expect(inicio.cota.limite).toBe(15);
 
       const concluido = await aguardarProcessamentoAnaliseIA(inicio.analiseId);
       expect(concluido).toBeTruthy();
@@ -445,8 +445,8 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
 
       const refMes = new Date("2026-11-05T12:00:00Z");
 
-      // Cria 8 análises sob o CNPJ 1 pelo usuário
-      for (let i = 1; i <= 8; i++) {
+      // Cria 13 análises sob o CNPJ 1 pelo usuário (limite PRO = 15)
+      for (let i = 1; i <= 13; i++) {
         const licId = criarLicitacaoBase({ comArquivos: true });
         await iniciarAnaliseParticipacaoAssincrona(
           licId,
@@ -458,53 +458,53 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
         );
       }
 
-      // CNPJ 1 deve indicar 8/10
+      // CNPJ 1 deve indicar 13/15
       const cotaCnpj1 = await obterStatusCotaAnaliseIA(TENANT_CNPJ1, refMes, USER_TEST.id);
-      expect(cotaCnpj1.usadas).toBe(8);
-      expect(cotaCnpj1.limite).toBe(10);
+      expect(cotaCnpj1.usadas).toBe(13);
+      expect(cotaCnpj1.limite).toBe(15);
       expect(cotaCnpj1.restantes).toBe(2);
 
-      // O novo CNPJ 2 do mesmo usuário DEVE refletir 8/10 (e não 0/10)
+      // O novo CNPJ 2 do mesmo usuário DEVE refletir 13/15 (e não 0/15)
       const cotaCnpj2 = await obterStatusCotaAnaliseIA(TENANT_CNPJ2, refMes, USER_TEST.id);
-      expect(cotaCnpj2.usadas).toBe(8);
-      expect(cotaCnpj2.limite).toBe(10);
+      expect(cotaCnpj2.usadas).toBe(13);
+      expect(cotaCnpj2.limite).toBe(15);
       expect(cotaCnpj2.restantes).toBe(2);
 
-      // Ao realizar a 9ª análise no CNPJ 2, a cota unificada é debitada para 9/10
+      // Ao realizar a 14ª análise no CNPJ 2, a cota unificada é debitada para 14/15
       const licCnpj2 = criarLicitacaoBase({ comArquivos: true });
-      const resp9 = await iniciarAnaliseParticipacaoAssincrona(
+      const resp14 = await iniciarAnaliseParticipacaoAssincrona(
         licCnpj2,
-        { observacoes: "9ª análise disparada a partir do CNPJ 2" },
+        { observacoes: "14ª análise disparada a partir do CNPJ 2" },
         USER_TEST,
         undefined,
         TENANT_CNPJ2,
         { referencia: refMes },
       );
-      expect(resp9.cota.usadas).toBe(9);
-      expect(resp9.cota.restantes).toBe(1);
+      expect(resp14.cota.usadas).toBe(14);
+      expect(resp14.cota.restantes).toBe(1);
 
-      // CNPJ 1 agora também reflete 9/10 imediatamente
+      // CNPJ 1 agora também reflete 14/15 imediatamente
       const cotaCnpj1Apos = await obterStatusCotaAnaliseIA(TENANT_CNPJ1, refMes, USER_TEST.id);
-      expect(cotaCnpj1Apos.usadas).toBe(9);
+      expect(cotaCnpj1Apos.usadas).toBe(14);
       expect(cotaCnpj1Apos.restantes).toBe(1);
 
-      // Executa a 10ª análise no CNPJ 1
+      // Executa a 15ª análise no CNPJ 1
       const licCnpj1Final = criarLicitacaoBase({ comArquivos: true });
       await iniciarAnaliseParticipacaoAssincrona(
         licCnpj1Final,
-        { observacoes: "10ª análise atingindo limite" },
+        { observacoes: "15ª análise atingindo limite" },
         USER_TEST,
         undefined,
         TENANT_CNPJ1,
         { referencia: refMes },
       );
 
-      // Agora a 11ª análise deve ser bloqueada em ambos os CNPJs
-      const lic11 = criarLicitacaoBase({ comArquivos: true });
+      // Agora a 16ª análise deve ser bloqueada em ambos os CNPJs
+      const lic16 = criarLicitacaoBase({ comArquivos: true });
       await expect(
         iniciarAnaliseParticipacaoAssincrona(
-          lic11,
-          { observacoes: "Tentativa de 11ª análise no CNPJ 2" },
+          lic16,
+          { observacoes: "Tentativa de 16ª análise no CNPJ 2" },
           USER_TEST,
           undefined,
           TENANT_CNPJ2,
@@ -517,8 +517,8 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
 
       await expect(
         iniciarAnaliseParticipacaoAssincrona(
-          lic11,
-          { observacoes: "Tentativa de 11ª análise no CNPJ 1" },
+          lic16,
+          { observacoes: "Tentativa de 16ª análise no CNPJ 1" },
           USER_TEST,
           undefined,
           TENANT_CNPJ1,

@@ -170,6 +170,8 @@ export type DisputaItemRegra = z.infer<typeof disputaItemRegraSchema>;
 export const disputaConfigSchema = z.object({
   portal: z.string().default("Compras.gov.br"),
   identificadorSala: z.string().optional().default(""),
+  modoDisputaEdital: z.enum(["ABERTO", "ABERTO_FECHADO", "FECHADO_ABERTO"]).optional().default("ABERTO"),
+  intervaloMinimoLances: z.string().optional().default("R$ 0,01"),
   statusGeral: z.enum(["CONFIGURADA", "EM_DISPUTA", "PAUSADA", "CONCLUIDA"]).default("CONFIGURADA"),
   pausaEmergencia: z.boolean().default(false),
   tempoRespostaSegundos: z.number().min(1).max(60).default(3),
@@ -194,6 +196,7 @@ export const calculadoraDadosSchema = z.object({
   }),
   itens: z.array(itemCalculadoraInputSchema).default([]),
   propostaConfig: configuracaoPropostaSchema.default({}),
+  cotacaoConfig: z.record(z.any()).optional().default({}),
   disputaConfig: disputaConfigSchema.optional().default({}),
   atualizadoEm: z.string().optional().default(() => new Date().toISOString()),
 });

@@ -100,11 +100,44 @@ async function fetchJsonComTimeout(url: string, timeoutMs = 4500): Promise<any |
 }
 
 function tokenCasaTexto(textoItem: string, tok: string): boolean {
-  if (tok.length <= 4) {
-    const rx = new RegExp(`(?:^|[^a-z0-9])${tok}(?:[^a-z0-9]|$)`, "i");
-    return rx.test(textoItem);
+  if (!tok || !textoItem) return false;
+  const tokLimpo = tok.trim().toLowerCase();
+  if (textoItem.includes(tokLimpo)) return true;
+
+  // 1. Número puro (ex: "512", "16", "220") -> aceita colado com unidade (512gb, 16gb), mas não dentro de outro número (1512)
+  if (/^\d+$/.test(tokLimpo)) {
+    const rxNum = new RegExp(`(?:^|[^0-9])${tokLimpo}(?:[^0-9]|$)`, "i");
+    return rxNum.test(textoItem);
   }
-  return textoItem.includes(tok);
+
+  // 2. Unidade ou palavra curta pura (ex: "gb", "kg", "un", "ssd", "ram", "pao") -> aceita colado com número (512gb, 1kg), mas não subpalavra (rgb, paulo)
+  if (/^[a-z]+$/.test(tokLimpo) && tokLimpo.length <= 4) {
+    const rxLetras = new RegExp(`(?:^|[^a-z])${tokLimpo}(?:[^a-z]|$)`, "i");
+    if (rxLetras.test(textoItem)) return true;
+    // Singular/plural simples para palavras curtas (ex: paos -> pao)
+    if (tokLimpo.endsWith("s")) {
+      const semS = tokLimpo.slice(0, -1);
+      const rxSemS = new RegExp(`(?:^|[^a-z])${semS}(?:[^a-z]|$)`, "i");
+      if (rxSemS.test(textoItem)) return true;
+    }
+    return false;
+  }
+
+  // 3. Misto número + unidade (ex: "512gb", "16gb", "500ml") -> aceita com ou sem espaço/hífen ("512 gb", "512-gb")
+  const m = tokLimpo.match(/^(\d+)([a-z]+)$/);
+  if (m) {
+    const [, num, unit] = m;
+    const rxMisto = new RegExp(`(?:^|[^0-9])${num}\\s*[-/]?\\s*${unit}(?:[^a-z]|$)`, "i");
+    return rxMisto.test(textoItem);
+  }
+
+  // 4. Palavras maiores: se terminar em "s" (plural), testa também singular
+  if (tokLimpo.length > 4 && tokLimpo.endsWith("s")) {
+    const singular = tokLimpo.slice(0, -1);
+    if (textoItem.includes(singular)) return true;
+  }
+
+  return false;
 }
 
 function itemCorrespondeAosTokens(
@@ -273,6 +306,14 @@ async function consultarHomologacoesPncpAoVivo(
     ? query.q.trim()
     : null;
 
+  const termoOriginal = query.q.trim();
+  const variantesTermo: string[] = [termoOriginal];
+  if (/(\d+)\s+([a-zA-Z]+)/.test(termoOriginal)) {
+    variantesTermo.push(termoOriginal.replace(/(\d+)\s+([a-zA-Z]+)/g, "$1$2"));
+  } else if (/(\d+)([a-zA-Z]+)/.test(termoOriginal)) {
+    variantesTermo.push(termoOriginal.replace(/(\d+)([a-zA-Z]+)/g, "$1 $2"));
+  }
+
   const ufsLista = Array.isArray(query.ufs)
     ? query.ufs.filter((u) => u && u !== "TODOS").map((u) => u.toUpperCase())
     : query.uf && query.uf !== "TODOS"
@@ -283,34 +324,54 @@ async function consultarHomologacoesPncpAoVivo(
     ufsLista.length > 0 ? `&ufs=${encodeURIComponent(ufsLista.join("|"))}` : "";
 
   // Busca aprofundada em Atas de Registro de Preços (100% homologadas) + Editais no PNCP
-  const searchUrlAtasP1 = `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
-    query.q,
-  )}&tipos_documento=ata&ordenacao=-data&pagina=1&tam_pagina=35${ufsParam}`;
-
-  const [dataAtasP1, dataAtasP2] = await Promise.all([
-    fetchJsonComTimeout(searchUrlAtasP1, 5000),
-    query.limite >= 20
-      ? fetchJsonComTimeout(
-          `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
-            query.q,
-          )}&tipos_documento=ata&ordenacao=-data&pagina=2&tam_pagina=35${ufsParam}`,
-          4500,
-        )
-      : Promise.resolve(null),
-  ]);
-
-  let candidatos: any[] = [
-    ...(Array.isArray(dataAtasP1?.items) ? dataAtasP1.items : []),
-    ...(Array.isArray(dataAtasP2?.items) ? dataAtasP2.items : []),
+  const searchPromises: Promise<any>[] = [
+    fetchJsonComTimeout(
+      `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+        termoOriginal,
+      )}&tipos_documento=ata&ordenacao=-data&pagina=1&tam_pagina=45${ufsParam}`,
+      5000,
+    ),
   ];
 
-  if (candidatos.length < 25) {
-    const searchUrlEditais = `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
-      query.q,
-    )}&tipos_documento=edital&ordenacao=relevancia&pagina=1&tam_pagina=25${ufsParam}`;
-    const dataEditais = await fetchJsonComTimeout(searchUrlEditais, 4500);
-    if (Array.isArray(dataEditais?.items)) {
-      candidatos = [...candidatos, ...dataEditais.items];
+  if (query.limite >= 20) {
+    searchPromises.push(
+      fetchJsonComTimeout(
+        `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+          termoOriginal,
+        )}&tipos_documento=ata&ordenacao=-data&pagina=2&tam_pagina=45${ufsParam}`,
+        4500,
+      ),
+    );
+  }
+
+  if (query.limite >= 40) {
+    searchPromises.push(
+      fetchJsonComTimeout(
+        `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+          termoOriginal,
+        )}&tipos_documento=ata&ordenacao=-data&pagina=3&tam_pagina=45${ufsParam}`,
+        4500,
+      ),
+    );
+  }
+
+  // Se houver variante sintática ("512 gb" <-> "512gb"), busca em paralelo a variante
+  if (variantesTermo.length > 1 && variantesTermo[1]) {
+    searchPromises.push(
+      fetchJsonComTimeout(
+        `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+          variantesTermo[1],
+        )}&tipos_documento=ata&ordenacao=-data&pagina=1&tam_pagina=45${ufsParam}`,
+        4500,
+      ),
+    );
+  }
+
+  const resultadosAtas = await Promise.all(searchPromises);
+  let candidatos: any[] = [];
+  for (const res of resultadosAtas) {
+    if (Array.isArray(res?.items)) {
+      candidatos.push(...res.items);
     }
   }
 
@@ -330,59 +391,93 @@ async function consultarHomologacoesPncpAoVivo(
     }
   >();
 
-  for (const doc of candidatos) {
-    const ufDoc = String(doc.uf || "").toUpperCase();
-    if (ufsLista.length > 0 && ufDoc && !ufsLista.includes(ufDoc)) {
-      continue;
-    }
-
-    const modNome =
-      doc.modalidade_licitacao_nome || doc.modalidade_nome || "Pregão Eletrônico";
-    if (!modalidadeCorrespondeFiltro(modNome, query.modalidade)) {
-      continue;
-    }
-
-    const dataPub = doc.data_publicacao_pncp || doc.createdAt;
-    if (dataPub) {
-      const dt = new Date(dataPub);
-      if (!Number.isNaN(dt.getTime()) && dt < dataCorte) {
+  const processarCandidatos = (docs: any[]) => {
+    for (const doc of docs) {
+      const ufDoc = String(doc.uf || "").toUpperCase();
+      if (ufsLista.length > 0 && ufDoc && !ufsLista.includes(ufDoc)) {
         continue;
       }
-    }
 
-    const parts = String(doc.item_url || "")
-      .split("/")
-      .filter(Boolean);
-    let cnpj = String(doc.orgao_cnpj || "").replace(/\D/g, "");
-    let ano = String(doc.ano || "");
-    let seq = String(doc.numero_sequencial_compra_ata || doc.numero_sequencial || "");
+      const modNome =
+        doc.modalidade_licitacao_nome || doc.modalidade_nome || "Pregão Eletrônico";
+      if (!modalidadeCorrespondeFiltro(modNome, query.modalidade)) {
+        continue;
+      }
 
-    if (parts[0] === "atas" && parts.length >= 4) {
-      cnpj = parts[1]!;
-      ano = parts[2]!;
-      seq = parts[3]!;
-    } else if (parts[0] === "compras" && parts.length >= 4) {
-      cnpj = parts[1]!;
-      ano = parts[2]!;
-      seq = parts[3]!;
-    }
+      const dataPub = doc.data_publicacao_pncp || doc.createdAt;
+      if (dataPub) {
+        const dt = new Date(dataPub);
+        if (!Number.isNaN(dt.getTime()) && dt < dataCorte) {
+          continue;
+        }
+      }
 
-    if (!cnpj || !ano || !seq) continue;
-    const key = `${cnpj}-${ano}-${seq}`;
-    if (!comprasMap.has(key)) {
-      comprasMap.set(key, {
-        cnpj,
-        ano,
-        seq,
-        orgaoNome: doc.orgao_nome || doc.unidade_nome || "Órgão Público",
-        uf: ufDoc || "BR",
-        municipio: doc.municipio_nome || null,
-        modalidade: modNome,
-        titulo: doc.title || doc.numero || `Compra ${seq}/${ano}`,
-        createdAt: dataPub || new Date().toISOString(),
-      });
+      const parts = String(doc.item_url || "")
+        .split("/")
+        .filter(Boolean);
+      let cnpj = String(doc.orgao_cnpj || "").replace(/\D/g, "");
+      let ano = String(doc.ano || "");
+      let seq = String(doc.numero_sequencial_compra_ata || doc.numero_sequencial || "");
+
+      if (parts[0] === "atas" && parts.length >= 4) {
+        cnpj = parts[1]!;
+        ano = parts[2]!;
+        seq = parts[3]!;
+      } else if (parts[0] === "compras" && parts.length >= 4) {
+        cnpj = parts[1]!;
+        ano = parts[2]!;
+        seq = parts[3]!;
+      }
+
+      if (!cnpj || !ano || !seq) continue;
+      const key = `${cnpj}-${ano}-${seq}`;
+      if (!comprasMap.has(key)) {
+        comprasMap.set(key, {
+          cnpj,
+          ano,
+          seq,
+          orgaoNome: doc.orgao_nome || doc.unidade_nome || "Órgão Público",
+          uf: ufDoc || "BR",
+          municipio: doc.municipio_nome || null,
+          modalidade: modNome,
+          titulo: doc.title || doc.numero || `Compra ${seq}/${ano}`,
+          createdAt: dataPub || new Date().toISOString(),
+        });
+      }
+      if (comprasMap.size >= Math.max(40, query.limite * 2)) break;
     }
-    if (comprasMap.size >= Math.max(30, query.limite * 2)) break;
+  };
+
+  processarCandidatos(candidatos);
+
+  // Se a quantidade de compras únicas for inferior ao alvo, busca também Editais
+  if (comprasMap.size < Math.max(25, query.limite * 1.5)) {
+    const editaisPromises = [
+      fetchJsonComTimeout(
+        `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+          termoOriginal,
+        )}&tipos_documento=edital&ordenacao=-data&pagina=1&tam_pagina=45${ufsParam}`,
+        4500,
+      ),
+    ];
+    if (query.limite >= 30) {
+      editaisPromises.push(
+        fetchJsonComTimeout(
+          `https://pncp.gov.br/api/search/?q=${encodeURIComponent(
+            termoOriginal,
+          )}&tipos_documento=edital&ordenacao=-data&pagina=2&tam_pagina=45${ufsParam}`,
+          4500,
+        ),
+      );
+    }
+    const editaisRes = await Promise.all(editaisPromises);
+    const novosCandidatos: any[] = [];
+    for (const er of editaisRes) {
+      if (Array.isArray(er?.items)) {
+        novosCandidatos.push(...er.items);
+      }
+    }
+    processarCandidatos(novosCandidatos);
   }
 
   const comprasLista = Array.from(comprasMap.values());
@@ -406,7 +501,7 @@ async function consultarHomologacoesPncpAoVivo(
                 it.situacaoCompraItemId === 2) &&
               itemCorrespondeAosTokens(it, tokens, apenasDigitosCatmat),
           )
-          .slice(0, 8);
+          .slice(0, 15);
 
         const resultadosCompra: HomologacaoItemPublico[] = [];
         for (const it of itensCompativeis) {
@@ -451,6 +546,9 @@ async function consultarHomologacoesPncpAoVivo(
             it.catalogoCodigoItem || it.ncmNbsCodigo || "N/I",
           );
 
+          const rawDataHom = vencedor.dataResultado || it.dataAtualizacao || compra.createdAt;
+          const dataHomIso = rawDataHom ? new Date(rawDataHom).toISOString() : null;
+
           resultadosCompra.push({
             id: `pncp-${compra.cnpj}-${compra.ano}-${compra.seq}-${it.numeroItem}`,
             catmat: catmatCode,
@@ -468,9 +566,8 @@ async function consultarHomologacoesPncpAoVivo(
             municipio: compra.municipio,
             modalidade: compra.modalidade,
             numeroProcesso: compra.titulo,
-            dataHomologacao: formatarDataPtBr(
-              vencedor.dataResultado || it.dataAtualizacao || compra.createdAt,
-            ),
+            dataHomologacao: formatarDataPtBr(rawDataHom),
+            dataHomologacaoIso: dataHomIso,
             empresaVencedora: String(
               vencedor.nomeRazaoSocialFornecedor || "Fornecedor Homologado",
             ).trim(),
@@ -497,6 +594,13 @@ async function consultarHomologacoesPncpAoVivo(
       }
     }
   }
+
+  // Ordena por padrão das homologações mais recentes para as mais antigas
+  coletados.sort((a, b) => {
+    const timeA = a.dataHomologacaoIso ? new Date(a.dataHomologacaoIso).getTime() : 0;
+    const timeB = b.dataHomologacaoIso ? new Date(b.dataHomologacaoIso).getTime() : 0;
+    return timeB - timeA;
+  });
 
   return coletados;
 }

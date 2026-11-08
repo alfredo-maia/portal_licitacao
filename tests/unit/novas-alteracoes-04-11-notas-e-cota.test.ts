@@ -116,10 +116,10 @@ function seedEquipe() {
 }
 
 describe("Issue #36 — Cota mensal de análises de IA por plano", () => {
-  it("define os limites mensais oficiais: Básico 5, Pro/Trial 10, Enterprise 20", () => {
+  it("define os limites mensais oficiais: Básico 5, Pro/Trial 15, Enterprise 30", () => {
     expect(PLAN_LIMITS.BASICO.aiAnalisesMes).toBe(5);
-    expect(PLAN_LIMITS.PRO.aiAnalisesMes).toBe(10);
-    expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(20);
+    expect(PLAN_LIMITS.PRO.aiAnalisesMes).toBe(15);
+    expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(30);
   });
 
   it("calcula usados/limite e restantes (0/5 → 1/5)", () => {
@@ -139,14 +139,14 @@ describe("Issue #36 — Cota mensal de análises de IA por plano", () => {
   });
 
   it("Pro no limite recomenda upgrade para Enterprise", () => {
-    const cota = calcularCotaAnaliseIA({ plano: "PRO", usadas: 10 });
+    const cota = calcularCotaAnaliseIA({ plano: "PRO", usadas: 15 });
     expect(cota.atingiuLimite).toBe(true);
     expect(cota.acaoSugerida).toBe("UPGRADE");
     expect(cota.mensagemBloqueio).toMatch(/Enterprise/);
   });
 
   it("Enterprise no limite orienta contato com a equipe de vendas", () => {
-    const cota = calcularCotaAnaliseIA({ plano: "ENTERPRISE", usadas: 20 });
+    const cota = calcularCotaAnaliseIA({ plano: "ENTERPRISE", usadas: 30 });
     expect(cota.atingiuLimite).toBe(true);
     expect(cota.acaoSugerida).toBe("CONTATO_VENDAS");
     expect(cota.mensagemBloqueio).toMatch(/vendas/i);
