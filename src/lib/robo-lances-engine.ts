@@ -3,15 +3,18 @@ import {
   type DisputaItemRegra,
   type TaticaDisputa,
   type TipoDecremento,
+  disputaItemRegraSchema,
   round2,
 } from "@/server/schemas/proposta-calculadora.schema";
 
 export type PerfilConcorrenteVirtual = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
+export type ModoDisputaSimulacao = "ABERTO" | "ABERTO_FECHADO";
 
 export type TipoDisparoLance =
   | "PROPOSTA_INICIAL"
   | "IMEDIATO"
   | "SNIPER"
+  | "LANCE_FECHADO"
   | "DESEMPATE_ME_EPP"
   | "CONCORRENTE"
   | "LANCE_MANUAL";
@@ -46,6 +49,7 @@ export type TipoDecisaoRobo =
   | "AGUARDAR_JANELA_SNIPER"
   | "MONITORAR_APENAS"
   | "BLOQUEADO_PISO_SEGURO"
+  | "PISO_NAO_CONFIGURADO"
   | "PAUSADO_EMERGENCIA"
   | "ITEM_INATIVO";
 
@@ -71,29 +75,20 @@ export function aplicarDecremento(
 ): { novoValor: number; pisoAtingido: boolean } {
   let decrementoEfetivo = 0.01;
 
-  if (tipo === "CENTAVOS_1") {
-    decrementoEfetivo = 0.01;
-  } else if (tipo === "FIXO_REAIS") {
+  if (tipo === "FIXO_REAIS") {
     decrementoEfetivo = Math.max(0.01, valorDecrementoConfig || 1.0);
   } else if (tipo === "PERCENTUAL") {
     const perc = Math.max(0.01, valorDecrementoConfig || 0.5);
-    decrementoEfetivo = round2(valorAtual * (perc / 100));
-    if (decrementoEfetivo < 0.01) decrementoEfetivo = 0.01;
+    decrementoEfetivo = Math.max(0.01, round2(valorAtual * (perc / 100)));
   }
 
   const valorCalculado = round2(valorAtual - decrementoEfetivo);
 
   if (valorCalculado < pisoSeguro) {
-    return {
-      novoValor: pisoSeguro,
-      pisoAtingido: true,
-    };
+    return { novoValor: pisoSeguro, pisoAtingido: true };
   }
 
-  return {
-    novoValor: valorCalculado,
-    pisoAtingido: false,
-  };
+  return { novoValor: valorCalculado, pisoAtingido: false };
 }
 
 /**
@@ -128,6 +123,16 @@ export function avaliarProximoLance(
     };
   }
 
+  // Sem piso calculado não existe trava: o robô NUNCA atua às cegas
+  if (!(item.pisoUnitarioSeguro > 0) || !(item.propostaUnitaria > 0)) {
+    return {
+      tipo: "PISO_NAO_CONFIGURADO",
+      deveDisparar: false,
+      motivo:
+        "Piso Seguro ou Proposta Inicial não configurados na Calculadora. Robô bloqueado por segurança.",
+    };
+  }
+
   // Se já somos o 1º lugar na sala com lance registrado, não queimar margem contra nós mesmos
   if (
     item.minhaPosicao === 1 &&
@@ -154,13 +159,11 @@ export function avaliarProximoLance(
     }
   }
 
-  // Determinar o menor lance de referência a ser superado
   const baseReferencia =
     item.melhorLanceSala != null && item.melhorLanceSala > 0
       ? item.melhorLanceSala
       : item.propostaUnitaria;
 
-  // Se a melhor oferta da sala já estiver no nosso piso ou abaixo, trava inviolável
   if (baseReferencia <= item.pisoUnitarioSeguro) {
     return {
       tipo: "BLOQUEADO_PISO_SEGURO",
@@ -176,26 +179,6 @@ export function avaliarProximoLance(
     item.valorDecremento,
     item.pisoUnitarioSeguro,
   );
-
-  // Se após o decremento o valor for menor que o piso, trava no piso
-  if (novoValor < item.pisoUnitarioSeguro) {
-    return {
-      tipo: "BLOQUEADO_PISO_SEGURO",
-      deveDisparar: false,
-      pisoAtingido: true,
-      motivo: `Próximo lance calculado (R$ ${novoValor.toFixed(2)}) violaria o Piso Seguro de R$ ${item.pisoUnitarioSeguro.toFixed(2)}. Lance bloqueado.`,
-    };
-  }
-
-  // Se já está exatamente no piso seguro e o líder também está no mesmo valor
-  if (novoValor === baseReferencia) {
-    return {
-      tipo: "BLOQUEADO_PISO_SEGURO",
-      deveDisparar: false,
-      pisoAtingido: true,
-      motivo: "Piso Seguro alcançado. Impossível cobrir sem operar com margem negativa.",
-    };
-  }
 
   const novoTotal = round2(novoValor * (item.quantidade > 0 ? item.quantidade : 1));
 
@@ -279,7 +262,6 @@ export function verificarEmpateFictoMeEpp(
     };
   }
 
-  // Lance sugerido de desempate: R$ 0,01 abaixo do líder
   const lanceSugerido = round2(melhorLanceGeral - 0.01);
 
   if (lanceSugerido < meuPisoSeguro) {
@@ -299,72 +281,86 @@ export function verificarEmpateFictoMeEpp(
   };
 }
 
-const NOMES_CONCORRENTES = [
-  "Tech Distribuidora Ltda",
-  "Alfa Informática & Suprimentos",
-  "Prime Soluções Governamentais ME",
-  "Brasil Comércio de Tecnologia Eireli",
-  "Mega Corp Logística e Serviços",
-  "Delta Sistemas Corporativos",
+const CONCORRENTES_VIRTUAIS: ReadonlyArray<{ nome: string; isMeEpp: boolean }> = [
+  { nome: "Tech Distribuidora Ltda", isMeEpp: false },
+  { nome: "Alfa Informática & Suprimentos", isMeEpp: false },
+  { nome: "Prime Soluções Governamentais ME", isMeEpp: true },
+  { nome: "Brasil Comércio de Tecnologia EPP", isMeEpp: true },
+  { nome: "Mega Corp Logística e Serviços", isMeEpp: false },
+  { nome: "Delta Sistemas Corporativos", isMeEpp: false },
 ];
+
+const PERFIS_CONCORRENTE: Record<
+  PerfilConcorrenteVirtual,
+  { probabilidade: number; fatorPiso: number; desconto: (melhor: number) => number }
+> = {
+  // Agressivo: lances frequentes e fortes, aceita até ~22% de desconto
+  AGRESSIVO: {
+    probabilidade: 0.75,
+    fatorPiso: 0.78,
+    desconto: (melhor) => round2(Math.max(0.5, melhor * 0.01)),
+  },
+  // Moderado: disputa equilibrada, aceita até ~18% de desconto
+  MODERADO: {
+    probabilidade: 0.5,
+    fatorPiso: 0.82,
+    desconto: (melhor) => round2(Math.max(0.01, melhor * 0.003)),
+  },
+  // Conservador: poucos lances, desiste ao atingir 15% de desconto
+  CONSERVADOR: {
+    probabilidade: 0.3,
+    fatorPiso: 0.85,
+    desconto: () => 0.01,
+  },
+};
+
+/** Piso fixo do concorrente virtual, ancorado no preço de referência do item. */
+export function calcularPisoConcorrente(
+  item: DisputaItemRegra,
+  perfil: PerfilConcorrenteVirtual,
+): number {
+  return round2(item.propostaUnitaria * PERFIS_CONCORRENTE[perfil].fatorPiso);
+}
 
 /**
  * Simula a atuação autônoma de um concorrente virtual para movimentar o pregão.
+ * O piso do concorrente é FIXO (ancorado na proposta de referência), então ele
+ * desiste ao atingir seu limite em vez de descer indefinidamente.
  */
 export function simularLanceConcorrente(
   item: DisputaItemRegra,
   perfil: PerfilConcorrenteVirtual,
   tempoRestanteSegundos: number,
   rodadaIndex: number = 1,
+  random: () => number = Math.random,
 ): LanceDisputaEvento | null {
+  const config = PERFIS_CONCORRENTE[perfil];
   const melhorAtual = item.melhorLanceSala || item.propostaUnitaria;
+  if (!(melhorAtual > 0)) return null;
 
-  // Piso estimado do concorrente para evitar lances irrealistas (geralmente 70% a 85% do estimado)
-  const pisoEstimadoConcorrente = round2(melhorAtual * 0.88);
+  if (random() > config.probabilidade) return null;
 
-  // Concorrente agressivo atua com mais facilidade; conservador desiste mais cedo
-  let probabilidadeLance = 0.5;
-  let valorDesconto = 0.01;
-
-  if (perfil === "AGRESSIVO") {
-    probabilidadeLance = 0.75;
-    valorDesconto = round2(Math.max(0.5, melhorAtual * 0.01));
-  } else if (perfil === "MODERADO") {
-    probabilidadeLance = 0.5;
-    valorDesconto = round2(Math.max(0.01, melhorAtual * 0.003));
-  } else {
-    // CONSERVADOR
-    probabilidadeLance = 0.3;
-    valorDesconto = 0.01;
-  }
-
-  const sorteio = Math.random();
-  if (sorteio > probabilidadeLance) {
+  const novoValor = round2(melhorAtual - config.desconto(melhorAtual));
+  if (novoValor <= 0 || novoValor < calcularPisoConcorrente(item, perfil)) {
     return null;
   }
 
-  const novoValor = round2(melhorAtual - valorDesconto);
-  if (novoValor < pisoEstimadoConcorrente || novoValor <= 0) {
-    return null;
-  }
-
-  const nomeConcorrente =
-    NOMES_CONCORRENTES[rodadaIndex % NOMES_CONCORRENTES.length];
-  const isMe = nomeConcorrente.includes("ME") || nomeConcorrente.includes("Eireli");
+  const concorrente =
+    CONCORRENTES_VIRTUAIS[Math.abs(rodadaIndex) % CONCORRENTES_VIRTUAIS.length];
 
   return {
-    id: `lance-conc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: `lance-conc-${item.itemId}-${rodadaIndex}`,
     itemId: item.itemId,
     numeroItem: item.numeroItem,
-    autorNome: nomeConcorrente,
+    autorNome: concorrente.nome,
     isMinhaEmpresa: false,
-    isMeEpp: isMe,
+    isMeEpp: concorrente.isMeEpp,
     valorUnitario: novoValor,
     valorTotal: round2(novoValor * (item.quantidade || 1)),
     timestamp: Date.now(),
     tempoRestanteSegundos,
     tipoDisparo: "CONCORRENTE",
-    mensagem: `Concorrente ${nomeConcorrente} cobriu a oferta com R$ ${novoValor.toFixed(2)}.`,
+    mensagem: `Concorrente ${concorrente.nome} cobriu a oferta com R$ ${novoValor.toFixed(2)}.`,
   };
 }
 
@@ -450,3 +446,617 @@ export function gerarCenarioDemoDisputa(): {
   return { config, itens };
 }
 
+// ============================================================================
+// Ciclo completo da Sessão Simulada (funções puras — sem efeitos colaterais)
+// ============================================================================
+
+export const SIMULACAO_CONFIG = {
+  tempoInicialSegundos: 45,
+  janelaProrrogacaoSegundos: 10,
+  prorrogacaoSegundos: 15,
+  tempoMaximoSegundos: 60,
+  limiteEventos: 200,
+  margemFaseFechadaPercentual: 10,
+} as const;
+
+export interface OportunidadeDesempate {
+  itemId: string;
+  numeroItem: string;
+  lanceSugerido: number;
+  margemPercentual: number;
+  motivo: string;
+}
+
+export interface AvisoSimulacao {
+  id: number;
+  tipo: "info" | "success" | "warning" | "error";
+  texto: string;
+}
+
+export interface LiderConcorrente {
+  nome: string;
+  isMeEpp: boolean;
+}
+
+export interface EstadoSimulacao {
+  itens: DisputaItemRegra[];
+  /** Concorrente que lidera cada item (ausente quando sua empresa lidera) */
+  liderConcorrente: Record<string, LiderConcorrente | undefined>;
+  /** Último lance de concorrente por item (usado na fase fechada) */
+  ultimoLanceConcorrente: Record<string, number | undefined>;
+  tempoRestante: number;
+  fase: "ABERTA" | "ENCERRADA";
+  sequencia: number;
+  /** Fita de lances, do mais recente para o mais antigo */
+  eventos: LanceDisputaEvento[];
+  desempates: OportunidadeDesempate[];
+  ultimoAviso: AvisoSimulacao | null;
+}
+
+export interface ParametrosSimulacao {
+  perfil: PerfilConcorrenteVirtual;
+  pausaEmergencia: boolean;
+  segundosFinaisSniper: number;
+  minhaEmpresaMeEpp: boolean;
+  modoDisputa: ModoDisputaSimulacao;
+  random?: () => number;
+}
+
+/**
+ * Normaliza regras de itens vindas do banco (JSON livre) para a simulação:
+ * aplica defaults do schema e posiciona a proposta inicial da empresa como melhor lance.
+ */
+export function normalizarItensParaSimulacao(regras: unknown[]): DisputaItemRegra[] {
+  if (!Array.isArray(regras)) return [];
+  return regras.flatMap((raw) => {
+    const parsed = disputaItemRegraSchema.safeParse(raw);
+    if (!parsed.success) return [];
+    const item = parsed.data;
+    const proposta = item.propostaUnitaria > 0 ? item.propostaUnitaria : null;
+    return [
+      {
+        ...item,
+        statusItem: "PRONTO" as const,
+        meuUltimoLance: proposta,
+        melhorLanceSala: proposta,
+        minhaPosicao: proposta ? 1 : null,
+      },
+    ];
+  });
+}
+
+/** Itens configurados sem Piso Seguro/Proposta (o robô não atuará neles). */
+export function listarItensSemPiso(itens: DisputaItemRegra[]): DisputaItemRegra[] {
+  return itens.filter(
+    (it) => it.ativoNoRobo && it.tatica !== "MONITORAR" && !(it.pisoUnitarioSeguro > 0 && it.propostaUnitaria > 0),
+  );
+}
+
+function criarEvento(
+  seq: number,
+  item: DisputaItemRegra,
+  dados: Omit<LanceDisputaEvento, "id" | "itemId" | "numeroItem" | "valorTotal" | "timestamp">,
+): LanceDisputaEvento {
+  return {
+    ...dados,
+    id: `ev-${seq}`,
+    itemId: item.itemId,
+    numeroItem: item.numeroItem,
+    valorTotal: round2(dados.valorUnitario * (item.quantidade > 0 ? item.quantidade : 1)),
+    timestamp: Date.now(),
+  };
+}
+
+function anexarEventos(
+  eventosAnteriores: LanceDisputaEvento[],
+  novosCronologicos: LanceDisputaEvento[],
+): LanceDisputaEvento[] {
+  if (novosCronologicos.length === 0) return eventosAnteriores;
+  return [...[...novosCronologicos].reverse(), ...eventosAnteriores].slice(
+    0,
+    SIMULACAO_CONFIG.limiteEventos,
+  );
+}
+
+export function criarEstadoSimulacao(
+  itensEntrada: DisputaItemRegra[],
+  tempoInicial: number = SIMULACAO_CONFIG.tempoInicialSegundos,
+): EstadoSimulacao {
+  const itens = itensEntrada.map((it) => ({ ...it }));
+  const liderConcorrente: EstadoSimulacao["liderConcorrente"] = {};
+  const ultimoLanceConcorrente: EstadoSimulacao["ultimoLanceConcorrente"] = {};
+  const eventos: LanceDisputaEvento[] = [];
+  let seq = 0;
+
+  itens.forEach((item, idx) => {
+    if (item.meuUltimoLance != null && item.meuUltimoLance > 0) {
+      seq++;
+      eventos.push(
+        criarEvento(seq, item, {
+          autorNome: "Sua Empresa",
+          isMinhaEmpresa: true,
+          valorUnitario: item.meuUltimoLance,
+          tempoRestanteSegundos: tempoInicial,
+          tipoDisparo: "PROPOSTA_INICIAL",
+          mensagem: "Proposta inicial cadastrada no sistema.",
+        }),
+      );
+    }
+
+    const concorrenteLidera =
+      item.melhorLanceSala != null &&
+      item.meuUltimoLance != null &&
+      item.melhorLanceSala < item.meuUltimoLance;
+
+    if (concorrenteLidera && item.melhorLanceSala != null) {
+      const concorrente = CONCORRENTES_VIRTUAIS[idx % CONCORRENTES_VIRTUAIS.length];
+      seq++;
+      liderConcorrente[item.itemId] = concorrente;
+      ultimoLanceConcorrente[item.itemId] = item.melhorLanceSala;
+      eventos.push(
+        criarEvento(seq, item, {
+          autorNome: concorrente.nome,
+          isMinhaEmpresa: false,
+          isMeEpp: concorrente.isMeEpp,
+          valorUnitario: item.melhorLanceSala,
+          tempoRestanteSegundos: tempoInicial,
+          tipoDisparo: "CONCORRENTE",
+          mensagem: "Proposta inicial do concorrente registrada na sala.",
+        }),
+      );
+    }
+  });
+
+  return {
+    itens,
+    liderConcorrente,
+    ultimoLanceConcorrente,
+    tempoRestante: tempoInicial,
+    fase: "ABERTA",
+    sequencia: seq,
+    eventos: anexarEventos([], eventos),
+    desempates: [],
+    ultimoAviso: null,
+  };
+}
+
+function montarContexto(params: ParametrosSimulacao, tempoRestante: number): ContextoDisputa {
+  return {
+    pausaEmergencia: params.pausaEmergencia,
+    tempoRestanteSegundos: tempoRestante,
+    segundosFinaisSniper: params.segundosFinaisSniper,
+    tempoRespostaSegundos: 1,
+    modoDisputa: params.modoDisputa,
+    minhaEmpresaMeEpp: params.minhaEmpresaMeEpp,
+  };
+}
+
+interface ResultadoReacaoRobo {
+  item: DisputaItemRegra;
+  evento: Omit<LanceDisputaEvento, "id" | "itemId" | "numeroItem" | "valorTotal" | "timestamp"> | null;
+  travouNoPiso: boolean;
+}
+
+function reagirRobo(
+  itemEntrada: DisputaItemRegra,
+  params: ParametrosSimulacao,
+  tempoRestante: number,
+): ResultadoReacaoRobo {
+  const item = { ...itemEntrada };
+  const decisao = avaliarProximoLance(item, montarContexto(params, tempoRestante));
+
+  if (decisao.deveDisparar && decisao.novoValorUnitario != null) {
+    item.meuUltimoLance = decisao.novoValorUnitario;
+    item.melhorLanceSala = decisao.novoValorUnitario;
+    item.minhaPosicao = 1;
+    item.statusItem = decisao.pisoAtingido ? "PISO_ATINGIDO" : "EM_DISPUTA";
+    return {
+      item,
+      travouNoPiso: false,
+      evento: {
+        autorNome: `Sua Empresa (Robô ${decisao.taticaUsada === "SNIPER" ? "Sniper" : "Imediato"})`,
+        isMinhaEmpresa: true,
+        isMeEpp: params.minhaEmpresaMeEpp,
+        valorUnitario: decisao.novoValorUnitario,
+        tempoRestanteSegundos: tempoRestante,
+        tipoDisparo: decisao.taticaUsada === "SNIPER" ? "SNIPER" : "IMEDIATO",
+        mensagem: decisao.motivo,
+      },
+    };
+  }
+
+  const travouNoPiso =
+    decisao.tipo === "BLOQUEADO_PISO_SEGURO" && item.statusItem !== "PISO_ATINGIDO";
+  if (decisao.tipo === "BLOQUEADO_PISO_SEGURO") {
+    item.statusItem = "PISO_ATINGIDO";
+  }
+  return { item, evento: null, travouNoPiso };
+}
+
+function itemFinalizado(item: DisputaItemRegra): boolean {
+  return item.statusItem === "VENCEDOR" || item.statusItem === "FINALIZADO";
+}
+
+function encerrarSessao(
+  estado: EstadoSimulacao,
+  params: ParametrosSimulacao,
+  random: () => number,
+): EstadoSimulacao {
+  let seq = estado.sequencia;
+  const novosEventos: LanceDisputaEvento[] = [];
+  const liderConcorrente = { ...estado.liderConcorrente };
+  const ultimoLanceConcorrente = { ...estado.ultimoLanceConcorrente };
+
+  let itens = estado.itens.map((it) => ({ ...it }));
+
+  // Fase fechada (modo Aberto e Fechado): um único lance final sigiloso
+  if (params.modoDisputa === "ABERTO_FECHADO") {
+    itens = itens.map((original) => {
+      const item = { ...original };
+      const melhor = item.melhorLanceSala;
+      if (melhor == null || !(melhor > 0)) return item;
+      const limiteFase = melhor * (1 + SIMULACAO_CONFIG.margemFaseFechadaPercentual / 100);
+
+      // Lance fechado do concorrente (se estiver na faixa de 10%)
+      const ultimoConc = ultimoLanceConcorrente[item.itemId];
+      let finalConcorrente: number | null = null;
+      if (ultimoConc != null && ultimoConc <= limiteFase) {
+        const pisoConc = calcularPisoConcorrente(item, params.perfil);
+        const proposto = round2(melhor * (1 - random() * 0.02));
+        finalConcorrente = Math.min(ultimoConc, Math.max(pisoConc, proposto));
+      }
+
+      // Lance fechado do robô (somente se ativo, não pausado e não em monitoramento)
+      let meuFinal = item.meuUltimoLance;
+      const roboPodeAtuar =
+        item.ativoNoRobo &&
+        !params.pausaEmergencia &&
+        item.tatica !== "MONITORAR" &&
+        item.pisoUnitarioSeguro > 0 &&
+        item.meuUltimoLance != null &&
+        item.meuUltimoLance <= limiteFase;
+
+      const concorrenteNaFaixa = ultimoConc != null && ultimoConc <= limiteFase;
+      if (
+        roboPodeAtuar &&
+        (item.minhaPosicao !== 1 || concorrenteNaFaixa) &&
+        melhor > item.pisoUnitarioSeguro
+      ) {
+        meuFinal = aplicarDecremento(
+          melhor,
+          item.tipoDecremento,
+          item.valorDecremento,
+          item.pisoUnitarioSeguro,
+        ).novoValor;
+        seq++;
+        novosEventos.push(
+          criarEvento(seq, item, {
+            autorNome: "Sua Empresa (Lance Fechado)",
+            isMinhaEmpresa: true,
+            isMeEpp: params.minhaEmpresaMeEpp,
+            valorUnitario: meuFinal,
+            tempoRestanteSegundos: 0,
+            tipoDisparo: "LANCE_FECHADO",
+            mensagem: "Lance final sigiloso enviado na fase fechada.",
+          }),
+        );
+      }
+
+      if (finalConcorrente != null && finalConcorrente < (ultimoConc ?? Infinity)) {
+        const lider = liderConcorrente[item.itemId] ?? CONCORRENTES_VIRTUAIS[0];
+        seq++;
+        novosEventos.push(
+          criarEvento(seq, item, {
+            autorNome: `${lider.nome} (Lance Fechado)`,
+            isMinhaEmpresa: false,
+            isMeEpp: lider.isMeEpp,
+            valorUnitario: finalConcorrente,
+            tempoRestanteSegundos: 0,
+            tipoDisparo: "LANCE_FECHADO",
+            mensagem: "Lance final sigiloso do concorrente na fase fechada.",
+          }),
+        );
+        liderConcorrente[item.itemId] = lider;
+        ultimoLanceConcorrente[item.itemId] = finalConcorrente;
+      }
+
+      item.meuUltimoLance = meuFinal;
+      const conc = ultimoLanceConcorrente[item.itemId];
+      if (meuFinal != null && (conc == null || meuFinal <= conc)) {
+        item.melhorLanceSala = meuFinal;
+        item.minhaPosicao = 1;
+      } else if (conc != null) {
+        item.melhorLanceSala = conc;
+        item.minhaPosicao = 2;
+      }
+      return item;
+    });
+  }
+
+  // Resultado final por item
+  itens = itens.map((item) => {
+    if (itemFinalizado(item)) return item;
+    if (item.minhaPosicao === 1) {
+      liderConcorrente[item.itemId] = undefined;
+      return { ...item, statusItem: "VENCEDOR" as const };
+    }
+    return item.statusItem === "PISO_ATINGIDO" ? item : { ...item, statusItem: "FINALIZADO" as const };
+  });
+
+  // Direito de preferência ME/EPP (LC 123/2006)
+  const desempates: OportunidadeDesempate[] = [];
+  if (params.minhaEmpresaMeEpp) {
+    for (const item of itens) {
+      if (item.minhaPosicao === 1 || item.melhorLanceSala == null) continue;
+      const check = verificarEmpateFictoMeEpp(
+        item.melhorLanceSala,
+        liderConcorrente[item.itemId]?.isMeEpp ?? false,
+        item.meuUltimoLance,
+        item.pisoUnitarioSeguro,
+        true,
+      );
+      if (check.podeDesempatar) {
+        desempates.push({
+          itemId: item.itemId,
+          numeroItem: item.numeroItem,
+          lanceSugerido: check.lanceSugerido,
+          margemPercentual: check.margemPercentual,
+          motivo: check.motivo,
+        });
+      }
+    }
+  }
+
+  const vencidos = itens.filter((it) => it.statusItem === "VENCEDOR").length;
+  const textoDesempate =
+    desempates.length > 0
+      ? ` ${desempates.length} item(ns) com direito de preferência ME/EPP disponível.`
+      : "";
+
+  return {
+    ...estado,
+    itens,
+    liderConcorrente,
+    ultimoLanceConcorrente,
+    tempoRestante: 0,
+    fase: "ENCERRADA",
+    sequencia: seq + 1,
+    eventos: anexarEventos(estado.eventos, novosEventos),
+    desempates,
+    ultimoAviso: {
+      id: seq + 1,
+      tipo: desempates.length > 0 ? "warning" : "info",
+      texto: `🏁 Sessão encerrada: sua empresa arrematou ${vencidos} de ${itens.length} item(ns).${textoDesempate}`,
+    },
+  };
+}
+
+/**
+ * Avança a sessão simulada em 1 segundo:
+ * 1) concorrentes reagem quando sua empresa lidera; 2) o robô reage pelas regras;
+ * 3) prorrogação automática (modo Aberto); 4) encerramento e fase fechada.
+ * Função pura: não altera o estado recebido.
+ */
+export function executarTickSimulacao(
+  estado: EstadoSimulacao,
+  params: ParametrosSimulacao,
+): EstadoSimulacao {
+  if (estado.fase === "ENCERRADA") return estado;
+
+  const random = params.random ?? Math.random;
+  const novoTempo = Math.max(0, estado.tempoRestante - 1);
+  if (novoTempo <= 0) {
+    return encerrarSessao(estado, params, random);
+  }
+  const janela = SIMULACAO_CONFIG.janelaProrrogacaoSegundos;
+  const liderConcorrente = { ...estado.liderConcorrente };
+  const ultimoLanceConcorrente = { ...estado.ultimoLanceConcorrente };
+  const novosEventos: LanceDisputaEvento[] = [];
+  let seq = estado.sequencia;
+  let houveLanceNaJanela = false;
+  let aviso: AvisoSimulacao | null = null;
+
+  const itens = estado.itens.map((original, idx) => {
+    let item = { ...original };
+    if (itemFinalizado(item)) return item;
+
+    // 1. Concorrente virtual só reage quando sua empresa está na liderança
+    if (item.minhaPosicao === 1) {
+      const lance = simularLanceConcorrente(item, params.perfil, novoTempo, seq + idx, random);
+      if (lance) {
+        seq++;
+        novosEventos.push({ ...lance, id: `ev-${seq}` });
+        liderConcorrente[item.itemId] = { nome: lance.autorNome, isMeEpp: Boolean(lance.isMeEpp) };
+        ultimoLanceConcorrente[item.itemId] = lance.valorUnitario;
+        item.melhorLanceSala = lance.valorUnitario;
+        item.minhaPosicao = 2;
+        if (item.statusItem === "PRONTO") item.statusItem = "EM_DISPUTA";
+        if (novoTempo <= janela) houveLanceNaJanela = true;
+      }
+    }
+
+    // 2. Reação do robô
+    const reacao = reagirRobo(item, params, novoTempo);
+    item = reacao.item;
+    if (reacao.evento) {
+      seq++;
+      novosEventos.push(criarEvento(seq, item, reacao.evento));
+      liderConcorrente[item.itemId] = undefined;
+      if (novoTempo <= janela) houveLanceNaJanela = true;
+    } else if (reacao.travouNoPiso) {
+      seq++;
+      aviso = {
+        id: seq,
+        tipo: "warning",
+        texto: `🔒 Item ${item.numeroItem}: concorrente abaixo do seu Piso Seguro (${item.pisoUnitarioSeguro.toFixed(2)}). Robô travado para proteger sua margem.`,
+      };
+    }
+    return item;
+  });
+
+  let tempoRestante = novoTempo;
+  if (houveLanceNaJanela && params.modoDisputa === "ABERTO") {
+    tempoRestante = Math.min(
+      novoTempo + SIMULACAO_CONFIG.prorrogacaoSegundos,
+      SIMULACAO_CONFIG.tempoMaximoSegundos,
+    );
+    seq++;
+    aviso = {
+      id: seq,
+      tipo: "info",
+      texto: `⏱️ Prorrogação automática (+${SIMULACAO_CONFIG.prorrogacaoSegundos}s): lance registrado nos ${janela}s finais.`,
+    };
+  }
+
+  const proximo: EstadoSimulacao = {
+    ...estado,
+    itens,
+    liderConcorrente,
+    ultimoLanceConcorrente,
+    tempoRestante,
+    sequencia: seq,
+    eventos: anexarEventos(estado.eventos, novosEventos),
+    ultimoAviso: aviso ?? estado.ultimoAviso,
+  };
+
+  return tempoRestante <= 0 ? encerrarSessao(proximo, params, random) : proximo;
+}
+
+/** Injeta manualmente um lance rival para testar a reação do robô. */
+export function injetarLanceRival(
+  estado: EstadoSimulacao,
+  itemId: string,
+  params: ParametrosSimulacao,
+): EstadoSimulacao {
+  if (estado.fase === "ENCERRADA") return estado;
+  const alvo = estado.itens.find((it) => it.itemId === itemId);
+  if (!alvo) return estado;
+
+  const base = alvo.melhorLanceSala || alvo.propostaUnitaria;
+  const novoValorRival = round2(base - Math.max(1.0, round2(base * 0.01)));
+  if (!(novoValorRival > 0)) return estado;
+
+  const janela = SIMULACAO_CONFIG.janelaProrrogacaoSegundos;
+  let seq = estado.sequencia;
+  const novosEventos: LanceDisputaEvento[] = [];
+  const rival: LiderConcorrente = { nome: "Concorrente Desafiante (Injetado)", isMeEpp: false };
+
+  seq++;
+  novosEventos.push(
+    criarEvento(seq, alvo, {
+      autorNome: rival.nome,
+      isMinhaEmpresa: false,
+      isMeEpp: false,
+      valorUnitario: novoValorRival,
+      tempoRestanteSegundos: estado.tempoRestante,
+      tipoDisparo: "LANCE_MANUAL",
+      mensagem: `Lance concorrente de R$ ${novoValorRival.toFixed(2)} injetado manualmente para teste.`,
+    }),
+  );
+
+  const itemComRival: DisputaItemRegra = {
+    ...alvo,
+    melhorLanceSala: novoValorRival,
+    minhaPosicao: 2,
+    statusItem: alvo.statusItem === "PRONTO" ? "EM_DISPUTA" : alvo.statusItem,
+  };
+  const reacao = reagirRobo(itemComRival, params, estado.tempoRestante);
+  const liderConcorrente = { ...estado.liderConcorrente, [itemId]: rival };
+  if (reacao.evento) {
+    seq++;
+    novosEventos.push(criarEvento(seq, reacao.item, reacao.evento));
+    liderConcorrente[itemId] = undefined;
+  }
+
+  const prorroga = estado.tempoRestante <= janela && params.modoDisputa === "ABERTO";
+  const tempoRestante = prorroga
+    ? Math.min(
+        estado.tempoRestante + SIMULACAO_CONFIG.prorrogacaoSegundos,
+        SIMULACAO_CONFIG.tempoMaximoSegundos,
+      )
+    : estado.tempoRestante;
+
+  seq++;
+  return {
+    ...estado,
+    itens: estado.itens.map((it) => (it.itemId === itemId ? reacao.item : it)),
+    liderConcorrente,
+    ultimoLanceConcorrente: { ...estado.ultimoLanceConcorrente, [itemId]: novoValorRival },
+    tempoRestante,
+    sequencia: seq,
+    eventos: anexarEventos(estado.eventos, novosEventos),
+    ultimoAviso: {
+      id: seq,
+      tipo: reacao.travouNoPiso ? "warning" : "info",
+      texto: reacao.travouNoPiso
+        ? `🔒 Lance concorrente de R$ ${novoValorRival.toFixed(2)} injetado no Item ${alvo.numeroItem} atingiu seu Piso Seguro (R$ ${alvo.pisoUnitarioSeguro.toFixed(2)}). Robô bloqueado por segurança.`
+        : `💥 Lance concorrente de R$ ${novoValorRival.toFixed(2)} injetado no Item ${alvo.numeroItem}. ${
+            reacao.evento
+              ? "O robô respondeu na hora."
+              : "O robô aguardou conforme a tática configurada."
+          }`,
+    },
+  };
+}
+
+/** Exerce o direito de preferência ME/EPP em um item após o encerramento. */
+export function exercerDesempateMeEpp(
+  estado: EstadoSimulacao,
+  itemId: string,
+  minhaEmpresaMeEpp: boolean,
+): EstadoSimulacao {
+  const oportunidade = estado.desempates.find((d) => d.itemId === itemId);
+  const alvo = estado.itens.find((it) => it.itemId === itemId);
+  if (!oportunidade || !alvo || !minhaEmpresaMeEpp) return estado;
+
+  const seq = estado.sequencia + 1;
+  const evento = criarEvento(seq, alvo, {
+    autorNome: "Sua Empresa (Desempate LC 123/2006)",
+    isMinhaEmpresa: true,
+    isMeEpp: true,
+    valorUnitario: oportunidade.lanceSugerido,
+    tempoRestanteSegundos: 0,
+    tipoDisparo: "DESEMPATE_ME_EPP",
+    mensagem: `Direito de preferência exercido: R$ ${oportunidade.lanceSugerido.toFixed(2)} arrematou o item.`,
+  });
+
+  return {
+    ...estado,
+    itens: estado.itens.map((it) =>
+      it.itemId === itemId
+        ? {
+            ...it,
+            meuUltimoLance: oportunidade.lanceSugerido,
+            melhorLanceSala: oportunidade.lanceSugerido,
+            minhaPosicao: 1,
+            statusItem: "VENCEDOR" as const,
+          }
+        : it,
+    ),
+    liderConcorrente: { ...estado.liderConcorrente, [itemId]: undefined },
+    desempates: estado.desempates.filter((d) => d.itemId !== itemId),
+    sequencia: seq + 1,
+    eventos: anexarEventos(estado.eventos, [evento]),
+    ultimoAviso: {
+      id: seq + 1,
+      tipo: "success",
+      texto: `🏆 Direito de preferência exercido! Sua empresa venceu o Item ${alvo.numeroItem} por R$ ${oportunidade.lanceSugerido.toFixed(2)}.`,
+    },
+  };
+}
+
+export function declinarDesempateMeEpp(estado: EstadoSimulacao, itemId: string): EstadoSimulacao {
+  return { ...estado, desempates: estado.desempates.filter((d) => d.itemId !== itemId) };
+}
+
+/** Altera a tática de um item durante a simulação. */
+export function alterarTaticaItem(
+  estado: EstadoSimulacao,
+  itemId: string,
+  tatica: TaticaDisputa,
+): EstadoSimulacao {
+  return {
+    ...estado,
+    itens: estado.itens.map((it) => (it.itemId === itemId ? { ...it, tatica } : it)),
+  };
+}

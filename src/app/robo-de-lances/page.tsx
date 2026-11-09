@@ -38,6 +38,7 @@ interface SalaDisputaTenant {
   numeroEdital: string;
   portal: string;
   identificadorSala: string;
+  modoDisputaEdital?: "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
   statusGeral: "CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA";
   pausaEmergencia: boolean;
   tempoRespostaSegundos: number;
@@ -566,11 +567,14 @@ export default function RoboDeLancesPage() {
           }}
           licitacaoInicial={salaSimuladaAlvo}
           planoTenant={planoTenant}
+          preferenciaMeInicial={preferenciaMe === "ATIVO"}
           salasDisponiveis={salas.map((s) => ({
             id: s.id,
             numeroEdital: s.numeroEdital,
             orgao: s.orgao,
             portal: s.portal,
+            modoDisputaEdital: s.modoDisputaEdital,
+            segundosFinaisSniper: s.segundosFinaisSniper,
             regrasItens: s.regrasItens || [],
           }))}
         />

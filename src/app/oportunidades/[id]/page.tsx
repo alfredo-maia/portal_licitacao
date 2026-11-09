@@ -6054,6 +6054,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   numeroEdital: oportunidade.numeroEdital,
                   orgao: oportunidade.orgaoNome,
                   portal: portalDisputa,
+                  modoDisputaEdital,
+                  segundosFinaisSniper,
                   regrasItens: regrasDisputaItens,
                 }
               : null

@@ -69,6 +69,7 @@ export async function GET(req: Request) {
           numeroEdital: opp.numeroEdital,
           portal: disputa.portal || "Compras.gov.br",
           identificadorSala: disputa.identificadorSala || opp.numeroEdital || "",
+          modoDisputaEdital: disputa.modoDisputaEdital || "ABERTO",
           statusGeral:
             disputa.statusGeral || (opp.status === "EM_DISPUTA" ? "EM_DISPUTA" : "CONFIGURADA"),
           pausaEmergencia: Boolean(disputa.pausaEmergencia),

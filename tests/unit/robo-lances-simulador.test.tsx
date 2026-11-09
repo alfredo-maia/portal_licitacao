@@ -7,6 +7,15 @@ import {
   verificarEmpateFictoMeEpp,
   gerarCenarioDemoDisputa,
   simularLanceConcorrente,
+  calcularPisoConcorrente,
+  normalizarItensParaSimulacao,
+  listarItensSemPiso,
+  criarEstadoSimulacao,
+  executarTickSimulacao,
+  injetarLanceRival,
+  exercerDesempateMeEpp,
+  declinarDesempateMeEpp,
+  alterarTaticaItem,
   type ContextoDisputa,
 } from "@/lib/robo-lances-engine";
 import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
@@ -189,6 +198,38 @@ describe("Motor Determinístico de Lances (Auto-Bidder Engine)", () => {
       expect(decisao.deveDisparar).toBe(false);
       expect(decisao.tipo).toBe("ITEM_INATIVO");
     });
+
+    it("dispara exatamente no valor do Piso Seguro quando o decremento fixo ultrapassa o piso mas ainda há margem", () => {
+      const item: DisputaItemRegra = {
+        ...itemBase,
+        tipoDecremento: "FIXO_REAIS",
+        valorDecremento: 50.0,
+        pisoUnitarioSeguro: 4000.0,
+        melhorLanceSala: 4005.0,
+        meuUltimoLance: 4100.0,
+        minhaPosicao: 2,
+      };
+
+      const decisao = avaliarProximoLance(item, contextoPadrao);
+
+      expect(decisao.deveDisparar).toBe(true);
+      expect(decisao.tipo).toBe("ENVIAR_LANCE");
+      expect(decisao.novoValorUnitario).toBe(4000.0);
+      expect(decisao.pisoAtingido).toBe(true);
+    });
+
+    it("bloqueia com PISO_NAO_CONFIGURADO se pisoUnitarioSeguro ou propostaUnitaria forem zero", () => {
+      const itemSemPiso: DisputaItemRegra = {
+        ...itemBase,
+        pisoUnitarioSeguro: 0,
+      };
+
+      const decisao = avaliarProximoLance(itemSemPiso, contextoPadrao);
+
+      expect(decisao.deveDisparar).toBe(false);
+      expect(decisao.tipo).toBe("PISO_NAO_CONFIGURADO");
+      expect(decisao.motivo).toContain("Piso Seguro ou Proposta Inicial não configurados");
+    });
   });
 
   describe("verificarEmpateFictoMeEpp (LC 123/2006)", () => {
@@ -257,6 +298,142 @@ describe("Motor Determinístico de Lances (Auto-Bidder Engine)", () => {
       }
       expect(gerouLance).toBe(true);
     });
+
+    it("calcularPisoConcorrente ancora o piso do rival na propostaUnitaria fixa (evitando queda infinita)", () => {
+      const itemA: DisputaItemRegra = { ...itemBase, propostaUnitaria: 5000.0, melhorLanceSala: 5000.0 };
+      const itemB: DisputaItemRegra = { ...itemBase, propostaUnitaria: 5000.0, melhorLanceSala: 4100.0 };
+
+      expect(calcularPisoConcorrente(itemA, "MODERADO")).toBe(4100.0);
+      expect(calcularPisoConcorrente(itemB, "MODERADO")).toBe(4100.0);
+      expect(calcularPisoConcorrente(itemA, "AGRESSIVO")).toBe(3900.0);
+      expect(calcularPisoConcorrente(itemA, "CONSERVADOR")).toBe(4250.0);
+    });
+
+    it("normalizarItensParaSimulacao e listarItensSemPiso validam itens reais do pipeline", () => {
+      const itensNorm = normalizarItensParaSimulacao([
+        {
+          ...itemBase,
+          melhorLanceSala: null,
+          meuUltimoLance: null,
+          minhaPosicao: null,
+        },
+        {
+          ...itemBase,
+          itemId: "item-sem-piso",
+          numeroItem: "02",
+          pisoUnitarioSeguro: 0,
+        },
+      ]);
+
+      expect(itensNorm[0].melhorLanceSala).toBe(5000.0);
+      expect(itensNorm[0].minhaPosicao).toBe(1);
+      expect(listarItensSemPiso(itensNorm).map((i) => i.numeroItem)).toEqual(["02"]);
+    });
+  });
+
+  describe("Máquina de Estados da Sessão Simulada (Pure Engine)", () => {
+    it("injetarLanceRival registra lance concorrente + resposta imediata do robô em ordem cronológica", () => {
+      const { itens } = gerarCenarioDemoDisputa();
+      const estadoInicial = criarEstadoSimulacao(itens, 45);
+
+      const aposInjecao = injetarLanceRival(estadoInicial, "demo-item-1", {
+        perfil: "MODERADO",
+        pausaEmergencia: false,
+        segundosFinaisSniper: 10,
+        modoDisputa: "ABERTO",
+        minhaEmpresaMeEpp: true,
+      });
+
+      const item1 = aposInjecao.itens.find((i) => i.itemId === "demo-item-1")!;
+      // No Item 01 (tática IMEDIATO), o robô cobre imediatamente e retoma o 1º lugar
+      expect(item1.minhaPosicao).toBe(1);
+      expect(item1.meuUltimoLance).toBeLessThan(5180.0);
+      // Fita deve ter o lance da nossa empresa no topo (índice 0) e o do concorrente logo abaixo (índice 1)
+      expect(aposInjecao.eventos[0].isMinhaEmpresa).toBe(true);
+      expect(aposInjecao.eventos[1].isMinhaEmpresa).toBe(false);
+      expect(aposInjecao.ultimoAviso?.texto).toMatch(/Lance concorrente de .* injetado no Item 01/i);
+    });
+
+    it("executarTickSimulacao prorroga +15s quando ocorre lance nos últimos 10s do modo ABERTO", () => {
+      const { itens } = gerarCenarioDemoDisputa();
+      // Coloca Item 02 (SNIPER) perdendo para forçar disparo do Sniper na janela final
+      const itensMod = itens.map((it) =>
+        it.itemId === "demo-item-2"
+          ? { ...it, melhorLanceSala: 1580.0, meuUltimoLance: 1620.0, minhaPosicao: 2 }
+          : it,
+      );
+      const estado = criarEstadoSimulacao(itensMod, 8); // 8s restantes (dentro da janela sniper de 10s)
+
+      const novoEstado = executarTickSimulacao(estado, {
+        perfil: "CONSERVADOR",
+        pausaEmergencia: false,
+        segundosFinaisSniper: 10,
+        modoDisputa: "ABERTO",
+        minhaEmpresaMeEpp: true,
+      });
+
+      const item2 = novoEstado.itens.find((i) => i.itemId === "demo-item-2")!;
+      expect(item2.minhaPosicao).toBe(1);
+      expect(item2.meuUltimoLance).toBe(1575.0); // 1580 - 5 (FIXO_REAIS do demo-item-2)
+      expect(novoEstado.tempoRestante).toBeGreaterThan(8); // Prorrogado com +15s
+    });
+
+    it("executarTickSimulacao encerra sessão no segundo final e detecta empate ficto ME/EPP", () => {
+      const { itens } = gerarCenarioDemoDisputa();
+      // No Cenário Demo, demo-item-3 (MONITORAR) já tem melhorLanceSala=16400, meuUltimoLance=16900 (~3,05% <= 5%) e piso=14500
+      const base = criarEstadoSimulacao(itens, 1);
+      const estado = {
+        ...base,
+        liderConcorrente: {
+          ...base.liderConcorrente,
+          "demo-item-3": { nome: "Licitante Alfa Comércio Ltda", isMeEpp: false },
+        },
+      };
+
+      const encerrado = executarTickSimulacao(estado, {
+        perfil: "MODERADO",
+        pausaEmergencia: false,
+        segundosFinaisSniper: 10,
+        modoDisputa: "ABERTO",
+        minhaEmpresaMeEpp: true,
+      });
+
+      expect(encerrado.fase).toBe("ENCERRADA");
+      expect(encerrado.tempoRestante).toBe(0);
+      expect(encerrado.desempates.length).toBeGreaterThan(0);
+      const desempateItem3 = encerrado.desempates.find((d) => d.itemId === "demo-item-3");
+      expect(desempateItem3).toBeDefined();
+      expect(desempateItem3?.lanceSugerido).toBe(16399.99);
+
+      // Exercer o desempate ME/EPP
+      const posDesempate = exercerDesempateMeEpp(encerrado, "demo-item-3", true);
+      const item3 = posDesempate.itens.find((i) => i.itemId === "demo-item-3")!;
+      expect(item3.minhaPosicao).toBe(1);
+      expect(item3.meuUltimoLance).toBe(16399.99);
+      expect(posDesempate.desempates.find((d) => d.itemId === "demo-item-3")).toBeUndefined();
+    });
+
+    it("declinarDesempateMeEpp e alterarTaticaItem atualizam o estado corretamente", () => {
+      const { itens } = gerarCenarioDemoDisputa();
+      const estado = {
+        ...criarEstadoSimulacao(itens, 0),
+        desempates: [
+          {
+            itemId: "demo-item-3",
+            numeroItem: "03",
+            lanceSugerido: 12099.99,
+            margemPercentual: 2.48,
+            motivo: "Teste",
+          },
+        ],
+      };
+
+      const posDeclinio = declinarDesempateMeEpp(estado, "demo-item-3");
+      expect(posDeclinio.desempates).toHaveLength(0);
+
+      const posTatica = alterarTaticaItem(posDeclinio, "demo-item-3", "SNIPER");
+      expect(posTatica.itens.find((i) => i.itemId === "demo-item-3")?.tatica).toBe("SNIPER");
+    });
   });
 
   describe("SalaSimuladaModal (Componente de UI Sandbox)", () => {
@@ -310,6 +487,33 @@ describe("Motor Determinístico de Lances (Auto-Bidder Engine)", () => {
       expect(
         screen.getByText(/Lance concorrente de .* injetado no Item 01/i),
       ).toBeInTheDocument();
+    });
+
+    it("restringe tenant do Plano BÁSICO ao Cenário Demo mesmo quando licitacaoInicial é fornecida", () => {
+      render(
+        <SalaSimuladaModal
+          open={true}
+          onRequestClose={() => {}}
+          planoTenant="BASICO"
+          licitacaoInicial={{
+            id: "lic-real-123",
+            numeroEdital: "PE 777/2026 - Órgão Real",
+            orgao: "Órgão Real",
+            portal: "Compras.gov.br",
+            regrasItens: [
+              {
+                ...itemBase,
+                itemId: "real-1",
+                descricao: "Servidor Dedicado Exclusivo Real",
+              },
+            ],
+          }}
+        />,
+      );
+
+      // Deve continuar exibindo os itens do Cenário Demo e não o item real bloqueado
+      expect(screen.getByText(/Notebook Corporativo Core i7/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Servidor Dedicado Exclusivo Real/i)).not.toBeInTheDocument();
     });
   });
 });
