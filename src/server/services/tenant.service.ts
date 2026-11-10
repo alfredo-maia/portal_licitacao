@@ -72,6 +72,11 @@ export interface InMemoryTenantRecord {
   uf?: string | null;
   plano: PlanoAssinatura;
   billingStatus?: string;
+  trialFim?: Date | null;
+  vencimentoAssinatura?: Date | null;
+  ultimoPagamentoEm?: Date | null;
+  asaasCustomerId?: string | null;
+  asaasSubscriptionId?: string | null;
   segmentos?: string[];
   subsegmentos?: string[];
   ufs?: string[];
@@ -228,8 +233,13 @@ export async function createTenantForUser(params: {
   }
 
   try {
-    const existingDb = await prisma.tenant.findUnique({
-      where: { cnpj: cleanedCnpj },
+    const formattedCnpj = formatCnpj(cleanedCnpj);
+    const existingDb = await prisma.tenant.findFirst({
+      where: {
+        cnpj: {
+          in: Array.from(new Set([cleanedCnpj, formattedCnpj])),
+        },
+      },
     });
     if (existingDb) {
       throw new TenantCollisionError(cleanedCnpj);
@@ -238,11 +248,20 @@ export async function createTenantForUser(params: {
     if (error instanceof TenantCollisionError) throw error;
   }
 
-  // 2. Validação da cota de CNPJs do plano contratado
+  // 2. Validação da cota de CNPJs do plano contratado (banco + memória)
   const planLimits = PLAN_LIMITS[userPlan];
-  const userTenantsCount = inMemoryTenantUsers.filter(
+  const memTenantsCount = inMemoryTenantUsers.filter(
     (tu) => tu.userId === userId && tu.role === "TITULAR" && tu.ativo,
   ).length;
+  let dbTenantsCount = 0;
+  try {
+    dbTenantsCount = await prisma.tenantUser.count({
+      where: { userId, role: "TITULAR", ativo: true },
+    });
+  } catch {
+    dbTenantsCount = 0;
+  }
+  const userTenantsCount = Math.max(memTenantsCount, dbTenantsCount);
 
   if (userTenantsCount >= planLimits.maxCnpjs) {
     throw new PlanQuotaExceededError(
@@ -252,6 +271,10 @@ export async function createTenantForUser(params: {
 
   const newTenantId = `tenant_${randomUUID()}`;
   const now = new Date();
+  const billingStatusInicial = isEnterpriseSpecialAccount ? "ATIVO" : "TRIAL";
+  const trialFimInicial = isEnterpriseSpecialAccount
+    ? null
+    : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
   const record: InMemoryTenantRecord = {
     id: newTenantId,
@@ -264,6 +287,8 @@ export async function createTenantForUser(params: {
     cidade: input.cidade ?? null,
     uf: input.uf ?? null,
     plano: userPlan,
+    billingStatus: billingStatusInicial,
+    trialFim: trialFimInicial,
     maxCnpjs: planLimits.maxCnpjs,
     maxUsers: planLimits.maxUsers,
     ativo: true,
@@ -312,6 +337,8 @@ export async function createTenantForUser(params: {
         cidade: input.cidade,
         uf: input.uf,
         plano: userPlan,
+        billingStatus: billingStatusInicial,
+        trialFim: trialFimInicial,
         maxCnpjs: planLimits.maxCnpjs,
         maxUsers: planLimits.maxUsers,
         users: {
@@ -353,20 +380,68 @@ export async function listTenantsForUser(userId: string): Promise<
     role: TenantRole;
   }>
 > {
+  const resultMap = new Map<
+    string,
+    { tenant: InMemoryTenantRecord; role: TenantRole }
+  >();
+
+  try {
+    const dbMemberships = await prisma.tenantUser.findMany({
+      where: { userId, ativo: true },
+      include: { tenant: true },
+      orderBy: { criadoEm: "asc" },
+    });
+    for (const m of dbMemberships) {
+      if (!m.tenant || !m.tenant.ativo) continue;
+      const t: InMemoryTenantRecord = {
+        id: m.tenant.id,
+        cnpj: m.tenant.cnpj,
+        razaoSocial: m.tenant.razaoSocial,
+        nomeFantasia: m.tenant.nomeFantasia ?? null,
+        cnaePrincipal: m.tenant.cnaePrincipal ?? null,
+        cnaesSecundarios: Array.isArray(m.tenant.cnaesSecundarios) ? m.tenant.cnaesSecundarios : [],
+        endereco: m.tenant.endereco ?? null,
+        cidade: m.tenant.cidade ?? null,
+        uf: m.tenant.uf ?? null,
+        plano: m.tenant.plano as PlanoAssinatura,
+        billingStatus: m.tenant.billingStatus,
+        trialFim: m.tenant.trialFim ?? null,
+        vencimentoAssinatura: m.tenant.vencimentoAssinatura ?? null,
+        ultimoPagamentoEm: m.tenant.ultimoPagamentoEm ?? null,
+        asaasCustomerId: m.tenant.asaasCustomerId ?? null,
+        asaasSubscriptionId: m.tenant.asaasSubscriptionId ?? null,
+        segmentos: m.tenant.segmentos || [],
+        subsegmentos: m.tenant.subsegmentos || [],
+        ufs: m.tenant.ufs || [],
+        brasilInteiro: m.tenant.brasilInteiro ?? true,
+        preferenciasUpdatedAt: m.tenant.preferenciasUpdatedAt ?? null,
+        maxCnpjs: m.tenant.maxCnpjs,
+        maxUsers: m.tenant.maxUsers,
+        ativo: m.tenant.ativo,
+        criadoEm: m.tenant.criadoEm,
+        updatedAt: m.tenant.atualizadoEm,
+      };
+      resultMap.set(t.id, { tenant: t, role: m.role as TenantRole });
+    }
+  } catch {
+    // Fallback em memória
+  }
+
   const userMemberships = inMemoryTenantUsers.filter(
     (tu) => tu.userId === userId && tu.ativo,
   );
 
-  return userMemberships
-    .map((membership) => {
-      const tenant = inMemoryTenants.get(membership.tenantId);
-      if (!tenant || !tenant.ativo) return null;
-      return {
-        tenant,
-        role: membership.role,
-      };
-    })
-    .filter((v): v is { tenant: InMemoryTenantRecord; role: TenantRole } => v !== null);
+  for (const membership of userMemberships) {
+    if (resultMap.has(membership.tenantId)) continue;
+    const tenant = inMemoryTenants.get(membership.tenantId);
+    if (!tenant || !tenant.ativo) continue;
+    resultMap.set(tenant.id, {
+      tenant,
+      role: membership.role,
+    });
+  }
+
+  return Array.from(resultMap.values());
 }
 
 /**
@@ -384,15 +459,60 @@ export async function inviteTeamMember(params: {
     throw new Error(emailValidation.error || "E-mail corporativo inválido");
   }
 
-  const tenant = inMemoryTenants.get(tenantId);
+  let tenant: InMemoryTenantRecord | undefined = inMemoryTenants.get(tenantId);
+  if (!tenant) {
+    try {
+      const dbTenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (dbTenant) {
+        tenant = {
+          id: dbTenant.id,
+          cnpj: dbTenant.cnpj,
+          razaoSocial: dbTenant.razaoSocial,
+          nomeFantasia: dbTenant.nomeFantasia ?? null,
+          cnaePrincipal: dbTenant.cnaePrincipal ?? null,
+          cnaesSecundarios: Array.isArray(dbTenant.cnaesSecundarios) ? dbTenant.cnaesSecundarios : [],
+          endereco: dbTenant.endereco ?? null,
+          cidade: dbTenant.cidade ?? null,
+          uf: dbTenant.uf ?? null,
+          plano: dbTenant.plano as PlanoAssinatura,
+          billingStatus: dbTenant.billingStatus,
+          trialFim: dbTenant.trialFim ?? null,
+          maxCnpjs: dbTenant.maxCnpjs,
+          maxUsers: dbTenant.maxUsers,
+          ativo: dbTenant.ativo,
+          criadoEm: dbTenant.criadoEm,
+          updatedAt: dbTenant.atualizadoEm,
+        };
+      }
+    } catch {}
+  }
+
   if (!tenant) {
     throw new TenantNotFoundError(tenantId);
   }
 
-  // Verifica se o remetente é titular do tenant
-  const senderMembership = inMemoryTenantUsers.find(
-    (tu) => tu.tenantId === tenantId && tu.userId === senderUserId && tu.ativo,
-  );
+  // Verifica se o remetente é titular do tenant (memória ou banco)
+  let senderMembership: { userEmail: string; userName: string; role: TenantRole } | undefined =
+    inMemoryTenantUsers.find(
+      (tu) => tu.tenantId === tenantId && tu.userId === senderUserId && tu.ativo,
+    );
+
+  if (!senderMembership) {
+    try {
+      const dbSender = await prisma.tenantUser.findFirst({
+        where: { tenantId, userId: senderUserId, ativo: true },
+        include: { user: { select: { email: true, name: true } } },
+      });
+      if (dbSender) {
+        senderMembership = {
+          userEmail: dbSender.user?.email || "",
+          userName: dbSender.user?.name || "Titular",
+          role: dbSender.role as TenantRole,
+        };
+      }
+    } catch {}
+  }
+
   if (!senderMembership || senderMembership.role !== "TITULAR") {
     throw new UnauthorizedTenantActionError(
       "Apenas o Titular da conta pode convidar novos membros para este CNPJ.",
@@ -405,22 +525,41 @@ export async function inviteTeamMember(params: {
     throw new Error("Você não pode convidar seu próprio e-mail.");
   }
 
-  // 2. Verifica se o e-mail convidado já é membro ativo
-  const alreadyMember = inMemoryTenantUsers.some(
+  // 2. Verifica se o e-mail convidado já é membro ativo (memória ou banco)
+  let alreadyMember = inMemoryTenantUsers.some(
     (tu) =>
       tu.tenantId === tenantId &&
       tu.userEmail.toLowerCase() === normalizedEmail &&
       tu.ativo,
   );
+  if (!alreadyMember) {
+    try {
+      const dbMember = await prisma.tenantUser.findFirst({
+        where: {
+          tenantId,
+          ativo: true,
+          user: { email: normalizedEmail },
+        },
+      });
+      alreadyMember = Boolean(dbMember);
+    } catch {}
+  }
   if (alreadyMember) {
     throw new Error("Este e-mail já é membro ativo desta empresa.");
   }
 
   // Verifica limite de assentos/usuários do plano
   const planLimits = PLAN_LIMITS[tenant.plano];
-  const activeMembersCount = inMemoryTenantUsers.filter(
+  const memMembersCount = inMemoryTenantUsers.filter(
     (tu) => tu.tenantId === tenantId && tu.ativo,
   ).length;
+  let dbMembersCount = 0;
+  try {
+    dbMembersCount = await prisma.tenantUser.count({
+      where: { tenantId, ativo: true },
+    });
+  } catch {}
+  const activeMembersCount = Math.max(memMembersCount, dbMembersCount);
 
   if (activeMembersCount >= planLimits.maxUsers) {
     throw new TeamSeatLimitExceededError(
@@ -492,9 +631,20 @@ export async function revokeTeamMember(params: {
     );
   }
 
-  const senderMembership = inMemoryTenantUsers.find(
+  let senderMembership: { role: TenantRole } | undefined = inMemoryTenantUsers.find(
     (tu) => tu.tenantId === tenantId && tu.userId === senderUserId && tu.ativo,
   );
+  if (!senderMembership) {
+    try {
+      const dbSender = await prisma.tenantUser.findFirst({
+        where: { tenantId, userId: senderUserId, ativo: true },
+        select: { role: true },
+      });
+      if (dbSender) {
+        senderMembership = { role: dbSender.role as TenantRole };
+      }
+    } catch {}
+  }
   if (!senderMembership || senderMembership.role !== "TITULAR") {
     throw new UnauthorizedTenantActionError(
       "Apenas o Titular pode revogar acessos de membros da equipe.",

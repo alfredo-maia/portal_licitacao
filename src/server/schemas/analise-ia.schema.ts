@@ -228,7 +228,7 @@ export const relatorioParticipacaoSchema = z.object({
       z.object({
         documento: z.string(),
         categoria: z.string(),
-        status: z.enum(["REGULAR", "VENCENDO", "VENCIDO", "AUSENTE"]),
+        status: z.enum(["REGULAR", "VENCENDO", "VENCIDO", "AUSENTE", "PENDENTE_ANEXO", "DIVERGENTE"]),
         diasParaVencer: z.number().nullable(),
         detalhe: z.string(),
       }),

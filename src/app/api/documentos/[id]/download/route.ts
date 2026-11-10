@@ -1,16 +1,34 @@
+import { getServerSession } from "next-auth/next";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import { authOptions } from "@/server/auth";
 import { obterDocumento } from "@/server/services/documentos.service";
+import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const session = await getServerSession(authOptions).catch(() => null);
+  const user = session?.user as { id?: string } | undefined;
+  if (!user?.id) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant, sessionTenant);
+
   const { id } = await params;
-  const detalhe = await obterDocumento(id);
+  const detalhe = await obterDocumento(id, tenantId);
 
   if (!detalhe || !detalhe.documento) {
     return NextResponse.json({ ok: false, error: "DOCUMENTO_NAO_ENCONTRADO" }, { status: 404 });
@@ -20,7 +38,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   const nomeArquivoDownload = doc.arquivoNome || `${doc.nome.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
 
   // 1. Se houver caminho físico em public/uploads ou /data/uploads, tenta servir o arquivo real
-  if (doc.arquivoUrl) {
+  if (doc.arquivoUrl && !doc.arquivoUrl.includes("..") && !doc.arquivoUrl.includes("\0")) {
     const possíveisCaminhos = [
       join(process.cwd(), "public", doc.arquivoUrl.replace(/^\//, "")),
       join(process.cwd(), doc.arquivoUrl.replace(/^\//, "")),

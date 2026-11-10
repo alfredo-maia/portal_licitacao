@@ -6,6 +6,20 @@ import {
 } from "@/server/schemas/proposta-calculadora.schema";
 import type { DadosEmpresaMinuta } from "@/lib/minuta-juridica";
 
+const VALIDADE_EXTENSO: Record<number, string> = {
+  15: " (quinze)",
+  30: " (trinta)",
+  45: " (quarenta e cinco)",
+  60: " (sessenta)",
+  90: " (noventa)",
+  120: " (cento e vinte)",
+  180: " (cento e oitenta)",
+};
+
+export function formatarValidadeDiasExtenso(dias: number): string {
+  return VALIDADE_EXTENSO[dias] || "";
+}
+
 export function formatarDataExtensoProposta(
   dataStr?: string,
   cidade = "Goiânia",
@@ -142,7 +156,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
 
   linhasTexto.push("");
   linhasTexto.push("CONDIÇÕES COMERCIAIS:");
-  linhasTexto.push(`- Validade da Proposta: ${cfg.validadeDias} (sessenta) dias a contar da apresentação.`);
+  linhasTexto.push(`- Validade da Proposta: ${cfg.validadeDias}${formatarValidadeDiasExtenso(cfg.validadeDias)} dias a contar da apresentação.`);
   linhasTexto.push(`- Prazo de Entrega / Início da Execução: ${cfg.prazoEntrega}`);
   linhasTexto.push(`- Condições de Pagamento: ${cfg.condicoesPagamento}`);
   if (cfg.garantiaObservacoes) {
@@ -231,11 +245,11 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
       <div style="margin-top: 8px; padding: 8px 12px; background-color: #f4f4f4; border-left: 3px solid #0f62fe; font-size: 0.8125rem;">
         <strong>Dados Bancários para Liquidação e Pagamento:</strong><br />
         ${[
-          bancoNome ? `Banco: <strong>${bancoNome}</strong>` : "",
-          agencia ? `Agência: <strong>${agencia}</strong>` : "",
-          conta ? `Conta Corrente: <strong>${conta}</strong>` : "",
-          pix ? `Chave PIX: <strong>${pix}</strong>` : "",
-        ].filter(Boolean).join(" &nbsp;|&nbsp; ")}
+      bancoNome ? `Banco: <strong>${bancoNome}</strong>` : "",
+      agencia ? `Agência: <strong>${agencia}</strong>` : "",
+      conta ? `Conta Corrente: <strong>${conta}</strong>` : "",
+      pix ? `Chave PIX: <strong>${pix}</strong>` : "",
+    ].filter(Boolean).join(" &nbsp;|&nbsp; ")}
       </div>
     `
     : "";
@@ -277,9 +291,7 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
           CONDIÇÕES COMERCIAIS:
         </h4>
         <ul style="margin: 0; padding-left: 1.25rem;">
-          <li><strong>Validade da Proposta:</strong> ${cfg.validadeDias}${
-            ({ 30: " (trinta)", 45: " (quarenta e cinco)", 60: " (sessenta)", 90: " (noventa)", 120: " (cento e vinte)", 180: " (cento e oitenta)" } as Record<number, string>)[cfg.validadeDias] || ""
-          } dias corridos a contar da data de sua entrega.</li>
+          <li><strong>Validade da Proposta:</strong> ${cfg.validadeDias}${formatarValidadeDiasExtenso(cfg.validadeDias)} dias corridos a contar da data de sua entrega.</li>
           <li><strong>Prazo de Entrega / Execução:</strong> ${cfg.prazoEntrega}</li>
           <li><strong>Condições de Pagamento:</strong> ${cfg.condicoesPagamento}</li>
           ${cfg.garantiaObservacoes ? `<li><strong>Garantia e Observações:</strong> ${cfg.garantiaObservacoes}</li>` : ""}

@@ -32,6 +32,7 @@ import {
   exercerDesempateMeEpp,
   gerarCenarioDemoDisputa,
   injetarLanceRival,
+  listarItensPisoMaiorQueProposta,
   listarItensSemPiso,
   normalizarItensParaSimulacao,
 } from "@/lib/robo-lances-engine";
@@ -166,12 +167,20 @@ export function SalaSimuladaModal({
         setSegundosSniper(certame.segundosFinaisSniper);
       }
 
-      const semPiso = listarItensSemPiso(itens);
-      if (semPiso.length > 0) {
+      const pisoMaior = listarItensPisoMaiorQueProposta(itens);
+      if (pisoMaior.length > 0) {
         setAvisoOrigem({
-          tipo: "warning",
-          texto: `Item(ns) ${semPiso.map((i) => i.numeroItem).join(", ")} sem Piso Seguro/Proposta na Calculadora: o robô ficará bloqueado neles por segurança.`,
+          tipo: "error",
+          texto: `Configuração bloqueada: Item(ns) ${pisoMaior.map((i) => `#${i.numeroItem}`).join(", ")} com Valor Mínimo (Piso) maior que a Proposta Inicial. Ajuste os valores na aba Disputa antes de simular.`,
         });
+      } else {
+        const semPiso = listarItensSemPiso(itens);
+        if (semPiso.length > 0) {
+          setAvisoOrigem({
+            tipo: "warning",
+            texto: `Item(ns) ${semPiso.map((i) => i.numeroItem).join(", ")} sem Piso Seguro/Proposta na Calculadora: o robô ficará bloqueado neles por segurança.`,
+          });
+        }
       }
     },
     [certames],
@@ -209,6 +218,10 @@ export function SalaSimuladaModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ultimoAvisoId]);
 
+  const itensPisoInvalido = useMemo(
+    () => listarItensPisoMaiorQueProposta(estado.itens),
+    [estado.itens],
+  );
   const encerrada = estado.fase === "ENCERRADA";
   const sessaoIniciada = emExecucao || encerrada || estado.tempoRestante < 45;
 
@@ -273,9 +286,18 @@ export function SalaSimuladaModal({
       modalHeading="🎮 Sala de Disputa Simulada (Auto-Bidder Sandbox)"
       modalLabel="Ambiente de teste isolado — nenhum lance é enviado a portais reais"
       primaryButtonText={textoBotaoPrimario}
+      primaryButtonDisabled={itensPisoInvalido.length > 0}
       secondaryButtonText="Fechar Sala"
       onRequestClose={onRequestClose}
       onRequestSubmit={() => {
+        if (itensPisoInvalido.length > 0) {
+          setEmExecucao(false);
+          setNotificacao({
+            tipo: "error",
+            texto: `Disputa bloqueada: corrija os itens com Valor Mínimo (Piso) maior que a Proposta Inicial (${itensPisoInvalido.map((i) => `#${i.numeroItem}`).join(", ")}).`,
+          });
+          return;
+        }
         if (encerrada) {
           carregarOrigem(origemSelecionada);
           setEmExecucao(true);

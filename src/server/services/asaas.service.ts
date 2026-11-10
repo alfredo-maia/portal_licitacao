@@ -238,6 +238,14 @@ export async function processarWebhookAsaas(
       });
       if (tenantMatch) tenantId = tenantMatch.id;
     } catch {}
+    if (!tenantId && (subId || cusId)) {
+      for (const t of inMemoryTenants.values()) {
+        if ((subId && t.asaasSubscriptionId === subId) || (cusId && t.asaasCustomerId === cusId)) {
+          tenantId = t.id;
+          break;
+        }
+      }
+    }
   }
 
   // 3. Registrar o recebimento do evento no banco
@@ -266,6 +274,18 @@ export async function processarWebhookAsaas(
   );
 
   if (tenantId) {
+    const memTenant = inMemoryTenants.get(tenantId);
+    const persistirTenantUpdate = async (data: Record<string, any>) => {
+      try {
+        await prisma.tenant.update({
+          where: { id: tenantId! },
+          data,
+        });
+      } catch (err) {
+        console.warn("[Asaas Webhook] Aviso ao atualizar tenant no banco:", err);
+      }
+    };
+
     try {
       if (
         payload.event === "PAYMENT_CONFIRMED" ||
@@ -288,10 +308,23 @@ export async function processarWebhookAsaas(
           updateData.maxUsers = planoInferido === "ENTERPRISE" ? 10 : PLAN_LIMITS[planoInferido].maxUsers;
         }
 
-        await prisma.tenant.update({
-          where: { id: tenantId },
-          data: updateData,
-        });
+        if (memTenant) {
+          memTenant.billingStatus = "ATIVO";
+          memTenant.vencimentoAssinatura = novaDataVencimento;
+          memTenant.ultimoPagamentoEm = agora;
+          if (updateData.asaasCustomerId) memTenant.asaasCustomerId = updateData.asaasCustomerId;
+          if (updateData.asaasSubscriptionId !== undefined) {
+            memTenant.asaasSubscriptionId = updateData.asaasSubscriptionId;
+          }
+          if (planoInferido) {
+            memTenant.plano = planoInferido;
+            memTenant.maxCnpjs = updateData.maxCnpjs;
+            memTenant.maxUsers = updateData.maxUsers;
+          }
+          memTenant.updatedAt = agora;
+        }
+
+        await persistirTenantUpdate(updateData);
 
         await recordAuditLog({
           usuarioId: "sistema_asaas",
@@ -315,11 +348,13 @@ export async function processarWebhookAsaas(
           planoOverride: planoInferido,
         });
       } else if (payload.event === "PAYMENT_OVERDUE") {
-        await prisma.tenant.update({
-          where: { id: tenantId },
-          data: {
-            billingStatus: "GRACE_PERIOD",
-          },
+        if (memTenant) {
+          memTenant.billingStatus = "GRACE_PERIOD";
+          memTenant.updatedAt = agora;
+        }
+
+        await persistirTenantUpdate({
+          billingStatus: "GRACE_PERIOD",
         });
 
         await recordAuditLog({
@@ -341,11 +376,13 @@ export async function processarWebhookAsaas(
           invoiceUrl: payload.payment?.invoiceUrl ?? null,
         });
       } else if (payload.event === "SUBSCRIPTION_DELETED") {
-        await prisma.tenant.update({
-          where: { id: tenantId },
-          data: {
-            billingStatus: "CANCELADO",
-          },
+        if (memTenant) {
+          memTenant.billingStatus = "CANCELADO";
+          memTenant.updatedAt = agora;
+        }
+
+        await persistirTenantUpdate({
+          billingStatus: "CANCELADO",
         });
 
         await recordAuditLog({
@@ -368,15 +405,17 @@ export async function processarWebhookAsaas(
         payload.event === "PAYMENT_DELETED" ||
         payload.event === "PAYMENT_REFUNDED"
       ) {
-        await prisma.tenant.update({
-          where: { id: tenantId },
-          data: {
-            billingStatus: "BLOQUEADO",
-          },
+        if (memTenant) {
+          memTenant.billingStatus = "BLOQUEADO";
+          memTenant.updatedAt = agora;
+        }
+
+        await persistirTenantUpdate({
+          billingStatus: "BLOQUEADO",
         });
       }
     } catch (err) {
-      console.warn("[Asaas Webhook] Aviso ao atualizar tenant no banco:", err);
+      console.warn("[Asaas Webhook] Aviso ao processar transição de tenant:", err);
     }
   }
 

@@ -254,7 +254,7 @@ export default function PlanosPage() {
     ? Math.max(status?.maxUsers ?? 2, 2)
     : status?.maxUsers ?? 2;
   const diasTrialDisplay =
-    status && typeof status.diasRestantesTrial === "number" && status.diasRestantesTrial > 0
+    status && typeof status.diasRestantesTrial === "number"
       ? status.diasRestantesTrial
       : 14;
 

@@ -90,3 +90,4 @@ export const supportTicketItemSchema = z.object({
 
 export type SupportTicketMessageItem = z.infer<typeof supportTicketMessageSchema>;
 export type SupportTicketItem = z.infer<typeof supportTicketItemSchema>;
+

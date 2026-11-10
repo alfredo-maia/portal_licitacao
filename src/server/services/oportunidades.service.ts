@@ -27,6 +27,10 @@ import {
   salvarAnaliseIASchema,
   type SalvarAnaliseIAInput,
 } from "@/server/schemas/analise-ia.schema";
+import {
+  disputaItemRegraSchema,
+  validarRegrasDisputa,
+} from "@/server/schemas/proposta-calculadora.schema";
 import { computeHashCritico } from "./hash-critico";
 import {
   clearInMemoryLicitacoes,
@@ -96,6 +100,7 @@ export interface OportunidadesActorContext {
   usuarioId?: string | null;
   usuarioNome?: string | null;
   ip?: string | null;
+  tenantId?: string | null;
 }
 
 export interface DeliberarOportunidadeInput {
@@ -1098,6 +1103,42 @@ export async function atualizarKanbanStatus(
   const finalValorHomologado = input.valorHomologado ?? input.valorArrematado ?? (oportunidade as any).valorHomologado ?? null;
   const finalCalculadoraDados = input.calculadoraDados !== undefined ? input.calculadoraDados : ((oportunidade as any).calculadoraDados ?? null);
 
+  const regrasDisputaRaw = (finalCalculadoraDados as any)?.disputaConfig?.regrasItens;
+  if (
+    input.calculadoraDados !== undefined &&
+    Array.isArray(regrasDisputaRaw) &&
+    regrasDisputaRaw.length > 0
+  ) {
+    const origemDisputa =
+      (finalCalculadoraDados as any)?.disputaConfig?.origemPrecos === "MANUAL"
+        ? "MANUAL"
+        : "CALCULADORA";
+    const regrasParsed = regrasDisputaRaw.flatMap((r: unknown) => {
+      const p = disputaItemRegraSchema.safeParse(r);
+      return p.success ? [p.data] : [];
+    });
+    const validacaoDisputa = validarRegrasDisputa(regrasParsed, origemDisputa);
+    if (validacaoDisputa.itensPisoMaiorIds.length > 0) {
+      throw new OportunidadesServiceError(
+        "VALOR_MINIMO_MAIOR_QUE_PROPOSTA",
+        validacaoDisputa.erros[0] ||
+          "Valor Mínimo (Piso Seguro) não pode ser maior que a Proposta Inicial.",
+        400,
+      );
+    }
+    const tentandoDisputaAtiva =
+      input.status === "EM_DISPUTA" ||
+      (finalCalculadoraDados as any)?.disputaConfig?.statusGeral === "EM_DISPUTA";
+    if (tentandoDisputaAtiva && validacaoDisputa.itensSemValorIds.length > 0) {
+      throw new OportunidadesServiceError(
+        "PRECOS_DISPUTA_INVALIDOS",
+        validacaoDisputa.erros[0] ||
+          "No modo Manual, informe Proposta Inicial e Valor Mínimo maiores que R$ 0,00 para iniciar a disputa.",
+        400,
+      );
+    }
+  }
+
   let atualizado: any;
   if (tenantId) {
     const respPreservado = oportunidade.responsavelId ?? user?.id ?? null;
@@ -1533,8 +1574,33 @@ export async function removerArquivoEdital(
   user?: RbacUser | null,
   actorContext?: OportunidadesActorContext,
 ): Promise<any> {
-  const oportunidade = await getOportunidadeById(licitacaoId).catch(() => null);
+  const tenantId =
+    actorContext?.tenantId ?? (user as any)?.activeTenantId ?? null;
+  const oportunidade = await getOportunidadeById(licitacaoId, tenantId).catch(
+    () => null,
+  );
   const realId = oportunidade?.id || licitacaoId;
+
+  // Verifica isolamento multi-tenant do arquivo antes da exclusão
+  let arquivoAlvo: any = listInMemoryLicitacaoArquivos(realId).find(
+    (a) => a.id === arquivoId,
+  );
+  if (!arquivoAlvo) {
+    try {
+      arquivoAlvo = await prisma.arquivo.findFirst({
+        where: { id: arquivoId, licitacaoId: realId },
+        select: { id: true, tenantId: true },
+      });
+    } catch {}
+  }
+  if (arquivoAlvo?.tenantId && tenantId && arquivoAlvo.tenantId !== tenantId) {
+    throw new OportunidadesServiceError(
+      "FORBIDDEN",
+      "Acesso restrito. Este arquivo pertence a outra empresa.",
+      403,
+    );
+  }
+
   deleteInMemoryLicitacaoArquivo(realId, arquivoId);
   try {
     await prisma.arquivo.delete({ where: { id: arquivoId } });
@@ -1551,6 +1617,7 @@ export async function removerArquivoEdital(
     usuarioId: user?.id ?? actorContext?.usuarioId ?? null,
     usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
     ip: actorContext?.ip ?? null,
+    tenantId,
   });
 
   if (oportunidade) {
@@ -1560,6 +1627,7 @@ export async function removerArquivoEdital(
       orgaoNome: oportunidade.orgaoNome,
       tipoEvento: "ARQUIVOS",
       resumoMudanca: `Um arquivo anexado foi removido do dossiê do edital ${oportunidade.numeroEdital}`,
+      tenantId,
       chaveSufixo: `remocao_${arquivoId}`,
     }).catch(() => undefined);
   }
@@ -1623,7 +1691,7 @@ export async function deliberarOportunidade(
     );
   }
 
-  const existente = await getOportunidadeById(input.id);
+  const existente = await getOportunidadeById(input.id, input.tenantId);
   const statusAnterior = existente.status;
   const novoStatus = parsed.decisao === "GO" ? "ACEITA" : "RECUSADA";
   const motivoRecusa =
@@ -1895,6 +1963,32 @@ export async function atualizarLicitacao(
   return getOportunidadeById(id);
 }
 
+function inferirMimeTypeArquivo(
+  nome?: string | null,
+  url?: string | null,
+  explicitMime?: string | null,
+): string {
+  if (explicitMime && explicitMime !== "application/octet-stream") {
+    return explicitMime;
+  }
+  const ref = `${nome || ""} ${url || ""}`.toLowerCase();
+  if (ref.includes(".zip")) return "application/zip";
+  if (ref.includes(".xlsx")) {
+    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  }
+  if (ref.includes(".xls")) return "application/vnd.ms-excel";
+  if (ref.includes(".csv")) return "text/csv";
+  if (ref.includes(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  if (ref.includes(".doc")) return "application/msword";
+  if (ref.includes(".png")) return "image/png";
+  if (ref.includes(".jpg") || ref.includes(".jpeg")) return "image/jpeg";
+  if (ref.includes(".webp")) return "image/webp";
+  if (ref.includes(".txt")) return "text/plain";
+  return "application/pdf";
+}
+
 /**
  * Consulta a API oficial do PNCP para sincronizar anexos e arquivos do edital (Sprint 6).
  */
@@ -1919,14 +2013,14 @@ export async function buscarESincronizarArquivosEditalPncp(
     ano = parseInt(sub[1], 10) || ano;
   }
 
-  let arquivosEncontrados: Array<{ nome: string; url: string; tamanho?: number }> = [];
+  let arquivosEncontrados: Array<{ nome: string; url: string; tamanho?: number; mimeType?: string }> = [];
   let erroConexao = false;
 
   try {
     const pncpUrl = `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/arquivos`;
     const res = await fetch(pncpUrl, {
       headers: { accept: "*/*" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(12000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -1938,25 +2032,47 @@ export async function buscarESincronizarArquivosEditalPncp(
       } else if (Array.isArray(data?.data)) {
         list = data.data;
       }
-      arquivosEncontrados = list.map((item: any) => ({
-        nome: item.titulo || item.nome || `Edital_${sequencial}.pdf`,
-        url: item.url || item.uri || `https://pncp.gov.br/app/editais/${idPncp}`,
-        tamanho: item.tamanho || 1048576,
-      }));
+      arquivosEncontrados = list
+        .filter((item: any) => item?.statusAtivo !== false)
+        .map((item: any, idx: number) => {
+          const seqDoc = item.sequencialDocumento ?? item.sequencial ?? idx + 1;
+          const url =
+            item.url ||
+            item.uri ||
+            (cnpj && ano && sequencial && item.sequencialDocumento != null
+              ? `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${ano}/${sequencial}/arquivos/${seqDoc}`
+              : `https://pncp.gov.br/app/editais/${idPncp}`);
+          const nome = item.titulo || item.nome || item.tipoDocumentoNome || `Documento_${seqDoc}.pdf`;
+          return {
+            nome,
+            url,
+            tamanho: item.tamanho || item.tamanhoArquivo || 1048576,
+            mimeType: inferirMimeTypeArquivo(nome, url, item.mimeType || item.contentType),
+          };
+        });
     }
   } catch (err) {
     erroConexao = true;
     console.warn("[buscarESincronizarArquivosEditalPncp] Falha ao consultar API PNCP:", err);
   }
 
+  const existentesUrls = new Set(
+    (oportunidade.arquivos || [])
+      .map((a: any) => String(a.r2Url || a.caminho || "").trim())
+      .filter(Boolean),
+  );
+
   const sincronizados: any[] = [];
   for (const arq of arquivosEncontrados) {
+    if (arq.url && existentesUrls.has(arq.url.trim())) {
+      continue;
+    }
     const criado = await adicionarArquivoEdital(
       licitacaoId,
       {
         nome: arq.nome,
         tamanho: arq.tamanho || 1048576,
-        mimeType: "application/pdf",
+        mimeType: arq.mimeType || "application/pdf",
         caminho: arq.url,
         r2Key: `pncp/${idPncp}/${arq.nome}`,
         r2Url: arq.url,
@@ -1965,6 +2081,7 @@ export async function buscarESincronizarArquivosEditalPncp(
       user,
       actorContext,
     );
+    if (arq.url) existentesUrls.add(arq.url.trim());
     sincronizados.push(criado);
   }
 

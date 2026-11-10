@@ -437,3 +437,4 @@ export async function extrairDadosCartaoCnpjDeBuffer(params: {
     "Não foi possível extrair os dados cadastrais do Cartão CNPJ enviado. Verifique se o arquivo é o comprovante oficial da Receita Federal em PDF ou imagem legível.",
   );
 }
+

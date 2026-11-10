@@ -10,8 +10,11 @@ import { higienizarTitulosExistentesService } from "@/server/services/resumo-obj
 export const dynamic = "force-dynamic";
 
 async function autorizarCronOuDiretoria(request: Request): Promise<boolean> {
+  const configuredSecret = process.env.CRON_SECRET?.trim() || "";
   const expectedSecret =
-    process.env.CRON_SECRET || "change-me-in-production-min-16";
+    process.env.NODE_ENV === "production"
+      ? configuredSecret
+      : configuredSecret || "change-me-in-production-min-16";
 
   const authHeader = request.headers.get("authorization") || "";
   const bearerToken = authHeader.startsWith("Bearer ")
@@ -20,8 +23,9 @@ async function autorizarCronOuDiretoria(request: Request): Promise<boolean> {
   const cronHeader = request.headers.get("x-cron-secret")?.trim() || "";
 
   if (
-    (bearerToken && bearerToken === expectedSecret) ||
-    (cronHeader && cronHeader === expectedSecret)
+    expectedSecret &&
+    ((bearerToken && bearerToken === expectedSecret) ||
+      (cronHeader && cronHeader === expectedSecret))
   ) {
     return true;
   }
@@ -117,3 +121,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json(resultado, { status: resultado.ok ? 200 : 207 });
 }
+

@@ -4,6 +4,7 @@ import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import {
   createTenantForUser,
+  inMemoryTenantUsers,
   listTenantsForUser,
   PlanQuotaExceededError,
   TenantCollisionError,
@@ -159,20 +160,24 @@ export async function POST(req: Request) {
     if (body.tenantId && typeof body.tenantId === "string") {
       const targetTenantId = body.tenantId;
 
-      // Validação de vínculo
-      let hasAccess = false;
-      try {
-        const membership = await prisma.tenantUser.findUnique({
-          where: {
-            tenantId_userId: {
-              tenantId: targetTenantId,
-              userId,
+      // Validação de vínculo estrita (fail-closed)
+      let hasAccess = inMemoryTenantUsers.some(
+        (tu) => tu.userId === userId && tu.tenantId === targetTenantId && tu.ativo,
+      );
+      if (!hasAccess) {
+        try {
+          const membership = await prisma.tenantUser.findUnique({
+            where: {
+              tenantId_userId: {
+                tenantId: targetTenantId,
+                userId,
+              },
             },
-          },
-        });
-        hasAccess = Boolean(membership && membership.ativo);
-      } catch {
-        hasAccess = true;
+          });
+          hasAccess = Boolean(membership && membership.ativo);
+        } catch {
+          hasAccess = false;
+        }
       }
 
       if (!hasAccess) {
@@ -192,6 +197,7 @@ export async function POST(req: Request) {
         path: "/",
         httpOnly: false,
         sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
         maxAge: 30 * 24 * 60 * 60,
       });
 
@@ -232,6 +238,7 @@ export async function POST(req: Request) {
       path: "/",
       httpOnly: false,
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
       maxAge: 30 * 24 * 60 * 60,
     });
 

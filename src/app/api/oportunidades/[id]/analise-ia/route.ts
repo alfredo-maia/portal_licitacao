@@ -20,6 +20,9 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+
 async function resolveTenantAndUser(request: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
   let user = session?.user as RbacUser | undefined;
@@ -32,9 +35,14 @@ async function resolveTenantAndUser(request: Request) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const headerTenant = new URL(request.url).searchParams.get("tenantId");
-  const preferredTenant = headerTenant || cookieTenant || (user as any)?.activeTenantId;
-  const tenantId = await resolveUserActiveTenantId((user as any)?.id || "", preferredTenant);
+  const headerTenant = new URL(request.url).searchParams.get("tenantId") || undefined;
+  const sessionTenant = (user as any)?.activeTenantId || undefined;
+  const preferredTenant = headerTenant || cookieTenant || sessionTenant;
+  const tenantId = await resolveUserActiveTenantId(
+    (user as any)?.id || "",
+    preferredTenant,
+    sessionTenant,
+  );
 
   return { user, tenantId };
 }

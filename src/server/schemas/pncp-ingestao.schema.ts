@@ -62,3 +62,4 @@ export const pncpContratacaoRawSchema = z
   .passthrough();
 
 export type PncpContratacaoRaw = z.infer<typeof pncpContratacaoRawSchema>;
+

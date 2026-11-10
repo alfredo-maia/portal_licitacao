@@ -28,9 +28,14 @@ export async function GET(request: Request, context: RouteContext) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const headerTenant = new URL(request.url).searchParams.get("tenantId");
-  const preferredTenant = headerTenant || cookieTenant || (user as any)?.activeTenantId;
-  const tenantId = await resolveUserActiveTenantId((user as any)?.id || "", preferredTenant);
+  const headerTenant = new URL(request.url).searchParams.get("tenantId") || undefined;
+  const sessionTenant = (user as any)?.activeTenantId || undefined;
+  const preferredTenant = headerTenant || cookieTenant || sessionTenant;
+  const tenantId = await resolveUserActiveTenantId(
+    (user as any)?.id || "",
+    preferredTenant,
+    sessionTenant,
+  );
 
   try {
     const analise = await obterAnaliseIAPorId(id, analiseId, tenantId);

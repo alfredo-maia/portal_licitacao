@@ -5,6 +5,9 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
 import { parseDataCivil } from "@/lib/date-utils";
+import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
+import { getInMemoryConfiguracaoEmpresa } from "@/server/services/licitacoes-store";
+import { inspecionarArquivoDocumentoCofre } from "@/server/services/inspecao-documento-cofre.service";
 import {
   criarDocumento,
   listarDocumentos,
@@ -79,10 +82,12 @@ export async function POST(request: Request) {
       let arquivoNome: string | undefined;
       let arquivoTamanho: number | undefined;
       let mimeType: string | undefined;
+      let uploadedBuffer: Buffer | null = null;
 
       if (file && typeof file.arrayBuffer === "function") {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
+        uploadedBuffer = buffer;
         const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
         // 1. Salvar no volume persistente (/data/uploads)
@@ -112,19 +117,54 @@ export async function POST(request: Request) {
       const semValidade = formData.get("semValidade") === "true";
       const dataEmissaoRaw = formData.get("dataEmissao") as string | null;
       const dataVencimentoRaw = formData.get("dataVencimento") as string | null;
+      const dataVencimentoParsed =
+        semValidade || !dataVencimentoRaw ? null : parseDataCivil(dataVencimentoRaw);
+      const nomeDoc = (formData.get("nome") as string) || "";
+
+      let inspecao: Awaited<ReturnType<typeof inspecionarArquivoDocumentoCofre>> | null =
+        null;
+      if (uploadedBuffer) {
+        try {
+          const emp = await obterConfiguracaoEmpresa(tenantId).catch(() =>
+            getInMemoryConfiguracaoEmpresa(tenantId),
+          );
+          inspecao = await inspecionarArquivoDocumentoCofre({
+            buffer: uploadedBuffer,
+            nomeArquivo: arquivoNome || file?.name,
+            mimeType: mimeType || file?.type,
+            nomeInformado: nomeDoc,
+            dataVencimentoInformada: dataVencimentoParsed,
+            semValidade,
+            tenantCnpj: emp?.cnpj,
+          });
+        } catch {
+          inspecao = null;
+        }
+      }
 
       const payload = {
-        nome: (formData.get("nome") as string) || "",
+        nome: nomeDoc,
         categoria: formData.get("categoria") as any,
         tipo: (formData.get("tipo") as string) || null,
         orgaoEmissor: (formData.get("orgaoEmissor") as string) || null,
         semValidade,
         dataEmissao: parseDataCivil(dataEmissaoRaw),
-        dataVencimento: semValidade || !dataVencimentoRaw ? null : parseDataCivil(dataVencimentoRaw),
+        dataVencimento: dataVencimentoParsed,
         arquivoUrl: arquivoUrl || (formData.get("arquivoUrl") as string) || null,
         arquivoNome: arquivoNome || (formData.get("arquivoNome") as string) || null,
         arquivoTamanho,
         mimeType,
+        ...(inspecao
+          ? {
+              validacaoStatus: inspecao.validacaoStatus,
+              validacaoResumo: inspecao.validacaoResumo,
+              cnpjExtraido: inspecao.cnpjExtraido,
+              emissaoExtraida: inspecao.emissaoExtraida,
+              vencimentoExtraido: inspecao.vencimentoExtraido,
+              tipoDetectado: inspecao.tipoDetectado,
+              validadoEm: inspecao.validadoEm,
+            }
+          : {}),
       };
 
       const doc = await criarDocumento(payload, user.id, tenantId);

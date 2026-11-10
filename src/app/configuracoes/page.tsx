@@ -852,7 +852,6 @@ export default function ConfiguracoesPage() {
       <Tabs
         selectedIndex={Math.max(0, availableTabs.findIndex((t) => t.id === abaSelecionada))}
         onChange={({ selectedIndex }) => {
-          console.log("[DEBUG] Tabs onChange:", selectedIndex);
           const target = availableTabs[selectedIndex];
           if (target) setAbaSelecionada(target.id);
         }}
@@ -863,7 +862,6 @@ export default function ConfiguracoesPage() {
               key={tab.id}
               renderIcon={tab.icon}
               onClick={() => {
-                console.log("[DEBUG] Tab onClick:", tab.id);
                 setAbaSelecionada(tab.id);
               }}
             >

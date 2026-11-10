@@ -542,6 +542,11 @@ export async function enviarEmailFaturamento(params: {
     },
   }[params.tipo];
 
+  const normalizedInvoiceUrl =
+    params.invoiceUrl && params.invoiceUrl.startsWith("/")
+      ? `${appUrl}${params.invoiceUrl}`
+      : params.invoiceUrl;
+
   const html = renderizarTemplateEmailCarbon({
     titulo: textos.titulo,
     subtitulo: params.razaoSocial,
@@ -549,8 +554,8 @@ export async function enviarEmailFaturamento(params: {
       <p>${escapeHtml(textos.resumo)}</p>
       ${valorFmt ? `<p><strong>Valor:</strong> ${escapeHtml(valorFmt)}</p>` : ""}
     `,
-    ctaLabel: params.invoiceUrl ? "Acessar Fatura / Cobrança" : "Ver Meu Plano",
-    ctaUrl: params.invoiceUrl || `${appUrl}/planos`,
+    ctaLabel: normalizedInvoiceUrl ? "Acessar Fatura / Cobrança" : "Ver Meu Plano",
+    ctaUrl: normalizedInvoiceUrl || `${appUrl}/planos`,
   });
 
   return enviarEmailTransacional({

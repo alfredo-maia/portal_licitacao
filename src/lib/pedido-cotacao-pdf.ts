@@ -138,6 +138,8 @@ export async function gerarPdfPedidoCotacao(params: GerarPedidoCotacaoParams): P
   await criarPagina();
 
   const cfg = configuracao || {};
+  const ocultarOrgaoEdital =
+    (cfg as { ocultarOrgaoEdital?: boolean }).ocultarOrgaoEdital ?? true;
   const razaoSocial = sanitizarTextoParaPdf(empresa?.razaoSocial || "EMPRESA SOLICITANTE LTDA", fontBold);
   const cnpj = sanitizarTextoParaPdf(empresa?.cnpj || "00.000.000/0001-00", fontRegular);
   const localEntrega = sanitizarTextoParaPdf(
@@ -186,8 +188,71 @@ export async function gerarPdfPedidoCotacao(params: GerarPedidoCotacaoParams): P
   });
   currentY -= 16;
 
-  // Bloco de Dados do Pedido
-  const boxH = 50;
+  // Bloco de Dados do Pedido (com altura dinâmica para comportar Referência/Sigilo, Condições e Observações)
+  const orgaoTrim = (orgaoNome || "").trim();
+  const editalTrim = (numeroEdital || "").trim();
+  const orgaoVisivel = Boolean(
+    !ocultarOrgaoEdital &&
+      orgaoTrim &&
+      !orgaoTrim.toLowerCase().includes("sigilo comercial"),
+  );
+
+  const infoLinhas: Array<{ texto: string; bold?: boolean }> = [];
+  infoLinhas.push({
+    texto: sanitizarTextoParaPdf(
+      cfg.fornecedorNome
+        ? `Destinatario: ${cfg.fornecedorNome}`
+        : "Destinatario: Ao Departamento Comercial / Vendas",
+      fontBold,
+    ),
+    bold: true,
+  });
+  infoLinhas.push({
+    texto: sanitizarTextoParaPdf(`Local de Entrega: ${localEntrega} • Frete: ${frete}`, fontRegular),
+  });
+  infoLinhas.push({
+    texto: sanitizarTextoParaPdf(
+      `Prazo Limite Resposta: ${prazoResposta} • Garantia: ${cfg.prazoGarantia || "12 meses"}`,
+      fontRegular,
+    ),
+  });
+  if (cfg.condicoesPagamento && cfg.condicoesPagamento.trim()) {
+    for (const l of quebrarTextoEmLinhas(
+      sanitizarTextoParaPdf(`Condicoes de Pagamento: ${cfg.condicoesPagamento.trim()}`, fontRegular),
+      contentWidth - 20,
+      fontRegular,
+      8,
+    )) {
+      infoLinhas.push({ texto: l });
+    }
+  }
+  if (orgaoVisivel) {
+    const refStr =
+      editalTrim && !editalTrim.toLowerCase().includes("sigilo comercial")
+        ? `Referencia do Certame: ${orgaoTrim} - Edital ${editalTrim}`
+        : `Referencia do Certame: ${orgaoTrim}`;
+    for (const l of quebrarTextoEmLinhas(
+      sanitizarTextoParaPdf(refStr, fontBold),
+      contentWidth - 20,
+      fontBold,
+      8,
+    )) {
+      infoLinhas.push({ texto: l, bold: true });
+    }
+  }
+  if (cfg.observacoes && cfg.observacoes.trim()) {
+    for (const l of quebrarTextoEmLinhas(
+      sanitizarTextoParaPdf(`Observacoes: ${cfg.observacoes.trim()}`, fontRegular),
+      contentWidth - 20,
+      fontRegular,
+      8,
+    )) {
+      infoLinhas.push({ texto: l });
+    }
+  }
+
+  const lineHeightInfo = 12;
+  const boxH = Math.max(46, infoLinhas.length * lineHeightInfo + 14);
   currentPage.drawRectangle({
     x: marginX,
     y: currentY - boxH + 12,
@@ -198,36 +263,18 @@ export async function gerarPdfPedidoCotacao(params: GerarPedidoCotacaoParams): P
     borderWidth: 1,
   });
 
-  const destText = sanitizarTextoParaPdf(
-    cfg.fornecedorNome ? `Destinatario: ${cfg.fornecedorNome}` : "Destinatario: Ao Departamento Comercial / Vendas",
-    fontBold,
-  );
-  currentPage.drawText(destText, {
-    x: marginX + 10,
-    y: currentY - 2,
-    size: 8.5,
-    font: fontBold,
-    color: rgb(0.1, 0.1, 0.1),
-  });
-
-  currentPage.drawText(sanitizarTextoParaPdf(`Local de Entrega: ${localEntrega} • Frete: ${frete}`, fontRegular), {
-    x: marginX + 10,
-    y: currentY - 14,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.2, 0.2, 0.2),
-  });
-
-  currentPage.drawText(
-    sanitizarTextoParaPdf(`Prazo Limite Resposta: ${prazoResposta} • Garantia: ${cfg.prazoGarantia || "12 meses"}`, fontRegular),
-    {
+  let infoY = currentY - 2;
+  for (let i = 0; i < infoLinhas.length; i++) {
+    const itemInfo = infoLinhas[i]!;
+    currentPage.drawText(itemInfo.texto, {
       x: marginX + 10,
-      y: currentY - 26,
-      size: 8,
-      font: fontRegular,
-      color: rgb(0.2, 0.2, 0.2),
-    },
-  );
+      y: infoY,
+      size: i === 0 ? 8.5 : 8,
+      font: itemInfo.bold ? fontBold : fontRegular,
+      color: i === 0 ? rgb(0.1, 0.1, 0.1) : rgb(0.2, 0.2, 0.2),
+    });
+    infoY -= lineHeightInfo;
+  }
 
   currentY -= boxH + 10;
 
@@ -393,7 +440,9 @@ export async function gerarPdfPedidoCotacao(params: GerarPedidoCotacaoParams): P
   });
 
   const pdfBytes = await doc.save();
-  const slug = (numeroEdital || "cotacao").replace(/[^a-zA-Z0-9]/g, "_");
+  const slug = ocultarOrgaoEdital
+    ? "sigilo"
+    : ((numeroEdital || "cotacao").replace(/[^a-zA-Z0-9]/g, "_") || "cotacao");
   const pdfNome = `pedido_cotacao_${slug}.pdf`;
 
   return {

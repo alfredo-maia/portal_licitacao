@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { evaluateTenantAccess } from "@/lib/subscription-guard";
-import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { inMemoryTenants, resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,9 @@ export async function GET() {
           where: { id: tenantId },
         });
       } catch {}
+      if (!tenantData) {
+        tenantData = inMemoryTenants.get(tenantId) || null;
+      }
     }
 
     const userEmail = session.user.email?.trim().toLowerCase() || "";
@@ -53,7 +56,11 @@ export async function GET() {
       billingStatus: billingStatusEfetivo,
       trialFim:
         tenantData?.trialFim ||
-        (isTrial ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null),
+        (isTrial
+          ? tenantData?.criadoEm
+            ? new Date(new Date(tenantData.criadoEm).getTime() + 14 * 24 * 60 * 60 * 1000)
+            : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+          : null),
       vencimentoAssinatura: tenantData?.vencimentoAssinatura || null,
       maxCnpjs: isEnterpriseAccount
         ? 5

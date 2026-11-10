@@ -7,6 +7,7 @@ import {
 } from "@/server/schemas/proposta-calculadora.schema";
 import {
   formatarDataExtensoProposta,
+  formatarValidadeDiasExtenso,
   gerarConteudoPropostaComercial,
   type GerarPropostaParams,
 } from "@/lib/proposta-comercial-template";
@@ -665,7 +666,7 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
 
   // 5. Condições Comerciais
   const condicoes = [
-    `Validade da Proposta: ${cfg.validadeDias} (sessenta) dias contados da apresentação`,
+    `Validade da Proposta: ${cfg.validadeDias}${formatarValidadeDiasExtenso(cfg.validadeDias)} dias contados da apresentação`,
     `Prazo de Entrega / Início da Execução: ${cfg.prazoEntrega}`,
     `Condições de Pagamento: ${cfg.condicoesPagamento}`,
   ];

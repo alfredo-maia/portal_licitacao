@@ -241,16 +241,26 @@ export async function listarDocumentos(
 
 export async function obterDocumento(
   id: string,
+  tenantId?: string | null,
 ): Promise<DocumentoDetalheResponse | null> {
+  const temAcessoTenant = (docTenantId: unknown): boolean => {
+    if (!tenantId || !docTenantId) return true;
+    return String(docTenantId) === String(tenantId);
+  };
+
   try {
     const doc = await prisma.documento.findUnique({
       where: { id },
     });
     if (doc) {
+      if (!temAcessoTenant(doc.tenantId)) {
+        return null;
+      }
       const raizId = doc.documentoPaiId || doc.id;
       const versoes = await prisma.documento.findMany({
         where: {
           OR: [{ id: raizId }, { documentoPaiId: raizId }],
+          ...(tenantId ? { tenantId } : {}),
         },
         orderBy: { versao: "desc" },
       });
@@ -266,11 +276,22 @@ export async function obterDocumento(
   }
 
   const doc = getInMemoryDocumento(id);
-  if (!doc) return null;
+  if (!doc || !temAcessoTenant(doc.tenantId)) return null;
+  const raizId = doc.documentoPaiId || doc.id;
+  const historicoMem = listInMemoryDocumentos()
+    .filter(
+      (d) =>
+        (d.id === raizId || d.documentoPaiId === raizId) &&
+        temAcessoTenant(d.tenantId),
+    )
+    .sort((a, b) => (b.versao || 1) - (a.versao || 1));
+
   return {
     ok: true,
     documento: mapToDocumentoItem(doc),
-    historicoVersoes: [mapToDocumentoItem(doc)],
+    historicoVersoes: (historicoMem.length > 0 ? historicoMem : [doc]).map(
+      mapToDocumentoItem,
+    ),
   };
 }
 
@@ -384,38 +405,39 @@ export async function criarNovaVersao(
   documentoId: string,
   data: DocumentoNovaVersaoInput,
   usuarioId?: string,
+  tenantId?: string | null,
 ): Promise<DocumentoItem | null> {
   const validado = documentoNovaVersaoInputSchema.parse(data);
+  const temAcessoTenant = (docTenantId: unknown): boolean => {
+    if (!tenantId || !docTenantId) return true;
+    return String(docTenantId) === String(tenantId);
+  };
 
   try {
     const docAtual = await prisma.documento.findUnique({
       where: { id: documentoId },
     });
-    if (!docAtual) return null;
+    if (docAtual) {
+      if (!temAcessoTenant(docAtual.tenantId)) return null;
 
-    // Arquivar versão anterior
-    await prisma.documento.update({
-      where: { id: documentoId },
-      data: { status: "SUBSTITUIDO" },
-    });
+      // Arquivar versão anterior
+      await prisma.documento.update({
+        where: { id: documentoId },
+        data: { status: "SUBSTITUIDO" },
+      });
+      updateInMemoryDocumento(documentoId, { status: "SUBSTITUIDO" });
 
-    const raizId = docAtual.documentoPaiId || docAtual.id;
-    const semValidadeEfetivo =
-      validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
-    const dataVencimentoEfetiva =
-      validado.dataVencimento !== undefined
-        ? validado.dataVencimento
-        : semValidadeEfetivo
-          ? null
-          : docAtual.dataVencimento;
+      const raizId = docAtual.documentoPaiId || docAtual.id;
+      const semValidadeEfetivo =
+        validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
+      const dataVencimentoEfetiva =
+        validado.dataVencimento !== undefined
+          ? validado.dataVencimento
+          : semValidadeEfetivo
+            ? null
+            : docAtual.dataVencimento;
 
-    // Criar nova versão ativa
-    const novoDoc = await prisma.documento.create({
-      data: {
-        nome: validado.nome || docAtual.nome,
-        categoria: docAtual.categoria,
-        tipo: docAtual.tipo,
-        orgaoEmissor: docAtual.orgaoEmissor,
+      const dadosRaizAtualizada = {
         semValidade: semValidadeEfetivo,
         dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
         dataVencimento: dataVencimentoEfetiva,
@@ -431,66 +453,93 @@ export async function criarNovaVersao(
         tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
         validadoEm: validado.validadoEm ?? docAtual.validadoEm,
         versao: docAtual.versao + 1,
-        documentoPaiId: raizId,
-        status: "ATIVO",
-        tenantId: docAtual.tenantId ?? null,
-        criadoPorId: usuarioId || null,
-      },
-    });
+      };
 
-    // Atualiza metadados do documento raiz para refletir a nova versão ativa
-    if (raizId && raizId !== novoDoc.id) {
-      await prisma.documento.update({
-        where: { id: raizId },
+      // Criar nova versão ativa
+      const novoDoc = await prisma.documento.create({
         data: {
-          semValidade: semValidadeEfetivo,
-          dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-          dataVencimento: dataVencimentoEfetiva,
-          arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
-          arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
-          arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
-          mimeType: validado.mimeType || docAtual.mimeType,
-          validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
-          validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
-          cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
-          emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
-          vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
-          tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
-          validadoEm: validado.validadoEm ?? docAtual.validadoEm,
-          versao: docAtual.versao + 1,
+          nome: validado.nome || docAtual.nome,
+          categoria: docAtual.categoria,
+          tipo: docAtual.tipo,
+          orgaoEmissor: docAtual.orgaoEmissor,
+          ...dadosRaizAtualizada,
+          documentoPaiId: raizId,
+          status: "ATIVO",
+          tenantId: docAtual.tenantId ?? null,
+          criadoPorId: usuarioId || null,
         },
-      }).catch(() => undefined);
+      });
+      insertInMemoryDocumento({
+        ...novoDoc,
+        tenantId: docAtual.tenantId ?? null,
+      });
+
+      // Atualiza metadados do documento raiz para refletir a nova versão ativa
+      if (raizId && raizId !== novoDoc.id) {
+        await prisma.documento.update({
+          where: { id: raizId },
+          data: dadosRaizAtualizada,
+        }).catch(() => undefined);
+        updateInMemoryDocumento(raizId, dadosRaizAtualizada);
+      }
+
+      await recordAuditLog({
+        acao: "DOCUMENTO_NOVA_VERSAO",
+        entidadeTipo: "DOCUMENTO",
+        entidadeId: novoDoc.id,
+        usuarioId,
+        tenantId: docAtual.tenantId ?? tenantId ?? null,
+        depois: { versao: novoDoc.versao, documentoPaiId: raizId },
+      });
+
+      return mapToDocumentoItem(novoDoc);
     }
-
-    await recordAuditLog({
-      acao: "DOCUMENTO_NOVA_VERSAO",
-      entidadeTipo: "DOCUMENTO",
-      entidadeId: novoDoc.id,
-      usuarioId,
-      depois: { versao: novoDoc.versao, documentoPaiId: raizId },
-    });
-
-    return mapToDocumentoItem(novoDoc);
   } catch {
-    const docAtual = getInMemoryDocumento(documentoId);
-    if (!docAtual) return null;
+    // Fallback em memória abaixo
+  }
 
-    updateInMemoryDocumento(documentoId, { status: "SUBSTITUIDO" });
-    const raizId = docAtual.documentoPaiId || docAtual.id;
-    const semValidadeEfetivo =
-      validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
-    const dataVencimentoEfetiva =
-      validado.dataVencimento !== undefined
-        ? validado.dataVencimento
-        : semValidadeEfetivo
-          ? null
-          : docAtual.dataVencimento;
+  const docAtual = getInMemoryDocumento(documentoId);
+  if (!docAtual || !temAcessoTenant(docAtual.tenantId)) return null;
 
-    const novoDoc = insertInMemoryDocumento({
-      nome: validado.nome || docAtual.nome,
-      categoria: docAtual.categoria,
-      tipo: docAtual.tipo,
-      orgaoEmissor: docAtual.orgaoEmissor,
+  updateInMemoryDocumento(documentoId, { status: "SUBSTITUIDO" });
+  const raizId = docAtual.documentoPaiId || docAtual.id;
+  const semValidadeEfetivo =
+    validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
+  const dataVencimentoEfetiva =
+    validado.dataVencimento !== undefined
+      ? validado.dataVencimento
+      : semValidadeEfetivo
+        ? null
+        : docAtual.dataVencimento;
+
+  const novoDoc = insertInMemoryDocumento({
+    nome: validado.nome || docAtual.nome,
+    categoria: docAtual.categoria,
+    tipo: docAtual.tipo,
+    orgaoEmissor: docAtual.orgaoEmissor,
+    semValidade: semValidadeEfetivo,
+    dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
+    dataVencimento: dataVencimentoEfetiva,
+    arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
+    arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
+    arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
+    mimeType: validado.mimeType || docAtual.mimeType,
+    validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
+    validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
+    cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
+    emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
+    vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
+    tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
+    validadoEm: validado.validadoEm ?? docAtual.validadoEm,
+    versao: (docAtual.versao || 1) + 1,
+    documentoPaiId: raizId,
+    status: "ATIVO",
+    tenantId: docAtual.tenantId ?? null,
+    criadoPorId: usuarioId || null,
+  });
+
+  if (raizId) {
+    updateInMemoryDocumento(raizId, {
       semValidade: semValidadeEfetivo,
       dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
       dataVencimento: dataVencimentoEfetiva,
@@ -506,40 +555,17 @@ export async function criarNovaVersao(
       tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
       validadoEm: validado.validadoEm ?? docAtual.validadoEm,
       versao: (docAtual.versao || 1) + 1,
-      documentoPaiId: raizId,
-      status: "ATIVO",
-      tenantId: docAtual.tenantId ?? null,
-      criadoPorId: usuarioId || null,
     });
-
-    if (raizId) {
-      updateInMemoryDocumento(raizId, {
-        semValidade: semValidadeEfetivo,
-        dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-        dataVencimento: dataVencimentoEfetiva,
-        arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
-        arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
-        arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
-        mimeType: validado.mimeType || docAtual.mimeType,
-        validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
-        validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
-        cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
-        emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
-        vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
-        tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
-        validadoEm: validado.validadoEm ?? docAtual.validadoEm,
-        versao: (docAtual.versao || 1) + 1,
-      });
-    }
-
-    return mapToDocumentoItem(novoDoc);
   }
+
+  return mapToDocumentoItem(novoDoc);
 }
 
 export async function atualizarDocumento(
   id: string,
   data: DocumentoAtualizarInput,
   usuarioId?: string,
+  tenantId?: string | null,
 ): Promise<DocumentoItem | null> {
   const validado = documentoAtualizarInputSchema.parse(data);
   await garantirColunasValidacaoDocumento();
@@ -550,47 +576,65 @@ export async function atualizarDocumento(
       "Documento sem arquivo anexado em /documentacao.";
   }
 
+  const temAcessoTenant = (docTenantId: unknown): boolean => {
+    if (!tenantId || !docTenantId) return true;
+    return String(docTenantId) === String(tenantId);
+  };
+
   try {
-    const doc = await prisma.documento.update({
-      where: { id },
-      data: payloadPersistir,
-    });
-    updateInMemoryDocumento(id, payloadPersistir);
-
-    await recordAuditLog({
-      acao: "DOCUMENTO_ATUALIZADO",
-      entidadeTipo: "DOCUMENTO",
-      entidadeId: doc.id,
-      usuarioId,
-      depois: payloadPersistir,
-    });
-
-    await verificarDisparoImediatoVencimentoDocumento({
-      id: doc.id,
-      nome: doc.nome,
-      categoria: doc.categoria,
-      status: doc.status,
-      semValidade: doc.semValidade,
-      dataVencimento: doc.dataVencimento,
-      tenantId: (doc as any).tenantId || null,
-    }).catch(() => undefined);
-
-    return mapToDocumentoItem(doc);
-  } catch {
-    const updated = updateInMemoryDocumento(id, payloadPersistir);
-    if (updated) {
-      await verificarDisparoImediatoVencimentoDocumento({
-        id: updated.id,
-        nome: updated.nome,
-        categoria: updated.categoria,
-        status: updated.status,
-        semValidade: updated.semValidade,
-        dataVencimento: updated.dataVencimento,
-        tenantId: updated.tenantId || null,
-      }).catch(() => undefined);
+    const existenteDb = await prisma.documento.findUnique({ where: { id } });
+    if (existenteDb && !temAcessoTenant(existenteDb.tenantId)) {
+      return null;
     }
-    return updated ? mapToDocumentoItem(updated) : null;
+    if (existenteDb) {
+      const doc = await prisma.documento.update({
+        where: { id },
+        data: payloadPersistir,
+      });
+      updateInMemoryDocumento(id, payloadPersistir);
+
+      await recordAuditLog({
+        acao: "DOCUMENTO_ATUALIZADO",
+        entidadeTipo: "DOCUMENTO",
+        entidadeId: doc.id,
+        usuarioId,
+        tenantId: doc.tenantId ?? tenantId ?? null,
+        depois: payloadPersistir,
+      });
+
+      await verificarDisparoImediatoVencimentoDocumento({
+        id: doc.id,
+        nome: doc.nome,
+        categoria: doc.categoria,
+        status: doc.status,
+        semValidade: doc.semValidade,
+        dataVencimento: doc.dataVencimento,
+        tenantId: (doc as any).tenantId || null,
+      }).catch(() => undefined);
+
+      return mapToDocumentoItem(doc);
+    }
+  } catch {
+    // Fallback em memória abaixo
   }
+
+  const memAtual = getInMemoryDocumento(id);
+  if (!memAtual || !temAcessoTenant(memAtual.tenantId)) {
+    return null;
+  }
+  const updated = updateInMemoryDocumento(id, payloadPersistir);
+  if (updated) {
+    await verificarDisparoImediatoVencimentoDocumento({
+      id: updated.id,
+      nome: updated.nome,
+      categoria: updated.categoria,
+      status: updated.status,
+      semValidade: updated.semValidade,
+      dataVencimento: updated.dataVencimento,
+      tenantId: updated.tenantId || null,
+    }).catch(() => undefined);
+  }
+  return updated ? mapToDocumentoItem(updated) : null;
 }
 
 export async function revalidarAnexoDocumento(
@@ -598,7 +642,7 @@ export async function revalidarAnexoDocumento(
   tenantId?: string | null,
   usuarioId?: string,
 ): Promise<DocumentoItem | null> {
-  const detalhe = await obterDocumento(id);
+  const detalhe = await obterDocumento(id, tenantId);
   if (!detalhe?.documento) return null;
 
   const doc = detalhe.documento;
@@ -612,6 +656,7 @@ export async function revalidarAnexoDocumento(
         validadoEm: new Date(),
       },
       usuarioId,
+      tenantId,
     );
   }
 
@@ -626,6 +671,7 @@ export async function revalidarAnexoDocumento(
         validadoEm: new Date(),
       },
       usuarioId,
+      tenantId,
     );
   }
 
@@ -654,25 +700,46 @@ export async function revalidarAnexoDocumento(
       validadoEm: inspecao.validadoEm,
     },
     usuarioId,
+    tenantId,
   );
 }
 
 export async function excluirDocumento(
   id: string,
   usuarioId?: string,
+  tenantId?: string | null,
 ): Promise<boolean> {
+  const temAcessoTenant = (docTenantId: unknown): boolean => {
+    if (!tenantId || !docTenantId) return true;
+    return String(docTenantId) === String(tenantId);
+  };
+
   try {
-    await prisma.documento.delete({ where: { id } });
-    await recordAuditLog({
-      acao: "DOCUMENTO_EXCLUIDO",
-      entidadeTipo: "DOCUMENTO",
-      entidadeId: id,
-      usuarioId,
-    });
-    return true;
+    const existenteDb = await prisma.documento.findUnique({ where: { id } });
+    if (existenteDb) {
+      if (!temAcessoTenant(existenteDb.tenantId)) {
+        return false;
+      }
+      await prisma.documento.delete({ where: { id } });
+      deleteInMemoryDocumento(id);
+      await recordAuditLog({
+        acao: "DOCUMENTO_EXCLUIDO",
+        entidadeTipo: "DOCUMENTO",
+        entidadeId: id,
+        usuarioId,
+        tenantId: existenteDb.tenantId ?? tenantId ?? null,
+      });
+      return true;
+    }
   } catch {
-    return deleteInMemoryDocumento(id);
+    // Fallback em memória abaixo
   }
+
+  const memAtual = getInMemoryDocumento(id);
+  if (!memAtual || !temAcessoTenant(memAtual.tenantId)) {
+    return false;
+  }
+  return deleteInMemoryDocumento(id);
 }
 
 /**

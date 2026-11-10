@@ -26,5 +26,7 @@ next-env.d.ts
 *.log
 .DS_Store
 .superpowers/
+# Runtime uploads
+public/uploads/
 scratch/
 

@@ -8,6 +8,7 @@ const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
+  serverExternalPackages: ["unpdf", "mammoth", "xlsx"],
   experimental: {
     optimizePackageImports: ["@carbon/react", "@carbon/icons-react"],
   },

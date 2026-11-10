@@ -69,7 +69,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   let arquivos: any[] = [];
   try {
-    arquivos = await (prisma as any).licitacaoArquivo.findMany({
+    arquivos = await prisma.arquivo.findMany({
       where: { licitacaoId: id },
       orderBy: { criadoEm: "asc" },
     });

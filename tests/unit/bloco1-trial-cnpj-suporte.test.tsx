@@ -1,4 +1,6 @@
 import React from "react";
+import { unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ConfiguracoesPage from "@/app/configuracoes/page";
@@ -117,6 +119,8 @@ SITUAÇÃO CADASTRAL
 ATIVA
 `;
 
+const createdUploadFiles: string[] = [];
+
 describe("Bloco 1 (Issue #38) — Header Trial Badge, Cartão CNPJ, CNAEs Secundários, IA e Suporte FAB", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -180,9 +184,16 @@ describe("Bloco 1 (Issue #38) — Header Trial Badge, Cartão CNPJ, CNAEs Secund
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
     vi.restoreAllMocks();
+    while (createdUploadFiles.length > 0) {
+      const rel = createdUploadFiles.pop();
+      if (rel) {
+        const cleanRel = rel.replace(/^\/+/, "");
+        await unlink(join(process.cwd(), "public", cleanRel)).catch(() => undefined);
+      }
+    }
   });
 
   it("1. AppShell exibe badge clicável 'Grátis - Pro • X dias de teste' para TRIAL e oculta para ATIVO", async () => {
@@ -531,6 +542,9 @@ describe("Bloco 1 (Issue #38) — Header Trial Badge, Cartão CNPJ, CNAEs Secund
 
     const res = await POST(req);
     const json = await res.json();
+    if (json.documentoCartaoCnpj?.arquivoUrl) {
+      createdUploadFiles.push(json.documentoCartaoCnpj.arquivoUrl);
+    }
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);

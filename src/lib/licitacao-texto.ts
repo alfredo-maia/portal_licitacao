@@ -5,3 +5,4 @@ export {
   sintetizarMiniResumo,
   sintetizarTituloHeuristicoV2,
 } from "./resumo-licitacao";
+

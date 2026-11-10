@@ -50,6 +50,7 @@ export type TipoDecisaoRobo =
   | "MONITORAR_APENAS"
   | "BLOQUEADO_PISO_SEGURO"
   | "PISO_NAO_CONFIGURADO"
+  | "PISO_INVALIDO_ACIMA_PROPOSTA"
   | "PAUSADO_EMERGENCIA"
   | "ITEM_INATIVO";
 
@@ -130,6 +131,14 @@ export function avaliarProximoLance(
       deveDisparar: false,
       motivo:
         "Piso Seguro ou Proposta Inicial não configurados na Calculadora. Robô bloqueado por segurança.",
+    };
+  }
+
+  if (item.pisoUnitarioSeguro > item.propostaUnitaria) {
+    return {
+      tipo: "PISO_INVALIDO_ACIMA_PROPOSTA",
+      deveDisparar: false,
+      motivo: `Configuração inválida: Valor Mínimo / Piso Seguro (R$ ${item.pisoUnitarioSeguro.toFixed(2)}) é maior que a Proposta Inicial (R$ ${item.propostaUnitaria.toFixed(2)}). Robô bloqueado até correção.`,
     };
   }
 
@@ -376,6 +385,7 @@ export function gerarCenarioDemoDisputa(): {
     identificadorSala: "UASG 160001 - PE 042/2026",
     modoDisputaEdital: "ABERTO",
     intervaloMinimoLances: "R$ 0,01",
+    origemPrecos: "CALCULADORA",
     statusGeral: "CONFIGURADA",
     pausaEmergencia: false,
     tempoRespostaSegundos: 3,
@@ -529,6 +539,13 @@ export function normalizarItensParaSimulacao(regras: unknown[]): DisputaItemRegr
 export function listarItensSemPiso(itens: DisputaItemRegra[]): DisputaItemRegra[] {
   return itens.filter(
     (it) => it.ativoNoRobo && it.tatica !== "MONITORAR" && !(it.pisoUnitarioSeguro > 0 && it.propostaUnitaria > 0),
+  );
+}
+
+/** Itens ativos com Valor Mínimo / Piso Seguro superior à Proposta Inicial (configuração inválida). */
+export function listarItensPisoMaiorQueProposta(itens: DisputaItemRegra[]): DisputaItemRegra[] {
+  return itens.filter(
+    (it) => it.ativoNoRobo && it.pisoUnitarioSeguro > it.propostaUnitaria,
   );
 }
 
@@ -713,6 +730,7 @@ function encerrarSessao(
         !params.pausaEmergencia &&
         item.tatica !== "MONITORAR" &&
         item.pisoUnitarioSeguro > 0 &&
+        item.pisoUnitarioSeguro <= item.propostaUnitaria &&
         item.meuUltimoLance != null &&
         item.meuUltimoLance <= limiteFase;
 

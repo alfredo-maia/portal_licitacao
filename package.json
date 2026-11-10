@@ -33,12 +33,15 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
     "next": "^15.1.6",
     "next-auth": "^4.24.11",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sass": "^1.83.0",
+    "unpdf": "^1.4.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

@@ -71,7 +71,7 @@ export const portalListQuerySchema = z.object({
   busca: z.string().trim().optional(),
   apenasVencendoEmDias: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(50).default(10),
+  pageSize: z.coerce.number().int().positive().max(200).default(10),
 });
 
 export const portalItemSchema = z.object({

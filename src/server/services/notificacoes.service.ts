@@ -390,27 +390,34 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
   let ignoradas = 0;
 
   // Busca usuários para mapeamento de perfis
-  let allUsers: { id: string; role: string; tenantId?: string | null }[] = [];
+  let allUsers: { id: string; role: string; tenantIds: string[] }[] = [];
   try {
     const dbUsers = await prisma.user.findMany({
       where: { ativo: true },
       select: {
         id: true,
         role: true,
-        tenantMemberships: { select: { tenantId: true } },
+        tenantMemberships: {
+          where: { ativo: true },
+          select: { tenantId: true },
+        },
       },
     });
     allUsers = dbUsers.map((u) => ({
       id: u.id,
       role: u.role,
-      tenantId: u.tenantMemberships?.[0]?.tenantId ?? null,
+      tenantIds: (u.tenantMemberships || []).map((m) => m.tenantId).filter(Boolean),
     }));
   } catch {
     const memUsers = listInMemoryUsuarios().filter((u) => u.ativo !== false);
     allUsers = [
-      { id: "seed_vitor", role: "DIRETORIA", tenantId: null },
-      { id: "seed_alfredo", role: "DIRETORIA", tenantId: null },
-      ...memUsers.map((u) => ({ id: u.id, role: u.role, tenantId: u.tenantId ?? null })),
+      { id: "seed_vitor", role: "DIRETORIA", tenantIds: [] },
+      { id: "seed_alfredo", role: "DIRETORIA", tenantIds: [] },
+      ...memUsers.map((u) => ({
+        id: u.id,
+        role: u.role,
+        tenantIds: u.tenantId ? [u.tenantId] : [],
+      })),
     ];
   }
 
@@ -623,13 +630,14 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         ? allUsers
             .filter(
               (u) =>
-                u.tenantId === portal.tenantId &&
+                u.tenantIds.includes(portal.tenantId) &&
                 (u.role === "DIRETORIA" || u.role === "ANALISTA_COMERCIAL" || u.role === "SUPERADMIN"),
             )
             .map((u) => u.id)
         : [];
-      const destinatariosPortal =
-        destTenant.length > 0 ? destTenant : diretoriaEComercialIds;
+      const destinatariosPortal = portal.tenantId
+        ? destTenant
+        : diretoriaEComercialIds;
 
       const res = await criarNotificacao({
         tipo: "N6_VENCIMENTO_PORTAL",
@@ -687,10 +695,11 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
       });
 
       const destTenant = doc.tenantId
-        ? allUsers.filter((u) => u.tenantId === doc.tenantId).map((u) => u.id)
+        ? allUsers.filter((u) => u.tenantIds.includes(doc.tenantId)).map((u) => u.id)
         : [];
-      const destinatariosDoc =
-        destTenant.length > 0 ? destTenant : todosUsuariosIds;
+      const destinatariosDoc = doc.tenantId
+        ? destTenant
+        : todosUsuariosIds;
 
       const res = await criarNotificacao({
         tipo: "N7_VENCIMENTO_DOCUMENTO",
@@ -1074,7 +1083,9 @@ export async function verificarDisparoImediatoVencimentoDocumento(doc: {
     const users = await prisma.user.findMany({
       where: {
         ativo: true,
-        ...(doc.tenantId ? { tenantId: doc.tenantId } : {}),
+        ...(doc.tenantId
+          ? { tenantMemberships: { some: { tenantId: doc.tenantId, ativo: true } } }
+          : {}),
       },
       select: { id: true },
     });
@@ -1085,7 +1096,7 @@ export async function verificarDisparoImediatoVencimentoDocumento(doc: {
       .map((u) => u.id);
   }
 
-  if (destinatarios.length === 0) {
+  if (!doc.tenantId && destinatarios.length === 0) {
     destinatarios = listInMemoryUsuarios()
       .filter((u) => u.ativo !== false)
       .map((u) => u.id);
@@ -1155,7 +1166,9 @@ export async function verificarDisparoImediatoVencimentoPortal(portal: {
     const users = await prisma.user.findMany({
       where: {
         ativo: true,
-        ...(portal.tenantId ? { tenantId: portal.tenantId } : {}),
+        ...(portal.tenantId
+          ? { tenantMemberships: { some: { tenantId: portal.tenantId, ativo: true } } }
+          : {}),
         role: { in: ["DIRETORIA", "ANALISTA_COMERCIAL", "SUPERADMIN"] as any },
       },
       select: { id: true },
@@ -1171,7 +1184,7 @@ export async function verificarDisparoImediatoVencimentoPortal(portal: {
       .map((u) => u.id);
   }
 
-  if (destinatarios.length === 0) {
+  if (!portal.tenantId && destinatarios.length === 0) {
     destinatarios = listInMemoryUsuarios()
       .filter(
         (u) =>

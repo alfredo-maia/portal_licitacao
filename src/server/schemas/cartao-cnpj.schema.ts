@@ -24,3 +24,4 @@ export const importarCartaoCnpjModoSchema = z
   .default("atualizar_ativo");
 
 export type ImportarCartaoCnpjModo = z.infer<typeof importarCartaoCnpjModoSchema>;
+

@@ -73,12 +73,15 @@ import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal"
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
-import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
+import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
 import {
   CALCULADORA_TOOLTIPS,
   calcularItemProposta,
   consolidarCalculadoraProposta,
   formatarMoedaBrl,
+  round2,
+  validarPropostaManual,
+  validarRegrasDisputa,
   UNIDADES_ITEM_OPCOES,
   PORTAIS_DISPUTA_OPCOES,
   TIPO_DECREMENTO_OPCOES,
@@ -98,6 +101,13 @@ import {
   type ItemPedidoCotacao,
 } from "@/lib/pedido-cotacao-template";
 import type { ItemDisputaEdital } from "@/server/schemas/analise-ia.schema";
+import {
+  mesclarItensCertameNaCalculadora,
+  normalizarChaveItem,
+  normalizarMapaSelecaoCotacao,
+  sanearItensCalculadoraHidratados,
+  sincronizarRegrasDisputaComCalculadora,
+} from "@/lib/sincronizacao-itens-certame";
 
 const MOTIVOS_RECUSA_GENERICOS = [
   "Não se encaixa no perfil ou core business da empresa",
@@ -346,6 +356,10 @@ interface NumericCalcInputProps {
   placeholder?: string;
   helperText?: string;
   allowEmpty?: boolean;
+  hideLabel?: boolean;
+  invalid?: boolean;
+  invalidText?: string;
+  size?: "sm" | "md" | "lg";
   min?: number;
   max?: number;
 }
@@ -358,12 +372,24 @@ function NumericCalcInput({
   placeholder,
   helperText,
   allowEmpty = false,
+  hideLabel = false,
+  invalid = false,
+  invalidText,
+  size,
   min = 0,
   max,
 }: NumericCalcInputProps) {
   const formatarNumero = (v: number | null | undefined) => {
     if (v === null || v === undefined || Number.isNaN(v)) return "";
     return String(v);
+  };
+
+  const normalizarEntradaNumerica = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed.includes(",") && trimmed.includes(".")) {
+      return trimmed.replace(/\./g, "").replace(",", ".");
+    }
+    return trimmed.replace(",", ".");
   };
 
   const [draft, setDraft] = React.useState<string>(() => formatarNumero(value));
@@ -380,7 +406,7 @@ function NumericCalcInput({
     if (!/^[0-9.,]*$/.test(raw)) return;
     setDraft(raw);
 
-    const limpo = raw.trim().replace(",", ".");
+    const limpo = normalizarEntradaNumerica(raw);
     if (!limpo || limpo === ".") {
       onChangeValue(allowEmpty ? null : min);
       return;
@@ -396,7 +422,7 @@ function NumericCalcInput({
 
   const handleBlur = () => {
     setFocado(false);
-    const limpo = draft.trim().replace(",", ".");
+    const limpo = normalizarEntradaNumerica(draft);
     if (!limpo || limpo === ".") {
       if (allowEmpty) {
         setDraft("");
@@ -423,8 +449,12 @@ function NumericCalcInput({
     <TextInput
       id={id}
       labelText={labelText}
+      hideLabel={hideLabel}
       placeholder={placeholder}
       helperText={helperText}
+      invalid={invalid}
+      invalidText={invalidText}
+      size={size}
       value={draft}
       onFocus={() => setFocado(true)}
       onBlur={handleBlur}
@@ -593,6 +623,7 @@ function OportunidadesDetalheContent({
   // Aba 6: Proposta Comercial Timbrada
   const [propostaConfig, setPropostaConfig] = React.useState<ConfiguracaoPropostaInput>({
     modoEmissao: "ITENS_CALCULADORA",
+    origemValoresProposta: "CALCULADORA",
     tipoTabelaProposta: "PROPOSTA_INICIAL",
     tipoAgrupamentoGlobal: "LOTE_01",
     tituloGlobalCustomizado: "Lote 01",
@@ -632,6 +663,7 @@ function OportunidadesDetalheContent({
   const [itensSelecionadosCotacao, setItensSelecionadosCotacao] = React.useState<Record<string, boolean>>({});
   const [modalVisualizarCotacaoAberto, setModalVisualizarCotacaoAberto] = React.useState(false);
   const [gerandoPdfCotacao, setGerandoPdfCotacao] = React.useState(false);
+  const [salvandoCotacao, setSalvandoCotacao] = React.useState(false);
   const [copiadoCotacao, setCopiadoCotacao] = React.useState(false);
   const [cotacaoFeedback, setCotacaoFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
   const [consultandoItensCertame, setConsultandoItensCertame] = React.useState(false);
@@ -641,6 +673,7 @@ function OportunidadesDetalheContent({
   const [identificadorSalaDisputa, setIdentificadorSalaDisputa] = React.useState<string>("");
   const [modoDisputaEdital, setModoDisputaEdital] = React.useState<"ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO">("ABERTO");
   const [intervaloMinimoLances, setIntervaloMinimoLances] = React.useState<string>("R$ 0,01");
+  const [disputaOrigemPrecos, setDisputaOrigemPrecos] = React.useState<"CALCULADORA" | "MANUAL">("CALCULADORA");
   const [statusGeralDisputa, setStatusGeralDisputa] = React.useState<"CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA">("CONFIGURADA");
   const [pausaEmergenciaDisputa, setPausaEmergenciaDisputa] = React.useState<boolean>(false);
   const [tempoRespostaSegundos, setTempoRespostaSegundos] = React.useState<number>(3);
@@ -752,10 +785,11 @@ function OportunidadesDetalheContent({
 
       // Hidratação dos dados da Calculadora Multi-Item e Proposta
       if (opp.calculadoraDados) {
-        const itensHidratados =
+        const itensBrutos =
           Array.isArray(opp.calculadoraDados.itens) && opp.calculadoraDados.itens.length > 0
             ? opp.calculadoraDados.itens
             : [];
+        const itensHidratados = sanearItensCalculadoraHidratados(itensBrutos, opp.valorEstimado);
         if (itensHidratados.length > 0) {
           setItensCalculadora(itensHidratados);
         }
@@ -765,6 +799,7 @@ function OportunidadesDetalheContent({
         if (opp.calculadoraDados.propostaConfig) {
           const cfgHidratada: ConfiguracaoPropostaInput = {
             modoEmissao: "ITENS_CALCULADORA",
+            origemValoresProposta: "CALCULADORA",
             tipoTabelaProposta: "PROPOSTA_INICIAL",
             tipoAgrupamentoGlobal: "LOTE_01",
             tituloGlobalCustomizado: "Lote 01",
@@ -787,12 +822,17 @@ function OportunidadesDetalheContent({
         }
 
         if (opp.calculadoraDados.cotacaoConfig) {
+          const { itensSelecionados, ...cfgCotacaoLimpo } = opp.calculadoraDados.cotacaoConfig;
           setConfigCotacao((prev) => ({
             ...prev,
-            ...opp.calculadoraDados.cotacaoConfig,
-            localEntregaCidade: opp.calculadoraDados.cotacaoConfig.localEntregaCidade || opp.municipio || opp.cidade || "",
-            localEntregaUf: opp.calculadoraDados.cotacaoConfig.localEntregaUf || opp.uf || "",
+            ...cfgCotacaoLimpo,
+            ocultarOrgaoEdital: cfgCotacaoLimpo.ocultarOrgaoEdital ?? true,
+            localEntregaCidade: cfgCotacaoLimpo.localEntregaCidade || opp.municipio || opp.cidade || "",
+            localEntregaUf: cfgCotacaoLimpo.localEntregaUf || opp.uf || "",
           }));
+          if (itensSelecionados && typeof itensSelecionados === "object" && !Array.isArray(itensSelecionados)) {
+            setItensSelecionadosCotacao(itensSelecionados);
+          }
         } else {
           setConfigCotacao((prev) => ({
             ...prev,
@@ -807,6 +847,7 @@ function OportunidadesDetalheContent({
           setIdentificadorSalaDisputa(disp.identificadorSala || opp.numeroEdital || "");
           if (disp.modoDisputaEdital) setModoDisputaEdital(disp.modoDisputaEdital);
           if (disp.intervaloMinimoLances) setIntervaloMinimoLances(disp.intervaloMinimoLances);
+          setDisputaOrigemPrecos(disp.origemPrecos === "MANUAL" ? "MANUAL" : "CALCULADORA");
           if (disp.statusGeral) setStatusGeralDisputa(disp.statusGeral);
           setPausaEmergenciaDisputa(Boolean(disp.pausaEmergencia));
           if (disp.tempoRespostaSegundos) setTempoRespostaSegundos(disp.tempoRespostaSegundos);
@@ -815,12 +856,12 @@ function OportunidadesDetalheContent({
             setRegrasDisputaItens(disp.regrasItens);
           }
         } else {
+          setDisputaOrigemPrecos("CALCULADORA");
           setIdentificadorSalaDisputa(opp.numeroEdital || "");
         }
       } else {
+        setDisputaOrigemPrecos("CALCULADORA");
         setIdentificadorSalaDisputa(opp.numeroEdital || "");
-        const vEst = opp.valorEstimado || 0;
-        const cUnit = vEst > 0 ? Math.round(vEst * 0.6) : 5000;
         setItensCalculadora([
           {
             id: "item_01",
@@ -829,8 +870,8 @@ function OportunidadesDetalheContent({
             marcaModelo: "",
             unidade: "UN",
             quantidade: 1,
-            valorEstimadoUnitario: vEst > 0 ? vEst : null,
-            custoUnitario: cUnit,
+            valorEstimadoUnitario: null,
+            custoUnitario: 0,
             freteUnitario: 0,
             outrosCustosUnitario: 0,
             impostosPercentual: 12,
@@ -842,6 +883,7 @@ function OportunidadesDetalheContent({
         ]);
         setPropostaConfig((prev) => ({
           ...prev,
+          origemValoresProposta: "CALCULADORA",
           descricaoGlobal: objetoCertame,
         }));
         setPropostaSalvaSnapshot(null);
@@ -914,10 +956,41 @@ function OportunidadesDetalheContent({
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  // Cálculos consolidados da Calculadora e Proposta
+  // Cálculos consolidados da Calculadora (puros) e Proposta (Calculada ou Manual)
+  const consolidadoPuroCalculadora = React.useMemo(() => {
+    return consolidarCalculadoraProposta(itensCalculadora, {
+      ...propostaConfig,
+      origemValoresProposta: "CALCULADORA",
+    });
+  }, [itensCalculadora, propostaConfig]);
+
   const consolidadoCalculadora = React.useMemo(() => {
     return consolidarCalculadoraProposta(itensCalculadora, propostaConfig);
   }, [itensCalculadora, propostaConfig]);
+
+  const disputaTotais = React.useMemo(() => {
+    let pisoTotal = 0;
+    let propostaTotal = 0;
+    for (const r of regrasDisputaItens) {
+      const qtd = Number(r.quantidade) > 0 ? Number(r.quantidade) : 1;
+      pisoTotal += round2((Number(r.pisoUnitarioSeguro) || 0) * qtd);
+      propostaTotal += round2((Number(r.propostaUnitaria) || 0) * qtd);
+    }
+    return {
+      pisoTotal: round2(pisoTotal),
+      propostaTotal: round2(propostaTotal),
+    };
+  }, [regrasDisputaItens]);
+
+  const validacaoDisputaAtual = React.useMemo(
+    () => validarRegrasDisputa(regrasDisputaItens, disputaOrigemPrecos),
+    [regrasDisputaItens, disputaOrigemPrecos],
+  );
+
+  const validacaoPropostaAtual = React.useMemo(
+    () => validarPropostaManual(itensCalculadora, propostaConfig),
+    [itensCalculadora, propostaConfig],
+  );
 
   const documentoProposta = React.useMemo(() => {
     if (!oportunidade) return null;
@@ -998,6 +1071,118 @@ function OportunidadesDetalheContent({
     });
   };
 
+  const handleAlternarOrigemProposta = (novaOrigem: "CALCULADORA" | "MANUAL") => {
+    if (novaOrigem === "MANUAL") {
+      setItensCalculadora((prev) =>
+        prev.map((it) => {
+          if (it.valorUnitarioPropostaManual != null) return it;
+          const calc = calcularItemProposta(it, { usarPropostaManual: false });
+          return {
+            ...it,
+            valorUnitarioPropostaManual: calc.propostaUnitaria,
+          };
+        }),
+      );
+    }
+    setPropostaConfig((prev) => ({
+      ...prev,
+      origemValoresProposta: novaOrigem,
+    }));
+    setPropostaFeedback(null);
+  };
+
+  const handleAtualizarPropostaManualItem = (idx: number, valorUnitario: number | null) => {
+    const targetItem = itensCalculadora[idx];
+    setItensCalculadora((prev) => {
+      const novos = [...prev];
+      if (!novos[idx]) return prev;
+      novos[idx] = { ...novos[idx], valorUnitarioPropostaManual: valorUnitario };
+      return novos;
+    });
+    if (targetItem && valorUnitario !== null && !Number.isNaN(valorUnitario)) {
+      const valorLimpo = round2(Math.max(0, valorUnitario));
+      const targetNumNorm = normalizarChaveItem(targetItem.numeroItem, idx);
+      setRegrasDisputaItens((prev) =>
+        prev.map((r, rIdx) => {
+          const mesmoItem =
+            (targetItem.id && r.itemId === targetItem.id) ||
+            normalizarChaveItem(r.numeroItem, rIdx) === targetNumNorm;
+          return mesmoItem ? { ...r, propostaUnitaria: valorLimpo } : r;
+        }),
+      );
+    }
+  };
+
+  const handleRestaurarPropostaCalculadora = () => {
+    const recalculados = consolidadoPuroCalculadora.itens;
+    setItensCalculadora((prev) =>
+      prev.map((it, idx) => ({
+        ...it,
+        valorUnitarioPropostaManual: recalculados[idx]?.propostaUnitaria ?? 0,
+      })),
+    );
+    setRegrasDisputaItens((prev) =>
+      prev.map((r, rIdx) => {
+        const match = recalculados.find(
+          (c, cIdx) =>
+            c.id === r.itemId ||
+            normalizarChaveItem(c.numeroItem, cIdx) === normalizarChaveItem(r.numeroItem, rIdx),
+        );
+        return match ? { ...r, propostaUnitaria: match.propostaUnitaria } : r;
+      }),
+    );
+    setPropostaFeedback({
+      tipo: "success",
+      msg: "Valores manuais da proposta preenchidos novamente a partir da Calculadora.",
+    });
+    setTimeout(() => setPropostaFeedback(null), 4000);
+  };
+
+  const handleAlternarOrigemDisputa = (novaOrigem: "CALCULADORA" | "MANUAL") => {
+    setDisputaOrigemPrecos(novaOrigem);
+    setDisputaFeedback(null);
+    if (novaOrigem === "CALCULADORA") {
+      setRegrasDisputaItens((prevRegras) =>
+        sincronizarRegrasDisputaComCalculadora(consolidadoCalculadora.itens, prevRegras, {
+          origemPrecosDisputa: "CALCULADORA",
+        }),
+      );
+    } else {
+      setRegrasDisputaItens((prevRegras) => {
+        if (prevRegras.length === 0 && consolidadoCalculadora.itens.length > 0) {
+          return sincronizarRegrasDisputaComCalculadora(consolidadoCalculadora.itens, [], {
+            origemPrecosDisputa: "CALCULADORA",
+          });
+        }
+        return prevRegras;
+      });
+    }
+  };
+
+  const handleRecarregarDisputaDaCalculadora = () => {
+    setRegrasDisputaItens((prevRegras) =>
+      sincronizarRegrasDisputaComCalculadora(consolidadoPuroCalculadora.itens, prevRegras, {
+        origemPrecosDisputa: "CALCULADORA",
+      }),
+    );
+    setDisputaFeedback({
+      tipo: "success",
+      msg: "Piso Seguro e Proposta Inicial da Disputa recarregados a partir da Calculadora.",
+    });
+    setTimeout(() => setDisputaFeedback(null), 4000);
+  };
+
+  const handleAtualizarRegraDisputaPreco = (
+    itemId: string,
+    campo: "pisoUnitarioSeguro" | "propostaUnitaria",
+    valor: number,
+  ) => {
+    const valorLimpo = round2(Math.max(0, Number.isFinite(valor) ? valor : 0));
+    setRegrasDisputaItens((prev) =>
+      prev.map((r) => (r.itemId === itemId ? { ...r, [campo]: valorLimpo } : r)),
+    );
+  };
+
   const handleAplicarParametrosPadraoCalc = () => {
     setItensCalculadora((prev) =>
       prev.map((it) => ({
@@ -1016,16 +1201,28 @@ function OportunidadesDetalheContent({
     setSalvandoCalculadoraCertame(true);
     setCalculadoraFeedback(null);
     try {
+      const lanceMinEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? disputaTotais.pisoTotal
+          : consolidadoPuroCalculadora.pisoTotalGeral;
+      const valorPropEfetivo =
+        propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
+        propostaConfig.valorGlobalManual &&
+        propostaConfig.valorGlobalManual > 0
+          ? propostaConfig.valorGlobalManual
+          : consolidadoCalculadora.propostaTotalGeral;
+
       const dadosCalculadora = {
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
-        cotacaoConfig: configCotacao,
+        cotacaoConfig: { ...configCotacao, itensSelecionados: itensSelecionadosCotacao },
         disputaConfig: {
           portal: portalDisputa,
           identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
           modoDisputaEdital,
           intervaloMinimoLances,
+          origemPrecos: disputaOrigemPrecos,
           statusGeral: statusGeralDisputa,
           pausaEmergencia: pausaEmergenciaDisputa,
           tempoRespostaSegundos,
@@ -1040,17 +1237,17 @@ function OportunidadesDetalheContent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: oportunidade.status,
-          lanceMinimo: consolidadoCalculadora.pisoTotalGeral,
-          valorProposta: consolidadoCalculadora.propostaTotalGeral,
+          lanceMinimo: lanceMinEfetivo,
+          valorProposta: valorPropEfetivo,
           calculadoraDados: dadosCalculadora,
         }),
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || "Falha ao salvar dados da calculadora");
+        throw new Error(errJson.message || errJson.error || "Falha ao salvar dados da calculadora");
       }
-      setLanceMinimoInput(String(consolidadoCalculadora.pisoTotalGeral));
-      setValorPropostaInput(String(consolidadoCalculadora.propostaTotalGeral));
+      setLanceMinimoInput(String(lanceMinEfetivo));
+      setValorPropostaInput(String(valorPropEfetivo));
       setPropostaSalvaSnapshot(JSON.stringify({ itens: itensCalculadora, propostaConfig }));
       setCalculadoraFeedback({
         tipo: "success",
@@ -1069,19 +1266,49 @@ function OportunidadesDetalheContent({
 
   const handleSalvarPropostaComercial = async (): Promise<boolean> => {
     if (!id || !oportunidade) return false;
+    const checkProposta = validarPropostaManual(itensCalculadora, propostaConfig);
+    if (!checkProposta.valido) {
+      setPropostaFeedback({
+        tipo: "error",
+        msg: checkProposta.erro || "Informe valores unitários maiores que R$ 0,00 antes de salvar.",
+      });
+      return false;
+    }
+    const checkDisputaPiso = validarRegrasDisputa(regrasDisputaItens, disputaOrigemPrecos);
+    if (checkDisputaPiso.itensPisoMaiorIds.length > 0) {
+      setPropostaFeedback({
+        tipo: "error",
+        msg: checkDisputaPiso.erros[0] || "Na aba Disputa existe item com Valor Mínimo maior que a Proposta Inicial.",
+      });
+      return false;
+    }
     setSalvandoPropostaComercial(true);
     setPropostaFeedback(null);
     try {
+      const lanceMinEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? disputaTotais.pisoTotal
+          : consolidadoPuroCalculadora.pisoTotalGeral;
+      const valorPropEfetivo =
+        propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
+        propostaConfig.valorGlobalManual &&
+        propostaConfig.valorGlobalManual > 0
+          ? propostaConfig.valorGlobalManual
+          : propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"
+          ? consolidadoCalculadora.readequadaTotalGeral
+          : consolidadoCalculadora.propostaTotalGeral;
+
       const dadosCalculadora = {
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
-        cotacaoConfig: configCotacao,
+        cotacaoConfig: { ...configCotacao, itensSelecionados: itensSelecionadosCotacao },
         disputaConfig: {
           portal: portalDisputa,
           identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
           modoDisputaEdital,
           intervaloMinimoLances,
+          origemPrecos: disputaOrigemPrecos,
           statusGeral: statusGeralDisputa,
           pausaEmergencia: pausaEmergenciaDisputa,
           tempoRespostaSegundos,
@@ -1096,22 +1323,16 @@ function OportunidadesDetalheContent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: oportunidade.status,
-          lanceMinimo: consolidadoCalculadora.pisoTotalGeral,
-          valorProposta:
-            propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
-            propostaConfig.valorGlobalManual &&
-            propostaConfig.valorGlobalManual > 0
-              ? propostaConfig.valorGlobalManual
-              : propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"
-              ? consolidadoCalculadora.readequadaTotalGeral
-              : consolidadoCalculadora.propostaTotalGeral,
+          lanceMinimo: lanceMinEfetivo,
+          valorProposta: valorPropEfetivo,
           calculadoraDados: dadosCalculadora,
         }),
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || "Falha ao salvar a proposta comercial");
+        throw new Error(errJson.message || errJson.error || "Falha ao salvar a proposta comercial");
       }
+      setValorPropostaInput(String(valorPropEfetivo));
       setPropostaSalvaSnapshot(JSON.stringify({ itens: itensCalculadora, propostaConfig }));
       setPropostaFeedback({
         tipo: "success",
@@ -1133,30 +1354,12 @@ function OportunidadesDetalheContent({
   // Sincroniza a grade multi-item do Robô de Lances com os itens e pisos da Calculadora
   React.useEffect(() => {
     if (!consolidadoCalculadora.itens || consolidadoCalculadora.itens.length === 0) return;
-    setRegrasDisputaItens((prevRegras) => {
-      return consolidadoCalculadora.itens.map((calcItem) => {
-        const existing = prevRegras.find((r) => r.itemId === calcItem.id);
-        return {
-          itemId: calcItem.id,
-          numeroItem: calcItem.numeroItem,
-          descricao: calcItem.descricao,
-          unidade: calcItem.unidade,
-          quantidade: calcItem.quantidade,
-          ativoNoRobo: existing ? existing.ativoNoRobo : true,
-          pisoUnitarioSeguro: calcItem.pisoUnitarioSeguro,
-          propostaUnitaria: calcItem.propostaUnitaria,
-          tipoDecremento: existing?.tipoDecremento || "CENTAVOS_1",
-          valorDecremento: existing?.valorDecremento ?? 0.01,
-          tatica: existing?.tatica || "IMEDIATO",
-          statusItem: existing?.statusItem || "PRONTO",
-          melhorLanceSala: existing?.melhorLanceSala ?? null,
-          meuUltimoLance: existing?.meuUltimoLance ?? null,
-          minhaPosicao: existing?.minhaPosicao ?? null,
-          observacoes: existing?.observacoes || "",
-        };
-      });
-    });
-  }, [consolidadoCalculadora.itens]);
+    setRegrasDisputaItens((prevRegras) =>
+      sincronizarRegrasDisputaComCalculadora(consolidadoCalculadora.itens, prevRegras, {
+        origemPrecosDisputa: disputaOrigemPrecos,
+      }),
+    );
+  }, [consolidadoCalculadora.itens, disputaOrigemPrecos]);
 
   const aplicarRegraEmMassa = () => {
     const vDec = parseFloat(massaValorDecremento.replace(/\./g, "").replace(",", "."));
@@ -1183,8 +1386,93 @@ function OportunidadesDetalheContent({
     setTimeout(() => setDisputaFeedback(null), 4000);
   };
 
+  const handleSalvarPedidoCotacao = async () => {
+    if (!id || !oportunidade) return;
+    setSalvandoCotacao(true);
+    setCotacaoFeedback(null);
+    try {
+      const cotacaoPersistida = {
+        ...configCotacao,
+        itensSelecionados: itensSelecionadosCotacao,
+      };
+      const valorPropEfetivo =
+        propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
+        propostaConfig.valorGlobalManual &&
+        propostaConfig.valorGlobalManual > 0
+          ? propostaConfig.valorGlobalManual
+          : propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"
+          ? consolidadoCalculadora.readequadaTotalGeral
+          : consolidadoCalculadora.propostaTotalGeral;
+      const lanceMinEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? disputaTotais.pisoTotal
+          : consolidadoPuroCalculadora.pisoTotalGeral;
+
+      const dadosCalculadora = {
+        parametrosPadrao: parametrosPadraoCalc,
+        itens: itensCalculadora,
+        propostaConfig,
+        cotacaoConfig: cotacaoPersistida,
+        disputaConfig: {
+          portal: portalDisputa,
+          identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+          modoDisputaEdital,
+          intervaloMinimoLances,
+          origemPrecos: disputaOrigemPrecos,
+          statusGeral: statusGeralDisputa,
+          pausaEmergencia: pausaEmergenciaDisputa,
+          tempoRespostaSegundos,
+          segundosFinaisSniper,
+          regrasItens: regrasDisputaItens,
+          atualizadoEm: new Date().toISOString(),
+        },
+        atualizadoEm: new Date().toISOString(),
+      };
+
+      const res = await fetch(`/api/oportunidades/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: oportunidade.status,
+          lanceMinimo: lanceMinEfetivo,
+          valorProposta: valorPropEfetivo,
+          calculadoraDados: dadosCalculadora,
+        }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || errJson.error || "Falha ao salvar pedido de cotação");
+      }
+      setCotacaoFeedback({
+        tipo: "success",
+        msg: configCotacao.ocultarOrgaoEdital
+          ? "Pedido de Cotação salvo! Sigilo Comercial (órgão e edital ocultos) e itens selecionados gravados."
+          : "Pedido de Cotação salvo! Referência do órgão/edital visível e itens selecionados gravados.",
+      });
+      setTimeout(() => setCotacaoFeedback(null), 5000);
+    } catch (err: any) {
+      setCotacaoFeedback({
+        tipo: "error",
+        msg: err?.message || "Erro ao salvar pedido de cotação.",
+      });
+    } finally {
+      setSalvandoCotacao(false);
+    }
+  };
+
   const handleSalvarConfiguracaoDisputa = async () => {
     if (!id || !oportunidade) return;
+    const checkDisputa = validarRegrasDisputa(regrasDisputaItens, disputaOrigemPrecos);
+    if (!checkDisputa.valido) {
+      setDisputaFeedback({
+        tipo: "error",
+        msg:
+          checkDisputa.erros[0] ||
+          "Corrija os valores de Piso Seguro e Proposta Inicial antes de salvar.",
+      });
+      return;
+    }
+
     setSalvandoDisputaCertame(true);
     setDisputaFeedback(null);
     try {
@@ -1193,6 +1481,7 @@ function OportunidadesDetalheContent({
         identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
         modoDisputaEdital,
         intervaloMinimoLances,
+        origemPrecos: disputaOrigemPrecos,
         statusGeral: statusGeralDisputa,
         pausaEmergencia: pausaEmergenciaDisputa,
         tempoRespostaSegundos,
@@ -1201,11 +1490,20 @@ function OportunidadesDetalheContent({
         atualizadoEm: new Date().toISOString(),
       };
 
+      const lanceMinEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? disputaTotais.pisoTotal
+          : consolidadoPuroCalculadora.pisoTotalGeral;
+      const valorPropEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? disputaTotais.propostaTotal
+          : consolidadoCalculadora.propostaTotalGeral;
+
       const dadosCalculadora = {
         parametrosPadrao: parametrosPadraoCalc,
         itens: itensCalculadora,
         propostaConfig,
-        cotacaoConfig: configCotacao,
+        cotacaoConfig: { ...configCotacao, itensSelecionados: itensSelecionadosCotacao },
         disputaConfig: configDisputa,
         atualizadoEm: new Date().toISOString(),
       };
@@ -1215,17 +1513,19 @@ function OportunidadesDetalheContent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: statusGeralDisputa === "EM_DISPUTA" ? "EM_DISPUTA" : oportunidade.status,
-          lanceMinimo: consolidadoCalculadora.pisoTotalGeral,
-          valorProposta: consolidadoCalculadora.propostaTotalGeral,
+          lanceMinimo: lanceMinEfetivo,
+          valorProposta: valorPropEfetivo,
           calculadoraDados: dadosCalculadora,
         }),
       });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || "Falha ao salvar configuração da disputa");
+        throw new Error(errJson.message || errJson.error || "Falha ao salvar configuração da disputa");
       }
 
+      setLanceMinimoInput(String(lanceMinEfetivo));
+      setValorPropostaInput(String(valorPropEfetivo));
       setDisputaFeedback({
         tipo: "success",
         msg: "Configuração do Robô de Lances salva com sucesso para todos os itens deste certame!",
@@ -1374,7 +1674,12 @@ function OportunidadesDetalheContent({
   // Itens Selecionados para Cotação
   const itensParaCotacao = React.useMemo<ItemPedidoCotacao[]>(() => {
     return itensCalculadora
-      .filter((it, idx) => itensSelecionadosCotacao[String(it.numeroItem || idx + 1)] !== false)
+      .filter((it, idx) => {
+        const numKey = normalizarChaveItem(it.numeroItem, idx);
+        const rawKey = String(it.numeroItem || idx + 1);
+        const flag = itensSelecionadosCotacao[numKey] ?? itensSelecionadosCotacao[rawKey];
+        return flag !== false;
+      })
       .map((it, idx) => ({
         numeroItem: it.numeroItem || idx + 1,
         descricao: it.descricao,
@@ -1384,12 +1689,12 @@ function OportunidadesDetalheContent({
       }));
   }, [itensCalculadora, itensSelecionadosCotacao]);
 
-  // Consulta e sincronização de todos os itens do certame (PNCP / IA)
+  // Consulta e sincronização de todos os itens do certame (PNCP + Varredura Documental + IA)
   const handleConsultarTodosItensCertame = React.useCallback(async () => {
     if (!id) return;
     setConsultandoItensCertame(true);
     try {
-      const res = await fetch(`/api/oportunidades/${id}/itens-certame`, {
+      const res = await fetch(`/api/oportunidades/${id}/itens-certame?refresh=true`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -1413,118 +1718,136 @@ function OportunidadesDetalheContent({
       if (novosItensExtraidos.length === 0) {
         setCotacaoFeedback({
           tipo: "error",
-          msg: "Nenhum item foi encontrado para este certame.",
+          msg: "Nenhum item foi encontrado nos documentos ou PNCP deste certame.",
         });
         return;
       }
 
-      // 1. Atualiza itensCalculadora preservando o que o usuário já editou se coincidir numeroItem
-      setItensCalculadora((prev) => {
-        const mapaPrev = new Map<string, ItemCalculadoraInput>();
-        for (const it of prev) {
-          mapaPrev.set(String(it.numeroItem).trim(), it);
-        }
+      const objetoAtual = obterObjetoCertame(oportunidade, propostaConfig);
+      const proximosItens = mesclarItensCertameNaCalculadora({
+        prevItens: itensCalculadora,
+        novosItensExtraidos,
+        objetoCertame: objetoAtual,
+        valorEstimadoOpp: oportunidade?.valorEstimado,
+        parametrosPadrao: parametrosPadraoCalc,
+      });
 
-        return novosItensExtraidos.map((ext, idx) => {
-          const numStr = String(ext.numeroItem ?? idx + 1).padStart(2, "0");
-          const existente = mapaPrev.get(numStr) || mapaPrev.get(String(ext.numeroItem));
+      const consolidadoSync = consolidarCalculadoraProposta(proximosItens, propostaConfig);
+      const proximasRegras = sincronizarRegrasDisputaComCalculadora(
+        consolidadoSync.itens,
+        regrasDisputaItens,
+        { origemPrecosDisputa: disputaOrigemPrecos },
+      );
+      const proximaSelecaoCotacao = normalizarMapaSelecaoCotacao(
+        itensSelecionadosCotacao,
+        proximosItens,
+      );
 
-          if (existente) {
-            return {
-              ...existente,
-              numeroItem: numStr,
-              descricao: existente.descricao || ext.descricao,
-              unidade: existente.unidade || ext.unidadeMedida || "UN",
-              quantidade: existente.quantidade || ext.quantidade || 1,
-              valorEstimadoUnitario: existente.valorEstimadoUnitario ?? ext.valorUnitarioEstimado ?? null,
-              marcaModelo: existente.marcaModelo || ext.marcaExigidaOuReferencia || null,
-            };
+      setItensCalculadora(proximosItens);
+      setRegrasDisputaItens(proximasRegras);
+      setItensSelecionadosCotacao(proximaSelecaoCotacao);
+
+      const pisoSyncEfetivo =
+        disputaOrigemPrecos === "MANUAL"
+          ? round2(
+              proximasRegras.reduce(
+                (acc, r) =>
+                  acc + round2((Number(r.pisoUnitarioSeguro) || 0) * (Number(r.quantidade) > 0 ? Number(r.quantidade) : 1)),
+                0,
+              ),
+            )
+          : consolidadoSync.pisoTotalGeral;
+      const propostaSyncEfetiva =
+        disputaOrigemPrecos === "MANUAL"
+          ? round2(
+              proximasRegras.reduce(
+                (acc, r) =>
+                  acc + round2((Number(r.propostaUnitaria) || 0) * (Number(r.quantidade) > 0 ? Number(r.quantidade) : 1)),
+                0,
+              ),
+            )
+          : consolidadoSync.propostaTotalGeral;
+
+      let salvoAutomaticamente = false;
+      if (oportunidade) {
+        const dadosCalculadoraSync = {
+          parametrosPadrao: parametrosPadraoCalc,
+          itens: proximosItens,
+          propostaConfig,
+          cotacaoConfig: { ...configCotacao, itensSelecionados: proximaSelecaoCotacao },
+          disputaConfig: {
+            portal: portalDisputa,
+            identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
+            modoDisputaEdital,
+            intervaloMinimoLances,
+            origemPrecos: disputaOrigemPrecos,
+            statusGeral: statusGeralDisputa,
+            pausaEmergencia: pausaEmergenciaDisputa,
+            tempoRespostaSegundos,
+            segundosFinaisSniper,
+            regrasItens: proximasRegras,
+            atualizadoEm: new Date().toISOString(),
+          },
+          atualizadoEm: new Date().toISOString(),
+        };
+
+        try {
+          const patchRes = await fetch(`/api/oportunidades/${id}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: oportunidade.status,
+              lanceMinimo: pisoSyncEfetivo,
+              valorProposta: propostaSyncEfetiva,
+              calculadoraDados: dadosCalculadoraSync,
+            }),
+          });
+          if (patchRes.ok) {
+            salvoAutomaticamente = true;
+            setLanceMinimoInput(String(pisoSyncEfetivo));
+            setValorPropostaInput(String(propostaSyncEfetiva));
+            setPropostaSalvaSnapshot(JSON.stringify({ itens: proximosItens, propostaConfig }));
           }
-
-          return {
-            id: `item_calc_${Date.now()}_${idx}`,
-            numeroItem: numStr,
-            descricao: ext.descricao,
-            marcaModelo: ext.marcaExigidaOuReferencia || null,
-            unidade: ext.unidadeMedida || "UN",
-            quantidade: ext.quantidade || 1,
-            valorEstimadoUnitario: ext.valorUnitarioEstimado ?? null,
-            custoUnitario: 0,
-            freteUnitario: 0,
-            outrosCustosUnitario: 0,
-            impostosPercentual: parametrosPadraoCalc.impostosPercentual,
-            bdiPercentual: parametrosPadraoCalc.bdiPercentual,
-            margemMinimaPercentual: parametrosPadraoCalc.margemMinimaPercentual,
-            margemAlvoPercentual: parametrosPadraoCalc.margemAlvoPercentual,
-            valorUnitarioArrematado: null,
-          };
-        });
-      });
-
-      // 2. Atualiza regras de Disputa Multi-Item
-      setRegrasDisputaItens((prev) => {
-        const mapaPrev = new Map<string, DisputaItemRegra>();
-        for (const r of prev) {
-          mapaPrev.set(String(r.numeroItem).trim(), r);
+        } catch {
+          // Estado em tela já foi atualizado mesmo que a gravação assíncrona falhe
         }
+      }
 
-        return novosItensExtraidos.map((ext, idx) => {
-          const numStr = String(ext.numeroItem ?? idx + 1).padStart(2, "0");
-          const existente = mapaPrev.get(numStr) || mapaPrev.get(String(ext.numeroItem));
-
-          if (existente) {
-            return {
-              ...existente,
-              descricao: existente.descricao || ext.descricao,
-              unidade: existente.unidade || ext.unidadeMedida || "UN",
-              quantidade: existente.quantidade || ext.quantidade || 1,
-            };
-          }
-
-          return {
-            itemId: `item_calc_${Date.now()}_${idx}`,
-            numeroItem: numStr,
-            descricao: ext.descricao,
-            unidade: ext.unidadeMedida || "UN",
-            quantidade: ext.quantidade || 1,
-            ativoNoRobo: true,
-            pisoUnitarioSeguro: (ext.valorUnitarioEstimado ? ext.valorUnitarioEstimado * 0.7 : 0),
-            propostaUnitaria: ext.valorUnitarioEstimado ?? 0,
-            tipoDecremento: "CENTAVOS_1",
-            valorDecremento: 0.01,
-            tatica: "IMEDIATO",
-            statusItem: "PRONTO",
-            melhorLanceSala: null,
-            meuUltimoLance: null,
-            minhaPosicao: null,
-            observacoes: "",
-          };
-        });
-      });
-
-      // 3. Seleciona todos os itens para cotação
-      setItensSelecionadosCotacao((prev) => {
-        const novo: Record<string, boolean> = { ...prev };
-        novosItensExtraidos.forEach((_, idx) => {
-          const numStr = String(idx + 1).padStart(2, "0");
-          if (novo[numStr] === undefined) novo[numStr] = true;
-        });
-        return novo;
-      });
-
-      const msgSucesso = `${novosItensExtraidos.length} itens sincronizados com sucesso da grade oficial (${data.origem}) para a Cotação, Calculadora, Proposta e Robô de Disputa!`;
+      const docsCount = Array.isArray(data.documentosLidos) ? data.documentosLidos.length : 0;
+      const sufixoDocs = docsCount > 0 ? ` • ${docsCount} documento(s) do edital inspecionado(s)` : "";
+      const sufixoPersist = salvoAutomaticamente ? " e salvo no certame" : "";
+      const msgSucesso = `${proximosItens.length} itens sincronizados${sufixoPersist} via ${data.origem}${sufixoDocs} para Cotação, Calculadora, Proposta e Robô de Lances!`;
       setCotacaoFeedback({ tipo: "success", msg: msgSucesso });
       setCalculadoraFeedback({ tipo: "success", msg: msgSucesso });
+      setPropostaFeedback({ tipo: "success", msg: msgSucesso });
       setDisputaFeedback({ tipo: "success", msg: msgSucesso });
-    } catch (err: any) {
-      setCotacaoFeedback({
-        tipo: "error",
-        msg: "Falha de conexão ao sincronizar itens do certame.",
-      });
+    } catch {
+      const msgErro = "Falha de conexão ao sincronizar itens do certame.";
+      setCotacaoFeedback({ tipo: "error", msg: msgErro });
+      setCalculadoraFeedback({ tipo: "error", msg: msgErro });
+      setDisputaFeedback({ tipo: "error", msg: msgErro });
     } finally {
       setConsultandoItensCertame(false);
     }
-  }, [id, parametrosPadraoCalc]);
+  }, [
+    id,
+    oportunidade,
+    itensCalculadora,
+    regrasDisputaItens,
+    itensSelecionadosCotacao,
+    parametrosPadraoCalc,
+    propostaConfig,
+    configCotacao,
+    portalDisputa,
+    identificadorSalaDisputa,
+    modoDisputaEdital,
+    intervaloMinimoLances,
+    disputaOrigemPrecos,
+    statusGeralDisputa,
+    pausaEmergenciaDisputa,
+    tempoRespostaSegundos,
+    segundosFinaisSniper,
+  ]);
 
   const handleImprimirCotacaoLimpa = () => {
     const itensEfetivos = itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
@@ -1589,7 +1912,7 @@ function OportunidadesDetalheContent({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Pedido_Cotacao_${new Date().toISOString().split("T")[0]}.pdf`;
+      a.download = `Pedido_Cotacao_${configCotacao.ocultarOrgaoEdital ? "Sigilo_" : ""}${new Date().toISOString().split("T")[0]}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -2339,7 +2662,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
               <span>Voltar</span>
             </Button>
             <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0, lineHeight: 1.2 }}>
-              {oportunidade.orgaoNome} — {sintetizarMiniResumo(oportunidade.miniResumo || oportunidade.objeto || oportunidade.resumo, oportunidade.tipoSistemaCodigo)}
+              {oportunidade.orgaoNome} — {resolverTituloExibicaoLicitacao(oportunidade.miniResumo, oportunidade.objeto || oportunidade.resumo, oportunidade.tipoSistemaCodigo)}
             </h1>
             <p style={{ margin: "0.25rem 0 0 0", color: "var(--cds-text-secondary)", fontSize: "0.875rem" }}>
               CNPJ: {oportunidade.orgaoCnpj} • ID PNCP: {oportunidade.idPncp}
@@ -3117,7 +3440,17 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             </p>
                             {r.habilitacao?.certidoesVencidasOuPendentes && r.habilitacao.certidoesVencidasOuPendentes.length > 0 && (
                               <div style={{ fontSize: "0.75rem", color: "var(--cds-support-error, #da1e28)", marginTop: "0.35rem" }}>
-                                ⚠ {r.habilitacao.certidoesVencidasOuPendentes.length} pendência(s) encontrada(s)
+                                <div style={{ fontWeight: 600 }}>
+                                  ⚠ {r.habilitacao.certidoesVencidasOuPendentes.length} pendência(s) encontrada(s):
+                                </div>
+                                <ul style={{ margin: "0.25rem 0 0 0", paddingLeft: "1rem", color: "var(--cds-text-secondary)", lineHeight: 1.35 }}>
+                                  {r.habilitacao.certidoesVencidasOuPendentes.slice(0, 6).map((p: string, idxP: number) => (
+                                    <li key={idxP}>{p}</li>
+                                  ))}
+                                  {r.habilitacao.certidoesVencidasOuPendentes.length > 6 && (
+                                    <li>... e mais {r.habilitacao.certidoesVencidasOuPendentes.length - 6} pendência(s) no relatório PDF.</li>
+                                  )}
+                                </ul>
                               </div>
                             )}
 
@@ -3446,7 +3779,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     disabled={consultandoItensCertame}
                     data-testid="btn-consultar-itens-cotacao"
                   >
-                    {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                    {consultandoItensCertame ? "Lendo documentos..." : "🔍 Consultar Todos os Itens do Certame"}
                   </Button>
                   <Button
                     size="sm"
@@ -3456,6 +3789,16 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     data-testid="btn-adicionar-item-cotacao"
                   >
                     + Adicionar Item
+                  </Button>
+                  <Button
+                    size="sm"
+                    kind="tertiary"
+                    renderIcon={Save}
+                    disabled={salvandoCotacao}
+                    onClick={handleSalvarPedidoCotacao}
+                    data-testid="btn-salvar-pedido-cotacao"
+                  >
+                    {salvandoCotacao ? "Salvando..." : "Salvar Pedido de Cotação"}
                   </Button>
                   <Button
                     size="sm"
@@ -3497,8 +3840,13 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       toggled={configCotacao.ocultarOrgaoEdital}
                       onToggle={(checked) => setConfigCotacao((prev) => ({ ...prev, ocultarOrgaoEdital: checked }))}
                     />
-                    <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", maxWidth: "280px" }}>
-                      Oculta órgão e edital no PDF, preservando Cidade/UF para cálculo de frete CIF.
+                    <span
+                      data-testid="sigilo-comercial-status-texto"
+                      style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", maxWidth: "300px" }}
+                    >
+                      {configCotacao.ocultarOrgaoEdital
+                        ? "🔒 Sigilo ATIVO: órgão e edital não aparecem no PDF/WhatsApp/HTML (apenas Cidade/UF para frete CIF)."
+                        : "👁️ Sigilo DESATIVADO: órgão e edital serão exibidos como referência nos documentos."}
                     </span>
                   </div>
                 </div>
@@ -3618,7 +3966,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       onClick={() => handleConsultarTodosItensCertame()}
                       disabled={consultandoItensCertame}
                     >
-                      {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                      {consultandoItensCertame ? "Lendo documentos..." : "🔍 Consultar Todos os Itens do Certame"}
                     </Button>
                     <Button
                       kind="primary"
@@ -3642,6 +3990,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         onClick={() => {
                           const todos: Record<string, boolean> = {};
                           itensCalculadora.forEach((it, idx) => {
+                            todos[normalizarChaveItem(it.numeroItem, idx)] = true;
                             todos[String(it.numeroItem || idx + 1)] = true;
                           });
                           setItensSelecionadosCotacao(todos);
@@ -3652,7 +4001,14 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       <Button
                         size="sm"
                         kind="ghost"
-                        onClick={() => setItensSelecionadosCotacao({})}
+                        onClick={() => {
+                          const nenhum: Record<string, boolean> = {};
+                          itensCalculadora.forEach((it, idx) => {
+                            nenhum[normalizarChaveItem(it.numeroItem, idx)] = false;
+                            nenhum[String(it.numeroItem || idx + 1)] = false;
+                          });
+                          setItensSelecionadosCotacao(nenhum);
+                        }}
                       >
                         Desmarcar Todos
                       </Button>
@@ -3674,8 +4030,12 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       </TableHead>
                       <TableBody>
                         {itensCalculadora.map((it, idx) => {
-                          const numKey = String(it.numeroItem || idx + 1);
-                          const selecionado = itensSelecionadosCotacao[numKey] !== false;
+                          const numKey = normalizarChaveItem(it.numeroItem, idx);
+                          const selecionado =
+                            itensSelecionadosCotacao[numKey] !== false &&
+                            itensSelecionadosCotacao[String(it.numeroItem || idx + 1)] !== false;
+                          const unidadeNorm = String(it.unidade || "UN").trim().toUpperCase();
+                          const temUnidadeNaLista = (UNIDADES_ITEM_OPCOES as readonly string[]).includes(unidadeNorm);
                           return (
                             <TableRow key={it.id || idx}>
                               <TableCell>
@@ -3684,9 +4044,11 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                   labelText=""
                                   checked={selecionado}
                                   onChange={(_, { checked }) => {
+                                    const rawKey = String(it.numeroItem || idx + 1);
                                     setItensSelecionadosCotacao((prev) => ({
                                       ...prev,
                                       [numKey]: checked,
+                                      [rawKey]: checked,
                                     }));
                                   }}
                                 />
@@ -3726,9 +4088,12 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                   id={`cotacao-un-${it.id}`}
                                   labelText=""
                                   hideLabel
-                                  value={it.unidade}
+                                  value={unidadeNorm}
                                   onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
                                 >
+                                  {!temUnidadeNaLista && unidadeNorm && (
+                                    <SelectItem key={unidadeNorm} value={unidadeNorm} text={unidadeNorm} />
+                                  )}
                                   {UNIDADES_ITEM_OPCOES.map((u) => (
                                     <SelectItem key={u} value={u} text={u} />
                                   ))}
@@ -3800,7 +4165,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       disabled={consultandoItensCertame}
                       data-testid="btn-consultar-itens-certame-calc"
                     >
-                      {consultandoItensCertame ? "Consultando..." : "🔍 Consultar Todos os Itens do Certame"}
+                      {consultandoItensCertame ? "Lendo documentos..." : "🔍 Consultar Todos os Itens do Certame"}
                     </Button>
                     <Button
                       size="sm"
@@ -3901,7 +4266,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
               {/* Lista Interativa de Itens */}
               <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem" }}>
-                {consolidadoCalculadora.itens.map((it, idx) => (
+                {consolidadoPuroCalculadora.itens.map((it, idx) => (
                   <Tile
                     key={it.id || idx}
                     style={{
@@ -3942,7 +4307,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           renderIcon={TrashCan}
                           hasIconOnly
                           iconDescription="Remover item"
-                          disabled={consolidadoCalculadora.itens.length <= 1}
+                          disabled={consolidadoPuroCalculadora.itens.length <= 1}
                           onClick={() => handleRemoverItemCalc(idx)}
                         />
                       </div>
@@ -3996,9 +4361,19 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             Unidade
                           </CampoComHoverTooltip> as any
                         }
-                        value={it.unidade}
+                        value={String(it.unidade || "UN").trim().toUpperCase()}
                         onChange={(e) => handleAtualizarItemCalc(idx, { unidade: e.target.value })}
                       >
+                        {!(UNIDADES_ITEM_OPCOES as readonly string[]).includes(
+                          String(it.unidade || "UN").trim().toUpperCase(),
+                        ) &&
+                          it.unidade && (
+                            <SelectItem
+                              key={String(it.unidade).trim().toUpperCase()}
+                              value={String(it.unidade).trim().toUpperCase()}
+                              text={String(it.unidade).trim().toUpperCase()}
+                            />
+                          )}
                         {UNIDADES_ITEM_OPCOES.map((u) => (
                           <SelectItem key={u} value={u} text={u} />
                         ))}
@@ -4144,11 +4519,21 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         </div>
                       </div>
 
-                      {it.motivoAlerta && (
-                        <div style={{ fontSize: "0.75rem", color: "var(--cds-support-warning, #b28600)" }}>
+                      {it.motivoAlerta ? (
+                        <div
+                          data-testid={`alerta-calc-item-${idx}`}
+                          style={{ fontSize: "0.75rem", color: "var(--cds-support-warning, #b28600)" }}
+                        >
                           ⚠️ {it.motivoAlerta}
                         </div>
-                      )}
+                      ) : it.notaInformativa ? (
+                        <div
+                          data-testid={`nota-info-calc-item-${idx}`}
+                          style={{ fontSize: "0.75rem", color: "var(--cds-support-info, #0043ce)" }}
+                        >
+                          ℹ️ {it.notaInformativa}
+                        </div>
+                      ) : null}
                     </div>
                   </Tile>
                 ))}
@@ -4157,17 +4542,17 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
               {/* Resumo Consolidado Global da Licitação */}
               <div style={{ marginBottom: "1.5rem" }}>
                 <h5 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-                  📊 Resumo Financeiro Consolidado da Licitação ({consolidadoCalculadora.totalItens} {consolidadoCalculadora.totalItens === 1 ? "item" : "itens"})
+                  📊 Resumo Financeiro Consolidado da Licitação ({consolidadoPuroCalculadora.totalItens} {consolidadoPuroCalculadora.totalItens === 1 ? "item" : "itens"})
                 </h5>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
                   <div>
                     <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-border-strong, #8d8d8d)" }}>
                       <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Custo Direto Total dos Itens</div>
                       <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                        {formatarMoedaBrl(consolidadoCalculadora.custoTotalGeral)}
+                        {formatarMoedaBrl(consolidadoPuroCalculadora.custoTotalGeral)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                        Com BDI/Indiretos: {formatarMoedaBrl(consolidadoCalculadora.custoComBdiTotalGeral)}
+                        Com BDI/Indiretos: {formatarMoedaBrl(consolidadoPuroCalculadora.custoComBdiTotalGeral)}
                       </div>
                     </Tile>
                   </div>
@@ -4176,10 +4561,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-support-success, #24a148)" }}>
                       <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Piso Seguro Global (Trava do Robô)</div>
                       <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--cds-support-success, #24a148)", marginTop: "0.25rem" }}>
-                        {formatarMoedaBrl(consolidadoCalculadora.pisoTotalGeral)}
+                        {formatarMoedaBrl(consolidadoPuroCalculadora.pisoTotalGeral)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                        Lucro Líq. no Piso: {formatarMoedaBrl(consolidadoCalculadora.lucroLiquidoEstimadoPiso)}
+                        Lucro Líq. no Piso: {formatarMoedaBrl(consolidadoPuroCalculadora.lucroLiquidoEstimadoPiso)}
                       </div>
                     </Tile>
                   </div>
@@ -4188,10 +4573,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <Tile style={{ padding: "1rem", borderLeft: "4px solid var(--cds-interactive, #0f62fe)" }}>
                       <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>Valor Total da Proposta Inicial</div>
                       <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--cds-text-primary)", marginTop: "0.25rem" }}>
-                        {formatarMoedaBrl(consolidadoCalculadora.propostaTotalGeral)}
+                        {formatarMoedaBrl(consolidadoPuroCalculadora.propostaTotalGeral)}
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--cds-support-info, #0043ce)", marginTop: "0.25rem" }}>
-                        Lucro Líquido: {formatarMoedaBrl(consolidadoCalculadora.lucroLiquidoEstimadoProposta)} ({consolidadoCalculadora.margemMediaLiquida}%)
+                        Lucro Líquido: {formatarMoedaBrl(consolidadoPuroCalculadora.lucroLiquidoEstimadoProposta)} ({consolidadoPuroCalculadora.margemMediaLiquida}%)
                       </div>
                     </Tile>
                   </div>
@@ -4270,7 +4655,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   1. Formato de Apresentação da Proposta Comercial
                 </h5>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem", marginBottom: "1rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.25rem", marginBottom: "1rem" }}>
                   <div>
                     <Select
                       id="select-modo-emissao"
@@ -4290,7 +4675,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     >
                       <SelectItem
                         value="ITENS_CALCULADORA"
-                        text={`Planilha Detalhada de Itens (${consolidadoCalculadora.totalItens} itens calculados)`}
+                        text={`Planilha Detalhada de Itens (${consolidadoCalculadora.totalItens} itens)`}
                       />
                       <SelectItem
                         value="VALOR_GLOBAL"
@@ -4313,11 +4698,32 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     >
                       <SelectItem
                         value="PROPOSTA_INICIAL"
-                        text="Proposta Inicial de Abertura (Valores com margem alvo)"
+                        text="Proposta Inicial de Abertura (Valores de abertura)"
                       />
                       <SelectItem
                         value="PROPOSTA_READEQUADA"
                         text="Proposta Readequada ao Lance Vencedor (Valores arrematados/piso)"
+                      />
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Select
+                      id="select-origem-valores-proposta"
+                      labelText="Origem dos Preços (Proposta Inicial)"
+                      disabled={propostaConfig.tipoTabelaProposta === "PROPOSTA_READEQUADA"}
+                      value={propostaConfig.origemValoresProposta || "CALCULADORA"}
+                      onChange={(e) =>
+                        handleAlternarOrigemProposta(e.target.value as "CALCULADORA" | "MANUAL")
+                      }
+                    >
+                      <SelectItem
+                        value="CALCULADORA"
+                        text="Usar Calculadora (Cálculo automático)"
+                      />
+                      <SelectItem
+                        value="MANUAL"
+                        text="Definir Manualmente (Editar em R$ livremente)"
                       />
                     </Select>
                   </div>
@@ -4340,6 +4746,113 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     }
                   />
                 </div>
+
+                {/* Lista de Edição Manual Livre em R$ (Proposta Inicial + Planilha Detalhada + Modo Manual) */}
+                {propostaConfig.modoEmissao === "ITENS_CALCULADORA" &&
+                  propostaConfig.tipoTabelaProposta === "PROPOSTA_INICIAL" &&
+                  (propostaConfig.origemValoresProposta || "CALCULADORA") === "MANUAL" && (
+                    <div
+                      data-testid="lista-itens-proposta-manual"
+                      style={{
+                        padding: "1rem",
+                        backgroundColor: "var(--cds-layer, #fff)",
+                        borderRadius: "4px",
+                        border: "1px solid var(--cds-interactive, #0f62fe)",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          flexWrap: "wrap",
+                          gap: "0.75rem",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)" }}>
+                            ✏️ Valores Manuais da Proposta Inicial ({consolidadoCalculadora.totalItens} {consolidadoCalculadora.totalItens === 1 ? "item" : "itens"})
+                          </strong>
+                          <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", margin: "0.15rem 0 0 0", maxWidth: "680px" }}>
+                            Os preços iniciam pré-preenchidos com os valores da Calculadora (e funcionam normalmente mesmo se os custos estiverem zerados). Editar o preço de um item aqui atualiza também a Proposta Inicial na aba Disputa.
+                          </p>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          kind="ghost"
+                          renderIcon={Renew}
+                          onClick={handleRestaurarPropostaCalculadora}
+                          data-testid="btn-puxar-calculadora-proposta"
+                        >
+                          ↺ Puxar da Calculadora
+                        </Button>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {consolidadoCalculadora.itens.map((it, idx) => {
+                          const valorManualAtual =
+                            it.valorUnitarioPropostaManual ?? it.propostaUnitaria;
+                          const valorInvalido = !(valorManualAtual > 0);
+                          return (
+                            <div
+                              key={it.id || idx}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "90px 1fr 250px",
+                                gap: "0.75rem",
+                                alignItems: "center",
+                                padding: "0.65rem 0.75rem",
+                                backgroundColor: "var(--cds-layer-01, #f9f9f9)",
+                                borderRadius: "4px",
+                                border: valorInvalido
+                                  ? "1px solid var(--cds-support-error, #da1e28)"
+                                  : "1px solid var(--cds-border-subtle, #e8e8e8)",
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>Nº Item</div>
+                                <strong style={{ fontSize: "0.875rem" }}>{it.numeroItem}</strong>
+                              </div>
+
+                              <div>
+                                <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>
+                                  Descrição / Especificação ({it.quantidade} {it.unidade})
+                                </div>
+                                <div style={{ fontSize: "0.85rem", color: "var(--cds-text-primary)", fontWeight: 500 }}>
+                                  {it.descricao || "Sem descrição"}
+                                </div>
+                                <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)", marginTop: "0.2rem" }}>
+                                  Subtotal: <strong>{formatarMoedaBrl(it.propostaTotal)}</strong> • Ref. Calculadora:{" "}
+                                  {formatarMoedaBrl(it.propostaCalculadoraUnitaria ?? it.propostaUnitaria)}
+                                  {it.pisoUnitarioSeguro > 0 && valorManualAtual > 0 && valorManualAtual < it.pisoUnitarioSeguro && (
+                                    <span style={{ color: "var(--cds-support-warning, #b28600)", marginLeft: "0.4rem" }}>
+                                      ⚠️ Abaixo do Piso da Calculadora ({formatarMoedaBrl(it.pisoUnitarioSeguro)})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div>
+                                <NumericCalcInput
+                                  id={`item-proposta-manual-${idx}`}
+                                  labelText={`Proposta Unit. (R$) — Item ${it.numeroItem}`}
+                                  placeholder="0,00"
+                                  allowEmpty
+                                  value={valorManualAtual}
+                                  invalid={valorInvalido}
+                                  invalidText="Informe um valor maior que R$ 0,00."
+                                  onChangeValue={(v) => handleAtualizarPropostaManualItem(idx, v)}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                 {/* Lista Minimalista de Valores Arrematados (Proposta Readequada + Planilha Detalhada de Itens) */}
                 {propostaConfig.modoEmissao === "ITENS_CALCULADORA" &&
@@ -4461,13 +4974,23 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           )}
                           allowEmpty
                           value={propostaConfig.valorGlobalManual}
+                          invalid={
+                            propostaConfig.origemValoresProposta === "MANUAL" &&
+                            propostaConfig.modoEmissao === "VALOR_GLOBAL" &&
+                            !validacaoPropostaAtual.valido
+                          }
+                          invalidText={validacaoPropostaAtual.erro}
                           onChangeValue={(v) =>
                             setPropostaConfig({
                               ...propostaConfig,
                               valorGlobalManual: v,
                             })
                           }
-                          helperText="Deixe vazio para usar a soma automática dos itens calculados"
+                          helperText={
+                            propostaConfig.origemValoresProposta === "MANUAL"
+                              ? "No modo Manual com Valor Global, informe o Valor Global desejado em R$ (maior que zero)"
+                              : "Deixe vazio para usar a soma automática dos itens calculados"
+                          }
                         />
                       </div>
                     </div>
@@ -4757,9 +5280,30 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   </Tag>
                   <Button
                     size="sm"
+                    kind="tertiary"
+                    renderIcon={Renew}
+                    disabled={consultandoItensCertame}
+                    onClick={() => handleConsultarTodosItensCertame()}
+                    data-testid="btn-consultar-itens-disputa"
+                  >
+                    {consultandoItensCertame ? "Lendo documentos..." : "🔍 Sincronizar Itens do Edital"}
+                  </Button>
+                  <Button
+                    size="sm"
                     kind="secondary"
                     renderIcon={Flash}
-                    onClick={() => setModalSimuladorDisputaAberto(true)}
+                    onClick={() => {
+                      if (!validacaoDisputaAtual.valido) {
+                        setDisputaFeedback({
+                          tipo: "error",
+                          msg:
+                            validacaoDisputaAtual.erros[0] ||
+                            "Corrija os valores de Piso Seguro e Proposta Inicial antes de iniciar a simulação do robô.",
+                        });
+                        return;
+                      }
+                      setModalSimuladorDisputaAberto(true);
+                    }}
                     data-testid="btn-simular-disputa-certame"
                   >
                     🎮 Simular Disputa Deste Certame
@@ -4880,6 +5424,85 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 </div>
               </div>
 
+              {/* Origem dos Preços da Disputa (Calculadora vs Manual R$) */}
+              <Tile
+                style={{
+                  padding: "1rem 1.25rem",
+                  backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                  borderLeft: "4px solid var(--cds-interactive, #0f62fe)",
+                  marginBottom: "1.25rem",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: "1rem",
+                    alignItems: "end",
+                  }}
+                >
+                  <div>
+                    <Select
+                      id="select-origem-precos-disputa"
+                      labelText="Origem dos Preços da Disputa (Valor Mínimo / Piso e Proposta Inicial)"
+                      value={disputaOrigemPrecos}
+                      onChange={(e) =>
+                        handleAlternarOrigemDisputa(e.target.value as "CALCULADORA" | "MANUAL")
+                      }
+                    >
+                      <SelectItem
+                        value="CALCULADORA"
+                        text="Usar Calculadora (Piso Seguro e Proposta Inicial sincronizados automaticamente)"
+                      />
+                      <SelectItem
+                        value="MANUAL"
+                        text="Definir Manualmente (Editar Piso Seguro e Proposta Inicial em R$ na grade)"
+                      />
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Button
+                      size="md"
+                      kind="tertiary"
+                      renderIcon={Renew}
+                      onClick={handleRecarregarDisputaDaCalculadora}
+                      data-testid="btn-recarregar-disputa-calc"
+                    >
+                      ↺ Recarregar da Calculadora
+                    </Button>
+                  </div>
+                </div>
+
+                {disputaOrigemPrecos === "MANUAL" && (
+                  <div
+                    style={{
+                      fontSize: "0.78rem",
+                      color: "var(--cds-support-info, #0043ce)",
+                      marginTop: "0.65rem",
+                    }}
+                  >
+                    ℹ️ Modo Manual ativo: edite o <strong>Piso Seguro (Valor Mínimo)</strong> e a{" "}
+                    <strong>Proposta Inicial</strong> em R$ diretamente na tabela abaixo — funciona normalmente mesmo com custos zerados na Calculadora. O Valor Mínimo nunca pode ultrapassar a Proposta Inicial.
+                  </div>
+                )}
+              </Tile>
+
+              {!validacaoDisputaAtual.valido && (
+                <InlineNotification
+                  style={{ marginBottom: "1.25rem" }}
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title="Bloqueio de Segurança na Disputa:"
+                  subtitle={
+                    validacaoDisputaAtual.erros[0] ||
+                    "Verifique os valores de Piso Seguro e Proposta Inicial."
+                  }
+                  data-testid="alerta-disputa-validacao"
+                />
+              )}
+
               {/* Cards de Métricas da Disputa */}
               <div
                 style={{
@@ -4917,10 +5540,16 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     }}
                   >
                     <Locked size={18} />
-                    {formatarMoedaBrl(consolidadoCalculadora.pisoTotalGeral)}
+                    {formatarMoedaBrl(
+                      disputaOrigemPrecos === "MANUAL"
+                        ? disputaTotais.pisoTotal
+                        : consolidadoCalculadora.pisoTotalGeral,
+                    )}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                    Trava automática da Calculadora (Aba 5)
+                    {disputaOrigemPrecos === "MANUAL"
+                      ? "Definido manualmente por item na Disputa"
+                      : "Trava automática da Calculadora (Aba 5)"}
                   </div>
                 </Tile>
 
@@ -4929,10 +5558,18 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     Proposta Inicial Total
                   </div>
                   <div style={{ fontSize: "1.45rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                    {formatarMoedaBrl(consolidadoCalculadora.propostaTotalGeral)}
+                    {formatarMoedaBrl(
+                      disputaOrigemPrecos === "MANUAL"
+                        ? disputaTotais.propostaTotal
+                        : consolidadoCalculadora.propostaTotalGeral,
+                    )}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                    Valor de abertura cadastrado no edital
+                    {disputaOrigemPrecos === "MANUAL"
+                      ? "Valores de abertura editados na Disputa"
+                      : (propostaConfig.origemValoresProposta || "CALCULADORA") === "MANUAL"
+                        ? "Sincronizada com a Proposta Manual (Aba 6)"
+                        : "Valor de abertura cadastrado no edital"}
                   </div>
                 </Tile>
 
@@ -5030,7 +5667,9 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     📋 Grade de Itens da Disputa ({regrasDisputaItens.length})
                   </h5>
                   <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
-                    Piso Seguro Travado 🔒 puxado em tempo real da Calculadora (Aba 5)
+                    {disputaOrigemPrecos === "MANUAL"
+                      ? "Modo Manual ativo: edite Piso Seguro e Proposta Inicial diretamente em R$ (Piso ≤ Proposta Inicial)"
+                      : "Piso Seguro Travado 🔒 puxado em tempo real da Calculadora (Aba 5)"}
                   </div>
                 </div>
 
@@ -5042,20 +5681,38 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         <TableHeader style={{ width: "70px" }}>Item</TableHeader>
                         <TableHeader>Descrição do Objeto</TableHeader>
                         <TableHeader>Qtd / Un</TableHeader>
-                        <TableHeader>Piso Seguro 🔒</TableHeader>
-                        <TableHeader>Proposta Inicial</TableHeader>
+                        <TableHeader style={{ minWidth: disputaOrigemPrecos === "MANUAL" ? "170px" : undefined }}>
+                          Piso Seguro 🔒
+                        </TableHeader>
+                        <TableHeader style={{ minWidth: disputaOrigemPrecos === "MANUAL" ? "170px" : undefined }}>
+                          Proposta Inicial
+                        </TableHeader>
                         <TableHeader style={{ minWidth: "210px" }}>Regra de Decremento</TableHeader>
                         <TableHeader style={{ minWidth: "170px" }}>Tática</TableHeader>
                         <TableHeader>Status</TableHeader>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {regrasDisputaItens.map((item, idx) => (
+                      {regrasDisputaItens.map((item, idx) => {
+                        const pisoMaiorQueProposta = item.pisoUnitarioSeguro > item.propostaUnitaria;
+                        const faltaPisoManual =
+                          disputaOrigemPrecos === "MANUAL" &&
+                          item.ativoNoRobo &&
+                          !(item.pisoUnitarioSeguro > 0);
+                        const faltaPropostaManual =
+                          disputaOrigemPrecos === "MANUAL" &&
+                          item.ativoNoRobo &&
+                          !(item.propostaUnitaria > 0);
+                        return (
                         <TableRow
                           key={item.itemId || idx}
                           style={{
                             opacity: item.ativoNoRobo ? 1 : 0.5,
-                            backgroundColor: item.ativoNoRobo ? "inherit" : "var(--cds-layer-accent, #fbfbfb)",
+                            backgroundColor: pisoMaiorQueProposta
+                              ? "rgba(218, 30, 40, 0.06)"
+                              : item.ativoNoRobo
+                                ? "inherit"
+                                : "var(--cds-layer-accent, #fbfbfb)",
                           }}
                         >
                           {/* Toggle Robô Ativo */}
@@ -5105,32 +5762,89 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             </span>
                           </TableCell>
 
-                          {/* Piso Seguro Travado */}
+                          {/* Piso Seguro (Calculadora ou Edição Manual R$) */}
                           <TableCell>
-                            <div
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.3rem",
-                                fontWeight: 700,
-                                color: "var(--cds-support-success, #24a148)",
-                                backgroundColor: "var(--cds-layer-02, #f4f4f4)",
-                                padding: "0.2rem 0.5rem",
-                                borderRadius: "3px",
-                                border: "1px solid var(--cds-border-subtle, #e0e0e0)",
-                              }}
-                              title="Piso mínimo seguro calculado na Aba 5 (Calculadora). O robô é bloqueado automaticamente caso os lances atinjam esse valor."
-                            >
-                              <Locked size={14} />
-                              {formatarMoedaBrl(item.pisoUnitarioSeguro)}
-                            </div>
+                            {disputaOrigemPrecos === "MANUAL" ? (
+                              <NumericCalcInput
+                                id={`disputa-piso-${item.itemId}`}
+                                size="sm"
+                                hideLabel
+                                labelText={`Piso Seguro (Valor Mínimo R$) do item ${item.numeroItem}`}
+                                placeholder="0,00"
+                                value={item.pisoUnitarioSeguro}
+                                invalid={pisoMaiorQueProposta || faltaPisoManual}
+                                invalidText={
+                                  pisoMaiorQueProposta
+                                    ? "Maior que Proposta Inicial"
+                                    : "Informe > R$ 0,00"
+                                }
+                                onChangeValue={(v) =>
+                                  handleAtualizarRegraDisputaPreco(
+                                    item.itemId,
+                                    "pisoUnitarioSeguro",
+                                    v ?? 0,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <div>
+                                <div
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
+                                    fontWeight: 700,
+                                    color: pisoMaiorQueProposta
+                                      ? "var(--cds-support-error, #da1e28)"
+                                      : "var(--cds-support-success, #24a148)",
+                                    backgroundColor: "var(--cds-layer-02, #f4f4f4)",
+                                    padding: "0.2rem 0.5rem",
+                                    borderRadius: "3px",
+                                    border: "1px solid var(--cds-border-subtle, #e0e0e0)",
+                                  }}
+                                  title="Piso mínimo seguro calculado na Aba 5 (Calculadora). O robô é bloqueado automaticamente caso os lances atinjam esse valor."
+                                >
+                                  <Locked size={14} />
+                                  {formatarMoedaBrl(item.pisoUnitarioSeguro)}
+                                </div>
+                                {pisoMaiorQueProposta && (
+                                  <div style={{ fontSize: "0.7rem", color: "var(--cds-support-error, #da1e28)", marginTop: "0.2rem" }}>
+                                    Piso maior que a Proposta Inicial
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
 
-                          {/* Proposta Inicial */}
+                          {/* Proposta Inicial (Calculadora/Tab 6 ou Edição Manual Independente R$) */}
                           <TableCell>
-                            <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
-                              {formatarMoedaBrl(item.propostaUnitaria)}
-                            </span>
+                            {disputaOrigemPrecos === "MANUAL" ? (
+                              <NumericCalcInput
+                                id={`disputa-proposta-${item.itemId}`}
+                                size="sm"
+                                hideLabel
+                                labelText={`Proposta Inicial (R$) do item ${item.numeroItem}`}
+                                placeholder="0,00"
+                                value={item.propostaUnitaria}
+                                invalid={pisoMaiorQueProposta || faltaPropostaManual}
+                                invalidText={
+                                  pisoMaiorQueProposta
+                                    ? "Menor que Piso Seguro"
+                                    : "Informe > R$ 0,00"
+                                }
+                                onChangeValue={(v) =>
+                                  handleAtualizarRegraDisputaPreco(
+                                    item.itemId,
+                                    "propostaUnitaria",
+                                    v ?? 0,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                                {formatarMoedaBrl(item.propostaUnitaria)}
+                              </span>
+                            )}
                           </TableCell>
 
                           {/* Regra de Decremento */}
@@ -5242,7 +5956,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             </Tag>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

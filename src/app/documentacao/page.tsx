@@ -56,6 +56,14 @@ interface DocumentoItem {
   alertaVencimento: boolean;
   vencido: boolean;
   diasParaVencer: number | null;
+  possuiAnexo?: boolean;
+  validacaoStatus?: "PENDENTE_ANEXO" | "VALIDADO" | "DIVERGENTE" | "ILEGIVEL" | "NAO_VERIFICADO";
+  validacaoResumo?: string | null;
+  cnpjExtraido?: string | null;
+  emissaoExtraida?: string | null;
+  vencimentoExtraido?: string | null;
+  tipoDetectado?: string | null;
+  validadoEm?: string | null;
   criadoEm: string;
   atualizadoEm: string;
 }
@@ -118,6 +126,7 @@ function DocumentacaoContent() {
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [docAlvoEditar, setDocAlvoEditar] = useState<DocumentoItem | null>(null);
   const [editNome, setEditNome] = useState("");
+  const [revalidandoId, setRevalidandoId] = useState<string | null>(null);
   const [editCategoria, setEditCategoria] = useState("FISCAL_TRABALHISTA");
   const [editTipo, setEditTipo] = useState("");
   const [editOrgaoEmissor, setEditOrgaoEmissor] = useState("");
@@ -159,6 +168,27 @@ function DocumentacaoContent() {
   useEffect(() => {
     carregarDocumentos();
   }, [carregarDocumentos]);
+
+  useEffect(() => {
+    const onTenantChanged = () => {
+      setPage(1);
+      carregarDocumentos();
+    };
+    window.addEventListener("tenant-changed", onTenantChanged);
+    return () => window.removeEventListener("tenant-changed", onTenantChanged);
+  }, [carregarDocumentos]);
+
+  const handleRevalidarAnexo = async (doc: DocumentoItem) => {
+    setRevalidandoId(doc.id);
+    try {
+      const res = await fetch(`/api/documentos/${doc.id}/validar`, { method: "POST" });
+      if (res.ok) {
+        await carregarDocumentos();
+      }
+    } finally {
+      setRevalidandoId(null);
+    }
+  };
 
   const abrirModalNovo = () => {
     setNome("");
@@ -565,6 +595,32 @@ function DocumentacaoContent() {
                               Vigente ({doc.diasParaVencer}d)
                             </Tag>
                           )}
+                          {!doc.possuiAnexo && !doc.arquivoUrl ? (
+                            <Tag
+                              type="warm-gray"
+                              size="sm"
+                              data-testid={`documento-sem-anexo-${doc.id}`}
+                              style={{ fontWeight: 600 }}
+                            >
+                              Sem Anexo (Rascunho)
+                            </Tag>
+                          ) : doc.validacaoStatus === "VALIDADO" ? (
+                            <Tag type="green" size="sm" data-testid={`documento-validado-${doc.id}`}>
+                              Anexo Validado ✓
+                            </Tag>
+                          ) : doc.validacaoStatus === "DIVERGENTE" ? (
+                            <Tag type="red" size="sm" data-testid={`documento-divergente-${doc.id}`} style={{ fontWeight: 700 }}>
+                              Divergência no Anexo ⚠️
+                            </Tag>
+                          ) : doc.validacaoStatus === "ILEGIVEL" ? (
+                            <Tag type="warm-gray" size="sm" data-testid={`documento-ilegivel-${doc.id}`}>
+                              Anexo Ilegível / Verificar
+                            </Tag>
+                          ) : (
+                            <Tag type="cyan" size="sm">
+                              Anexo Enviado (Não verificado)
+                            </Tag>
+                          )}
                         </div>
 
                         {/* Nome do Documento (Vermelho e Negrito se vencido ou vencendo em <= 30 dias) */}
@@ -620,11 +676,54 @@ function DocumentacaoContent() {
                               <span className="pncp-mono">{doc.arquivoNome}</span>
                             </div>
                           )}
+                          {doc.cnpjExtraido && (
+                            <div>
+                              <strong>CNPJ no Anexo:</strong>{" "}
+                              <span className="pncp-mono">{doc.cnpjExtraido}</span>
+                            </div>
+                          )}
                         </div>
+                        {doc.validacaoResumo && (
+                          <p
+                            style={{
+                              margin: "0.45rem 0 0 0",
+                              fontSize: "0.78rem",
+                              color:
+                                doc.validacaoStatus === "DIVERGENTE"
+                                  ? "var(--cds-support-error, #da1e28)"
+                                  : "var(--cds-text-secondary)",
+                              fontWeight: doc.validacaoStatus === "DIVERGENTE" ? 600 : 400,
+                            }}
+                          >
+                            {doc.validacaoResumo}
+                          </p>
+                        )}
                       </div>
 
                       {/* Lado Direito: Ações */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                        {doc.possuiAnexo || doc.arquivoUrl ? (
+                          <Button
+                            kind="ghost"
+                            size="sm"
+                            renderIcon={Renew}
+                            disabled={revalidandoId === doc.id}
+                            data-testid={`btn-revalidar-doc-${doc.id}`}
+                            onClick={() => handleRevalidarAnexo(doc)}
+                          >
+                            {revalidandoId === doc.id ? "Validando..." : "Revalidar Anexo"}
+                          </Button>
+                        ) : (
+                          <Button
+                            kind="secondary"
+                            size="sm"
+                            renderIcon={Upload}
+                            data-testid={`btn-anexar-doc-${doc.id}`}
+                            onClick={() => abrirModalNovaVersao(doc)}
+                          >
+                            Enviar Anexo
+                          </Button>
+                        )}
                         <Button
                           kind="ghost"
                           size="sm"

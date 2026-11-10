@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext) {
   let arquivo: any = null;
 
   try {
-    arquivo = await (prisma as any).licitacaoArquivo.findFirst({
+    arquivo = await prisma.arquivo.findFirst({
       where: {
         id: arquivoId,
         licitacaoId: id,

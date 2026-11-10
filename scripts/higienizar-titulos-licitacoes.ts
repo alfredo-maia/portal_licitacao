@@ -30,3 +30,4 @@ main().catch((err) => {
   console.error("[higienizar-titulos] Erro:", err);
   process.exit(1);
 });
+

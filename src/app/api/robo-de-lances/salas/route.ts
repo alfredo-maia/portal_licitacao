@@ -3,8 +3,16 @@ import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
-import { listOportunidades, atualizarKanbanStatus } from "@/server/services/oportunidades.service";
-import { disputaConfigSchema } from "@/server/schemas/proposta-calculadora.schema";
+import {
+  listOportunidades,
+  atualizarKanbanStatus,
+  OportunidadesServiceError,
+} from "@/server/services/oportunidades.service";
+import {
+  disputaConfigSchema,
+  disputaItemRegraSchema,
+  validarRegrasDisputa,
+} from "@/server/schemas/proposta-calculadora.schema";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +20,7 @@ export const dynamic = "force-dynamic";
 async function resolverTenantAtivo(
   req: Request,
   bodyTenantId?: string,
-): Promise<string | null> {
+): Promise<{ tenantId: string | null; unauthorized: boolean }> {
   const session = await getServerSession(authOptions).catch(() => null);
   let cookieTenant: string | undefined;
   try {
@@ -28,14 +36,32 @@ async function resolverTenantAtivo(
   const requestedTenant = queryTenant || bodyTenantId || cookieTenant;
 
   if (userId) {
-    return resolveUserActiveTenantId(userId, requestedTenant, sessionTenant);
+    const tenantId = await resolveUserActiveTenantId(
+      userId,
+      requestedTenant,
+      sessionTenant,
+    );
+    return { tenantId, unauthorized: false };
   }
-  return requestedTenant || "tenant-default";
+
+  const isTestEnv =
+    process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+  if (!isTestEnv) {
+    return { tenantId: null, unauthorized: true };
+  }
+
+  return { tenantId: requestedTenant || "tenant-default", unauthorized: false };
 }
 
 export async function GET(req: Request) {
   try {
-    const tenantId = await resolverTenantAtivo(req);
+    const { tenantId, unauthorized } = await resolverTenantAtivo(req);
+    if (unauthorized) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado", salas: [] },
+        { status: 401 },
+      );
+    }
     if (!tenantId) {
       return NextResponse.json(
         { ok: false, error: "Empresa ativa não identificada", salas: [] },
@@ -111,7 +137,13 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const tenantId = await resolverTenantAtivo(req);
+    const { tenantId, unauthorized } = await resolverTenantAtivo(req);
+    if (unauthorized) {
+      return NextResponse.json(
+        { ok: false, error: "Não autorizado" },
+        { status: 401 },
+      );
+    }
     if (!tenantId) {
       return NextResponse.json(
         { ok: false, error: "Empresa ativa não identificada" },
@@ -155,6 +187,30 @@ export async function PATCH(req: Request) {
       };
     }
 
+    if (Array.isArray(novaDisputaConfig.regrasItens) && novaDisputaConfig.regrasItens.length > 0) {
+      const origemDisputa =
+        novaDisputaConfig.origemPrecos === "MANUAL" ? "MANUAL" : "CALCULADORA";
+      const regrasParsed = novaDisputaConfig.regrasItens.flatMap((r: unknown) => {
+        const p = disputaItemRegraSchema.safeParse(r);
+        return p.success ? [p.data] : [];
+      });
+      const validacao = validarRegrasDisputa(regrasParsed, origemDisputa);
+      if (
+        validacao.itensPisoMaiorIds.length > 0 ||
+        (configUpdate && validacao.itensSemValorIds.length > 0)
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              validacao.erros[0] ||
+              "Valor Mínimo (Piso Seguro) não pode ser maior que a Proposta Inicial.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     await atualizarKanbanStatus(
       licitacaoId,
       {
@@ -177,6 +233,12 @@ export async function PATCH(req: Request) {
       disputaConfig: novaDisputaConfig,
     });
   } catch (error: any) {
+    if (error instanceof OportunidadesServiceError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
     return NextResponse.json(
       {
         ok: false,

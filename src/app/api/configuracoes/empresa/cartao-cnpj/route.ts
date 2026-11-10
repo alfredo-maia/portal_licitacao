@@ -207,6 +207,7 @@ export async function POST(req: Request) {
             validadoEm: agora,
           },
           user.id,
+          tenantId,
         )
       : await criarDocumento(
           {
@@ -263,3 +264,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

@@ -2,18 +2,38 @@ import { z } from "zod";
 
 export const UNIDADES_ITEM_OPCOES = [
   "UN",
+  "UNID",
   "SV",
   "CX",
+  "CAIXA",
   "KG",
+  "QUILO",
+  "PCT",
+  "PACOTE",
+  "FARDO",
+  "FRASCO",
+  "LITRO",
+  "GALAO",
+  "LATA",
+  "SACO",
+  "ROLO",
+  "PECA",
+  "KIT",
+  "CONJUNTO",
+  "TUBO",
+  "ENVELOPE",
   "M",
+  "METRO",
   "M2",
   "M3",
   "MES",
+  "MENSAL",
   "HORA",
   "DIARIA",
   "LOTE",
   "PAR",
-  "PCT",
+  "SERVICO",
+  "GLOBAL",
 ] as const;
 
 export type UnidadeItemLicitacao = (typeof UNIDADES_ITEM_OPCOES)[number];
@@ -66,6 +86,7 @@ export const itemCalculadoraInputSchema = z.object({
   bdiPercentual: z.number().min(0).max(100).default(25),
   margemMinimaPercentual: z.number().min(0).max(80).default(10),
   margemAlvoPercentual: z.number().min(0).max(100).default(20),
+  valorUnitarioPropostaManual: z.number().nonnegative().nullable().optional(),
   valorUnitarioArrematado: z.number().nonnegative().nullable().optional(),
 });
 
@@ -76,6 +97,7 @@ export interface ItemCalculadoProposta extends ItemCalculadoraInput {
   custoComBdiUnitario: number;
   pisoUnitarioSeguro: number;
   pisoTotalSeguro: number;
+  propostaCalculadoraUnitaria?: number;
   propostaUnitaria: number;
   propostaTotal: number;
   valorUnitarioReadequado: number;
@@ -87,11 +109,13 @@ export interface ItemCalculadoProposta extends ItemCalculadoraInput {
   alertaMargemInvertida: boolean;
   alertaSomaPercentualInvalida: boolean;
   motivoAlerta?: string;
+  notaInformativa?: string;
   avisosValidacao: string[];
 }
 
 export const configuracaoPropostaSchema = z.object({
   modoEmissao: z.enum(["ITENS_CALCULADORA", "VALOR_GLOBAL"]).default("ITENS_CALCULADORA"),
+  origemValoresProposta: z.enum(["CALCULADORA", "MANUAL"]).optional().default("CALCULADORA"),
   tipoTabelaProposta: z.enum(["PROPOSTA_INICIAL", "PROPOSTA_READEQUADA"]).default("PROPOSTA_INICIAL"),
   tipoAgrupamentoGlobal: z.enum(["LOTE_01", "PRECO_GLOBAL"]).default("LOTE_01"),
   tituloGlobalCustomizado: z.string().trim().optional().default("Lote 01"),
@@ -172,6 +196,7 @@ export const disputaConfigSchema = z.object({
   identificadorSala: z.string().optional().default(""),
   modoDisputaEdital: z.enum(["ABERTO", "ABERTO_FECHADO", "FECHADO_ABERTO"]).optional().default("ABERTO"),
   intervaloMinimoLances: z.string().optional().default("R$ 0,01"),
+  origemPrecos: z.enum(["CALCULADORA", "MANUAL"]).optional().default("CALCULADORA"),
   statusGeral: z.enum(["CONFIGURADA", "EM_DISPUTA", "PAUSADA", "CONCLUIDA"]).default("CONFIGURADA"),
   pausaEmergencia: z.boolean().default(false),
   tempoRespostaSegundos: z.number().min(1).max(60).default(3),
@@ -222,7 +247,10 @@ export function round2(num: number): number {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
-export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculadoProposta {
+export function calcularItemProposta(
+  input: ItemCalculadoraInput,
+  options?: { usarPropostaManual?: boolean },
+): ItemCalculadoProposta {
   const quantidadeSegura = input.quantidade > 0 ? input.quantidade : 1;
   const custoTotalUnitario = round2(
     Math.max(0, input.custoUnitario) +
@@ -262,7 +290,15 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
 
   const somaAlvo = somaPercentualAlvo / 100;
   const divisorAlvo = Math.max(0.05, 1 - somaAlvo);
-  const propostaUnitaria = round2(custoComBdiUnitario / divisorAlvo);
+  const propostaCalculadoraUnitaria = round2(custoComBdiUnitario / divisorAlvo);
+  const usarManualProposta = Boolean(
+    options?.usarPropostaManual &&
+      input.valorUnitarioPropostaManual != null &&
+      input.valorUnitarioPropostaManual >= 0,
+  );
+  const propostaUnitaria = usarManualProposta
+    ? round2(input.valorUnitarioPropostaManual!)
+    : propostaCalculadoraUnitaria;
   const propostaTotal = round2(propostaUnitaria * quantidadeSegura);
 
   // Valor Readequado: prioriza o valor arrematado informado pelo cliente; senão usa o Piso Seguro
@@ -286,9 +322,10 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
   let alertaInexequivel = false;
   let alertaAcimaEstimado = false;
   let motivoAlerta: string | undefined;
+  let notaInformativa: string | undefined;
 
   if (input.valorEstimadoUnitario && input.valorEstimadoUnitario > 0) {
-    if (pisoUnitarioSeguro < input.valorEstimadoUnitario * 0.5) {
+    if (pisoUnitarioSeguro > 0 && pisoUnitarioSeguro < input.valorEstimadoUnitario * 0.5) {
       alertaInexequivel = true;
       motivoAlerta =
         "Piso com desconto superior a 50% do valor de referência (Art. 59, §4º da Lei 14.133/2021). Sujeito à comprovação de exequibilidade.";
@@ -296,8 +333,8 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
       alertaAcimaEstimado = true;
       motivoAlerta =
         "Proposta Inicial acima do Valor Estimado do Edital. Atenção ao risco de desclassificação se o orçamento for teto máximo.";
-    } else if (pisoUnitarioSeguro < input.valorEstimadoUnitario * 0.75) {
-      motivoAlerta =
+    } else if (pisoUnitarioSeguro > 0 && pisoUnitarioSeguro < input.valorEstimadoUnitario * 0.75) {
+      notaInformativa =
         "Desconto expressivo superior a 25% frente ao valor estimado do edital.";
     }
   }
@@ -313,6 +350,7 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
     custoComBdiUnitario,
     pisoUnitarioSeguro,
     pisoTotalSeguro,
+    propostaCalculadoraUnitaria,
     propostaUnitaria,
     propostaTotal,
     valorUnitarioReadequado,
@@ -324,6 +362,7 @@ export function calcularItemProposta(input: ItemCalculadoraInput): ItemCalculado
     alertaMargemInvertida,
     alertaSomaPercentualInvalida,
     motivoAlerta,
+    notaInformativa,
     avisosValidacao,
   };
 }
@@ -332,7 +371,11 @@ export function consolidarCalculadoraProposta(
   itensRaw: ItemCalculadoraInput[],
   configRaw?: Partial<ConfiguracaoPropostaInput>,
 ): ConsolidadoCalculadoraProposta {
-  const itensCalculados = itensRaw.map(calcularItemProposta);
+  const parsedConfig = configuracaoPropostaSchema.parse(configRaw || {});
+  const usarPropostaManual = parsedConfig.origemValoresProposta === "MANUAL";
+  const itensCalculados = itensRaw.map((it) =>
+    calcularItemProposta(it, { usarPropostaManual }),
+  );
 
   const totalItens = itensCalculados.length;
   let custoTotalGeral = 0;
@@ -370,8 +413,6 @@ export function consolidarCalculadoraProposta(
       ? round2((lucroLiquidoEstimadoProposta / propostaTotalGeral) * 100)
       : 0;
 
-  const parsedConfig = configuracaoPropostaSchema.parse(configRaw || {});
-
   return {
     itens: itensCalculados,
     totalItens,
@@ -393,4 +434,100 @@ export function formatarMoedaBrl(valor: number): string {
     style: "currency",
     currency: "BRL",
   });
+}
+
+export function validarRegrasDisputa(
+  regras: DisputaItemRegra[],
+  origemPrecos: "CALCULADORA" | "MANUAL" = "CALCULADORA",
+): {
+  valido: boolean;
+  erros: string[];
+  itensPisoMaiorIds: string[];
+  itensSemValorIds: string[];
+} {
+  const erros: string[] = [];
+  const itensPisoMaiorIds: string[] = [];
+  const itensSemValorIds: string[] = [];
+
+  for (const item of regras || []) {
+    const piso = Number(item.pisoUnitarioSeguro ?? 0);
+    const proposta = Number(item.propostaUnitaria ?? 0);
+
+    if (piso > proposta) {
+      itensPisoMaiorIds.push(item.itemId);
+      erros.push(
+        `Item #${item.numeroItem}: o Valor Mínimo / Piso Seguro (${formatarMoedaBrl(piso)}) não pode ser maior que a Proposta Inicial (${formatarMoedaBrl(proposta)}).`,
+      );
+    }
+
+    if (origemPrecos === "MANUAL" && item.ativoNoRobo && (!(proposta > 0) || !(piso > 0))) {
+      itensSemValorIds.push(item.itemId);
+      erros.push(
+        `Item #${item.numeroItem}: no modo Manual, informe Proposta Inicial e Valor Mínimo (Piso) maiores que R$ 0,00 para os itens ativos no robô.`,
+      );
+    }
+  }
+
+  return {
+    valido: erros.length === 0,
+    erros,
+    itensPisoMaiorIds,
+    itensSemValorIds,
+  };
+}
+
+export function validarPropostaManual(
+  itens: ItemCalculadoraInput[],
+  config?: Partial<ConfiguracaoPropostaInput>,
+): {
+  valido: boolean;
+  erro?: string;
+  itensInvalidosIds: string[];
+} {
+  if ((config?.origemValoresProposta || "CALCULADORA") !== "MANUAL") {
+    return { valido: true, itensInvalidosIds: [] };
+  }
+
+  if (config?.modoEmissao === "VALOR_GLOBAL") {
+    const consolidado = consolidarCalculadoraProposta(itens, config);
+    const totalEfetivo =
+      config.valorGlobalManual && config.valorGlobalManual > 0
+        ? config.valorGlobalManual
+        : config.tipoTabelaProposta === "PROPOSTA_READEQUADA"
+          ? consolidado.readequadaTotalGeral
+          : consolidado.propostaTotalGeral;
+    if (!(totalEfetivo > 0)) {
+      return {
+        valido: false,
+        erro: "Informe um Valor Global (R$) maior que zero para salvar a Proposta Comercial no modo Manual.",
+        itensInvalidosIds: [],
+      };
+    }
+    return { valido: true, itensInvalidosIds: [] };
+  }
+
+  if (config?.tipoTabelaProposta === "PROPOSTA_READEQUADA") {
+    return { valido: true, itensInvalidosIds: [] };
+  }
+
+  const itensInvalidosIds: string[] = [];
+  const numerosInvalidos: string[] = [];
+
+  for (const it of itens || []) {
+    const val = Number(it.valorUnitarioPropostaManual ?? 0);
+    if (!(val > 0)) {
+      itensInvalidosIds.push(it.id);
+      numerosInvalidos.push(`#${it.numeroItem}`);
+    }
+  }
+
+  if (itensInvalidosIds.length > 0) {
+    return {
+      valido: false,
+      erro: `No modo Manual da Proposta Comercial, informe o Valor Unitário (> R$ 0,00) para todos os itens (${numerosInvalidos.join(", ")}).`,
+      itensInvalidosIds,
+    };
+  }
+
+  return { valido: true, itensInvalidosIds: [] };
 }

@@ -99,24 +99,32 @@ function mapRecordToNotaItem(
 
 async function ensureLicitacaoNotaTable(): Promise<void> {
   try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "licitacao_nota" (
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS "licitacao_nota" (
         "id" TEXT NOT NULL,
         "licitacaoId" TEXT NOT NULL,
         "tenantId" TEXT,
-        "texto" TEXT NOT NULL,
-        "mencoesIds" JSONB NOT NULL DEFAULT '[]'::jsonb,
-        "mencoesNomes" JSONB NOT NULL DEFAULT '[]'::jsonb,
         "autorId" TEXT NOT NULL,
         "autorNome" TEXT NOT NULL,
-        "autorEmail" TEXT,
-        "autorCargo" TEXT,
-        "editadoEm" TIMESTAMP(3),
-        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "autorCargo" TEXT NOT NULL DEFAULT '',
+        "texto" TEXT NOT NULL,
+        "mencionadosIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "editada" BOOLEAN NOT NULL DEFAULT false,
+        "criadaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "atualizadaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "licitacao_nota_pkey" PRIMARY KEY ("id")
-      );
-    `);
+      );`,
+      `ALTER TABLE "licitacao_nota" ADD COLUMN IF NOT EXISTS "autorCargo" TEXT NOT NULL DEFAULT '';`,
+      `ALTER TABLE "licitacao_nota" ADD COLUMN IF NOT EXISTS "mencionadosIds" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+      `ALTER TABLE "licitacao_nota" ADD COLUMN IF NOT EXISTS "editada" BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE "licitacao_nota" ADD COLUMN IF NOT EXISTS "criadaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;`,
+      `ALTER TABLE "licitacao_nota" ADD COLUMN IF NOT EXISTS "atualizadaEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_nota_licitacaoId_criadaEm_idx" ON "licitacao_nota"("licitacaoId", "criadaEm");`,
+      `CREATE INDEX IF NOT EXISTS "licitacao_nota_tenantId_idx" ON "licitacao_nota"("tenantId");`,
+    ];
+    for (const stmt of statements) {
+      await prisma.$executeRawUnsafe(stmt).catch(() => undefined);
+    }
   } catch {
     // Silencioso se offline
   }
@@ -147,7 +155,9 @@ async function resolverMencoesDaEquipe(
     const dbUsers = await prisma.user.findMany({
       where: {
         ativo: true,
-        ...(tenantId ? { tenantId } : {}),
+        ...(tenantId
+          ? { tenantMemberships: { some: { tenantId, ativo: true } } }
+          : {}),
       },
       select: { id: true, name: true },
     });
