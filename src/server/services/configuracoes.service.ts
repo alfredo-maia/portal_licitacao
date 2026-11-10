@@ -113,6 +113,8 @@ async function ensureConfiguracaoEmpresaColumns(): Promise<void> {
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "brasilInteiro" BOOLEAN DEFAULT true;`,
     `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
     `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "preferenciasUpdatedAt" TIMESTAMP(3);`,
+    `ALTER TABLE "configuracao_empresa" ADD COLUMN IF NOT EXISTS "cnaesSecundarios" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
+    `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cnaesSecundarios" TEXT[] DEFAULT ARRAY[]::TEXT[];`,
   ];
   for (const sql of queries) {
     try {
@@ -459,12 +461,18 @@ export async function obterConfiguracaoEmpresa(
         },
       });
       if (config) {
+        const cnaesSec = Array.isArray((config as any).cnaesSecundarios) && (config as any).cnaesSecundarios.length > 0
+          ? (config as any).cnaesSecundarios
+          : Array.isArray(tenant?.cnaesSecundarios)
+            ? tenant.cnaesSecundarios
+            : [];
         return {
           ...config,
           razaoSocial: config.razaoSocial || tenant?.razaoSocial || "EMPRESA LTDA",
           nomeFantasia: config.nomeFantasia || tenant?.nomeFantasia || "",
           cnpj: config.cnpj || tenant?.cnpj || "",
           cnae: config.cnae || tenant?.cnaePrincipal || "",
+          cnaesSecundarios: cnaesSec,
           endereco: config.endereco || tenant?.endereco || "",
           numero: config.numero || tenant?.numero || "",
           complemento: config.complemento || tenant?.complemento || "",
@@ -485,13 +493,19 @@ export async function obterConfiguracaoEmpresa(
       // Se o tenant existe mas ainda não possui configuracao_empresa salva no DB,
       // verifica se há dados em memória antes de retornar defaults
       const memConfig = getInMemoryConfiguracaoEmpresa(tenantId);
-      if (memConfig && (memConfig.logoUrl || memConfig.papelTimbradoUrl)) {
+      if (memConfig && (memConfig.logoUrl || memConfig.papelTimbradoUrl || (memConfig.cnaesSecundarios && memConfig.cnaesSecundarios.length > 0))) {
+        const cnaesSec = Array.isArray(memConfig.cnaesSecundarios)
+          ? memConfig.cnaesSecundarios
+          : Array.isArray(tenant?.cnaesSecundarios)
+            ? tenant.cnaesSecundarios
+            : [];
         return {
           ...memConfig,
           razaoSocial: memConfig.razaoSocial || tenant?.razaoSocial || "EMPRESA LTDA",
           nomeFantasia: memConfig.nomeFantasia || tenant?.nomeFantasia || "",
           cnpj: memConfig.cnpj || tenant?.cnpj || "",
           cnae: memConfig.cnae || tenant?.cnaePrincipal || "",
+          cnaesSecundarios: cnaesSec,
           endereco: memConfig.endereco || tenant?.endereco || "",
           numero: memConfig.numero || tenant?.numero || "",
           complemento: memConfig.complemento || tenant?.complemento || "",
@@ -517,6 +531,7 @@ export async function obterConfiguracaoEmpresa(
           inscricaoEstadual: "",
           inscricaoMunicipal: "",
           cnae: tenant.cnaePrincipal || "",
+          cnaesSecundarios: Array.isArray(tenant.cnaesSecundarios) ? tenant.cnaesSecundarios : [],
           endereco: tenant.endereco || "",
           numero: tenant.numero || "",
           complemento: tenant.complemento || "",
@@ -550,6 +565,9 @@ export async function obterConfiguracaoEmpresa(
       if (config) {
         return {
           ...config,
+          cnaesSecundarios: Array.isArray((config as any).cnaesSecundarios)
+            ? (config as any).cnaesSecundarios
+            : [],
           logoUrl: config.logoUrl || null,
           papelTimbradoUrl: config.papelTimbradoUrl || null,
         };
@@ -564,6 +582,12 @@ export async function obterConfiguracaoEmpresa(
       nomeFantasia: base?.nomeFantasia || (memTenant as any)?.nomeFantasia || "",
       cnpj: base?.cnpj || memTenant?.cnpj || "",
       cnae: base?.cnae || memTenant?.cnaePrincipal || "",
+      cnaesSecundarios:
+        Array.isArray(base?.cnaesSecundarios) && base.cnaesSecundarios.length > 0
+          ? base.cnaesSecundarios
+          : Array.isArray((memTenant as any)?.cnaesSecundarios)
+            ? (memTenant as any).cnaesSecundarios
+            : [],
       endereco: base?.endereco || memTenant?.endereco || "",
       numero: base?.numero || (memTenant as any)?.numero || "",
       complemento: base?.complemento || (memTenant as any)?.complemento || "",
@@ -588,6 +612,12 @@ export async function obterConfiguracaoEmpresa(
       nomeFantasia: base?.nomeFantasia || (memTenant as any)?.nomeFantasia || "",
       cnpj: base?.cnpj || memTenant?.cnpj || "",
       cnae: base?.cnae || memTenant?.cnaePrincipal || "",
+      cnaesSecundarios:
+        Array.isArray(base?.cnaesSecundarios) && base.cnaesSecundarios.length > 0
+          ? base.cnaesSecundarios
+          : Array.isArray((memTenant as any)?.cnaesSecundarios)
+            ? (memTenant as any).cnaesSecundarios
+            : [],
       endereco: base?.endereco || memTenant?.endereco || "",
       numero: base?.numero || (memTenant as any)?.numero || "",
       complemento: base?.complemento || (memTenant as any)?.complemento || "",
@@ -610,21 +640,30 @@ export async function atualizarConfiguracaoEmpresa(
   data: ConfiguracaoEmpresaAtualizarInput,
   usuarioId?: string | null,
   tenantId?: string | null,
+  options?: { preservarPreferencias?: boolean },
 ): Promise<ConfiguracaoEmpresa> {
   const validado = configuracaoEmpresaAtualizarInputSchema.parse(data);
-  const { segmentos, subsegmentos, ufs, brasilInteiro, ...configData } = validado;
+  const preservarPreferencias = Boolean(options?.preservarPreferencias);
+  const rawData = (data ?? {}) as Record<string, any>;
+
+  const {
+    segmentos: segInput,
+    subsegmentos: subsegInput,
+    ufs: ufsInput,
+    brasilInteiro: brasilInput,
+    ...configData
+  } = validado;
 
   await ensureConfiguracaoEmpresaColumns().catch(() => undefined);
-
-  const alterandoPreferencias =
-    segmentos !== undefined ||
-    subsegmentos !== undefined ||
-    ufs !== undefined ||
-    brasilInteiro !== undefined;
 
   let plano = "BASICO";
   let billingStatus = "TRIAL";
   let preferenciasUpdatedAt: Date | null = null;
+  let existingSegmentos: string[] = [];
+  let existingSubsegmentos: string[] = [];
+  let existingUfs: string[] = [];
+  let existingBrasilInteiro = true;
+  let existingCnaesSecundarios: string[] = [];
 
   if (tenantId) {
     try {
@@ -635,16 +674,70 @@ export async function atualizarConfiguracaoEmpresa(
         plano = tenant.plano;
         billingStatus = tenant.billingStatus;
         preferenciasUpdatedAt = tenant.preferenciasUpdatedAt ?? null;
+        existingSegmentos = normalizarSegmentosEntrada(tenant.segmentos || []);
+        existingSubsegmentos = Array.isArray(tenant.subsegmentos) ? tenant.subsegmentos : [];
+        existingUfs = Array.isArray(tenant.ufs) ? tenant.ufs : [];
+        existingBrasilInteiro = tenant.brasilInteiro ?? true;
+        existingCnaesSecundarios = Array.isArray(tenant.cnaesSecundarios)
+          ? tenant.cnaesSecundarios
+          : [];
       }
     } catch {
       const memTenant = inMemoryTenants.get(tenantId);
+      const memCfg = getInMemoryConfiguracaoEmpresa(tenantId);
       if (memTenant) {
         plano = memTenant.plano || "BASICO";
         billingStatus = memTenant.billingStatus || "TRIAL";
         preferenciasUpdatedAt = (memTenant as any).preferenciasUpdatedAt ?? null;
+        existingSegmentos = normalizarSegmentosEntrada(memTenant.segmentos || []);
+        existingSubsegmentos = Array.isArray(memTenant.subsegmentos) ? memTenant.subsegmentos : [];
+        existingUfs = Array.isArray(memTenant.ufs) ? memTenant.ufs : [];
+        existingBrasilInteiro = memTenant.brasilInteiro ?? true;
+        existingCnaesSecundarios = Array.isArray((memTenant as any).cnaesSecundarios)
+          ? (memTenant as any).cnaesSecundarios
+          : Array.isArray(memCfg?.cnaesSecundarios)
+            ? memCfg.cnaesSecundarios
+            : [];
+      } else if (memCfg) {
+        existingSegmentos = normalizarSegmentosEntrada(memCfg.segmentos || []);
+        existingSubsegmentos = Array.isArray(memCfg.subsegmentos) ? memCfg.subsegmentos : [];
+        existingUfs = Array.isArray(memCfg.ufs) ? memCfg.ufs : [];
+        existingBrasilInteiro = memCfg.brasilInteiro ?? true;
+        existingCnaesSecundarios = Array.isArray(memCfg.cnaesSecundarios)
+          ? memCfg.cnaesSecundarios
+          : [];
       }
     }
+  }
 
+  const memFallback = getInMemoryConfiguracaoEmpresa(tenantId);
+  if (existingSegmentos.length === 0 && Array.isArray(memFallback?.segmentos)) {
+    existingSegmentos = normalizarSegmentosEntrada(memFallback.segmentos);
+  }
+  if (existingUfs.length === 0 && Array.isArray(memFallback?.ufs)) {
+    existingUfs = memFallback.ufs;
+  }
+  if (existingCnaesSecundarios.length === 0 && Array.isArray(memFallback?.cnaesSecundarios)) {
+    existingCnaesSecundarios = memFallback.cnaesSecundarios;
+  }
+
+  const segmentos = preservarPreferencias ? existingSegmentos : segInput;
+  const subsegmentos = preservarPreferencias ? existingSubsegmentos : subsegInput;
+  const ufs = preservarPreferencias ? existingUfs : ufsInput;
+  const brasilInteiro = preservarPreferencias ? existingBrasilInteiro : brasilInput;
+
+  const alterandoPreferencias =
+    !preservarPreferencias &&
+    (rawData.segmentos !== undefined ||
+      rawData.subsegmentos !== undefined ||
+      rawData.ufs !== undefined ||
+      rawData.brasilInteiro !== undefined ||
+      segmentos !== undefined ||
+      subsegmentos !== undefined ||
+      ufs !== undefined ||
+      brasilInteiro !== undefined);
+
+  if (tenantId) {
     if (alterandoPreferencias && plano === "BASICO" && billingStatus !== "TRIAL" && preferenciasUpdatedAt) {
       const trintaDiasMs = 30 * 24 * 60 * 60 * 1000;
       const diffMs = Date.now() - new Date(preferenciasUpdatedAt).getTime();
@@ -662,17 +755,25 @@ export async function atualizarConfiguracaoEmpresa(
 
   const agora = new Date();
   const novoPreferenciasUpdatedAt = alterandoPreferencias ? agora : preferenciasUpdatedAt;
+  const cnaesSecundariosEfetivos =
+    validado.cnaesSecundarios !== undefined ? validado.cnaesSecundarios : existingCnaesSecundarios;
 
   try {
     if (tenantId) {
-      const escopo = normalizarEscopoPlano({
-        plano,
-        billingStatus,
-        segmentos: normalizarSegmentosEntrada(segmentos),
-        ufs,
-        ufSede: validado.uf || undefined,
-        brasilInteiro,
-      });
+      const escopo = preservarPreferencias
+        ? {
+            segmentos: existingSegmentos,
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            brasilInteiro: existingBrasilInteiro,
+          }
+        : normalizarEscopoPlano({
+            plano,
+            billingStatus,
+            segmentos: normalizarSegmentosEntrada(segmentos),
+            ufs,
+            ufSede: validado.uf || undefined,
+            brasilInteiro,
+          });
 
       const configId = `cfg_${tenantId}`;
       let atualizado: any;
@@ -691,6 +792,9 @@ export async function atualizarConfiguracaoEmpresa(
             where: { id: existing.id },
             data: {
               ...configData,
+              ...(validado.cnaesSecundarios !== undefined
+                ? { cnaesSecundarios: validado.cnaesSecundarios }
+                : {}),
               tenantId,
               preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
               atualizadoEm: new Date(),
@@ -700,6 +804,7 @@ export async function atualizarConfiguracaoEmpresa(
           atualizado = await (prisma as any).configuracaoEmpresa.create({
             data: {
               ...configData,
+              cnaesSecundarios: cnaesSecundariosEfetivos,
               id: configId,
               tenantId,
               preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
@@ -710,7 +815,9 @@ export async function atualizarConfiguracaoEmpresa(
       } catch (errDb: any) {
         console.warn("[ConfiguracoesService] Fallback db update:", errDb?.message);
         atualizado = {
+          ...memFallback,
           ...configData,
+          cnaesSecundarios: cnaesSecundariosEfetivos,
           id: configId,
           tenantId,
           preferenciasUpdatedAt: novoPreferenciasUpdatedAt,
@@ -729,6 +836,9 @@ export async function atualizarConfiguracaoEmpresa(
             ...(validado.cidade ? { cidade: validado.cidade } : {}),
             ...(validado.endereco ? { endereco: validado.endereco } : {}),
             ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
+            ...(validado.cnaesSecundarios !== undefined
+              ? { cnaesSecundarios: validado.cnaesSecundarios }
+              : {}),
             ...(alterandoPreferencias ? { preferenciasUpdatedAt: novoPreferenciasUpdatedAt } : {}),
             segmentos: escopo.segmentos,
             subsegmentos: subsegmentos || [],
@@ -749,6 +859,9 @@ export async function atualizarConfiguracaoEmpresa(
               ...(validado.cidade ? { cidade: validado.cidade } : {}),
               ...(validado.endereco ? { endereco: validado.endereco } : {}),
               ...(validado.cnae ? { cnaePrincipal: validado.cnae } : {}),
+              ...(validado.cnaesSecundarios !== undefined
+                ? { cnaesSecundarios: validado.cnaesSecundarios }
+                : {}),
               segmentos: escopo.segmentos,
               subsegmentos: subsegmentos || [],
               ufs: escopo.ufs,
@@ -770,11 +883,16 @@ export async function atualizarConfiguracaoEmpresa(
         if (validado.razaoSocial) memTenant.razaoSocial = validado.razaoSocial;
         if (validado.nomeFantasia !== undefined) (memTenant as any).nomeFantasia = validado.nomeFantasia;
         if (validado.cnpj) memTenant.cnpj = validado.cnpj;
+        if (validado.cnae !== undefined) memTenant.cnaePrincipal = validado.cnae;
+        if (validado.cnaesSecundarios !== undefined) {
+          memTenant.cnaesSecundarios = validado.cnaesSecundarios;
+        }
       }
 
       updateInMemoryConfiguracaoEmpresa(
         {
           ...atualizado,
+          cnaesSecundarios: cnaesSecundariosEfetivos,
           segmentos: escopo.segmentos,
           subsegmentos: subsegmentos || [],
           ufs: escopo.ufs,
@@ -794,6 +912,7 @@ export async function atualizarConfiguracaoEmpresa(
 
       return {
         ...atualizado,
+        cnaesSecundarios: cnaesSecundariosEfetivos,
         segmentos: escopo.segmentos,
         subsegmentos: subsegmentos || [],
         ufs: escopo.ufs,
@@ -804,8 +923,17 @@ export async function atualizarConfiguracaoEmpresa(
 
     const atualizado = await (prisma as any).configuracaoEmpresa.upsert({
       where: { id: "default" },
-      create: { ...configData, id: "default" },
-      update: configData,
+      create: {
+        ...configData,
+        cnaesSecundarios: cnaesSecundariosEfetivos,
+        id: "default",
+      },
+      update: {
+        ...configData,
+        ...(validado.cnaesSecundarios !== undefined
+          ? { cnaesSecundarios: validado.cnaesSecundarios }
+          : {}),
+      },
     });
 
     await recordAuditLog({
@@ -818,6 +946,7 @@ export async function atualizarConfiguracaoEmpresa(
 
     return {
       ...atualizado,
+      cnaesSecundarios: cnaesSecundariosEfetivos,
       segmentos: segmentos || [],
       subsegmentos: subsegmentos || [],
       ufs: ufs || [],
@@ -842,19 +971,26 @@ export async function atualizarConfiguracaoEmpresa(
           segmentos: [],
           subsegmentos: [],
           ufs: [],
+          cnaesSecundarios: [],
           brasilInteiro: true,
           criadoEm: new Date(),
           updatedAt: new Date(),
         };
       }
-      const escopo = normalizarEscopoPlano({
-        plano: memTenant.plano || plano || "BASICO",
-        billingStatus: memTenant.billingStatus || billingStatus || "TRIAL",
-        segmentos: normalizarSegmentosEntrada(segmentos),
-        ufs,
-        ufSede: validado.uf || undefined,
-        brasilInteiro,
-      });
+      const escopo = preservarPreferencias
+        ? {
+            segmentos: existingSegmentos,
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            brasilInteiro: existingBrasilInteiro,
+          }
+        : normalizarEscopoPlano({
+            plano: memTenant.plano || plano || "BASICO",
+            billingStatus: memTenant.billingStatus || billingStatus || "TRIAL",
+            segmentos: normalizarSegmentosEntrada(segmentos),
+            ufs,
+            ufSede: validado.uf || undefined,
+            brasilInteiro,
+          });
       memTenant.segmentos = escopo.segmentos;
       memTenant.subsegmentos = subsegmentos || [];
       memTenant.ufs = escopo.ufs;
@@ -865,18 +1001,28 @@ export async function atualizarConfiguracaoEmpresa(
       if (validado.cnpj) memTenant.cnpj = validado.cnpj;
       if (validado.cidade) memTenant.cidade = validado.cidade;
       if (validado.uf) memTenant.uf = validado.uf;
+      if (validado.cnae !== undefined) memTenant.cnaePrincipal = validado.cnae;
+      if (validado.cnaesSecundarios !== undefined) {
+        memTenant.cnaesSecundarios = validado.cnaesSecundarios;
+      }
       inMemoryTenants.set(tenantId, memTenant);
     }
 
     const escopoRetorno = tenantId
-      ? normalizarEscopoPlano({
-          plano: plano || "BASICO",
-          billingStatus: billingStatus || "TRIAL",
-          segmentos: normalizarSegmentosEntrada(segmentos),
-          ufs,
-          ufSede: validado.uf || undefined,
-          brasilInteiro,
-        })
+      ? preservarPreferencias
+        ? {
+            segmentos: existingSegmentos,
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            brasilInteiro: existingBrasilInteiro,
+          }
+        : normalizarEscopoPlano({
+            plano: plano || "BASICO",
+            billingStatus: billingStatus || "TRIAL",
+            segmentos: normalizarSegmentosEntrada(segmentos),
+            ufs,
+            ufSede: validado.uf || undefined,
+            brasilInteiro,
+          })
       : {
           segmentos: normalizarSegmentosEntrada(segmentos),
           ufs: ufs || [],
@@ -885,6 +1031,7 @@ export async function atualizarConfiguracaoEmpresa(
 
     const memoria = updateInMemoryConfiguracaoEmpresa({
       ...validado,
+      cnaesSecundarios: cnaesSecundariosEfetivos,
       segmentos: escopoRetorno.segmentos,
       subsegmentos: subsegmentos || [],
       ufs: escopoRetorno.ufs,
@@ -902,6 +1049,7 @@ export async function atualizarConfiguracaoEmpresa(
 
     return {
       ...memoria,
+      cnaesSecundarios: cnaesSecundariosEfetivos,
       segmentos: escopoRetorno.segmentos,
       subsegmentos: subsegmentos || [],
       ufs: escopoRetorno.ufs,

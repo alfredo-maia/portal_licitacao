@@ -20,6 +20,16 @@ export const DOCUMENTO_STATUS = ["ATIVO", "ARQUIVADO", "SUBSTITUIDO"] as const;
 export const documentoStatusSchema = z.enum(DOCUMENTO_STATUS);
 export type DocumentoStatus = z.infer<typeof documentoStatusSchema>;
 
+export const DOCUMENTO_VALIDACAO_STATUS = [
+  "PENDENTE_ANEXO",
+  "VALIDADO",
+  "DIVERGENTE",
+  "ILEGIVEL",
+  "NAO_VERIFICADO",
+] as const;
+export const documentoValidacaoStatusSchema = z.enum(DOCUMENTO_VALIDACAO_STATUS);
+export type DocumentoValidacaoStatus = z.infer<typeof documentoValidacaoStatusSchema>;
+
 export const documentoCriarInputSchema = z
   .object({
     nome: z.string().trim().min(2, "Nome deve ter pelo menos 2 caracteres").max(150),
@@ -33,6 +43,13 @@ export const documentoCriarInputSchema = z
     arquivoNome: z.string().nullable().optional(),
     arquivoTamanho: z.number().int().nonnegative().nullable().optional(),
     mimeType: z.string().nullable().optional(),
+    validacaoStatus: documentoValidacaoStatusSchema.nullable().optional(),
+    validacaoResumo: z.string().nullable().optional(),
+    cnpjExtraido: z.string().nullable().optional(),
+    emissaoExtraida: z.string().nullable().optional(),
+    vencimentoExtraido: z.string().nullable().optional(),
+    tipoDetectado: z.string().nullable().optional(),
+    validadoEm: z.coerce.date().nullable().optional(),
   })
   .refine(
     (data) => {
@@ -61,16 +78,31 @@ export const documentoAtualizarInputSchema = z.object({
   arquivoTamanho: z.number().int().nonnegative().nullable().optional(),
   mimeType: z.string().nullable().optional(),
   status: documentoStatusSchema.optional(),
+  validacaoStatus: documentoValidacaoStatusSchema.nullable().optional(),
+  validacaoResumo: z.string().nullable().optional(),
+  cnpjExtraido: z.string().nullable().optional(),
+  emissaoExtraida: z.string().nullable().optional(),
+  vencimentoExtraido: z.string().nullable().optional(),
+  tipoDetectado: z.string().nullable().optional(),
+  validadoEm: z.coerce.date().nullable().optional(),
 });
 
 export const documentoNovaVersaoInputSchema = z.object({
   nome: z.string().trim().min(2).max(150).optional(),
+  semValidade: z.boolean().optional(),
   dataEmissao: z.coerce.date().nullable().optional(),
   dataVencimento: z.coerce.date().nullable().optional(),
   arquivoUrl: z.string().nullable().optional(),
   arquivoNome: z.string().nullable().optional(),
   arquivoTamanho: z.number().int().nonnegative().nullable().optional(),
   mimeType: z.string().nullable().optional(),
+  validacaoStatus: documentoValidacaoStatusSchema.nullable().optional(),
+  validacaoResumo: z.string().nullable().optional(),
+  cnpjExtraido: z.string().nullable().optional(),
+  emissaoExtraida: z.string().nullable().optional(),
+  vencimentoExtraido: z.string().nullable().optional(),
+  tipoDetectado: z.string().nullable().optional(),
+  validadoEm: z.coerce.date().nullable().optional(),
 });
 
 export const documentoListQuerySchema = z.object({
@@ -80,7 +112,7 @@ export const documentoListQuerySchema = z.object({
   busca: z.string().trim().optional(),
   apenasVencendoEmDias: z.coerce.number().int().positive().optional(),
   page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(50).default(10),
+  pageSize: z.coerce.number().int().positive().max(200).default(10),
 });
 
 export const documentoItemSchema = z.object({
@@ -106,6 +138,14 @@ export const documentoItemSchema = z.object({
   alertaVencimento: z.boolean(),
   vencido: z.boolean(),
   diasParaVencer: z.number().int().nullable(),
+  possuiAnexo: z.boolean().default(false),
+  validacaoStatus: documentoValidacaoStatusSchema.default("NAO_VERIFICADO"),
+  validacaoResumo: z.string().nullable().default(null),
+  cnpjExtraido: z.string().nullable().default(null),
+  emissaoExtraida: z.string().nullable().default(null),
+  vencimentoExtraido: z.string().nullable().default(null),
+  tipoDetectado: z.string().nullable().default(null),
+  validadoEm: z.coerce.date().nullable().default(null),
 });
 
 export const documentoListResponseSchema = z.object({

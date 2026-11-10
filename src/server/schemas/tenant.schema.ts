@@ -79,13 +79,14 @@ export const createTenantSchema = z.object({
   cnpj: cnpjSchema,
   razaoSocial: z.string().min(3, "Razão Social deve ter no mínimo 3 caracteres").max(200),
   nomeFantasia: z.string().max(200).optional().nullable(),
-  cnaePrincipal: z.string().max(20).optional().nullable(),
+  cnaePrincipal: z.string().max(255).optional().nullable(),
+  cnaesSecundarios: z.array(z.string().trim().min(1).max(255)).optional().default([]),
   endereco: z.string().max(255).optional().nullable(),
   cidade: z.string().max(100).optional().nullable(),
   uf: z.string().length(2, "UF deve conter exatamente 2 caracteres").optional().nullable(),
   plano: PlanoAssinaturaEnum.default("BASICO"),
 });
-export type CreateTenantInput = z.infer<typeof createTenantSchema>;
+export type CreateTenantInput = z.input<typeof createTenantSchema>;
 
 /**
  * Schema de atualização de Tenant
@@ -93,7 +94,8 @@ export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export const updateTenantSchema = z.object({
   razaoSocial: z.string().min(3).max(200).optional(),
   nomeFantasia: z.string().max(200).optional().nullable(),
-  cnaePrincipal: z.string().max(20).optional().nullable(),
+  cnaePrincipal: z.string().max(255).optional().nullable(),
+  cnaesSecundarios: z.array(z.string().trim().min(1).max(255)).optional(),
   endereco: z.string().max(255).optional().nullable(),
   cidade: z.string().max(100).optional().nullable(),
   uf: z.string().length(2).optional().nullable(),

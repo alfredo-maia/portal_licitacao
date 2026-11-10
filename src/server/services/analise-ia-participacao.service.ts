@@ -17,6 +17,7 @@ import {
   type MacroSegmento,
 } from "@/server/schemas/segmentos.schema";
 import type { PlanoAssinatura } from "@/server/schemas/tenant.schema";
+import { CATALOGO_CNAE } from "@/config/cnae-catalogo";
 import { obterConfiguracaoEmpresa } from "./configuracoes.service";
 import { listarDocumentos } from "./documentos.service";
 import {
@@ -35,6 +36,15 @@ import {
 } from "./oportunidades.service";
 import { listarPortais } from "./portais.service";
 import { inMemoryTenants, inMemoryTenantUsers } from "./tenant.service";
+import { lerDocumentosCertame } from "./leitor-documentos-certame.service";
+import {
+  extrairItensCertameCompleto,
+  pareceCabecalhoDeLoteOuObjeto,
+} from "./extracao-itens-certame.service";
+import {
+  chamarLlmJsonMultimodal,
+  type LlmInlinePart,
+} from "./llm-multimodal.service";
 
 export class AnaliseIAParticipacaoError extends Error {
   readonly code: string;
@@ -509,7 +519,7 @@ export function gerarPdfRelatorioParticipacao(params: {
   }
 
   if (r.habilitacao?.certidoesVencidasOuPendentes?.length) {
-    blocos.push({ bold: true, size: 9, text: "Certidoes Vencidas ou Pendentes de Renovacao:" });
+    blocos.push({ bold: true, size: 9, text: "Certidoes Vencidas, Divergentes ou Pendentes de Anexo:" });
     for (const c of r.habilitacao.certidoesVencidasOuPendentes) {
       for (const l of quebrarLinhasPdf(`[ATENCAO] ${c}`, 86)) blocos.push({ text: l });
     }
@@ -765,7 +775,10 @@ export function gerarPdfRelatorioParticipacao(params: {
    Motor Híbrido de Cruzamento Multi-Segmento + LLM (OpenAI / Gemini)
 ========================================================================= */
 
-async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
+async function tentarEnriquecerComLLM(
+  promptContexto: string,
+  inlineParts?: LlmInlinePart[],
+): Promise<{
   resumoExecutivo?: string;
   habilitacao?: Partial<RelatorioParticipacao["habilitacao"]>;
   cronograma?: Partial<RelatorioParticipacao["cronograma"]>;
@@ -784,9 +797,10 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
   };
   recomendacoesExtras?: string[];
   observacoesCustos?: string;
+  _llmProvider?: "LLM_GEMINI" | "LLM_OPENAI";
 } | null> {
-  const openaiKey = process.env.OPENAI_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
 
   if (!openaiKey && !geminiKey) {
     return null;
@@ -797,16 +811,19 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
     "Sua função é gerar um Raio-X Executivo aprofundado, técnico e direto para que a diretoria da empresa licitante tome a decisão de GO / NO-GO com segurança.\n\n" +
     "DIRETRIZES DE STATUS E SCORE DE CONFORMIDADE:\n" +
     "- Analise com precisão técnica a compatibilidade entre a empresa (CNAE, segmentos, certidões) e o edital licitado.\n" +
-    "- 'APTO' (Score entre 85 e 98): A empresa atua no segmento do objeto (ex: Engenharia para Obras/Infraestrutura, TI para Software, etc.), possui regularidade e tem capacidade de atender o certame.\n" +
-    "- 'APTO_COM_RESSALVAS' (Score entre 75 e 84): O escopo é plenamente compatível, mas existem exigências operacionais ou documentais pontuais que demandam atenção (ex: emitir certidão de falência/concordata, atestado de acervo técnico específico no conselho profissional CREA/CAU/CRF, realizar vistoria ou declaração substitutiva de conhecimento do local). A nota deve valorizar a aptidão real do licitante.\n" +
-    "- 'APTO_COM_RESSALVAS_MODERADA' (Score entre 50 e 74): Apenas se houver pendências documentais substanciais ou indefinições relevantes de escopo.\n" +
+    "- 'APTO' (Score entre 85 e 98): A empresa atua no segmento do objeto (ex: Engenharia para Obras/Infraestrutura, TI para Software, etc.), possui regularidade comprovada com arquivos anexados em /documentacao e tem capacidade de atender o certame.\n" +
+    "- 'APTO_COM_RESSALVAS' (Score entre 75 e 84): O escopo é compatível, mas existem documentos cadastrados em /documentacao sem arquivo anexado (rascunho), categorias ausentes ou exigências operacionais/documentais pontuais que demandam atenção antes da sessão.\n" +
+    "- 'APTO_COM_RESSALVAS_MODERADA' (Score entre 50 e 74): Apenas se houver pendências documentais substanciais, divergência de CNPJ em anexo ou indefinições relevantes de escopo.\n" +
     "- 'INAPTO' (Score entre 10 e 35): Exclusivamente se a empresa for de segmento totalmente alheio/incompatível ao objeto (ex: empresa de informática tentando executar obra civil pesada ou banco) ou houver impedimento legal flagrante.\n\n" +
     "ORIENTAÇÕES IMPORTANTES DE ANÁLISE:\n" +
-    "1. Análise executiva fundamentada: aponte os dados objetivos do certame, percentuais, prazos e embasamento na Lei 14.133/2021.\n" +
+    "1. Análise executiva fundamentada: aponte os dados objetivos do certame, percentuais, prazos e embasamento na Lei 14.133/2021 baseados nos documentos reais anexados (Edital, Termo de Referência, Planilhas e Anexos).\n" +
     "2. 'exigenciasEspeciais' e 'atestadosExigidos' DEVEM ser arrays JSON de strings, contendo cada exigência como um item pontual e claro (NUNCA envie uma string única contínua quebrada).\n" +
     "3. Caso a empresa NÃO possua CNAE configurado (empresaCnae nulo/vazio), NÃO penalize cegamente: identifique e liste no array 'cnaesAptosSugeridos' os códigos e descrições dos CNAEs do IBGE aptos para o objeto deste edital.\n" +
     "4. Verifique minuciosamente se o edital exige CERTIFICAÇÕES ESPECIAIS (ex: ISO 9001, PBQP-H, AFE/ANVISA, Registro em Conselho Específico) ou TEMPO MÍNIMO DE MERCADO / ATUAÇÃO (ex: mínimo de 3 anos de constituição) e retorne no objeto 'certificacoesETempoAtuacao'.\n" +
-    "5. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU).\n\n" +
+    "5. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU).\n" +
+    "6. EXTRAÇÃO DE ITENS DO CERTAME: Nunca copie o título geral do certame ou cabeçalho do Lote 01 como Item 1 se o Termo de Referência/planilha listar os produtos individuais reais. Converta separadores de milhar brasileiros corretamente (ex: '13.000' -> 13000).\n" +
+    "7. RESPEITO AO COFRE /documentacao: Documentos com possuiAnexo=false NÃO foram comprovados por PDF/imagem — aponte como 'Pendente de anexo em /documentacao', e NUNCA os chame de 'vencidos' se não estiverem com data expirada. Documentos com validacaoStatus='DIVERGENTE' possuem erro real detectado no arquivo enviado.\n" +
+    "8. CNAES PRINCIPAIS E SECUNDÁRIOS: Considere empresaCnaePrincipal E todos os empresaCnaesSecundarios cadastrados em Configurações/Cartão CNPJ. A empresa É COMPATÍVEL quando o CNAE Principal OU qualquer CNAE Secundário contempla o objeto licitado. Reconheça também 'Cartão CNPJ' (semValidade=true) em /documentacao como comprovação jurídica regular.\n\n" +
     "Retorne estritamente um JSON com a seguinte estrutura:\n" +
     "{\n" +
     '  "resumoExecutivo": "string com análise executiva em até 3 parágrafos claros",\n' +
@@ -865,86 +882,177 @@ async function tentarEnriquecerComLLM(promptContexto: string): Promise<{
     "  }\n" +
     "}";
 
-  try {
-    if (openaiKey) {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-          temperature: 0.2,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: promptContexto },
-          ],
-        }),
-        signal: AbortSignal.timeout(14000),
-      });
-      if (res.ok) {
-        const json: any = await res.json();
-        const content = json?.choices?.[0]?.message?.content;
-        if (content) {
-          return JSON.parse(content);
-        }
-      }
-    } else if (geminiKey) {
-      const candidateModels = Array.from(
-        new Set([
-          process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
-          "gemini-3.5-flash-lite",
-          "gemini-flash-lite-latest",
-          "gemini-3.1-flash-lite",
-          "gemini-3.5-flash",
-        ]),
-      );
+  const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+  const resp = await chamarLlmJsonMultimodal<any>({
+    systemPrompt,
+    userPrompt: `Analise integralmente os dados e documentos do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
+    inlineParts,
+    timeoutMs: isTest ? 4000 : 150000,
+    temperature: 0.2,
+    maxOutputTokens: 32768,
+  });
 
-      for (const model of candidateModels) {
-        try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    parts: [
-                      {
-                        text: `${systemPrompt}\n\nAnalise os seguintes dados do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
-                      },
-                    ],
-                  },
-                ],
-                generationConfig: {
-                  temperature: 0.2,
-                  responseMimeType: "application/json",
-                },
-              }),
-              signal: AbortSignal.timeout(8000),
-            },
-          );
-          if (res.ok) {
-            const json: any = await res.json();
-            const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) {
-              return JSON.parse(text);
-            }
-          }
-        } catch {
-          // Em caso de 503 (high demand) ou timeout do modelo, avança para o próximo candidato do pool
-          continue;
-        }
-      }
-    }
-  } catch {
-    // Fallback silencioso para o motor determinístico híbrido
+  if (!resp?.data || typeof resp.data !== "object") {
+    return null;
   }
 
-  return null;
+  return {
+    ...resp.data,
+    _llmProvider: resp.provider,
+  };
+}
+
+const CNAE_STOPWORDS = new Set([
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "em",
+  "para",
+  "com",
+  "e",
+  "ou",
+  "a",
+  "o",
+  "as",
+  "os",
+  "por",
+  "sob",
+  "comercio",
+  "atacadista",
+  "varejista",
+  "geral",
+  "outros",
+  "outras",
+  "atividades",
+  "servicos",
+  "produtos",
+  "artigos",
+  "exceto",
+  "nao",
+  "especificados",
+  "anteriormente",
+  "predominancia",
+  "fabricacao",
+]);
+
+function extrairRaizesTokensCnae(texto: string): string[] {
+  const norm = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ");
+  const tokens = norm
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !CNAE_STOPWORDS.has(w));
+  return Array.from(new Set(tokens.map((w) => (w.length >= 6 ? w.slice(0, 6) : w))));
+}
+
+function mapCnaeCodigoParaSegmentos(codigoLimpo: string): string[] {
+  if (!codigoLimpo) return [];
+  if (
+    /^(10|463|4711|4721|56)/.test(codigoLimpo)
+  ) {
+    return ["ALIMENTACAO"];
+  }
+  if (/^(21|3250|4644|4645|4771|86)/.test(codigoLimpo)) {
+    return ["SAUDE", "SAUDE_MEDICAMENTOS"];
+  }
+  if (/^(62|63|6190|4651|4751)/.test(codigoLimpo)) {
+    return ["INFORMATICA", "TI_E_SOFTWARE"];
+  }
+  if (/^(41|42|43|7111|7112)/.test(codigoLimpo)) {
+    return ["ENGENHARIA_SERVICOS", "ENGENHARIA_MATERIAIS", "ENGENHARIA_E_OBRAS"];
+  }
+  if (/^(80|81|7820|8211)/.test(codigoLimpo)) {
+    return [
+      "PRESTACAO_DE_SERVICOS_MAO_DE_OBRA",
+      "PRODUTOS_DE_LIMPEZA",
+      "SEGURANCA_PROTECAO",
+      "SERVICOS_GERAIS",
+    ];
+  }
+  if (/^(49|7711|7732|45)/.test(codigoLimpo)) {
+    return ["TRANSPORTES_RODOVIARIOS", "VEICULOS_E_PECAS"];
+  }
+  if (/^(18|4647|4761)/.test(codigoLimpo)) {
+    return ["ESCRITORIO_E_GRAFICA"];
+  }
+  if (/^(4681|4731)/.test(codigoLimpo)) {
+    return ["COMBUSTIVEIS"];
+  }
+  return [];
+}
+
+/**
+ * Verifica compatibilidade entre CNAE Principal e CNAEs Secundários da empresa
+ * frente ao objeto e segmento macro do edital.
+ */
+export function avaliarCompatibilidadeCnaesComEdital(params: {
+  cnaePrincipal?: string | null;
+  cnaesSecundarios?: string[] | null;
+  objetoEdital?: string | null;
+  segmentoEdital?: string | null;
+}): {
+  compativel: boolean;
+  origemMatch: "PRINCIPAL" | "SECUNDARIO" | "AMBOS" | "NENHUM";
+  cnaesCompativeis: string[];
+} {
+  const segCodigo = (params.segmentoEdital || "").toUpperCase().trim();
+  const macroDef = CATALOGO_MACRO_SEGMENTOS[segCodigo as MacroSegmento];
+  const alvoTexto = [
+    params.objetoEdital || "",
+    macroDef?.nome || segCodigo,
+    macroDef?.descricao || "",
+    ...(macroDef?.subcategorias || []).flatMap((s) => [s.nome, ...s.palavrasChave]),
+  ].join(" ");
+  const raizesAlvo = new Set(extrairRaizesTokensCnae(alvoTexto));
+
+  const verificaCnae = (cnaeRaw?: string | null): boolean => {
+    if (!cnaeRaw || !cnaeRaw.trim()) return false;
+    const digits = cnaeRaw.replace(/\D/g, "").slice(0, 7);
+    const catalogoItem = digits
+      ? CATALOGO_CNAE.find((c) => c.codigo.replace(/\D/g, "").startsWith(digits))
+      : undefined;
+
+    if (segCodigo && digits) {
+      const segsMapeados = mapCnaeCodigoParaSegmentos(digits);
+      if (segsMapeados.includes(segCodigo)) return true;
+    }
+
+    const textoCnae = `${cnaeRaw} ${catalogoItem?.descricao || ""}`;
+    const raizesCnae = extrairRaizesTokensCnae(textoCnae);
+    return raizesCnae.some((r) => raizesAlvo.has(r));
+  };
+
+  const matchPrincipal = verificaCnae(params.cnaePrincipal);
+  const secundariosValidos = Array.isArray(params.cnaesSecundarios)
+    ? params.cnaesSecundarios.filter((c) => verificaCnae(c))
+    : [];
+
+  const cnaesCompativeis: string[] = [];
+  if (matchPrincipal && params.cnaePrincipal) {
+    cnaesCompativeis.push(params.cnaePrincipal);
+  }
+  for (const s of secundariosValidos) {
+    if (!cnaesCompativeis.includes(s)) cnaesCompativeis.push(s);
+  }
+
+  const origemMatch: "PRINCIPAL" | "SECUNDARIO" | "AMBOS" | "NENHUM" =
+    matchPrincipal && secundariosValidos.length > 0
+      ? "AMBOS"
+      : matchPrincipal
+        ? "PRINCIPAL"
+        : secundariosValidos.length > 0
+          ? "SECUNDARIO"
+          : "NENHUM";
+
+  return {
+    compativel: cnaesCompativeis.length > 0,
+    origemMatch,
+    cnaesCompativeis,
+  };
 }
 
 export async function construirRelatorioParticipacaoHibrido(
@@ -960,6 +1068,7 @@ export async function construirRelatorioParticipacaoHibrido(
   viabilidadeTexto: string;
   custosTexto: string;
   precoSugerido: number;
+  origemLLM?: "LLM_GEMINI" | "LLM_OPENAI" | "IA_HIBRIDA";
 }> {
   const oportunidade = await getOportunidadeById(licitacaoId, tenantId);
 
@@ -970,13 +1079,17 @@ export async function construirRelatorioParticipacaoHibrido(
     empresa = getInMemoryConfiguracaoEmpresa(tenantId);
   }
 
-  const [docsResp, portaisResp] = await Promise.all([
+  const [docsResp, portaisResp, leituraCertame] = await Promise.all([
     listarDocumentos({ tenantId: tenantId || undefined, pageSize: 100 }).catch(
       () => ({ documentos: [] as any[] }),
     ),
     listarPortais({ tenantId: tenantId || undefined, pageSize: 100 }).catch(
       () => ({ portais: [] as any[] }),
     ),
+    lerDocumentosCertame(oportunidade.id || licitacaoId, {
+      sincronizarPncpSeVazio: false,
+      maxCharsConsolidado: 120_000,
+    }).catch(() => null),
   ]);
 
   const documentos = docsResp.documentos || [];
@@ -1002,10 +1115,22 @@ export async function construirRelatorioParticipacaoHibrido(
       ? nomesSegmentosEmpresa.join(", ")
       : empresa?.cnae || "Escopo Geral Configurado";
 
+  const cnaesSecundariosEmpresa: string[] = Array.isArray(empresa?.cnaesSecundarios)
+    ? empresa.cnaesSecundarios
+    : [];
+
+  const compatCnaes = avaliarCompatibilidadeCnaesComEdital({
+    cnaePrincipal: empresa?.cnae || null,
+    cnaesSecundarios: cnaesSecundariosEmpresa,
+    objetoEdital: `${oportunidade.resumo || ""} ${oportunidade.miniResumo || ""}`,
+    segmentoEdital: oportunidade.segmentoMacro || null,
+  });
+
   const escopoCompativel =
     segmentosEmpresaCodigos.length === 0 ||
     !oportunidade.segmentoMacro ||
-    segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro);
+    segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro) ||
+    compatCnaes.compativel;
 
   const ufsEmpresa: string[] = Array.isArray(empresa?.ufs) ? empresa.ufs : [];
   const atuaNaUf =
@@ -1013,7 +1138,7 @@ export async function construirRelatorioParticipacaoHibrido(
     ufsEmpresa.length === 0 ||
     ufsEmpresa.includes(String(oportunidade.uf || "").toUpperCase());
 
-  // 2. Cruzamento Documental (/documentacao)
+  // 2. Cruzamento Documental (/documentacao) com inspeção real de anexos
   const categoriasEssenciais: Array<{
     codigos: string[];
     codigo: string;
@@ -1041,10 +1166,83 @@ export async function construirRelatorioParticipacaoHibrido(
     },
   ];
 
+  const docPossuiAnexo = (d: any): boolean =>
+    Boolean(d.possuiAnexo ?? (d.arquivoUrl && String(d.arquivoUrl).trim().length > 0));
+  const docValidacaoStatus = (d: any): string =>
+    String(d.validacaoStatus || (docPossuiAnexo(d) ? "NAO_VERIFICADO" : "PENDENTE_ANEXO"));
+
   const checklistDocumental: RelatorioParticipacao["checklistDocumental"] = [];
   let qtdDocsVencidos = 0;
   let qtdDocsVencendo = 0;
   let qtdCategoriasAusentes = 0;
+  let qtdDocsSemAnexo = 0;
+  let qtdDocsDivergentes = 0;
+  const docsInspecionadosIds = new Set<string>();
+
+  const registrarDocNoChecklist = (d: any, categoriaCodigo: string) => {
+    if (d.id) docsInspecionadosIds.add(String(d.id));
+    const possuiAnexo = docPossuiAnexo(d);
+    const valStatus = docValidacaoStatus(d);
+
+    if (d.vencido) {
+      qtdDocsVencidos++;
+      checklistDocumental.push({
+        documento: d.nome,
+        categoria: categoriaCodigo,
+        status: "VENCIDO",
+        diasParaVencer: d.diasParaVencer ?? -1,
+        detalhe: possuiAnexo
+          ? `Documento vencido há ${Math.abs(d.diasParaVencer ?? 1)} dia(s). Renovação obrigatória antes da sessão.`
+          : `Documento vencido há ${Math.abs(d.diasParaVencer ?? 1)} dia(s) e sem arquivo anexado em /documentacao.`,
+      });
+    } else if (!possuiAnexo) {
+      qtdDocsSemAnexo++;
+      checklistDocumental.push({
+        documento: d.nome,
+        categoria: categoriaCodigo,
+        status: "PENDENTE_ANEXO",
+        diasParaVencer: d.diasParaVencer ?? null,
+        detalhe:
+          "Pendente de anexo em /documentacao — cadastrado apenas como rascunho/metadados; envie o PDF ou imagem para comprovação.",
+      });
+    } else if (valStatus === "DIVERGENTE") {
+      qtdDocsDivergentes++;
+      checklistDocumental.push({
+        documento: d.nome,
+        categoria: categoriaCodigo,
+        status: "DIVERGENTE",
+        diasParaVencer: d.diasParaVencer ?? null,
+        detalhe:
+          d.validacaoResumo ||
+          "Divergência identificada na leitura automática do arquivo anexado em /documentacao (CNPJ ou validade inconsistentes).",
+      });
+    } else if (d.alertaVencimento && d.diasParaVencer !== null) {
+      qtdDocsVencendo++;
+      checklistDocumental.push({
+        documento: d.nome,
+        categoria: categoriaCodigo,
+        status: "VENCENDO",
+        diasParaVencer: d.diasParaVencer,
+        detalhe: `Vence em ${d.diasParaVencer} dia(s).${valStatus === "VALIDADO" ? " Anexo validado." : " Atenção caso a habilitação ocorra após essa data."}`,
+      });
+    } else {
+      const notaAnexo =
+        valStatus === "VALIDADO"
+          ? " Anexo PDF/imagem inspecionado e validado."
+          : valStatus === "ILEGIVEL"
+            ? " Arquivo anexado (leitura automática parcial — conferir legibilidade)."
+            : "";
+      checklistDocumental.push({
+        documento: d.nome,
+        categoria: categoriaCodigo,
+        status: "REGULAR",
+        diasParaVencer: d.diasParaVencer ?? null,
+        detalhe: (d.semValidade
+          ? "Documento vigente (validade indeterminada)."
+          : `Documento vigente (${d.diasParaVencer ?? 60}+ dias de validade).`) + notaAnexo,
+      });
+    }
+  };
 
   for (const cat of categoriasEssenciais) {
     const docsDaCat = documentos.filter(
@@ -1061,36 +1259,14 @@ export async function construirRelatorioParticipacaoHibrido(
       });
     } else {
       for (const d of docsDaCat) {
-        if (d.vencido) {
-          qtdDocsVencidos++;
-          checklistDocumental.push({
-            documento: d.nome,
-            categoria: cat.codigo,
-            status: "VENCIDO",
-            diasParaVencer: d.diasParaVencer ?? -1,
-            detalhe: `Documento vencido há ${Math.abs(d.diasParaVencer ?? 1)} dia(s). Renovação obrigatória antes da sessão.`,
-          });
-        } else if (d.alertaVencimento && d.diasParaVencer !== null) {
-          qtdDocsVencendo++;
-          checklistDocumental.push({
-            documento: d.nome,
-            categoria: cat.codigo,
-            status: "VENCENDO",
-            diasParaVencer: d.diasParaVencer,
-            detalhe: `Vence em ${d.diasParaVencer} dia(s). Atenção caso a habilitação ocorra após essa data.`,
-          });
-        } else {
-          checklistDocumental.push({
-            documento: d.nome,
-            categoria: cat.codigo,
-            status: "REGULAR",
-            diasParaVencer: d.diasParaVencer ?? null,
-            detalhe: d.semValidade
-              ? "Documento vigente (validade indeterminada)."
-              : `Documento vigente (${d.diasParaVencer ?? 60}+ dias de validade).`,
-          });
-        }
+        registrarDocNoChecklist(d, cat.codigo);
       }
+    }
+  }
+
+  for (const d of documentos) {
+    if (d.status === "ATIVO" && !docsInspecionadosIds.has(String(d.id))) {
+      registrarDocNoChecklist(d, String(d.categoria || "OUTROS"));
     }
   }
 
@@ -1144,9 +1320,14 @@ export async function construirRelatorioParticipacaoHibrido(
   const atestadosEdital: string[] = Array.isArray(oportunidade.atestadosExigidos)
     ? oportunidade.atestadosExigidos
     : [];
-  const temDocQualificacaoTecnica = documentos.some(
+  const docsTecnicosAtivos = documentos.filter(
     (d: any) => d.categoria === "QUALIFICACAO_TECNICA" && d.status === "ATIVO" && !d.vencido,
   );
+  const temDocQualificacaoTecnica = docsTecnicosAtivos.some(
+    (d: any) => docPossuiAnexo(d) && docValidacaoStatus(d) !== "DIVERGENTE",
+  );
+  const temDocTecnicoSemAnexo =
+    !temDocQualificacaoTecnica && docsTecnicosAtivos.some((d: any) => !docPossuiAnexo(d));
 
   const exigenciasTecnicas: RelatorioParticipacao["exigenciasTecnicas"] = [];
   if (atestadosEdital.length > 0) {
@@ -1155,8 +1336,10 @@ export async function construirRelatorioParticipacaoHibrido(
         exigencia: String(atestado),
         atendido: temDocQualificacaoTecnica ? "SIM" : "VERIFICAR",
         observacao: temDocQualificacaoTecnica
-          ? "Atestado técnico ativo localizado em /documentacao; validar quantitativo mínimo (50%) do item."
-          : "Exigência identificada no edital; vincular atestado de capacidade técnica compatível antes da sessão.",
+          ? "Atestado técnico com arquivo anexado localizado em /documentacao; validar quantitativo mínimo (50%) do item."
+          : temDocTecnicoSemAnexo
+            ? "Atestado cadastrado em /documentacao sem arquivo anexado; envie o PDF ou imagem para comprovação."
+            : "Exigência identificada no edital; vincular atestado de capacidade técnica compatível antes da sessão.",
       });
     }
   } else {
@@ -1164,8 +1347,10 @@ export async function construirRelatorioParticipacaoHibrido(
       exigencia: `Comprovação de aptidão para fornecimento/execução em ${nomeSegmentoEdital} (Art. 67 da Lei 14.133/2021)`,
       atendido: temDocQualificacaoTecnica ? "SIM" : "VERIFICAR",
       observacao: temDocQualificacaoTecnica
-        ? "Acervo de qualificação técnica ativo em /documentacao."
-        : "Recomenda-se anexar ao menos 1 Atestado de Capacidade Técnica compatível com o objeto.",
+        ? "Acervo de qualificação técnica com anexo ativo em /documentacao."
+        : temDocTecnicoSemAnexo
+          ? "Atestado cadastrado em /documentacao sem PDF/imagem anexada; envie o arquivo comprobatório."
+          : "Recomenda-se anexar ao menos 1 Atestado de Capacidade Técnica compatível com o objeto.",
     });
   }
 
@@ -1186,6 +1371,8 @@ export async function construirRelatorioParticipacaoHibrido(
     score -= 4; // Certame eletrônico permite disputa remota; leve impacto logístico
   }
   score -= qtdDocsVencidos * 15;
+  score -= qtdDocsDivergentes * 12;
+  score -= qtdDocsSemAnexo * 5;
   score -= qtdDocsVencendo * 3;
   score -= qtdCategoriasAusentes * 3;
   if (
@@ -1198,7 +1385,11 @@ export async function construirRelatorioParticipacaoHibrido(
   score = Math.max(15, Math.min(100, score));
 
   const parecer: RelatorioParticipacao["parecer"] =
-    score >= 75 && qtdDocsVencidos === 0 && escopoCompativel
+    score >= 75 &&
+    qtdDocsVencidos === 0 &&
+    qtdDocsDivergentes === 0 &&
+    qtdDocsSemAnexo === 0 &&
+    escopoCompativel
       ? "APTO"
       : score >= 48
         ? "APTO_COM_RESSALVAS"
@@ -1218,6 +1409,22 @@ export async function construirRelatorioParticipacaoHibrido(
       severidade: "ALTA",
       titulo: `${qtdDocsVencidos} documento(s) vencido(s) em /documentacao`,
       mitigacao: "Emitir novas certidões negativas e atualizar na aba Documentação antes da abertura.",
+    });
+  }
+  if (qtdDocsDivergentes > 0) {
+    riscosIdentificados.push({
+      severidade: "ALTA",
+      titulo: `${qtdDocsDivergentes} anexo(s) com divergência detectada na leitura automática`,
+      mitigacao:
+        "Abrir /documentacao e conferir se o CNPJ, tipo de certidão e validade do arquivo PDF/imagem correspondem à empresa selecionada.",
+    });
+  }
+  if (qtdDocsSemAnexo > 0) {
+    riscosIdentificados.push({
+      severidade: "MEDIA",
+      titulo: `${qtdDocsSemAnexo} documento(s) sem arquivo anexado em /documentacao`,
+      mitigacao:
+        "Anexar o PDF ou imagem oficial de cada documento listado para que o sistema valide a comprovação real antes do envio da proposta.",
     });
   }
   if (!escopoCompativel) {
@@ -1249,8 +1456,8 @@ export async function construirRelatorioParticipacaoHibrido(
 
   const enderecoEntrega = `${oportunidade.municipio ? `${oportunidade.municipio} - ` : ""}${oportunidade.uf || "UF"} (${oportunidade.orgaoNome}) - Conforme Termo de Referência`;
 
-  // Detecção de marcas e modelos de referência no objeto/resumo
-  const textoCompletoCertame = `${oportunidade.resumo || ""} ${oportunidade.miniResumo || ""} ${oportunidade.numeroEdital || ""}`;
+  // Detecção de marcas e modelos de referência no objeto, resumo e texto integral dos documentos
+  const textoCompletoCertame = `${oportunidade.resumo || ""} ${oportunidade.miniResumo || ""} ${oportunidade.numeroEdital || ""} ${(leituraCertame?.textoConsolidado || "").slice(0, 60_000)}`;
   const marcasDetectadas = new Set<string>();
   const padroesMarcasConhecidas = [
     /\b(MacBook(?:\s+Pro|\s+Air)?(?:\s+M\d+)?)\b/i,
@@ -1278,8 +1485,21 @@ export async function construirRelatorioParticipacaoHibrido(
     if (matchGen[1]) marcasDetectadas.add(matchGen[1].trim());
   }
 
-  const listaItensBase: ItemDisputaEdital[] = [];
-  if (Array.isArray(oportunidade.itens) && oportunidade.itens.length > 0) {
+  const objetoCertameTexto = String(oportunidade.resumo || oportunidade.miniResumo || "");
+  const itensSalvosParecemGenericos =
+    !Array.isArray(oportunidade.itens) ||
+    oportunidade.itens.length === 0 ||
+    (oportunidade.itens as any[]).some((it) =>
+      pareceCabecalhoDeLoteOuObjeto(
+        String(it?.descricao || ""),
+        Number(it?.quantidade || 1),
+        String(it?.unidadeMedida || "UN"),
+        objetoCertameTexto,
+      ),
+    );
+
+  let listaItensBase: ItemDisputaEdital[] = [];
+  if (!itensSalvosParecemGenericos && (leituraCertame?.documentosLidos.length ?? 0) === 0) {
     for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
       listaItensBase.push({
         numeroItem: it.numeroItem ?? idx + 1,
@@ -1294,30 +1514,102 @@ export async function construirRelatorioParticipacaoHibrido(
       });
     }
   } else {
-    listaItensBase.push({
-      numeroItem: 1,
-      lote: 1,
-      descricao: oportunidade.resumo || oportunidade.miniResumo || "Fornecimento de bens e serviços conforme edital",
-      especificacaoDetalhada: oportunidade.resumo,
-      quantidade: 1,
-      unidadeMedida: "UN/LOTE",
-      valorUnitarioEstimado: valorEstimado,
-      valorTotalEstimado: valorEstimado,
-      marcaExigidaOuReferencia: Array.from(marcasDetectadas)[0] || null,
-    });
+    try {
+      const extracaoCompleta = await extrairItensCertameCompleto(oportunidade, {
+        forcarVarreduraDocumentos: (leituraCertame?.documentosLidos.length ?? 0) > 0,
+        leituraPrevia: leituraCertame ?? undefined,
+      });
+      if (extracaoCompleta.itens.length > 0) {
+        listaItensBase = extracaoCompleta.itens.map((it) => ({
+          ...it,
+          marcaExigidaOuReferencia:
+            it.marcaExigidaOuReferencia || Array.from(marcasDetectadas)[0] || null,
+        }));
+      }
+    } catch {
+      // Fallback abaixo se extração completa falhar
+    }
   }
 
-  // Montagem preliminar das certidões para envio contextual à IA
-  const certidoesRegulares = documentos
-    .filter((d: any) => d.status === "ATIVO" && !d.vencido)
-    .map((d: any) => `${d.nome} (${d.categoria})`);
+  if (listaItensBase.length === 0) {
+    if (Array.isArray(oportunidade.itens) && oportunidade.itens.length > 0) {
+      for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
+        listaItensBase.push({
+          numeroItem: it.numeroItem ?? idx + 1,
+          lote: it.lote ?? 1,
+          descricao: it.descricao || `Item ${idx + 1}`,
+          especificacaoDetalhada: it.especificacao || it.descricao,
+          quantidade: Number(it.quantidade) || 1,
+          unidadeMedida: it.unidadeMedida || "UN",
+          valorUnitarioEstimado: it.valorUnitario ? Number(it.valorUnitario) : null,
+          valorTotalEstimado: it.valorTotal ? Number(it.valorTotal) : null,
+          marcaExigidaOuReferencia: it.marca || Array.from(marcasDetectadas)[0] || null,
+        });
+      }
+    } else {
+      listaItensBase.push({
+        numeroItem: 1,
+        lote: 1,
+        descricao:
+          oportunidade.resumo ||
+          oportunidade.miniResumo ||
+          "Fornecimento de bens e serviços conforme edital",
+        especificacaoDetalhada: oportunidade.resumo,
+        quantidade: 1,
+        unidadeMedida: "UN/LOTE",
+        valorUnitarioEstimado: valorEstimado,
+        valorTotalEstimado: valorEstimado,
+        marcaExigidaOuReferencia: Array.from(marcasDetectadas)[0] || null,
+      });
+    }
+  }
+
+  // Montagem objetiva das certidões do banco (/documentacao) com diagnóstico real dos anexos
+  const docsAtivos = documentos.filter((d: any) => d.status === "ATIVO");
+  const certidoesRegulares = docsAtivos
+    .filter((d: any) => {
+      const possuiAnexo = docPossuiAnexo(d);
+      const valStatus = docValidacaoStatus(d);
+      return !d.vencido && possuiAnexo && valStatus !== "DIVERGENTE";
+    })
+    .map((d: any) => {
+      const suffix =
+        d.validacaoStatus === "VALIDADO"
+          ? " [Anexo validado ✓]"
+          : d.validacaoStatus === "ILEGIVEL"
+            ? " [Anexo enviado — conferir legibilidade]"
+            : "";
+      return `${d.nome} (${d.categoria})${suffix}`;
+    });
 
   const certidoesVencidasOuPendentes = [
-    ...documentos.filter((d: any) => d.vencido).map((d: any) => `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dias)`),
-    ...checklistDocumental.filter((c) => c.status === "AUSENTE").map((c) => `${c.documento} (Não cadastrado em /documentacao)`),
+    ...docsAtivos
+      .filter((d: any) => d.vencido)
+      .map((d: any) => {
+        const possuiAnexo = docPossuiAnexo(d);
+        return `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dia(s)${possuiAnexo ? "" : " e sem anexo"})`;
+      }),
+    ...docsAtivos
+      .filter((d: any) => !d.vencido && !docPossuiAnexo(d))
+      .map(
+        (d: any) =>
+          `${d.nome} (${d.categoria}) — Pendente de anexo em /documentacao (cadastrado sem PDF/imagem)`,
+      ),
+    ...docsAtivos
+      .filter(
+        (d: any) =>
+          !d.vencido && docPossuiAnexo(d) && docValidacaoStatus(d) === "DIVERGENTE",
+      )
+      .map(
+        (d: any) =>
+          `${d.nome} (${d.categoria}) — Divergência no anexo enviado: ${d.validacaoResumo || "verifique o PDF/imagem em /documentacao"}`,
+      ),
+    ...checklistDocumental
+      .filter((c) => c.status === "AUSENTE")
+      .map((c) => `${c.documento} (Não cadastrado em /documentacao)`),
   ];
 
-  // 9. Enriquecimento opcional com LLM (OpenAI / Gemini) se chave configurada
+  // 9. Enriquecimento multimodal com LLM (Gemini / OpenAI) sobre documentos reais do certame
   const obsUsuario = input.observacoes || input.observacoesExtras;
   const enriquecidoLLM = await tentarEnriquecerComLLM(
     JSON.stringify({
@@ -1331,16 +1623,49 @@ export async function construirRelatorioParticipacaoHibrido(
       valorEstimado,
       isPresencial: oportunidade.isPresencial,
       arquivosEdital: (oportunidade.arquivos || []).map((a: any) => a.nome),
+      documentosLidosCertame: (leituraCertame?.documentosLidos || []).map((d) => ({
+        nome: d.nome,
+        origem: d.origem,
+        paginas: d.totalPaginas,
+        charsTexto: d.charsTexto,
+        escaneadoOuImagem: d.escaneadoOuImagem,
+      })),
+      itensExtraidosPreliminares: listaItensBase.slice(0, 80),
+      trechosDocumentosCertame: leituraCertame?.textoConsolidado || "",
+      empresaCnpj: empresa?.cnpj || null,
+      empresaRazaoSocial: empresa?.razaoSocial || null,
       empresaSegmentos: labelSegmentoEmpresa,
-      empresaCnae: empresa?.cnae,
+      empresaCnae: empresa?.cnae || null,
+      empresaCnaePrincipal: empresa?.cnae || null,
+      empresaCnaesSecundarios: cnaesSecundariosEmpresa,
+      cnaesCompativeisComEdital: compatCnaes.cnaesCompativeis,
+      cofreDocumentacaoInspecao: docsAtivos.map((d: any) => ({
+        nome: d.nome,
+        categoria: d.categoria,
+        possuiAnexo: docPossuiAnexo(d),
+        validacaoStatus: docValidacaoStatus(d),
+        validacaoResumo: d.validacaoResumo || null,
+        cnpjExtraido: d.cnpjExtraido || null,
+        vencido: Boolean(d.vencido),
+        semValidade: Boolean(d.semValidade),
+        diasParaVencer: d.diasParaVencer ?? null,
+      })),
       certidoesRegularesEmpresa: certidoesRegulares,
       pendenciasDocumentaisEmpresa: certidoesVencidasOuPendentes,
       observacoesUsuario: obsUsuario || null,
     }),
+    leituraCertame?.anexosBinariosMultimodais,
   );
 
-  const statusFinal: RelatorioParticipacao["parecer"] =
+  // Nunca permitir que a LLM aprove como APTO sem ressalvas quando o banco aponta pendência real
+  let statusFinal: RelatorioParticipacao["parecer"] =
     enriquecidoLLM?.habilitacao?.status || parecer;
+  if (
+    statusFinal === "APTO" &&
+    (qtdDocsVencidos > 0 || qtdDocsDivergentes > 0 || qtdDocsSemAnexo > 0)
+  ) {
+    statusFinal = qtdDocsVencidos > 0 && parecer === "INAPTO" ? "INAPTO" : "APTO_COM_RESSALVAS";
+  }
 
   let scoreFinal =
     enriquecidoLLM?.habilitacao?.scoreConformidade != null
@@ -1378,14 +1703,45 @@ export async function construirRelatorioParticipacaoHibrido(
         ? `A participação no Edital ${oportunidade.numeroEdital} (${oportunidade.orgaoNome}) é viável com ressalvas (Score ${scoreFinal}/100). Recomenda-se sanar as pendências apontadas antes da abertura da sessão.`
         : `Foram identificados impedimentos críticos (Score ${scoreFinal}/100) para o Edital ${oportunidade.numeroEdital}. Revise os documentos vencidos e a compatibilidade de escopo antes de deliberar.`);
 
+  const itensCandidatosLLM = Array.isArray(enriquecidoLLM?.itens?.lista)
+    ? enriquecidoLLM.itens.lista.filter(
+        (it: any) =>
+          it &&
+          typeof it.descricao === "string" &&
+          !pareceCabecalhoDeLoteOuObjeto(
+            it.descricao,
+            Number(it.quantidade || 1),
+            String(it.unidadeMedida || "UN"),
+            objetoCertameTexto,
+          ),
+      )
+    : [];
+
+  const itensFinaisLista =
+    listaItensBase.length > itensCandidatosLLM.length
+      ? listaItensBase
+      : itensCandidatosLLM.length > 0
+        ? itensCandidatosLLM
+        : listaItensBase;
+
+  const totalItensFinal = Math.max(
+    itensFinaisLista.length,
+    enriquecidoLLM?.itens?.totalItens ?? 0,
+  );
+
   let observacoesCustos =
     enriquecidoLLM?.observacoesCustos ||
-    `Valor total de referência estipulado pelo órgão: ${fmtBRL(valorEstimado)} (${listaItensBase.length} item/lote). Proposta comercial preliminar estimada em ${fmtBRL(precoSugerido)}.`;
+    `Valor total de referência estipulado pelo órgão: ${fmtBRL(valorEstimado)} (${totalItensFinal} item(ns)/lote(s)). Proposta comercial preliminar estimada em ${fmtBRL(precoSugerido)}.`;
 
   const recomendacoesPraticas: string[] = [
     `Validar vigência e autenticidade das certidões em /documentacao na véspera da sessão (${new Date(oportunidade.dataAbertura).toLocaleDateString("pt-BR")}).`,
     `Verificar especificações de marca/modelo e prazos de garantia exigidos no Termo de Referência.`,
   ];
+  if (qtdDocsSemAnexo > 0) {
+    recomendacoesPraticas.push(
+      `Anexar PDF ou imagem nos ${qtdDocsSemAnexo} documento(s) salvos sem arquivo em /documentacao.`,
+    );
+  }
   if (obsUsuario) {
     recomendacoesPraticas.push(`Observação solicitada pela equipe: ${obsUsuario}`);
   }
@@ -1463,7 +1819,7 @@ export async function construirRelatorioParticipacaoHibrido(
   const cnaesLLM = enriquecidoLLM?.cnaesAptosSugeridos;
   const cnaesSugeridosFinal: string[] = Array.isArray(cnaesLLM) && cnaesLLM.length > 0
     ? cnaesLLM.map(String).map((s) => s.trim()).filter(Boolean)
-    : !empresa?.cnae
+    : !empresa?.cnae && cnaesSecundariosEmpresa.length === 0
       ? (cnaesFallbackPorSegmento[oportunidade.segmentoMacro] || [
           "Atividade econômica compatível com o objeto do certame nos termos da Classificação Nacional de Atividades Econômicas (CNAE/IBGE)",
         ])
@@ -1481,6 +1837,48 @@ export async function construirRelatorioParticipacaoHibrido(
   const tempoMinimoAtuacaoFinal: string | null =
     certsLLM?.tempoMinimoAtuacao || null;
 
+  // Mescla segura: nunca sobrescrever a verdade do banco (/documentacao); apenas complementar com exigências específicas do edital
+  const nomesDocsCofreNorm = docsAtivos.map((d: any) =>
+    String(d.nome || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim(),
+  );
+  const extrasPendenciasLLM = Array.isArray(enriquecidoLLM?.habilitacao?.certidoesVencidasOuPendentes)
+    ? enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes
+        .map(String)
+        .map((s) => s.trim())
+        .filter((s) => {
+          if (!s) return false;
+          const sNorm = s
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+          // Bloqueia alucinações da LLM contradizendo documentos já auditados no cofre
+          return !nomesDocsCofreNorm.some((n) => n.length >= 4 && sNorm.includes(n));
+        })
+    : [];
+  const pendenciasHabilitacaoFinal = Array.from(
+    new Set([...certidoesVencidasOuPendentes, ...extrasPendenciasLLM]),
+  );
+
+  const resumoHabilitacaoDeterministico =
+    statusFinal === "APTO"
+      ? `A empresa possui documentação regularizada e comprovada com anexo(s) em /documentacao (${certidoesRegulares.length} documento(s) regular(es)) e atende às exigências preliminares do edital.`
+      : statusFinal === "APTO_COM_RESSALVAS"
+        ? qtdDocsSemAnexo > 0 && qtdDocsVencidos === 0 && qtdDocsDivergentes === 0
+          ? `Existem ${qtdDocsSemAnexo} documento(s) cadastrado(s) em /documentacao sem arquivo PDF/imagem anexado (pendente de envio), além de eventuais categorias ausentes. Nenhum anexo válido foi reprovado por vencimento.`
+          : `Identificadas pendências documentais, divergências em anexos ou categorias ausentes em /documentacao que exigem saneamento antes da sessão.`
+        : `Impedimento documental crítico detectado: certidões vencidas impedem a habilitação jurídica/fiscal.`;
+
+  const resumoHabilitacaoLLM = enriquecidoLLM?.habilitacao?.resumo;
+  const llmConfundiuSemAnexoComVencido =
+    Boolean(resumoHabilitacaoLLM) &&
+    qtdDocsVencidos === 0 &&
+    (qtdDocsSemAnexo > 0 || qtdDocsDivergentes > 0) &&
+    /vencid/i.test(String(resumoHabilitacaoLLM));
+
   const relatorio: RelatorioParticipacao = {
     parecer: statusFinal,
     scoreAderencia: scoreFinal,
@@ -1492,19 +1890,11 @@ export async function construirRelatorioParticipacaoHibrido(
       status: statusFinal,
       scoreConformidade: scoreFinal,
       resumo: sanitizarTextoRelatorio(
-        enriquecidoLLM?.habilitacao?.resumo ||
-        (statusFinal === "APTO"
-          ? `A empresa possui documentação regularizada (${certidoesRegulares.length} documento(s) ativo(s)) e atende às exigências preliminares do edital.`
-          : statusFinal === "APTO_COM_RESSALVAS"
-            ? `Identificadas pendências documentais ou categorias ausentes em /documentacao que exigem saneamento antes da sessão.`
-            : `Impedimento documental crítico detectado: certidões vencidas impedem a habilitação jurídica/fiscal.`),
+        (!llmConfundiuSemAnexoComVencido ? resumoHabilitacaoLLM : null) ||
+          resumoHabilitacaoDeterministico,
       ),
-      certidoesRegulares: Array.isArray(enriquecidoLLM?.habilitacao?.certidoesRegulares) && enriquecidoLLM.habilitacao.certidoesRegulares.length > 0
-        ? enriquecidoLLM.habilitacao.certidoesRegulares.map(String).map((s) => s.trim()).filter(Boolean)
-        : certidoesRegulares,
-      certidoesVencidasOuPendentes: Array.isArray(enriquecidoLLM?.habilitacao?.certidoesVencidasOuPendentes) && enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes.length > 0
-        ? enriquecidoLLM.habilitacao.certidoesVencidasOuPendentes.map(String).map((s) => s.trim()).filter(Boolean)
-        : certidoesVencidasOuPendentes,
+      certidoesRegulares,
+      certidoesVencidasOuPendentes: pendenciasHabilitacaoFinal,
       atestadosExigidos: normalizadosAtestados,
       exigenciasEspeciais: normalizadasExigencias,
     },
@@ -1532,13 +1922,11 @@ export async function construirRelatorioParticipacaoHibrido(
 
     // 3. Itens, Quantidades & Marcas Exigidas
     itens: {
-      totalItens: enriquecidoLLM?.itens?.totalItens ?? listaItensBase.length,
+      totalItens: totalItensFinal,
       valorTotalEstimado:
         enriquecidoLLM?.itens?.valorTotalEstimado ?? valorEstimado,
       destaqueMarcasExigidas: destaqueMarcasFinal,
-      lista: enriquecidoLLM?.itens?.lista && enriquecidoLLM.itens.lista.length > 0
-        ? enriquecidoLLM.itens.lista
-        : listaItensBase,
+      lista: itensFinaisLista,
     },
 
     // 4. Riscos Contratuais & Financeiros
@@ -1597,6 +1985,12 @@ export async function construirRelatorioParticipacaoHibrido(
               ...(qtdDocsVencidos > 0
                 ? [`${qtdDocsVencidos} documento(s) vencido(s) que exigem renovação imediata.`]
                 : []),
+              ...(qtdDocsDivergentes > 0
+                ? [`${qtdDocsDivergentes} documento(s) em /documentacao com divergência no anexo enviado.`]
+                : []),
+              ...(qtdDocsSemAnexo > 0
+                ? [`${qtdDocsSemAnexo} documento(s) cadastrados sem arquivo PDF/imagem anexado em /documentacao.`]
+                : []),
               ...(statusPortalDisputa.status !== "ATIVO"
                 ? [`Portal de disputa (${statusPortalDisputa.portalNome}) pendente de credenciamento ou renovação.`]
                 : []),
@@ -1636,7 +2030,15 @@ export async function construirRelatorioParticipacaoHibrido(
       segmentoEdital: nomeSegmentoEdital,
       observacao:
         escopoCompativel && atuaNaUf
-          ? `O objeto licitado (${nomeSegmentoEdital}) e a localidade (${oportunidade.uf}) estão alinhados ao escopo operacional configurado pela empresa.`
+          ? compatCnaes.compativel &&
+            !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro) &&
+            (compatCnaes.origemMatch === "SECUNDARIO" || compatCnaes.origemMatch === "AMBOS")
+            ? `Compatibilidade confirmada pelo CNAE Secundário (${compatCnaes.cnaesCompativeis[0]}) para o segmento ${nomeSegmentoEdital} (${oportunidade.uf}).`
+            : compatCnaes.compativel &&
+                !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro) &&
+                compatCnaes.origemMatch === "PRINCIPAL"
+              ? `Compatibilidade confirmada pelo CNAE Principal (${compatCnaes.cnaesCompativeis[0]}) para o segmento ${nomeSegmentoEdital} (${oportunidade.uf}).`
+              : `O objeto licitado (${nomeSegmentoEdital}) e a localidade (${oportunidade.uf}) estão alinhados ao escopo operacional configurado pela empresa.`
           : `Atenção: verifique a compatibilidade entre o escopo configurado (${labelSegmentoEmpresa}) e o segmento do edital (${nomeSegmentoEdital} - ${oportunidade.uf}).`,
     },
     checklistDocumental,
@@ -1706,6 +2108,7 @@ export async function construirRelatorioParticipacaoHibrido(
     viabilidadeTexto,
     custosTexto,
     precoSugerido,
+    origemLLM: enriquecidoLLM?._llmProvider || "IA_HIBRIDA",
   };
 }
 
@@ -1873,6 +2276,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
 
       const patchConcluido = {
         status: "CONCLUIDO",
+        origem: resultado.origemLLM || "IA_HIBRIDA",
         parecer: resultado.relatorio.parecer,
         relatorioTexto: resultado.relatorioTexto,
         impedimentos: resultado.impedimentosTexto,
@@ -1896,6 +2300,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
           where: { id: analiseId },
           data: {
             status: "CONCLUIDO",
+            origem: resultado.origemLLM || "IA_HIBRIDA",
             parecer: resultado.relatorio.parecer,
             relatorioTexto: resultado.relatorioTexto,
             impedimentos: resultado.impedimentosTexto,

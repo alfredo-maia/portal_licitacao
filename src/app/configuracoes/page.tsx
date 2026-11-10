@@ -32,6 +32,8 @@ import {
   Renew,
   Save,
   Security,
+  TrashCan,
+  Upload,
   User as UserIcon,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
@@ -119,6 +121,7 @@ export default function ConfiguracoesPage() {
     inscricaoEstadual: "",
     inscricaoMunicipal: "",
     cnae: "",
+    cnaesSecundarios: [],
     endereco: "",
     numero: "",
     complemento: "",
@@ -143,6 +146,11 @@ export default function ConfiguracoesPage() {
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
   const [buscaSegmento, setBuscaSegmento] = useState("");
   const [buscandoCepEmpresa, setBuscandoCepEmpresa] = useState(false);
+  const [modalCnaesSecundarios, setModalCnaesSecundarios] = useState(false);
+  const [novoCnaeSecundario, setNovoCnaeSecundario] = useState("");
+  const [modalUploadCartao, setModalUploadCartao] = useState(false);
+  const [arquivoCartaoCnpj, setArquivoCartaoCnpj] = useState<File | null>(null);
+  const [enviandoCartaoCnpj, setEnviandoCartaoCnpj] = useState(false);
 
   // 3. GESTÃO DA EQUIPE
   const [equipe, setEquipe] = useState<UsuarioEquipeItem[]>([]);
@@ -212,6 +220,7 @@ export default function ConfiguracoesPage() {
       if (data.ok && data.empresa) {
         setEmpresa({
           ...data.empresa,
+          cnaesSecundarios: data.empresa.cnaesSecundarios || [],
           segmentos: data.empresa.segmentos || [],
           subsegmentos: data.empresa.subsegmentos || [],
           ufs: data.empresa.ufs || [],
@@ -566,6 +575,7 @@ export default function ConfiguracoesPage() {
           setEmpresa((prev) => ({
             ...prev,
             ...data.empresa,
+            cnaesSecundarios: data.empresa.cnaesSecundarios ?? prev.cnaesSecundarios ?? [],
             segmentos: data.empresa.segmentos || prev.segmentos || [],
             subsegmentos: data.empresa.subsegmentos || prev.subsegmentos || [],
             ufs: data.empresa.ufs || prev.ufs || [],
@@ -581,6 +591,108 @@ export default function ConfiguracoesPage() {
       setNotificacao({ tipo: "error", texto: "Erro na comunicação com o servidor." });
     } finally {
       setSalvandoEmpresa(false);
+    }
+  };
+
+  const handleAdicionarCnaeSecundario = () => {
+    const val = novoCnaeSecundario.trim();
+    if (!val) return;
+    const matchCatalogo = CATALOGO_CNAE.find(
+      (c) => c.codigo.toLowerCase() === val.toLowerCase(),
+    );
+    const formatted = matchCatalogo ? `${matchCatalogo.codigo} - ${matchCatalogo.descricao}` : val;
+    setEmpresa((prev) => {
+      const atuais = Array.isArray(prev.cnaesSecundarios) ? prev.cnaesSecundarios : [];
+      if (atuais.some((c) => c.toLowerCase() === formatted.toLowerCase())) {
+        return prev;
+      }
+      return {
+        ...prev,
+        cnaesSecundarios: [...atuais, formatted],
+      };
+    });
+    setNovoCnaeSecundario("");
+  };
+
+  const handleRemoverCnaeSecundario = (cnaeAlvo: string) => {
+    setEmpresa((prev) => ({
+      ...prev,
+      cnaesSecundarios: (prev.cnaesSecundarios || []).filter((c) => c !== cnaeAlvo),
+    }));
+  };
+
+  const handleImportarCartaoCnpj = async () => {
+    if (!arquivoCartaoCnpj) {
+      setNotificacao({ tipo: "error", texto: "Selecione o arquivo PDF ou imagem do Cartão CNPJ." });
+      return;
+    }
+
+    setEnviandoCartaoCnpj(true);
+    try {
+      const formData = new FormData();
+      formData.set("file", arquivoCartaoCnpj);
+      formData.set("modo", "atualizar_ativo");
+      if (activeTenantId) formData.set("tenantId", activeTenantId);
+
+      const url = activeTenantId
+        ? `/api/configuracoes/empresa/cartao-cnpj?tenantId=${encodeURIComponent(activeTenantId)}`
+        : "/api/configuracoes/empresa/cartao-cnpj";
+
+      const res = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setNotificacao({
+          tipo: "error",
+          texto: data.error || "Não foi possível importar os dados do Cartão CNPJ.",
+        });
+        return;
+      }
+
+      if (data.empresa) {
+        setEmpresa((prev) => ({
+          ...prev,
+          ...data.empresa,
+          cnaesSecundarios: data.empresa.cnaesSecundarios ?? prev.cnaesSecundarios ?? [],
+          segmentos: data.empresa.segmentos || prev.segmentos || [],
+          subsegmentos: data.empresa.subsegmentos || prev.subsegmentos || [],
+          ufs: data.empresa.ufs || prev.ufs || [],
+          brasilInteiro: data.empresa.brasilInteiro ?? prev.brasilInteiro ?? true,
+          preferenciasUpdatedAt: data.empresa.preferenciasUpdatedAt || prev.preferenciasUpdatedAt || null,
+        }));
+
+        if (activeTenantId) {
+          setTenants((prev) =>
+            prev.map((t) =>
+              t.id === activeTenantId
+                ? {
+                    ...t,
+                    razaoSocial: data.empresa.razaoSocial || t.razaoSocial,
+                    nomeFantasia: data.empresa.nomeFantasia ?? t.nomeFantasia,
+                    cnpj: data.empresa.cnpj || t.cnpj,
+                  }
+                : t,
+            ),
+          );
+        }
+      }
+
+      setModalUploadCartao(false);
+      setArquivoCartaoCnpj(null);
+      setNotificacao({
+        tipo: "success",
+        texto:
+          "Cartão CNPJ importado! Dados cadastrais preenchidos e documento arquivado sem validade em /documentacao.",
+      });
+    } catch {
+      setNotificacao({
+        tipo: "error",
+        texto: "Erro na comunicação com o servidor ao processar o Cartão CNPJ.",
+      });
+    } finally {
+      setEnviandoCartaoCnpj(false);
     }
   };
 
@@ -1086,7 +1198,16 @@ export default function ConfiguracoesPage() {
                 </Select>
               </div>
 
-              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                <Button
+                  kind="tertiary"
+                  size="md"
+                  renderIcon={Upload}
+                  onClick={() => setModalUploadCartao(true)}
+                  id="btn-upload-cartao-cnpj"
+                >
+                  Upload Cartão CNPJ
+                </Button>
                 <span title={tooltipAddCnpj}>
                   <Button
                     kind="secondary"
@@ -1160,7 +1281,7 @@ export default function ConfiguracoesPage() {
                   placeholder="Número de Inscrição Municipal"
                 />
               </Column>
-              <Column lg={16} md={8} sm={4} style={{ marginTop: "0.75rem" }}>
+              <Column lg={11} md={5} sm={4} style={{ marginTop: "0.75rem" }}>
                 <TextInput
                   id="empresa-cnae"
                   list="cnae-options-list"
@@ -1176,6 +1297,28 @@ export default function ConfiguracoesPage() {
                     </option>
                   ))}
                 </datalist>
+              </Column>
+              <Column
+                lg={5}
+                md={3}
+                sm={4}
+                style={{
+                  marginTop: "0.75rem",
+                  display: "flex",
+                  alignItems: "flex-end",
+                }}
+              >
+                <Button
+                  kind="tertiary"
+                  size="md"
+                  renderIcon={Add}
+                  type="button"
+                  id="btn-cnaes-secundarios"
+                  onClick={() => setModalCnaesSecundarios(true)}
+                  style={{ width: "100%" }}
+                >
+                  CNAEs Secundários ({empresa.cnaesSecundarios?.length || 0})
+                </Button>
               </Column>
             </Grid>
 
@@ -1804,6 +1947,130 @@ export default function ConfiguracoesPage() {
           </Tile>
         )}
       </div>
+
+      {/* ========================================================
+          MODAL: CNAEs Secundários
+      ======================================================== */}
+      <Modal
+        open={modalCnaesSecundarios}
+        onRequestClose={() => setModalCnaesSecundarios(false)}
+        modalHeading="Gerenciar CNAEs Secundários"
+        modalLabel="Classificação Econômica (IBGE)"
+        primaryButtonText="Concluir"
+        secondaryButtonText="Fechar"
+        onRequestSubmit={() => setModalCnaesSecundarios(false)}
+      >
+        <div style={{ padding: "0.5rem 0", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+            Adicione os CNAEs secundários do Contrato Social / Cartão CNPJ. A análise de IA utilizará tanto o CNAE Principal quanto os Secundários para validar aderência aos editais.
+          </p>
+
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                id="input-cnae-secundario"
+                list="cnae-options-list"
+                labelText="Adicionar CNAE Secundário"
+                placeholder="Digite código ou atividade (ex: 4639-7/01 — Comércio atacadista...)"
+                value={novoCnaeSecundario}
+                onChange={(e) => setNovoCnaeSecundario(e.target.value)}
+              />
+            </div>
+            <Button
+              kind="secondary"
+              size="md"
+              type="button"
+              onClick={handleAdicionarCnaeSecundario}
+            >
+              Adicionar CNAE
+            </Button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "240px", overflowY: "auto" }}>
+            {(!empresa.cnaesSecundarios || empresa.cnaesSecundarios.length === 0) ? (
+              <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", padding: "0.75rem", border: "1px dashed var(--cds-border-subtle)" }}>
+                Nenhum CNAE secundário adicionado até o momento.
+              </div>
+            ) : (
+              empresa.cnaesSecundarios.map((cnaeItem) => (
+                <div
+                  key={cnaeItem}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.5rem 0.75rem",
+                    backgroundColor: "var(--cds-layer-01)",
+                    border: "1px solid var(--cds-border-subtle)",
+                  }}
+                >
+                  <span style={{ fontSize: "0.875rem" }}>{cnaeItem}</span>
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    type="button"
+                    hasIconOnly
+                    renderIcon={TrashCan}
+                    iconDescription={`Remover ${cnaeItem}`}
+                    onClick={() => handleRemoverCnaeSecundario(cnaeItem)}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* ========================================================
+          MODAL: Upload Cartão CNPJ
+      ======================================================== */}
+      <Modal
+        open={modalUploadCartao}
+        onRequestClose={() => setModalUploadCartao(false)}
+        modalHeading="Importar Dados pelo Cartão CNPJ"
+        modalLabel="Extração Automática (RFB + IA)"
+        primaryButtonText={enviandoCartaoCnpj ? "Processando..." : "Extrair e Preencher Empresa"}
+        secondaryButtonText="Cancelar"
+        primaryButtonDisabled={enviandoCartaoCnpj || !arquivoCartaoCnpj}
+        onRequestSubmit={handleImportarCartaoCnpj}
+      >
+        <div style={{ padding: "0.5rem 0", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+            Envie o comprovante oficial da Receita Federal (PDF ou imagem PNG/JPG). O sistema preencherá automaticamente os dados societários, endereço da sede e CNAEs (Principal e Secundários), preservando Inscrição Estadual/Municipal, e salvará o arquivo sem data de validade em <code>/documentacao</code>.
+          </p>
+
+          <div
+            style={{
+              padding: "1rem",
+              border: "1px dashed var(--cds-border-strong)",
+              backgroundColor: "var(--cds-layer-01)",
+            }}
+          >
+            <label
+              htmlFor="input-upload-cartao-cnpj"
+              style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.5rem" }}
+            >
+              Arquivo do Cartão CNPJ (.pdf, .png, .jpg, .jpeg, .webp) *
+            </label>
+            <input
+              id="input-upload-cartao-cnpj"
+              data-testid="input-upload-cartao-cnpj"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                setArquivoCartaoCnpj(f);
+              }}
+            />
+            {arquivoCartaoCnpj && (
+              <div style={{ marginTop: "0.5rem", fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                Selecionado: <strong>{arquivoCartaoCnpj.name}</strong> ({Math.max(1, Math.round(arquivoCartaoCnpj.size / 1024))} KB)
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       {/* ========================================================
           MODAL: Adicionar Novo CNPJ

@@ -29,6 +29,7 @@ import {
   Dashboard,
   Document,
   Earth,
+  Headset,
   Light,
   Logout,
   Notification,
@@ -42,6 +43,7 @@ import {
 } from "@carbon/icons-react";
 import { NotificationsBell } from "./notifications-bell";
 import { TenantHeaderSelector } from "./tenant-header-selector";
+import { SuporteModal } from "@/components/suporte/suporte-modal";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
 import { useAppTheme } from "@/providers/theme-provider";
@@ -66,17 +68,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { isDark, toggleTheme } = useAppTheme();
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
+  const [suporteModalOpen, setSuporteModalOpen] = useState(false);
   const [subStatus, setSubStatus] = useState<{
+    billingStatus?: string;
+    plano?: string;
+    diasRestantesTrial?: number;
     isReadOnly?: boolean;
     inGracePeriod?: boolean;
     mensagemStatus?: string;
   } | null>(null);
 
   React.useEffect(() => {
+    if (typeof fetch !== "function") return;
     fetch("/api/planos/status")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && (data.inGracePeriod || data.isReadOnly)) {
+        if (data && data.ok !== false) {
           setSubStatus(data);
         } else {
           setSubStatus(null);
@@ -134,6 +141,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const trialDias =
+    typeof subStatus?.diasRestantesTrial === "number"
+      ? Math.max(0, Math.min(14, subStatus.diasRestantesTrial))
+      : 14;
+  const trialSeverity: "safe" | "warning" | "danger" =
+    trialDias >= 6 ? "safe" : trialDias >= 1 ? "warning" : "danger";
+  const trialBadgeColors =
+    trialSeverity === "safe"
+      ? { bg: "#0f62fe", fg: "#ffffff", border: "#4589ff" }
+      : trialSeverity === "warning"
+        ? { bg: "#f1c21b", fg: "#161616", border: "#d2a106" }
+        : { bg: "#da1e28", fg: "#ffffff", border: "#fa4d56" };
+
   return (
     <div data-testid="carbon-ui-shell">
       <Header aria-label={APP_CONFIG.brandName}>
@@ -151,6 +171,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         </HeaderName>
 
         <HeaderGlobalBar>
+          {subStatus?.billingStatus === "TRIAL" && (
+            <button
+              type="button"
+              data-testid="header-trial-badge"
+              data-severity={trialSeverity}
+              onClick={() => router.push("/planos")}
+              title="Ver detalhes da assinatura ou escolher um plano"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.375rem",
+                alignSelf: "center",
+                marginRight: "0.5rem",
+                padding: "0.25rem 0.625rem",
+                borderRadius: "9999px",
+                border: `1px solid ${trialBadgeColors.border}`,
+                backgroundColor: trialBadgeColors.bg,
+                color: trialBadgeColors.fg,
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                lineHeight: 1.2,
+              }}
+            >
+              <span>
+                Grátis - Pro • {trialDias} {trialDias === 1 ? "dia" : "dias"} de teste
+              </span>
+            </button>
+          )}
           <TenantHeaderSelector />
           <NotificationsBell />
 
@@ -328,6 +378,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
         {children}
       </main>
+
+      <Button
+        kind="primary"
+        size="md"
+        renderIcon={Headset}
+        data-testid="support-fab-btn"
+        aria-label="Abrir Suporte"
+        onClick={() => setSuporteModalOpen(true)}
+        style={{
+          position: "fixed",
+          bottom: "1.5rem",
+          right: "1.5rem",
+          zIndex: 9000,
+          borderRadius: "9999px",
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.28)",
+        }}
+      >
+        Suporte
+      </Button>
+
+      <SuporteModal
+        open={suporteModalOpen}
+        onClose={() => setSuporteModalOpen(false)}
+      />
     </div>
   );
 }

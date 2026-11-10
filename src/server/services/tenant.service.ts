@@ -65,6 +65,7 @@ export interface InMemoryTenantRecord {
   razaoSocial: string;
   nomeFantasia?: string | null;
   cnaePrincipal?: string | null;
+  cnaesSecundarios?: string[];
   endereco?: string | null;
   cidade?: string | null;
   uf?: string | null;
@@ -257,6 +258,7 @@ export async function createTenantForUser(params: {
     razaoSocial: input.razaoSocial,
     nomeFantasia: input.nomeFantasia ?? null,
     cnaePrincipal: input.cnaePrincipal ?? null,
+    cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
     endereco: input.endereco ?? null,
     cidade: input.cidade ?? null,
     uf: input.uf ?? null,
@@ -287,6 +289,7 @@ export async function createTenantForUser(params: {
       razaoSocial: input.razaoSocial,
       cnpj: cleanedCnpj,
       cnae: input.cnaePrincipal,
+      cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
       endereco: input.endereco || "",
       cidade: input.cidade || "",
       uf: input.uf || "GO",
@@ -303,6 +306,7 @@ export async function createTenantForUser(params: {
         razaoSocial: input.razaoSocial,
         nomeFantasia: input.nomeFantasia,
         cnaePrincipal: input.cnaePrincipal,
+        cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
         endereco: input.endereco,
         cidade: input.cidade,
         uf: input.uf,
@@ -325,6 +329,7 @@ export async function createTenantForUser(params: {
         razaoSocial: input.razaoSocial,
         cnpj: cleanedCnpj,
         cnae: input.cnaePrincipal,
+        cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
         endereco: input.endereco || "",
         cidade: input.cidade || "",
         uf: input.uf || "GO",

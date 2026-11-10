@@ -16,12 +16,18 @@ import {
 } from "@/server/schemas/documento.schema";
 import {
   deleteInMemoryDocumento,
+  getInMemoryConfiguracaoEmpresa,
   getInMemoryDocumento,
   insertInMemoryDocumento,
   listInMemoryDocumentos,
   updateInMemoryDocumento,
 } from "./licitacoes-store";
 import { verificarDisparoImediatoVencimentoDocumento } from "./notificacoes.service";
+import { obterConfiguracaoEmpresa } from "./configuracoes.service";
+import {
+  carregarBufferDocumentoCofre,
+  inspecionarArquivoDocumentoCofre,
+} from "./inspecao-documento-cofre.service";
 
 export function calcularStatusValidade(
   dataVencimento: Date | null,
@@ -51,6 +57,12 @@ export function calcularStatusValidade(
 function mapToDocumentoItem(doc: any): DocumentoItem {
   const dataVenc = doc.dataVencimento ? new Date(doc.dataVencimento) : null;
   const statusVal = calcularStatusValidade(dataVenc, Boolean(doc.semValidade));
+  const possuiAnexo = Boolean(doc.arquivoUrl && String(doc.arquivoUrl).trim());
+  const validacaoStatus = possuiAnexo
+    ? (doc.validacaoStatus && doc.validacaoStatus !== "PENDENTE_ANEXO"
+        ? doc.validacaoStatus
+        : "NAO_VERIFICADO")
+    : "PENDENTE_ANEXO";
 
   return {
     id: doc.id,
@@ -72,7 +84,39 @@ function mapToDocumentoItem(doc: any): DocumentoItem {
     criadoEm: new Date(doc.criadoEm),
     atualizadoEm: new Date(doc.atualizadoEm),
     ...statusVal,
+    possuiAnexo,
+    validacaoStatus: validacaoStatus as any,
+    validacaoResumo: possuiAnexo
+      ? (doc.validacaoResumo ?? null)
+      : (doc.validacaoResumo || "Salvo apenas como rascunho/metadados sem arquivo anexado em /documentacao."),
+    cnpjExtraido: doc.cnpjExtraido ?? null,
+    emissaoExtraida: doc.emissaoExtraida ?? null,
+    vencimentoExtraido: doc.vencimentoExtraido ?? null,
+    tipoDetectado: doc.tipoDetectado ?? null,
+    validadoEm: doc.validadoEm ? new Date(doc.validadoEm) : null,
   };
+}
+
+let colunasValidacaoGarantidas = false;
+async function garantirColunasValidacaoDocumento(): Promise<void> {
+  if (colunasValidacaoGarantidas || process.env.VITEST === "true") return;
+  try {
+    const ddl = [
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "validacaoStatus" TEXT DEFAULT 'NAO_VERIFICADO';`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "validacaoResumo" TEXT;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "cnpjExtraido" TEXT;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "emissaoExtraida" TEXT;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "vencimentoExtraido" TEXT;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "tipoDetectado" TEXT;`,
+      `ALTER TABLE "documento" ADD COLUMN IF NOT EXISTS "validadoEm" TIMESTAMP(3);`,
+    ];
+    for (const stmt of ddl) {
+      await prisma.$executeRawUnsafe(stmt).catch(() => undefined);
+    }
+    colunasValidacaoGarantidas = true;
+  } catch {
+    // banco offline ou sem privilégio DDL
+  }
 }
 
 function filterInMemoryDocs(query: DocumentoListQuery): any[] {
@@ -112,6 +156,7 @@ export async function listarDocumentos(
 ): Promise<DocumentoListResponse> {
   const query = documentoListQuerySchema.parse(rawQuery ?? {});
   const memoriaFiltrada = filterInMemoryDocs(query);
+  await garantirColunasValidacaoDocumento();
 
   try {
     const where: any = {};
@@ -235,6 +280,16 @@ export async function criarDocumento(
   tenantId?: string | null,
 ): Promise<DocumentoItem> {
   const validado = documentoCriarInputSchema.parse(data);
+  await garantirColunasValidacaoDocumento();
+
+  const temAnexo = Boolean(validado.arquivoUrl && validado.arquivoUrl.trim());
+  const statusValidacaoInicial = temAnexo
+    ? validado.validacaoStatus || "NAO_VERIFICADO"
+    : "PENDENTE_ANEXO";
+  const resumoValidacaoInicial = temAnexo
+    ? validado.validacaoResumo || null
+    : validado.validacaoResumo ||
+      "Salvo apenas como rascunho/metadados sem arquivo anexado em /documentacao.";
 
   const baseData = {
     nome: validado.nome,
@@ -248,6 +303,13 @@ export async function criarDocumento(
     arquivoNome: validado.arquivoNome || null,
     arquivoTamanho: validado.arquivoTamanho || null,
     mimeType: validado.mimeType || null,
+    validacaoStatus: statusValidacaoInicial,
+    validacaoResumo: resumoValidacaoInicial,
+    cnpjExtraido: validado.cnpjExtraido || null,
+    emissaoExtraida: validado.emissaoExtraida || null,
+    vencimentoExtraido: validado.vencimentoExtraido || null,
+    tipoDetectado: validado.tipoDetectado || null,
+    validadoEm: validado.validadoEm || null,
     versao: 1,
     status: "ATIVO" as const,
     tenantId: tenantId || null,
@@ -302,11 +364,8 @@ export async function criarDocumento(
     return mapToDocumentoItem(doc);
   } catch {
     const memoria = insertInMemoryDocumento({
-      ...validado,
-      versao: 1,
-      status: "ATIVO",
+      ...baseData,
       criadoPorId: usuarioId || null,
-      tenantId: tenantId || null,
     });
     await verificarDisparoImediatoVencimentoDocumento({
       id: memoria.id,
@@ -341,6 +400,14 @@ export async function criarNovaVersao(
     });
 
     const raizId = docAtual.documentoPaiId || docAtual.id;
+    const semValidadeEfetivo =
+      validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
+    const dataVencimentoEfetiva =
+      validado.dataVencimento !== undefined
+        ? validado.dataVencimento
+        : semValidadeEfetivo
+          ? null
+          : docAtual.dataVencimento;
 
     // Criar nova versão ativa
     const novoDoc = await prisma.documento.create({
@@ -349,16 +416,24 @@ export async function criarNovaVersao(
         categoria: docAtual.categoria,
         tipo: docAtual.tipo,
         orgaoEmissor: docAtual.orgaoEmissor,
-        semValidade: docAtual.semValidade,
+        semValidade: semValidadeEfetivo,
         dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-        dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+        dataVencimento: dataVencimentoEfetiva,
         arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
         arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
         arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
         mimeType: validado.mimeType || docAtual.mimeType,
+        validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
+        validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
+        cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
+        emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
+        vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
+        tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
+        validadoEm: validado.validadoEm ?? docAtual.validadoEm,
         versao: docAtual.versao + 1,
         documentoPaiId: raizId,
         status: "ATIVO",
+        tenantId: docAtual.tenantId ?? null,
         criadoPorId: usuarioId || null,
       },
     });
@@ -368,12 +443,20 @@ export async function criarNovaVersao(
       await prisma.documento.update({
         where: { id: raizId },
         data: {
+          semValidade: semValidadeEfetivo,
           dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-          dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+          dataVencimento: dataVencimentoEfetiva,
           arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
           arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
           arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
           mimeType: validado.mimeType || docAtual.mimeType,
+          validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
+          validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
+          cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
+          emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
+          vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
+          tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
+          validadoEm: validado.validadoEm ?? docAtual.validadoEm,
           versao: docAtual.versao + 1,
         },
       }).catch(() => undefined);
@@ -394,33 +477,57 @@ export async function criarNovaVersao(
 
     updateInMemoryDocumento(documentoId, { status: "SUBSTITUIDO" });
     const raizId = docAtual.documentoPaiId || docAtual.id;
+    const semValidadeEfetivo =
+      validado.semValidade !== undefined ? validado.semValidade : docAtual.semValidade;
+    const dataVencimentoEfetiva =
+      validado.dataVencimento !== undefined
+        ? validado.dataVencimento
+        : semValidadeEfetivo
+          ? null
+          : docAtual.dataVencimento;
 
     const novoDoc = insertInMemoryDocumento({
       nome: validado.nome || docAtual.nome,
       categoria: docAtual.categoria,
       tipo: docAtual.tipo,
       orgaoEmissor: docAtual.orgaoEmissor,
-      semValidade: docAtual.semValidade,
+      semValidade: semValidadeEfetivo,
       dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-      dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+      dataVencimento: dataVencimentoEfetiva,
       arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
       arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
       arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
       mimeType: validado.mimeType || docAtual.mimeType,
+      validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
+      validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
+      cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
+      emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
+      vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
+      tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
+      validadoEm: validado.validadoEm ?? docAtual.validadoEm,
       versao: (docAtual.versao || 1) + 1,
       documentoPaiId: raizId,
       status: "ATIVO",
+      tenantId: docAtual.tenantId ?? null,
       criadoPorId: usuarioId || null,
     });
 
     if (raizId) {
       updateInMemoryDocumento(raizId, {
+        semValidade: semValidadeEfetivo,
         dataEmissao: validado.dataEmissao || docAtual.dataEmissao,
-        dataVencimento: validado.dataVencimento || docAtual.dataVencimento,
+        dataVencimento: dataVencimentoEfetiva,
         arquivoUrl: validado.arquivoUrl || docAtual.arquivoUrl,
         arquivoNome: validado.arquivoNome || docAtual.arquivoNome,
         arquivoTamanho: validado.arquivoTamanho || docAtual.arquivoTamanho,
         mimeType: validado.mimeType || docAtual.mimeType,
+        validacaoStatus: validado.validacaoStatus ?? docAtual.validacaoStatus,
+        validacaoResumo: validado.validacaoResumo ?? docAtual.validacaoResumo,
+        cnpjExtraido: validado.cnpjExtraido ?? docAtual.cnpjExtraido,
+        emissaoExtraida: validado.emissaoExtraida ?? docAtual.emissaoExtraida,
+        vencimentoExtraido: validado.vencimentoExtraido ?? docAtual.vencimentoExtraido,
+        tipoDetectado: validado.tipoDetectado ?? docAtual.tipoDetectado,
+        validadoEm: validado.validadoEm ?? docAtual.validadoEm,
         versao: (docAtual.versao || 1) + 1,
       });
     }
@@ -435,20 +542,27 @@ export async function atualizarDocumento(
   usuarioId?: string,
 ): Promise<DocumentoItem | null> {
   const validado = documentoAtualizarInputSchema.parse(data);
+  await garantirColunasValidacaoDocumento();
+  const payloadPersistir: DocumentoAtualizarInput = { ...validado };
+  if (payloadPersistir.arquivoUrl === null && !payloadPersistir.validacaoStatus) {
+    payloadPersistir.validacaoStatus = "PENDENTE_ANEXO";
+    payloadPersistir.validacaoResumo =
+      "Documento sem arquivo anexado em /documentacao.";
+  }
 
   try {
     const doc = await prisma.documento.update({
       where: { id },
-      data: validado,
+      data: payloadPersistir,
     });
-    updateInMemoryDocumento(id, validado);
+    updateInMemoryDocumento(id, payloadPersistir);
 
     await recordAuditLog({
       acao: "DOCUMENTO_ATUALIZADO",
       entidadeTipo: "DOCUMENTO",
       entidadeId: doc.id,
       usuarioId,
-      depois: validado,
+      depois: payloadPersistir,
     });
 
     await verificarDisparoImediatoVencimentoDocumento({
@@ -463,7 +577,7 @@ export async function atualizarDocumento(
 
     return mapToDocumentoItem(doc);
   } catch {
-    const updated = updateInMemoryDocumento(id, validado);
+    const updated = updateInMemoryDocumento(id, payloadPersistir);
     if (updated) {
       await verificarDisparoImediatoVencimentoDocumento({
         id: updated.id,
@@ -477,6 +591,70 @@ export async function atualizarDocumento(
     }
     return updated ? mapToDocumentoItem(updated) : null;
   }
+}
+
+export async function revalidarAnexoDocumento(
+  id: string,
+  tenantId?: string | null,
+  usuarioId?: string,
+): Promise<DocumentoItem | null> {
+  const detalhe = await obterDocumento(id);
+  if (!detalhe?.documento) return null;
+
+  const doc = detalhe.documento;
+  if (!doc.arquivoUrl) {
+    return atualizarDocumento(
+      id,
+      {
+        validacaoStatus: "PENDENTE_ANEXO",
+        validacaoResumo:
+          "Documento salvo sem arquivo anexado. Envie um PDF, DOCX ou imagem para validação automática.",
+        validadoEm: new Date(),
+      },
+      usuarioId,
+    );
+  }
+
+  const buffer = await carregarBufferDocumentoCofre(doc.arquivoUrl);
+  if (!buffer) {
+    return atualizarDocumento(
+      id,
+      {
+        validacaoStatus: "NAO_VERIFICADO",
+        validacaoResumo:
+          "Não foi possível localizar o arquivo físico no armazenamento para releitura. Reenvie o anexo se necessário.",
+        validadoEm: new Date(),
+      },
+      usuarioId,
+    );
+  }
+
+  const empresa = await obterConfiguracaoEmpresa(tenantId).catch(() =>
+    getInMemoryConfiguracaoEmpresa(tenantId),
+  );
+  const inspecao = await inspecionarArquivoDocumentoCofre({
+    buffer,
+    nomeArquivo: doc.arquivoNome,
+    mimeType: doc.mimeType,
+    nomeInformado: doc.nome,
+    dataVencimentoInformada: doc.dataVencimento,
+    semValidade: doc.semValidade,
+    tenantCnpj: empresa?.cnpj,
+  });
+
+  return atualizarDocumento(
+    id,
+    {
+      validacaoStatus: inspecao.validacaoStatus,
+      validacaoResumo: inspecao.validacaoResumo,
+      cnpjExtraido: inspecao.cnpjExtraido,
+      emissaoExtraida: inspecao.emissaoExtraida,
+      vencimentoExtraido: inspecao.vencimentoExtraido,
+      tipoDetectado: inspecao.tipoDetectado,
+      validadoEm: inspecao.validadoEm,
+    },
+    usuarioId,
+  );
 }
 
 export async function excluirDocumento(

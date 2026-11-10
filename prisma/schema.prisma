@@ -461,6 +461,13 @@ model Documento {
   versao         Int                @default(1)
   documentoPaiId String?
   status         DocumentoStatus    @default(ATIVO)
+  validacaoStatus    String?        @default("NAO_VERIFICADO")
+  validacaoResumo    String?        @db.Text
+  cnpjExtraido       String?
+  emissaoExtraida    String?
+  vencimentoExtraido String?
+  tipoDetectado      String?
+  validadoEm         DateTime?
   criadoPorId    String?
   criadoEm       DateTime           @default(now())
   atualizadoEm   DateTime           @updatedAt
@@ -527,6 +534,7 @@ model ConfiguracaoEmpresa {
   inscricaoEstadual  String?
   inscricaoMunicipal String?
   cnae               String?
+  cnaesSecundarios   String[] @default([])
   endereco           String   @default("Av. República do Líbano, 1200, Setor Oeste")
   numero             String?
   complemento        String?
@@ -567,6 +575,7 @@ model Tenant {
   razaoSocial         String
   nomeFantasia        String?
   cnaePrincipal       String?
+  cnaesSecundarios    String[]            @default([])
   endereco            String?
   cidade              String?
   uf                  String?             @db.VarChar(2)
@@ -600,6 +609,7 @@ model Tenant {
   impugnacoes   Impugnacao[]
   auditLogs     AuditLog[]
   precosSalvos  TenantPrecoSalvo[]
+  supportTickets SupportTicket[]
 
   @@index([cnpj])
   @@index([plano])
@@ -756,5 +766,45 @@ model TenantPrecoSalvo {
   @@map("tenant_preco_salvo")
 }
 
+// Bloco 1 (Issue #38) — Central de Suporte (FAB + Protocolos SuperADM-ready)
+model SupportTicket {
+  id            String                 @id @default(cuid())
+  protocolo     String                 @unique
+  tenantId      String?
+  userId        String?
+  autorNome     String
+  autorEmail    String?
+  autorTelefone String?
+  categoria     String                 @default("DUVIDA")
+  urgencia      String                 @default("MEDIA")
+  assunto       String
+  status        String                 @default("ABERTO")
+  criadoEm      DateTime               @default(now())
+  atualizadoEm  DateTime               @updatedAt
+  concluidoEm   DateTime?
+
+  tenant    Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  mensagens SupportTicketMessage[]
+
+  @@index([tenantId, criadoEm])
+  @@index([userId, criadoEm])
+  @@index([status])
+  @@map("support_ticket")
+}
+
+model SupportTicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  autorId   String?
+  autorNome String
+  autorTipo String   @default("CLIENTE")
+  mensagem  String   @db.Text
+  criadoEm  DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, criadoEm])
+  @@map("support_ticket_message")
+}
 
 

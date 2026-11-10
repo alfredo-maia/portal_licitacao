@@ -10,7 +10,8 @@ export const configuracaoEmpresaSchema = z.object({
   cnpj: z.string().trim().min(14, "CNPJ é obrigatório").max(20),
   inscricaoEstadual: z.string().trim().max(50).optional().nullable(),
   inscricaoMunicipal: z.string().trim().max(50).optional().nullable(),
-  cnae: z.string().trim().max(100).optional().nullable(),
+  cnae: z.string().trim().max(255).optional().nullable(),
+  cnaesSecundarios: z.array(z.string().trim().min(1).max(255)).optional().default([]),
   endereco: z.string().trim().max(255).optional().nullable().default(""),
   numero: z.string().trim().max(30).optional().nullable(),
   complemento: z.string().trim().max(100).optional().nullable(),
@@ -51,7 +52,8 @@ export const configuracaoEmpresaAtualizarInputSchema = z.object({
   ),
   inscricaoEstadual: z.string().trim().max(50).optional().nullable(),
   inscricaoMunicipal: z.string().trim().max(50).optional().nullable(),
-  cnae: z.string().trim().max(100).optional().nullable(),
+  cnae: z.string().trim().max(255).optional().nullable(),
+  cnaesSecundarios: z.array(z.string().trim().min(1).max(255)).optional(),
   endereco: z.string().trim().max(255).optional().nullable(),
   numero: z.string().trim().max(30).optional().nullable(),
   complemento: z.string().trim().max(100).optional().nullable(),
@@ -80,7 +82,7 @@ export const configuracaoEmpresaAtualizarInputSchema = z.object({
 });
 
 export type ConfiguracaoEmpresa = z.infer<typeof configuracaoEmpresaSchema>;
-export type ConfiguracaoEmpresaAtualizarInput = z.infer<typeof configuracaoEmpresaAtualizarInputSchema>;
+export type ConfiguracaoEmpresaAtualizarInput = z.input<typeof configuracaoEmpresaAtualizarInputSchema>;
 
 /**
  * Contrato de Meu Perfil (Dados Pessoais, Endereço e Segurança)

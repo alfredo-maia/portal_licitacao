@@ -35,6 +35,7 @@ export type RbacResource =
   | "licitacao"
   | "audit_log"
   | "equipe"
+  | "suporte"
   | "admin"
   | "superadmin"
   | "saas";
@@ -134,6 +135,14 @@ export function can(
 
   // SuperAdmin tem acesso irrestrito
   if (user.role === "SUPERADMIN" || user.isSuperAdmin === true) {
+    return true;
+  }
+
+  // Todo usuário autenticado e ativo tem acesso à Central de Suporte
+  if (
+    resource === "suporte" &&
+    (action === "view" || action === "read" || action === "create" || action === "update")
+  ) {
     return true;
   }
 
