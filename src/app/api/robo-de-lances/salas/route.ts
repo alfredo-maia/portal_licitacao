@@ -199,11 +199,15 @@ export async function PATCH(req: Request) {
         validacao.itensPisoMaiorIds.length > 0 ||
         (configUpdate && validacao.itensSemValorIds.length > 0)
       ) {
+        const msgErro =
+          validacao.itensPisoMaiorIds.length > 0
+            ? validacao.errosPisoMaior[0] || validacao.erros[0]
+            : validacao.errosSemValor[0] || validacao.erros[0];
         return NextResponse.json(
           {
             ok: false,
             error:
-              validacao.erros[0] ||
+              msgErro ||
               "Valor Mínimo (Piso Seguro) não pode ser maior que a Proposta Inicial.",
           },
           { status: 400 },
@@ -215,8 +219,9 @@ export async function PATCH(req: Request) {
       licitacaoId,
       {
         status: opp.status,
-        lanceMinimo: (opp as any).lanceMinimo ?? null,
-        valorProposta: (opp as any).valorProposta ?? null,
+        validarDisputaEstrita: Boolean(configUpdate),
+        lanceMinimo: (opp as any).lanceMinimo ?? undefined,
+        valorProposta: (opp as any).valorProposta ?? undefined,
         calculadoraDados: {
           ...calcDados,
           disputaConfig: novaDisputaConfig,

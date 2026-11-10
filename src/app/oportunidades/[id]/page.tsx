@@ -966,6 +966,16 @@ function OportunidadesDetalheContent({
     });
   }, [itensCalculadora, propostaConfig]);
 
+  const pisosCalculadosPorItem = React.useMemo(() => {
+    const porId = new Map<string, number>();
+    const porNumero = new Map<string, number>();
+    consolidadoPuroCalculadora.itens.forEach((it, idx) => {
+      if (it.id) porId.set(it.id, it.pisoUnitarioSeguro);
+      porNumero.set(normalizarChaveItem(it.numeroItem, idx), it.pisoUnitarioSeguro);
+    });
+    return { porId, porNumero };
+  }, [consolidadoPuroCalculadora.itens]);
+
   const consolidadoCalculadora = React.useMemo(() => {
     return consolidarCalculadoraProposta(itensCalculadora, propostaConfig);
   }, [itensCalculadora, propostaConfig]);
@@ -1280,7 +1290,10 @@ function OportunidadesDetalheContent({
     if (checkDisputaPiso.itensPisoMaiorIds.length > 0) {
       setPropostaFeedback({
         tipo: "error",
-        msg: checkDisputaPiso.erros[0] || "Na aba Disputa existe item com Valor Mínimo maior que a Proposta Inicial.",
+        msg:
+          checkDisputaPiso.errosPisoMaior[0] ||
+          checkDisputaPiso.erros[0] ||
+          "Na aba Disputa existe item com Valor Mínimo maior que a Proposta Inicial.",
       });
       return false;
     }
@@ -1515,6 +1528,7 @@ function OportunidadesDetalheContent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: statusGeralDisputa === "EM_DISPUTA" ? "EM_DISPUTA" : oportunidade.status,
+          validarDisputaEstrita: true,
           lanceMinimo: lanceMinEfetivo,
           valorProposta: valorPropEfetivo,
           calculadoraDados: dadosCalculadora,
@@ -5701,12 +5715,25 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         const pisoMaiorQueProposta = item.pisoUnitarioSeguro > item.propostaUnitaria;
                         const faltaPisoManual =
                           disputaOrigemPrecos === "MANUAL" &&
-                          item.ativoNoRobo &&
+                          !(item.pisoUnitarioSeguro > 0);
+                        const faltaPisoCalculadora =
+                          disputaOrigemPrecos !== "MANUAL" &&
                           !(item.pisoUnitarioSeguro > 0);
                         const faltaPropostaManual =
                           disputaOrigemPrecos === "MANUAL" &&
                           item.ativoNoRobo &&
                           !(item.propostaUnitaria > 0);
+                        const pisoCalculadoOriginal =
+                          pisosCalculadosPorItem.porId.get(item.itemId) ??
+                          pisosCalculadosPorItem.porNumero.get(
+                            normalizarChaveItem(item.numeroItem, idx),
+                          ) ??
+                          0;
+                        const pisoManualAbaixoCalculado =
+                          disputaOrigemPrecos === "MANUAL" &&
+                          pisoCalculadoOriginal > 0 &&
+                          item.pisoUnitarioSeguro > 0 &&
+                          item.pisoUnitarioSeguro < pisoCalculadoOriginal;
                         return (
                         <TableRow
                           key={item.itemId || idx}
@@ -5798,9 +5825,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                     alignItems: "center",
                                     gap: "0.3rem",
                                     fontWeight: 700,
-                                    color: pisoMaiorQueProposta
-                                      ? "var(--cds-support-error, #da1e28)"
-                                      : "var(--cds-support-success, #24a148)",
+                                    color:
+                                      pisoMaiorQueProposta || faltaPisoCalculadora
+                                        ? "var(--cds-support-error, #da1e28)"
+                                        : "var(--cds-support-success, #24a148)",
                                     backgroundColor: "var(--cds-layer-02, #f4f4f4)",
                                     padding: "0.2rem 0.5rem",
                                     borderRadius: "3px",
@@ -5811,11 +5839,39 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                   <Locked size={14} />
                                   {formatarMoedaBrl(item.pisoUnitarioSeguro)}
                                 </div>
-                                {pisoMaiorQueProposta && (
+                                {pisoMaiorQueProposta ? (
                                   <div style={{ fontSize: "0.7rem", color: "var(--cds-support-error, #da1e28)", marginTop: "0.2rem" }}>
                                     Piso maior que a Proposta Inicial
                                   </div>
-                                )}
+                                ) : faltaPisoCalculadora ? (
+                                  <div style={{ fontSize: "0.7rem", color: "var(--cds-support-error, #da1e28)", marginTop: "0.2rem" }}>
+                                    Piso R$ 0,00 bloqueado para disputa
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                            <div
+                              data-testid={`disputa-piso-calc-original-${item.itemId}`}
+                              style={{
+                                fontSize: "0.72rem",
+                                color: "var(--cds-text-secondary)",
+                                marginTop: "0.25rem",
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              Calc. original: {formatarMoedaBrl(pisoCalculadoOriginal)}
+                            </div>
+                            {pisoManualAbaixoCalculado && (
+                              <div
+                                data-testid={`disputa-piso-alerta-abaixo-${item.itemId}`}
+                                style={{
+                                  fontSize: "0.7rem",
+                                  color: "var(--cds-support-warning, #b28600)",
+                                  marginTop: "0.15rem",
+                                  lineHeight: 1.25,
+                                }}
+                              >
+                                Abaixo do piso calculado
                               </div>
                             )}
                           </TableCell>

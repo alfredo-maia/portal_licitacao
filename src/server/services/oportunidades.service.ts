@@ -1121,19 +1121,22 @@ export async function atualizarKanbanStatus(
     if (validacaoDisputa.itensPisoMaiorIds.length > 0) {
       throw new OportunidadesServiceError(
         "VALOR_MINIMO_MAIOR_QUE_PROPOSTA",
-        validacaoDisputa.erros[0] ||
+        validacaoDisputa.errosPisoMaior[0] ||
+          validacaoDisputa.erros[0] ||
           "Valor Mínimo (Piso Seguro) não pode ser maior que a Proposta Inicial.",
         400,
       );
     }
     const tentandoDisputaAtiva =
+      Boolean(input.validarDisputaEstrita) ||
       input.status === "EM_DISPUTA" ||
       (finalCalculadoraDados as any)?.disputaConfig?.statusGeral === "EM_DISPUTA";
     if (tentandoDisputaAtiva && validacaoDisputa.itensSemValorIds.length > 0) {
       throw new OportunidadesServiceError(
         "PRECOS_DISPUTA_INVALIDOS",
-        validacaoDisputa.erros[0] ||
-          "No modo Manual, informe Proposta Inicial e Valor Mínimo maiores que R$ 0,00 para iniciar a disputa.",
+        validacaoDisputa.errosSemValor[0] ||
+          validacaoDisputa.erros[0] ||
+          "O Piso Seguro da Disputa não pode ser R$ 0,00.",
         400,
       );
     }

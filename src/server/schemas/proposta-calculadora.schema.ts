@@ -442,10 +442,14 @@ export function validarRegrasDisputa(
 ): {
   valido: boolean;
   erros: string[];
+  errosPisoMaior: string[];
+  errosSemValor: string[];
   itensPisoMaiorIds: string[];
   itensSemValorIds: string[];
 } {
   const erros: string[] = [];
+  const errosPisoMaior: string[] = [];
+  const errosSemValor: string[] = [];
   const itensPisoMaiorIds: string[] = [];
   const itensSemValorIds: string[] = [];
 
@@ -454,23 +458,34 @@ export function validarRegrasDisputa(
     const proposta = Number(item.propostaUnitaria ?? 0);
 
     if (piso > proposta) {
+      const msgPisoMaior = `Item #${item.numeroItem}: o Valor Mínimo / Piso Seguro (${formatarMoedaBrl(piso)}) não pode ser maior que a Proposta Inicial (${formatarMoedaBrl(proposta)}).`;
       itensPisoMaiorIds.push(item.itemId);
-      erros.push(
-        `Item #${item.numeroItem}: o Valor Mínimo / Piso Seguro (${formatarMoedaBrl(piso)}) não pode ser maior que a Proposta Inicial (${formatarMoedaBrl(proposta)}).`,
-      );
+      errosPisoMaior.push(msgPisoMaior);
+      erros.push(msgPisoMaior);
     }
 
-    if (origemPrecos === "MANUAL" && item.ativoNoRobo && (!(proposta > 0) || !(piso > 0))) {
+    const pisoInvalido = !Number.isFinite(piso) || !(piso > 0);
+    const propostaManualInvalida =
+      origemPrecos === "MANUAL" &&
+      item.ativoNoRobo &&
+      (!Number.isFinite(proposta) || !(proposta > 0));
+
+    if (pisoInvalido || propostaManualInvalida) {
+      const msgSemValor =
+        origemPrecos === "MANUAL"
+          ? `Item #${item.numeroItem}: no modo Manual, informe Proposta Inicial e Valor Mínimo (Piso Seguro) maiores que R$ 0,00.`
+          : `Item #${item.numeroItem}: o Piso Seguro não pode ser R$ 0,00. Preencha os custos na Calculadora ou selecione "Definir Manualmente".`;
       itensSemValorIds.push(item.itemId);
-      erros.push(
-        `Item #${item.numeroItem}: no modo Manual, informe Proposta Inicial e Valor Mínimo (Piso) maiores que R$ 0,00 para os itens ativos no robô.`,
-      );
+      errosSemValor.push(msgSemValor);
+      erros.push(msgSemValor);
     }
   }
 
   return {
     valido: erros.length === 0,
     erros,
+    errosPisoMaior,
+    errosSemValor,
     itensPisoMaiorIds,
     itensSemValorIds,
   };
