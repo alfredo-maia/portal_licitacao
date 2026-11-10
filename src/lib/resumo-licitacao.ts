@@ -1,43 +1,223 @@
 /**
- * Utilitário para higienização e síntese descritiva de mini-resumos de licitações públicas de TI/Software.
- * Gera um resumo objetivo do produto/serviço ofertado (ex.: "SaaS de gestão da assistência social (SUAS)",
- * "Locação de sistema de gestão pública para prefeitura e secretarias", "Gerenciamento unificado de ativos (endpoints) de TI").
+ * Utilitário para higienização e síntese descritiva de títulos/mini-resumos de licitações públicas.
+ * Suporta o Motor Duplo (Prioridade 1: IA em lote; Prioridade 2: Heurística Determinística V2 sem cortes).
  */
 
 const STOP_PREFIXES: RegExp[] = [
   /^\s*\[.*?\]\s*[-–—:]*\s*/i,
-  /^\s*\(.*?\)\s*[-–—:]*\s*/i,
-  /^\s*(?:preg[ãa]o\s+eletr[ôo]nico|concorr[êe]ncia\s+eletr[ôo]nica|dispensa|inexigibilidade)[^,;-]*[,;-]\s*/i,
-  /^\s*contrata[çc][ãa]o(?:,?\s*mediante\s+sistema\s+de\s+registro\s+de\s+pre[çc]os?,?)?\s*(?:de\s+|para\s+)?/i,
-  /^\s*(?:pelo\s+|atrav[ée]s\s+do\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?[^,;-]*[,;-]?\s*/i,
-  /^\s*registro\s+de\s+pre[çc]os?\s+(?:para\s+)?(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?(?:aquisi[çc][ãa]o|contrata[çc][ãa]o|fornecimento|loca[çc][ãa]o)?\s*(?:de\s+)?/i,
-  /^\s*(?:visando\s+a\s+|objetivando\s+a\s+)?(?:eventual\s+)?contrata[çc][ãa]o\s+de\s+empresa\s+(?:especializada\s+)?(?:para\s+|na\s+|em\s+)?(?:a\s+)?/i,
-  /^\s*contrata[çc][ãa]o\s+de\s+pessoa\s+jur[íi]dica\s+(?:para\s+|na\s+|em\s+)?/i,
-  /^\s*contrata[çc][ãa]o\s+de\s+empresa\s+/i,
-  /^\s*contrata[çc][ãa]o\s+de\s+/i,
-  /^\s*(?:eventual\s+)?aquisi[çc][ãa]o\s+de\s+(?:\d+\s+)?(?:\([a-z0-9\s]+\)\s+)?(?:solu[çc][õo]es?\s+tecnol[óo]gicas?\s+integradas?\s+)?(?:destinadas?\s+ao?\s+)?/i,
-  /^\s*(?:para\s+a?\s*|na?\s*)?presta[çc][ãa]o\s+de\s+servi[çc]os?\s+(?:t[ée]cnicos?\s+)?(?:especializados?\s+)?(?:de\s+|em\s+|para\s+)?/i,
-  /^\s*presta[çc][ãa]o\s+de\s+servi[çc]os?\s+(?:de\s+|em\s+|para\s+)?/i,
+  /^\s*\((?:portal|sistema|comprasnet|bnc|bll|licitanet|pncp)[^)]*\)\s*[-–—:]*\s*/i,
+  /^\s*(?:preg[ãa]o\s+eletr[ôo]nico|concorr[êe]ncia\s+eletr[ôo]nica|dispensa(?:\s+eletr[ôo]nica)?|inexigibilidade|chamamento\s+p[úu]blico)\s*(?:n[.º°o]?\s*[\d\/.-]+)?[^,;-]*[,;-]\s*/i,
+  /^\s*(?:visando\s+(?:a|à)|objetivando\s+(?:a|à)|tendo\s+por\s+objeto\s+(?:a|o)?)\s+/i,
+  /^\s*constitui\s+objeto\s+(?:da|do|desta|deste)?\s*(?:presente\s+)?licita[çc][ãa]o\s*(?:a|o)?\s*/i,
+  /^\s*o\s+objeto\s+(?:da|do|desta|deste)?\s*(?:presente\s+)?licita[çc][ãa]o\s+[ée]\s*(?:a|o)?\s*/i,
+  /^\s*sele[çc][ãa]o\s+(?:de\s+proposta\s+mais\s+vantajosa\s+para\s*(?:a|o)?|de\s+empresa(?:\s+(?:especializada|qualificada|t[ée]cnica))?\s+(?:para|visando)\s*(?:a|o)?)\s*/i,
+  /^\s*(?:pelo\s+|atrav[ée]s\s+do\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?\s*(?:para|visando)?[^,;-]*[,;-]?\s*/i,
+  /^\s*(?:eventual\s+e\s+futura|futura\s+e\s+eventual|futura|eventual)?\s*registro\s+de\s+pre[çc]os?\s+(?:para\s+|visando\s+(?:a\s+)?)?(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?/i,
+  /^\s*(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?contrata[çc][ãa]o(?:,?\s*mediante\s+sistema\s+de\s+registro\s+de\s+pre[çc]os?,?)?\s+(?:de\s+|para\s+)?/i,
+  /^\s*pessoa\s+jur[íi]dica\s+(?:especializada\s+|qualificada\s+)?(?:para|na|no|em)\s+(?:a\s+|o\s+)?/i,
+  /^\s*empresa\s+(?:de\s+engenharia\s+|t[ée]cnica\s+|especializada\s+|qualificada\s+|capacitada\s+)?(?:para|na|no|em|visando)\s+(?:a\s+|o\s+)?/i,
+  /^\s*empresa\s+(?:de|em)\s+/i,
+  /^\s*(?:futura\s+e\s+eventual\s+|eventual\s+)?aquisi[çc][ãa]o\s+de\s+(?:\d+\s+)?(?:\([a-z0-9\s]+\)\s+)?(?:solu[çc][õo]es?\s+tecnol[óo]gicas?\s+integradas?\s+)?(?:destinadas?\s+ao?\s+)?/i,
+  /^\s*(?:para\s+(?:a|o)\s+|na\s+|no\s+)?presta[çc][ãa]o\s+de\s+servi[çc]os?\s+(?:t[ée]cnicos?\s+)?(?:especializados?\s+)?(?:de\s+|em\s+|para\s+|na\s+|no\s+)?/i,
   /^\s*servi[çc]os?\s+(?:t[ée]cnicos?\s+)?(?:especializados?\s+)?de\s+/i,
-  /^\s*(?:para\s+a?\s*)?fornecimento\s+de\s+/i,
+  /^\s*(?:para\s+(?:a|o)\s+)?fornecimento\s+(?:parcelado\s+|cont[íi]nuo\s+)?(?:de\s+)?/i,
   /^\s*implanta[çc][ãa]o\s+(?:e\s+suporte\s+)?de\s+/i,
-  /^\s*constitui\s+objeto\s+(?:da|do|desta|deste)?\s*(?:presente\s+)?licita[çc][ãa]o\s*(?:a\s+|o\s+)?/i,
-  /^\s*o\s+objeto\s+(?:da|do|desta|deste)?\s*(?:presente\s+)?licita[çc][ãa]o\s+[ée]\s*(?:a\s+|o\s+)?/i,
-  /^\s*sele[çc][ãa]o\s+de\s+proposta\s+mais\s+vantajosa\s+para\s*/i,
-  /^\s*[-–—:]+\s*/,
+  /^\s*(?:a|o|os|as)\s+(?=[a-záéíóúãõç]{4,})/i,
+  /^\s*[-–—:,]+\s*/,
 ];
 
 const STOPWORDS_CONECTIVAS = new Set([
-  "de", "da", "do", "das", "dos",
-  "para", "em", "com", "e", "a",
-  "o", "por", "na", "no", "nas", "nos"
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "para",
+  "em",
+  "com",
+  "e",
+  "a",
+  "o",
+  "as",
+  "os",
+  "por",
+  "na",
+  "no",
+  "nas",
+  "nos",
+  "ao",
+  "aos",
+  "à",
+  "às",
+  "sob",
 ]);
 
+const SIGLAS_PRESERVADAS = new Map<string, string>([
+  ["ti", "TI"],
+  ["rh", "RH"],
+  ["bi", "BI"],
+  ["erp", "ERP"],
+  ["saas", "SaaS"],
+  ["vr", "VR"],
+  ["pncp", "PNCP"],
+  ["suas", "SUAS"],
+  ["sus", "SUS"],
+  ["e-sus", "e-SUS"],
+  ["nfs-e", "NFS-e"],
+  ["iptu", "IPTU"],
+  ["issqn", "ISSQN"],
+  ["rpps", "RPPS"],
+  ["led", "LED"],
+  ["cftv", "CFTV"],
+  ["ubs", "UBS"],
+  ["upa", "UPA"],
+  ["epi", "EPI"],
+  ["epis", "EPIs"],
+  ["me/epp", "ME/EPP"],
+  ["arla", "ARLA"],
+  ["gps", "GPS"],
+  ["pnae", "PNAE"],
+  ["lgpd", "LGPD"],
+]);
+
+const PALAVRAS_CURTAS_VALIDAS = new Set([
+  "ti",
+  "rh",
+  "bi",
+  "vr",
+  "pc",
+  "ar",
+  "sal",
+  "pao",
+  "pão",
+  "gas",
+  "gás",
+  "kit",
+  "luz",
+  "sol",
+  "som",
+  "web",
+  "app",
+  "pix",
+  "xml",
+  "pdf",
+  "doc",
+  "sus",
+  "cnh",
+  "cpf",
+  "mei",
+  "ubs",
+  "upa",
+  "led",
+  "erp",
+  "gps",
+  "32",
+]);
+
+/**
+ * Identifica títulos cortados abruptamente no meio de palavra (ex.: "Elaboração de P",
+ * "Revisão do Pl", "Empresa Esp", "Empresa Par", "Execução de C") ou prefixos vazios.
+ */
+export function pareceTituloTruncadoOuPobre(titulo?: string | null): boolean {
+  if (!titulo || typeof titulo !== "string") return true;
+  const trimmed = titulo.trim();
+  if (trimmed.length < 10) return true;
+
+  if (
+    /^(?:empresa(?:\s+(?:esp|par|qualificada|especializada|t[ée]cnica|de\s+engenharia))?(?:\s+para(?:\s+(?:o|a))?\s*(?:fornecimento|execu[çc][ãa]o)?)?|contrata[çc][ãa]o(?:\s+de\s+empresa)?|sele[çc][ãa]o\s+de)\s*$/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /^empresa\s+(?:esp|par|qualificada\s+para\s+o\s+fornecimento|especializada\s+para|de\s+engenharia\s+para)/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+
+  const last = tokens[tokens.length - 1];
+  const lastLower = last.toLowerCase().replace(/[.,;:!?]+$/, "");
+
+  if (STOPWORDS_CONECTIVAS.has(lastLower)) {
+    return true;
+  }
+
+  // Detecta corte óbvio no meio da palavra (ex.: "P", "Pl", "Esp", "Par", "C", "Elab", "Aquis")
+  if (/^[a-zA-ZÀ-ÿ]$/.test(last)) {
+    return true;
+  }
+  if (
+    /^(?:pl|pr|sp|esp|par|contr|elab|exec|fornec|aquis|serv|sis|manut|impl|equip|mater)$/i.test(
+      lastLower,
+    ) &&
+    !PALAVRAS_CURTAS_VALIDAS.has(lastLower)
+  ) {
+    return true;
+  }
+
+  if (lastLower.length <= 2 && !PALAVRAS_CURTAS_VALIDAS.has(lastLower) && !/^\d+$/.test(lastLower)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function limparTextoObjetoLicitacao(objetoRaw: string): string {
+  let texto = String(objetoRaw || "")
+    .replace(/\[.*?\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  texto = texto.replace(/^[-–—:]+/, "").trim();
+
+  let modificado = true;
+  let iteracoes = 0;
+  while (modificado && iteracoes < 8) {
+    modificado = false;
+    iteracoes += 1;
+    for (const pat of STOP_PREFIXES) {
+      const novo = texto.replace(pat, "").trim();
+      if (novo !== texto && novo.length >= 8) {
+        texto = novo.replace(/^[-–—:,\s]+/, "").trim();
+        modificado = true;
+      }
+    }
+  }
+
+  // Remove parênteses técnicos acessórios ou prefixos residuais
+  texto = texto.replace(/^\([A-Z0-9\-_/ ]+\)\s*[-–—:]*/i, "");
+  texto = texto.replace(/\((?:c[óo]d|item|lote|anexo|processo)[^)]*\)/gi, " ");
+  texto = texto.replace(/[(),;:.]+/g, " ");
+  texto = texto.replace(/\s+/g, " ").trim();
+  return texto;
+}
+
+function formatarPalavraTitulo(palavra: string, idx: number): string {
+  const lower = palavra.toLowerCase();
+  if (SIGLAS_PRESERVADAS.has(lower)) {
+    return SIGLAS_PRESERVADAS.get(lower)!;
+  }
+  if (idx > 0 && STOPWORDS_CONECTIVAS.has(lower)) {
+    return lower;
+  }
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/**
+ * Heurística V2 (Prioridade 2): gera título claro respeitando limite por palavra inteira
+ * (~78 chars / até 12 palavras), sem jamais cortar palavras ao meio ou deixar preposições órfãs.
+ */
 export function sintetizarMiniResumo(
   objetoRaw?: string | null,
-  tipoSistema?: string | null
+  tipoSistema?: string | null,
 ): string {
-  if (!objetoRaw || typeof objetoRaw !== "string") {
+  if (!objetoRaw || typeof objetoRaw !== "string" || !objetoRaw.trim()) {
     if (tipoSistema && tipoSistema !== "OUTROS") {
       const tipoNome = tipoSistema.replace(/_/g, " ").toLowerCase();
       return `Sistema de ${tipoNome}`;
@@ -47,7 +227,7 @@ export function sintetizarMiniResumo(
 
   const rawLower = objetoRaw.toLowerCase();
 
-  // 1. Dicionário Semântico de Alta Precisão (Baseado no histórico do AV-8 e padrões de mercado)
+  // 1. Dicionário Semântico de Alta Precisão (TI/Software + compatibilidade retroativa)
   if (rawLower.includes("endpoints") || rawLower.includes("gerenciamento unificado de ativos")) {
     return "Gerenciamento unificado de ativos (endpoints) de TI";
   }
@@ -203,56 +383,42 @@ export function sintetizarMiniResumo(
     return "Licenciamento corporativo e subscrição de softwares";
   }
 
-  // 2. Fallback Inteligente: Higienização de Bordões e Extração da Frase Descritiva
-  let texto = objetoRaw.replace(/\[.*?\]/g, "").trim();
-  texto = texto.replace(/^[-–—:]+/, "").trim();
+  // 4. Heurística V2 Multissegmento (corte exclusivo em fronteira de palavra completa)
+  const textoLimpo = limparTextoObjetoLicitacao(objetoRaw);
+  const palavras = textoLimpo.split(" ").filter(Boolean);
 
-  let modificado = true;
-  let iteracoes = 0;
-  while (modificado && iteracoes < 6) {
-    modificado = false;
-    iteracoes += 1;
-    for (const pat of STOP_PREFIXES) {
-      const novo = texto.replace(pat, "").trim();
-      if (novo !== texto) {
-        texto = novo.replace(/^[-–—:,\s]+/, "").trim();
-        modificado = true;
-      }
-    }
-  }
-
-  // Remove parênteses soltos e normaliza pontuações internas
-  texto = texto.replace(/^\([A-Z0-9\-_/ ]+\)\s*[-–—:]*/i, "");
-  texto = texto.replace(/\([A-Z0-9\-_/ ]+\)/g, "");
-  texto = texto.replace(/[(),;:.\-]+/g, " ");
-  texto = texto.replace(/\s+/g, " ").trim();
-
-  const palavras = texto.split(" ").filter(Boolean);
   if (palavras.length >= 2) {
-    const maxP = Math.min(10, palavras.length);
-    const selecionadas = palavras.slice(0, maxP);
+    const MAX_CHARS = 78;
+    const MAX_PALAVRAS = 12;
+    const selecionadas: string[] = [];
+    let chars = 0;
+
+    for (const palavra of palavras) {
+      if (selecionadas.length >= MAX_PALAVRAS) break;
+      const próximoTamanho = chars === 0 ? palavra.length : chars + 1 + palavra.length;
+      if (selecionadas.length >= 3 && próximoTamanho > MAX_CHARS) {
+        break;
+      }
+      selecionadas.push(palavra);
+      chars = próximoTamanho;
+    }
 
     while (
-      selecionadas.length > 3 &&
+      selecionadas.length > 2 &&
       STOPWORDS_CONECTIVAS.has(selecionadas[selecionadas.length - 1].toLowerCase())
     ) {
       selecionadas.pop();
     }
 
-    const formatadas = selecionadas.map((w, idx) => {
-      const lower = w.toLowerCase();
-      if (idx > 0 && STOPWORDS_CONECTIVAS.has(lower)) {
-        return lower;
-      }
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    });
-
-    return formatadas.join(" ");
+    const formatadas = selecionadas.map((w, idx) => formatarPalavraTitulo(w, idx));
+    const candidato = formatadas.join(" ");
+    if (candidato.length >= 8) {
+      return candidato;
+    }
   }
 
   if (palavras.length === 1 && palavras[0].length > 2) {
-    const w = palavras[0];
-    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    return formatarPalavraTitulo(palavras[0], 0);
   }
 
   if (tipoSistema && tipoSistema !== "OUTROS") {
@@ -261,4 +427,30 @@ export function sintetizarMiniResumo(
   }
 
   return "Aquisição e Contratação Pública";
+}
+
+export const sintetizarTituloHeuristicoV2 = sintetizarMiniResumo;
+
+/**
+ * Escolhe o melhor título para exibição/edição: se `miniResumo` salvo no banco for pobre ou
+ * truncado (ex.: "Empresa Esp", "Revisão do Pl") e existir `resumoFallback` mais completo,
+ * reconstrói via Heurística V2 sem truncamento.
+ */
+export function resolverTituloExibicaoLicitacao(
+  miniResumo?: string | null,
+  resumoFallback?: string | null,
+  tipoSistema?: string | null,
+): string {
+  const mini = (miniResumo || "").replace(/\[.*?\]\s*[-–—:]?\s*/g, "").trim();
+  const full = (resumoFallback || "").trim();
+
+  if (mini && !pareceTituloTruncadoOuPobre(mini)) {
+    return mini;
+  }
+
+  if (full && (!mini || full.length > mini.length)) {
+    return sintetizarMiniResumo(full, tipoSistema);
+  }
+
+  return sintetizarMiniResumo(mini || full, tipoSistema);
 }

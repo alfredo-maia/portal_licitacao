@@ -36,7 +36,7 @@ import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { ESTADOS_BRASIL } from "@/config/estados";
 import { FAIXAS_VALOR_SPRINT7, maskCnpj } from "@/lib/masks";
 import { isValidCnpj } from "@/lib/validations/cnpj";
-import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
+import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
 import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 
 export const MOTIVOS_RECUSA_GENERICOS = [
@@ -188,7 +188,11 @@ function OportunidadesContent() {
         const dataExibicao = dataStr && horaStr && horaStr !== "00:00" ? `${dataStr} ${horaStr}` : dataStr;
         return {
           ...dto,
-          miniResumo: sintetizarMiniResumo(dto.miniResumo || dto.resumo || (dto as any).objeto, dto.tipoSistemaCodigo),
+          miniResumo: resolverTituloExibicaoLicitacao(
+            dto.miniResumo,
+            dto.resumo || (dto as any).objeto,
+            dto.tipoSistemaCodigo,
+          ),
           orgaoUF: `${dto.orgaoNome} - ${dto.uf}`,
           resumoObjeto: dto.resumo,
           acoes: "",

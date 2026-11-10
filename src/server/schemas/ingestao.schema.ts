@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { tipoSistemaCodigoNormalizadoSchema } from "./tipos-sistema.schema";
+import {
+  pareceTituloTruncadoOuPobre,
+  sintetizarTituloHeuristicoV2,
+} from "@/lib/licitacao-texto";
 
 /**
  * Contrato de Ingestão de Dados v2 (`licitacoes_portal.json`) gerado pela
@@ -69,12 +73,14 @@ const normalizeItemPreprocess = (raw: unknown) => {
     copy.portalDisputa = copy.portalEnvio;
   }
 
-  // 5. Resumo e Mini Resumo
+  // 5. Resumo e Mini Resumo (Prioridade 2 Heurística V2 sem slice abrupto de 50 chars)
   if (!copy.resumo && copy.objeto) {
     copy.resumo = copy.objeto;
   }
-  if (!copy.miniResumo) {
-    copy.miniResumo = copy.resumo ? copy.resumo.slice(0, 50) : "Licitação de Software";
+  if (!copy.miniResumo || pareceTituloTruncadoOuPobre(copy.miniResumo)) {
+    copy.miniResumo = copy.resumo
+      ? sintetizarTituloHeuristicoV2(copy.resumo, copy.tipoSistemaSugerido)
+      : "Aquisição e Contratação Pública";
   }
 
   // 6. Datas

@@ -807,4 +807,29 @@ model SupportTicketMessage {
   @@map("support_ticket_message")
 }
 
+// Bloco 2 (Issue #39) — Auditoria de Execuções Diárias de Coleta PNCP (SuperADM-ready)
+model PncpIngestRun {
+  id                   String   @id @default(cuid())
+  origem               String   @default("CRON")
+  dataInicial          String
+  dataFinal            String
+  paginasProcessadas   Int      @default(0)
+  totalConsultadoPncp  Int      @default(0)
+  totalElegiveis       Int      @default(0)
+  criados              Int      @default(0)
+  atualizados          Int      @default(0)
+  inalterados          Int      @default(0)
+  titulosViaIa         Int      @default(0)
+  titulosViaHeuristica Int      @default(0)
+  status               String   @default("CONCLUIDO")
+  erro                 String?  @db.Text
+  duracaoMs            Int      @default(0)
+  executadoEm          DateTime @default(now())
+
+  @@index([executadoEm])
+  @@index([status])
+  @@map("pncp_ingest_runs")
+}
+
+
 

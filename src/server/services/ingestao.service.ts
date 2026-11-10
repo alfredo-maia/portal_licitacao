@@ -17,7 +17,11 @@ import {
 } from "./licitacoes-store";
 import { criarNotificacao, notificarMovimentacaoLicitacao } from "./notificacoes.service";
 import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
-import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
+import {
+  pareceTituloTruncadoOuPobre,
+  sintetizarTituloHeuristicoV2,
+} from "@/lib/licitacao-texto";
+import { gerarTitulosEmLotePrioridadeDupla } from "./resumo-objeto-licitacao.service";
 
 export { computeHashCritico } from "./hash-critico";
 export type { HashCriticoInput } from "./hash-critico";
@@ -44,9 +48,16 @@ import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service"
 function mapItemToLicitacaoData(
   item: IngestaoLicitacaoItem,
   hashCritico: string,
+  tituloIaOverride?: string | null,
 ): NovaLicitacaoData {
   const normModalidade = normalizarModalidade(item.modalidade);
   const classificacao = classificarLicitacaoPorTexto(item.resumo, item.miniResumo);
+
+  const miniResumoResolvido =
+    tituloIaOverride ||
+    (!pareceTituloTruncadoOuPobre(item.miniResumo)
+      ? sintetizarTituloHeuristicoV2(item.miniResumo, item.tipoSistemaSugerido)
+      : sintetizarTituloHeuristicoV2(item.resumo, item.tipoSistemaSugerido));
 
   return {
     idPncp: item.pncpId,
@@ -63,7 +74,7 @@ function mapItemToLicitacaoData(
     segmentoMacro: classificacao.macro,
     subcategorias: classificacao.subcategorias,
     portalDisputa: item.portalDisputa ?? null,
-    miniResumo: sintetizarMiniResumo(item.miniResumo || item.resumo, item.tipoSistemaSugerido),
+    miniResumo: miniResumoResolvido,
     resumo: item.resumo,
     valorEstimado: item.valorEstimado,
     dataAbertura: item.dataAbertura,
@@ -140,11 +151,47 @@ async function updateLicitacao(
  *   grava `INGESTAO_ATUALIZACAO_CRITICA` com antes/depois.
  * Ao final do lote grava o log consolidado `INGESTAO_LOTE_V2`.
  */
+export interface IngestaoOpcoes {
+  usarIaTitulos?: boolean;
+  titulosPreGerados?: Map<string, { titulo: string; metodo: string }>;
+}
+
 export async function ingestLicitacoesV2(
   payload: IngestaoPayloadV2Input | unknown,
   actorContext?: IngestaoActorContext,
+  options?: IngestaoOpcoes,
 ): Promise<IngestaoLoteV2Result> {
   const parsed = ingestaoPayloadV2Schema.parse(payload);
+
+  const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+  const deveUsarIaTitulos =
+    options?.usarIaTitulos !== undefined ? options.usarIaTitulos : !isTestEnv;
+
+  const mapaTitulosIa = new Map<string, string>();
+  if (options?.titulosPreGerados) {
+    for (const [k, v] of options.titulosPreGerados.entries()) {
+      if (v?.titulo) {
+        mapaTitulosIa.set(k, v.titulo);
+      }
+    }
+  } else if (deveUsarIaTitulos && parsed.licitacoes.length > 0) {
+    const mapa = await gerarTitulosEmLotePrioridadeDupla(
+      parsed.licitacoes.map((item) => ({
+        pncpId: item.pncpId,
+        objeto: item.resumo,
+        tipoSistemaSugerido: item.tipoSistemaSugerido,
+        usarIa: true,
+      })),
+    ).catch(() => null);
+
+    if (mapa) {
+      for (const [k, v] of mapa.entries()) {
+        if (v.metodo === "IA") {
+          mapaTitulosIa.set(k, v.titulo);
+        }
+      }
+    }
+  }
 
   let criados = 0;
   let atualizados = 0;
@@ -174,7 +221,11 @@ export async function ingestLicitacoesV2(
       orgaoCnpj: item.orgao.cnpj,
     });
 
-    const dados = mapItemToLicitacaoData(item, novoHash);
+    const dados = mapItemToLicitacaoData(
+      item,
+      novoHash,
+      mapaTitulosIa.get(item.pncpId) ?? null,
+    );
     const existente = await findByIdPncp(item.pncpId);
 
     if (!existente) {

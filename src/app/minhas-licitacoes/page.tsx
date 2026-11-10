@@ -34,7 +34,7 @@ import {
   CheckmarkOutline,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
-import { sintetizarMiniResumo } from "@/lib/resumo-licitacao";
+import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
 
 interface LicitacaoItem {
   id: string;
@@ -136,7 +136,7 @@ function KanbanCardContent({
           style={{ color: "var(--cds-text-primary)", textDecoration: "none" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {lic.orgaoNome} — {sintetizarMiniResumo(lic.miniResumo || lic.objeto || lic.resumo, lic.tipoSistemaCodigo)}
+          {lic.orgaoNome} — {resolverTituloExibicaoLicitacao(lic.miniResumo, lic.objeto || lic.resumo, lic.tipoSistemaCodigo)}
         </Link>
       </div>
 

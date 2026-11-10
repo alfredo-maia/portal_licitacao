@@ -600,6 +600,26 @@ async function bootstrapDatabase() {
       );`,
       `CREATE INDEX IF NOT EXISTS "support_ticket_message_ticketId_criadoEm_idx" ON "support_ticket_message"("ticketId", "criadoEm");`,
       `DO $$ BEGIN ALTER TABLE "support_ticket_message" ADD CONSTRAINT "support_ticket_message_ticketId_fkey" FOREIGN KEY ("ticketId") REFERENCES "support_ticket"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `CREATE TABLE IF NOT EXISTS "pncp_ingest_runs" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "origem" TEXT NOT NULL DEFAULT 'CRON',
+        "dataInicial" TEXT NOT NULL,
+        "dataFinal" TEXT NOT NULL,
+        "paginasProcessadas" INTEGER NOT NULL DEFAULT 0,
+        "totalConsultadoPncp" INTEGER NOT NULL DEFAULT 0,
+        "totalElegiveis" INTEGER NOT NULL DEFAULT 0,
+        "criados" INTEGER NOT NULL DEFAULT 0,
+        "atualizados" INTEGER NOT NULL DEFAULT 0,
+        "inalterados" INTEGER NOT NULL DEFAULT 0,
+        "titulosViaIa" INTEGER NOT NULL DEFAULT 0,
+        "titulosViaHeuristica" INTEGER NOT NULL DEFAULT 0,
+        "status" TEXT NOT NULL DEFAULT 'CONCLUIDO',
+        "erro" TEXT,
+        "duracaoMs" INTEGER NOT NULL DEFAULT 0,
+        "executadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "pncp_ingest_runs_executadoEm_idx" ON "pncp_ingest_runs"("executadoEm");`,
+      `CREATE INDEX IF NOT EXISTS "pncp_ingest_runs_status_idx" ON "pncp_ingest_runs"("status");`,
     ];
 
     for (const stmt of ddlSaaS) {
