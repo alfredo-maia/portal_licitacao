@@ -4,6 +4,7 @@ import {
   pareceTituloTruncadoOuPobre,
   sintetizarTituloHeuristicoV2,
 } from "@/lib/licitacao-texto";
+import { detectarPortalDisputaPorTextoEUrl } from "@/lib/regras-disputa-edital";
 
 /**
  * Contrato de Ingestão de Dados v2 (`licitacoes_portal.json`) gerado pela
@@ -68,9 +69,44 @@ const normalizeItemPreprocess = (raw: unknown) => {
     copy.modalidade = "Pregão Eletrônico";
   }
 
-  // 4. Portal de Disputa
+  // 4. Links: normalização e auto-prefixação com https:// (antes da inferência de portal)
+  if (copy.linkSistemaOrigem && typeof copy.linkSistemaOrigem === "string") {
+    const trimmed = copy.linkSistemaOrigem.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      copy.linkSistemaOrigem = `https://${trimmed}`;
+    } else {
+      copy.linkSistemaOrigem = trimmed;
+    }
+  } else {
+    copy.linkSistemaOrigem = "";
+  }
+
+  if (copy.linkPncp && typeof copy.linkPncp === "string") {
+    const trimmed = copy.linkPncp.trim();
+    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+      copy.linkPncp = `https://${trimmed}`;
+    } else {
+      copy.linkPncp = trimmed;
+    }
+  } else {
+    copy.linkPncp = "";
+  }
+
+  // Portal de Disputa: infere plataforma real via linkSistemaOrigem quando ausente ou "PNCP" genérico
   if (!copy.portalDisputa && copy.portalEnvio) {
     copy.portalDisputa = copy.portalEnvio;
+  }
+  const portalBruto = typeof copy.portalDisputa === "string" ? copy.portalDisputa.trim() : "";
+  if (!portalBruto || /^pncp$/i.test(portalBruto)) {
+    const portalInferido = detectarPortalDisputaPorTextoEUrl({
+      linkSistemaOrigem: typeof copy.linkSistemaOrigem === "string" ? copy.linkSistemaOrigem : null,
+      linkProcessoEletronico:
+        typeof copy.linkProcessoEletronico === "string" ? copy.linkProcessoEletronico : null,
+      portalAtual: portalBruto || null,
+    }).portal;
+    if (portalInferido) {
+      copy.portalDisputa = portalInferido;
+    }
   }
 
   // 5. Resumo e Mini Resumo (Prioridade 2 Heurística V2 sem slice abrupto de 50 chars)
@@ -111,29 +147,7 @@ const normalizeItemPreprocess = (raw: unknown) => {
     copy.parecerGoNoGo = copy.parecer || "AVALIAR";
   }
 
-  // 9. Links: normalização e auto-prefixação com https://
-  if (copy.linkSistemaOrigem && typeof copy.linkSistemaOrigem === "string") {
-    const trimmed = copy.linkSistemaOrigem.trim();
-    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
-      copy.linkSistemaOrigem = `https://${trimmed}`;
-    } else {
-      copy.linkSistemaOrigem = trimmed;
-    }
-  } else {
-    copy.linkSistemaOrigem = "";
-  }
-
-  if (copy.linkPncp && typeof copy.linkPncp === "string") {
-    const trimmed = copy.linkPncp.trim();
-    if (trimmed && !/^https?:\/\//i.test(trimmed)) {
-      copy.linkPncp = `https://${trimmed}`;
-    } else {
-      copy.linkPncp = trimmed;
-    }
-  } else {
-    copy.linkPncp = "";
-  }
-
+  // 9. Garantias finais de string para parecerGoNoGo / campos adicionais preservados
   return copy;
 };
 

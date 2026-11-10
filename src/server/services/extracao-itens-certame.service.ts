@@ -1,5 +1,14 @@
 import type { ItemDisputaEdital } from "@/server/schemas/analise-ia.schema";
 import {
+  type RegrasDisputaDetectadas,
+  regrasDisputaDetectadasSchema,
+} from "@/server/schemas/proposta-calculadora.schema";
+import {
+  extrairRegrasDisputaDeTextoEdital,
+  mesclarRegrasDisputaDetectadas,
+  normalizarModoDisputaPncp,
+} from "@/lib/regras-disputa-edital";
+import {
   lerDocumentosCertame,
   type DocumentoLidoResumo,
   type PlanilhaExtraida,
@@ -14,6 +23,7 @@ export interface ResultadoExtracaoItensCertame {
   origem: OrigemItensCertame;
   documentosLidos: DocumentoLidoResumo[];
   avisos: string[];
+  regrasDisputaDetectadas?: RegrasDisputaDetectadas | null;
 }
 
 export function parseNumeroBrasileiro(valor: unknown): number | null {
@@ -279,12 +289,22 @@ export function extrairItensDePlanilhas(
   return extraidos;
 }
 
-export async function buscarItensPaginadosPncp(params: {
+interface PncpCompraMetadados {
+  modoDisputaId: number | null;
+  modoDisputaNome: string | null;
+  criterioJulgamentoNome: string | null;
+  linkSistemaOrigem: string | null;
+  linkProcessoEletronico: string | null;
+  usuarioNome: string | null;
+  codigoUnidade: string | number | null;
+}
+
+function extrairComponentesIdPncp(params: {
   idPncp?: string | null;
   orgaoCnpj?: string | null;
-}): Promise<ItemDisputaEdital[]> {
+}): { cnpj: string; ano: number; sequencial: string } | null {
   const idPncp = params.idPncp || "";
-  if (!idPncp) return [];
+  if (!idPncp) return null;
 
   const partes = idPncp.split("-");
   const cnpj = partes[0]
@@ -300,7 +320,80 @@ export async function buscarItensPaginadosPncp(params: {
     ano = parseInt(sub[1], 10) || ano;
   }
 
-  if (!cnpj || !sequencial) return [];
+  if (!cnpj || !sequencial) return null;
+  return { cnpj, ano, sequencial };
+}
+
+export async function buscarMetadadosCompraPncp(params: {
+  idPncp?: string | null;
+  orgaoCnpj?: string | null;
+}): Promise<PncpCompraMetadados | null> {
+  const coords = extrairComponentesIdPncp(params);
+  if (!coords) return null;
+
+  const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+  const timeoutMs = isTest ? 1000 : 8000;
+
+  try {
+    const url = `https://pncp.gov.br/api/consulta/v1/orgaos/${coords.cnpj}/compras/${coords.ano}/${coords.sequencial}`;
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res?.ok) return null;
+
+    const data: unknown = await res.json();
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return null;
+    }
+
+    const rec = data as Record<string, unknown>;
+    const unidadeRaw =
+      rec.unidadeOrgao && typeof rec.unidadeOrgao === "object"
+        ? (rec.unidadeOrgao as Record<string, unknown>)
+        : null;
+
+    const modoId =
+      typeof rec.modoDisputaId === "number"
+        ? rec.modoDisputaId
+        : rec.modoDisputaId != null && !Number.isNaN(Number(rec.modoDisputaId))
+          ? Number(rec.modoDisputaId)
+          : null;
+
+    return {
+      modoDisputaId: modoId,
+      modoDisputaNome:
+        typeof rec.modoDisputaNome === "string" ? rec.modoDisputaNome : null,
+      criterioJulgamentoNome:
+        typeof rec.criterioJulgamentoNome === "string"
+          ? rec.criterioJulgamentoNome
+          : null,
+      linkSistemaOrigem:
+        typeof rec.linkSistemaOrigem === "string" ? rec.linkSistemaOrigem : null,
+      linkProcessoEletronico:
+        typeof rec.linkProcessoEletronico === "string"
+          ? rec.linkProcessoEletronico
+          : null,
+      usuarioNome:
+        typeof rec.usuarioNome === "string" ? rec.usuarioNome : null,
+      codigoUnidade:
+        typeof unidadeRaw?.codigoUnidade === "string" ||
+        typeof unidadeRaw?.codigoUnidade === "number"
+          ? unidadeRaw.codigoUnidade
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function buscarItensPaginadosPncp(params: {
+  idPncp?: string | null;
+  orgaoCnpj?: string | null;
+}): Promise<ItemDisputaEdital[]> {
+  const coords = extrairComponentesIdPncp(params);
+  if (!coords) return [];
+  const { cnpj, ano, sequencial } = coords;
 
   const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
   const timeoutMs = isTest ? 1500 : 12000;
@@ -389,11 +482,17 @@ export async function extrairItensCertameCompleto(
   const avisos: string[] = [];
   const objetoCertame = String(oportunidade.resumo || oportunidade.miniResumo || "");
 
-  // 1. Paginação completa no PNCP
-  const itensPncp = await buscarItensPaginadosPncp({
-    idPncp: oportunidade.idPncp,
-    orgaoCnpj: oportunidade.orgaoCnpj,
-  });
+  // 1. Paginação completa no PNCP + Metadados públicos da compra
+  const [itensPncp, metadadosPncp] = await Promise.all([
+    buscarItensPaginadosPncp({
+      idPncp: oportunidade.idPncp,
+      orgaoCnpj: oportunidade.orgaoCnpj,
+    }),
+    buscarMetadadosCompraPncp({
+      idPncp: oportunidade.idPncp,
+      orgaoCnpj: oportunidade.orgaoCnpj,
+    }),
+  ]);
 
   const pncpTemItemGenericoLote = itensPncp.some((it) =>
     pareceCabecalhoDeLoteOuObjeto(
@@ -414,6 +513,8 @@ export async function extrairItensCertameCompleto(
   let documentosLidos: DocumentoLidoResumo[] = [];
   let itensPlanilhas: ItemDisputaEdital[] = [];
   let itensIA: ItemDisputaEdital[] = [];
+  let textoDocumentosLidos = options?.leituraPrevia?.textoConsolidado || "";
+  let regrasIaExtraidas: Partial<RegrasDisputaDetectadas> | null = null;
 
   if (deveVasculharDocumentos) {
     const leitura =
@@ -424,6 +525,7 @@ export async function extrairItensCertameCompleto(
       }));
 
     documentosLidos = leitura.documentosLidos;
+    textoDocumentosLidos = leitura.textoConsolidado || "";
     avisos.push(...leitura.avisos);
 
     if (leitura.planilhas.length > 0) {
@@ -443,8 +545,9 @@ export async function extrairItensCertameCompleto(
         "2. ATENÇÃO A NÚMEROS EM PORTUGUÊS: '13.000' em colunas de quantidade significa TREZE MIL (13000), '2.762' significa 2762, '3.128' significa 3128. Converta separadores de milhar corretamente para JSON number puro.\n" +
         "3. Preserve integralmente número do item, lote (se houver), descrição/especificação técnica, unidade de medida real do edital (ex: UNID, PCT, KG, PACOTE, QUILO, UN, CX) e quantidade.\n" +
         "4. Extraia também valorUnitarioEstimado, valorTotalEstimado e marcaExigidaOuReferencia quando constarem.\n" +
-        "5. Retorne estritamente JSON no formato:\n" +
-        '{ "itens": [ { "numeroItem": 1, "lote": 1, "descricao": "string", "especificacaoDetalhada": "string", "quantidade": 13000, "unidadeMedida": "UNID", "valorUnitarioEstimado": null, "valorTotalEstimado": null, "marcaExigidaOuReferencia": null, "exigeAmostra": false } ] }';
+        "5. Extraia também as regras da disputa no objeto opcional 'regrasDisputa': portal eletrônico, modoDisputaEdital ('ABERTO', 'ABERTO_FECHADO' ou 'FECHADO_ABERTO'), intervaloMinimoLances, criterioJulgamento e uasg.\n" +
+        "6. Retorne estritamente JSON no formato:\n" +
+        '{ "regrasDisputa": { "portal": "Compras.gov.br", "modoDisputaEdital": "ABERTO", "intervaloMinimoLances": "R$ 0,01", "criterioJulgamento": "Menor Preço", "uasg": "158123" }, "itens": [ { "numeroItem": 1, "lote": 1, "descricao": "string", "especificacaoDetalhada": "string", "quantidade": 13000, "unidadeMedida": "UNID", "valorUnitarioEstimado": null, "valorTotalEstimado": null, "marcaExigidaOuReferencia": null, "exigeAmostra": false } ] }';
 
       const userPrompt = JSON.stringify({
         edital: oportunidade.numeroEdital,
@@ -460,13 +563,32 @@ export async function extrairItensCertameCompleto(
         conteudoIntegralDocumentos: leitura.textoConsolidado,
       });
 
-      const respLlm = await chamarLlmJsonMultimodal<{ itens?: any[] }>({
+      const respLlm = await chamarLlmJsonMultimodal<{
+        itens?: unknown[];
+        regrasDisputa?: Record<string, unknown>;
+      }>({
         systemPrompt,
         userPrompt,
         inlineParts: leitura.anexosBinariosMultimodais,
         timeoutMs: process.env.VITEST === "true" ? 4000 : 150000,
         maxOutputTokens: 32768,
       });
+
+      if (respLlm?.data?.regrasDisputa && typeof respLlm.data.regrasDisputa === "object") {
+        const rawRd = respLlm.data.regrasDisputa;
+        const parsedRd = regrasDisputaDetectadasSchema.safeParse({
+          ...rawRd,
+          modoDisputaEdital:
+            normalizarModoDisputaPncp(
+              null,
+              typeof rawRd.modoDisputaEdital === "string" ? rawRd.modoDisputaEdital : null,
+            ) || null,
+          fontes: ["IA"],
+        });
+        if (parsedRd.success) {
+          regrasIaExtraidas = parsedRd.data;
+        }
+      }
 
       if (respLlm?.data && Array.isArray(respLlm.data.itens)) {
         itensIA = respLlm.data.itens
@@ -484,6 +606,26 @@ export async function extrairItensCertameCompleto(
       }
     }
   }
+
+  const regrasDisputaBase = extrairRegrasDisputaDeTextoEdital(textoDocumentosLidos, {
+    portalAtual: oportunidade.portalDisputa ?? null,
+    linkSistemaOrigem:
+      metadadosPncp?.linkSistemaOrigem || oportunidade.linkSistemaOrigem || null,
+    linkProcessoEletronico: metadadosPncp?.linkProcessoEletronico ?? null,
+    linkPncp: oportunidade.linkPncp ?? null,
+    usuarioNome: metadadosPncp?.usuarioNome ?? null,
+    numeroEdital: oportunidade.numeroEdital ?? null,
+    codigoUnidade: metadadosPncp?.codigoUnidade ?? null,
+    criterioJulgamentoNome: metadadosPncp?.criterioJulgamentoNome ?? null,
+    modoDisputaId: metadadosPncp?.modoDisputaId ?? null,
+    modoDisputaNome: metadadosPncp?.modoDisputaNome ?? null,
+  });
+
+  const regrasDisputaDetectadas = mesclarRegrasDisputaDetectadas(
+    oportunidade?.calculadoraDados?.regrasDisputaDetectadas ?? null,
+    regrasDisputaBase,
+    regrasIaExtraidas,
+  );
 
   // Decisão de precedência entre fontes:
   // 1) Se extração documental IA trouxe itens reais (especialmente quando substituiu cabeçalho de lote do PNCP ou completou itens faltantes)
@@ -505,6 +647,7 @@ export async function extrairItensCertameCompleto(
       origem: "EDITAL_ANEXOS",
       documentosLidos,
       avisos,
+      regrasDisputaDetectadas,
     };
   }
 
@@ -524,6 +667,7 @@ export async function extrairItensCertameCompleto(
       origem: "EDITAL_ANEXOS",
       documentosLidos,
       avisos,
+      regrasDisputaDetectadas,
     };
   }
 
@@ -547,6 +691,7 @@ export async function extrairItensCertameCompleto(
         origem: "EDITAL_ANEXOS",
         documentosLidos,
         avisos,
+        regrasDisputaDetectadas,
       };
     }
   }
@@ -560,6 +705,7 @@ export async function extrairItensCertameCompleto(
       origem: "PNCP",
       documentosLidos,
       avisos,
+      regrasDisputaDetectadas,
     };
   }
 
@@ -571,6 +717,7 @@ export async function extrairItensCertameCompleto(
       origem: "PNCP",
       documentosLidos,
       avisos,
+      regrasDisputaDetectadas,
     };
   }
 
@@ -602,6 +749,7 @@ export async function extrairItensCertameCompleto(
           origem: "IA",
           documentosLidos,
           avisos,
+          regrasDisputaDetectadas,
         };
       }
     }
@@ -620,6 +768,7 @@ export async function extrairItensCertameCompleto(
         origem: "HISTORICO",
         documentosLidos,
         avisos,
+        regrasDisputaDetectadas,
       };
     }
   }
@@ -644,5 +793,6 @@ export async function extrairItensCertameCompleto(
     origem: "HISTORICO",
     documentosLidos,
     avisos,
+    regrasDisputaDetectadas,
   };
 }

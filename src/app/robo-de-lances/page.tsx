@@ -29,6 +29,7 @@ import {
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
+import type { DisputaItemRegra } from "@/server/schemas/proposta-calculadora.schema";
 
 interface SalaDisputaTenant {
   id: string;
@@ -47,7 +48,7 @@ interface SalaDisputaTenant {
   itensAtivosNoRobo: number;
   pisoSeguroTotal: number;
   propostaInicialTotal: number;
-  regrasItens: any[];
+  regrasItens: DisputaItemRegra[];
   dataAbertura?: string | null;
   statusKanban: string;
   atualizadoEm?: string | null;
@@ -113,12 +114,9 @@ export default function RoboDeLancesPage() {
     text: string;
   } | null>(null);
 
-  // Estado do Motor de Lances e Salas do Tenant
-  const [motorAtivoGlobal, setMotorAtivoGlobal] = useState(true);
+  // Estado das Salas Configuradas do Tenant e Preferência Sandbox
   const [salas, setSalas] = useState<SalaDisputaTenant[]>(INITIAL_SALAS_DEMO);
   const [carregandoSalas, setCarregandoSalas] = useState(false);
-  const [estrategiaGlobal, setEstrategiaGlobal] = useState("CENTAVO_1");
-  const [tempoDisparo, setTempoDisparo] = useState("RANDOM_2S");
   const [preferenciaMe, setPreferenciaMe] = useState("ATIVO");
 
   // Estado da Sala Simulada (Sandbox)
@@ -187,10 +185,10 @@ export default function RoboDeLancesPage() {
           ? `Disputa do certame ${sala.numeroEdital} pausada preventivamente.`
           : `Disputa do certame ${sala.numeroEdital} retomada com sucesso.`,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         kind: "error",
-        text: err?.message || "Erro ao atualizar estado da disputa.",
+        text: err instanceof Error ? err.message : "Erro ao atualizar estado da disputa.",
       });
     }
   };
@@ -201,8 +199,8 @@ export default function RoboDeLancesPage() {
   return (
     <ModulePageShell
       title="Robô de Lances"
-      badge="Auto-Bidder Multi-Item"
-      subtitle="Painel central de monitoramento em tempo real das salas públicas de disputa ativas nos portais de compras (Compras.gov.br, Compras Públicas, BBMNet, BEC-SP), com estratégia multi-item e proteção inviolável do preço piso calculado."
+      badge="Em breve • Sandbox"
+      subtitle="Central de preparação estratégica das licitações com regras de disputa configuradas na aba ⚡ Disputa, proteção do Piso Seguro calculado e Simulador de Disputa em ambiente Sandbox isolado."
     >
       {feedback && (
         <InlineNotification
@@ -213,6 +211,16 @@ export default function RoboDeLancesPage() {
           onCloseButtonClick={() => setFeedback(null)}
         />
       )}
+
+      <InlineNotification
+        data-testid="robo-lances-sandbox-aviso"
+        style={{ marginBottom: "1rem" }}
+        kind="info"
+        lowContrast
+        hideCloseButton
+        title="Ambiente de Preparação & Simulação (Sandbox Isolado):"
+        subtitle="O disparo automático ao vivo dentro dos portais externos (Compras.gov.br, Compras Públicas, Licitar Digital, BBMNet) ainda não está conectado. Utilize este painel para acompanhar salas configuradas, proteger seus pisos mínimos e testar táticas no Simulador antes da sessão oficial."
+      />
 
       <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
         <div
@@ -227,7 +235,7 @@ export default function RoboDeLancesPage() {
         >
           <div>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>
-              Painel Central de Disputas em Tempo Real (Auto-Bidder)
+              Painel Central de Disputas &amp; Preparação de Lances
             </h2>
             <p
               style={{
@@ -236,7 +244,7 @@ export default function RoboDeLancesPage() {
                 color: "var(--cds-text-secondary)",
               }}
             >
-              Monitoramento central de todas as oportunidades e salas com disputa configurada pela sua equipe. Trava inviolável de proteção contra inexequibilidade (Art. 59 da Lei 14.133/2021).
+              Centraliza as licitações com regras na aba ⚡ Disputa (ou em status Em Disputa), mantendo trava matemática contra inexequibilidade (Art. 59 da Lei 14.133/2021).
             </p>
           </div>
 
@@ -261,26 +269,6 @@ export default function RoboDeLancesPage() {
               disabled={carregandoSalas}
             >
               {carregandoSalas ? "Atualizando..." : "Atualizar Salas"}
-            </Button>
-            <Tag type={motorAtivoGlobal ? "green" : "cool-gray"} size="md">
-              {motorAtivoGlobal ? "● Motor em Tempo Real ATIVO" : "⏸️ Motor PAUSADO"}
-            </Tag>
-            <Button
-              size="sm"
-              kind={motorAtivoGlobal ? "danger--tertiary" : "primary"}
-              renderIcon={motorAtivoGlobal ? Pause : Play}
-              onClick={() => {
-                const novoStatus = !motorAtivoGlobal;
-                setMotorAtivoGlobal(novoStatus);
-                setFeedback({
-                  kind: novoStatus ? "success" : "warning",
-                  text: novoStatus
-                    ? "Motor global de lances ativado com sucesso para as salas monitoradas."
-                    : "Motor global de lances pausado preventivamente. Nenhum lance automático será enviado.",
-                });
-              }}
-            >
-              {motorAtivoGlobal ? "Pausar Motor Global" : "Ligar Motor Global"}
             </Button>
           </div>
         </div>
@@ -418,8 +406,17 @@ export default function RoboDeLancesPage() {
                         <Tag type="cool-gray" size="sm">
                           {sala.portal}
                         </Tag>
+                        {sala.modoDisputaEdital && (
+                          <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)", marginTop: "0.2rem" }}>
+                            {sala.modoDisputaEdital === "ABERTO_FECHADO"
+                              ? "Modo: Aberto e Fechado"
+                              : sala.modoDisputaEdital === "FECHADO_ABERTO"
+                                ? "Modo: Fechado e Aberto"
+                                : "Modo: Aberto"}
+                          </div>
+                        )}
                         {sala.identificadorSala && (
-                          <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.2rem" }}>
+                          <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
                             {sala.identificadorSala}
                           </div>
                         )}
@@ -513,50 +510,31 @@ export default function RoboDeLancesPage() {
           )}
         </div>
 
-        {/* Configurações Padrão de Disparo */}
-        <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-accent, #f4f4f4)", borderRadius: "4px" }}>
+        {/* Preferências do Simulador (Sandbox) */}
+        <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-02)", borderRadius: "4px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
             <Settings size={18} />
             <h4 style={{ fontSize: "0.95rem", fontWeight: 600, margin: 0 }}>
-              Estratégia Padrão de Disparo do Motor de Lances
+              Preferências do Simulador (Sandbox)
             </h4>
           </div>
           <Grid style={{ padding: 0 }}>
-            <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
-              <Select
-                id="select-decremento-padrao"
-                labelText="Regra de Decremento Global"
-                value={estrategiaGlobal}
-                onChange={(e) => setEstrategiaGlobal(e.target.value)}
-              >
-                <SelectItem value="CENTAVO_1" text="Cobrir por R$ 0,01 (Mínimo Permitido)" />
-                <SelectItem value="REAL_1" text="Cobrir por R$ 1,00" />
-                <SelectItem value="REAL_5" text="Cobrir por R$ 5,00" />
-                <SelectItem value="PERCENTUAL_05" text="Cobrir por 0,5% do valor atual" />
-              </Select>
-            </Column>
-            <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
-              <Select
-                id="select-tempo-disparo"
-                labelText="Janela de Disparo do Lance"
-                value={tempoDisparo}
-                onChange={(e) => setTempoDisparo(e.target.value)}
-              >
-                <SelectItem value="IMEDIATO" text="Imediato (ao ser superado)" />
-                <SelectItem value="RANDOM_2S" text="Randômico (1 a 3 segundos finais)" />
-                <SelectItem value="ULTIMOS_SEGUNDOS" text="Sniper (Últimos 10 segundos da rodada)" />
-              </Select>
-            </Column>
-            <Column lg={4} md={2} sm={4} style={{ marginBottom: "0.5rem" }}>
+            <Column lg={6} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
               <Select
                 id="select-empate-me"
                 labelText="Direito de Preferência ME/EPP (LC 123/2006)"
                 value={preferenciaMe}
                 onChange={(e) => setPreferenciaMe(e.target.value)}
               >
-                <SelectItem value="ATIVO" text="Ativo: Cobrir menor lance em até 5min" />
+                <SelectItem value="ATIVO" text="Ativo: Habilitar lance de desempate (até 5%)" />
                 <SelectItem value="DESATIVO" text="Desativado" />
               </Select>
+            </Column>
+            <Column lg={6} md={4} sm={4} style={{ display: "flex", alignItems: "center" }}>
+              <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--cds-text-secondary)", lineHeight: 1.4 }}>
+                As regras por item (Piso Seguro, Decremento, Tática Imediato/Sniper/Monitorar e Modo de Disputa do edital) são definidas diretamente na aba{" "}
+                <strong>⚡ Disputa</strong> de cada oportunidade.
+              </p>
             </Column>
           </Grid>
         </Tile>

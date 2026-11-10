@@ -143,6 +143,7 @@ export type ConfiguracaoPropostaInput = z.infer<typeof configuracaoPropostaSchem
 export const PORTAIS_DISPUTA_OPCOES = [
   "Compras.gov.br",
   "Portal de Compras Públicas",
+  "Licitar Digital",
   "Licitanet",
   "BNC (Bolsa Nacional de Compras)",
   "BLL Compras",
@@ -153,6 +154,33 @@ export const PORTAIS_DISPUTA_OPCOES = [
 ] as const;
 
 export type PortalDisputaNome = (typeof PORTAIS_DISPUTA_OPCOES)[number];
+
+export const MODO_DISPUTA_EDITAL_OPCOES = [
+  "ABERTO",
+  "ABERTO_FECHADO",
+  "FECHADO_ABERTO",
+] as const;
+export type ModoDisputaEdital = (typeof MODO_DISPUTA_EDITAL_OPCOES)[number];
+
+export const regrasDisputaDetectadasSchema = z.object({
+  portal: z.string().nullable().optional().default(null),
+  modoDisputaEdital: z
+    .enum(MODO_DISPUTA_EDITAL_OPCOES)
+    .nullable()
+    .optional()
+    .default(null),
+  modoDisputaNomeOriginal: z.string().nullable().optional().default(null),
+  intervaloMinimoLances: z.string().nullable().optional().default(null),
+  criterioJulgamento: z.string().nullable().optional().default(null),
+  identificadorSala: z.string().nullable().optional().default(null),
+  uasg: z.string().nullable().optional().default(null),
+  linkSessao: z.string().nullable().optional().default(null),
+  fontes: z.array(z.string()).default([]),
+  confianca: z.enum(["ALTA", "MEDIA", "BAIXA"]).optional().default("MEDIA"),
+  detectadoEm: z.string().optional(),
+});
+
+export type RegrasDisputaDetectadas = z.infer<typeof regrasDisputaDetectadasSchema>;
 
 export const TIPO_DECREMENTO_OPCOES = ["CENTAVOS_1", "FIXO_REAIS", "PERCENTUAL"] as const;
 export type TipoDecremento = (typeof TIPO_DECREMENTO_OPCOES)[number];
@@ -223,6 +251,7 @@ export const calculadoraDadosSchema = z.object({
   propostaConfig: configuracaoPropostaSchema.default({}),
   cotacaoConfig: z.record(z.any()).optional().default({}),
   disputaConfig: disputaConfigSchema.optional().default({}),
+  regrasDisputaDetectadas: regrasDisputaDetectadasSchema.nullable().optional(),
   atualizadoEm: z.string().optional().default(() => new Date().toISOString()),
 });
 

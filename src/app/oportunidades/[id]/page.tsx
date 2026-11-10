@@ -96,7 +96,9 @@ import {
   type DisputaItemRegra,
   type TipoDecremento,
   type TaticaDisputa,
+  type RegrasDisputaDetectadas,
 } from "@/server/schemas/proposta-calculadora.schema";
+import { mesclarRegrasDisputaDetectadas } from "@/lib/regras-disputa-edital";
 import { gerarConteudoPropostaComercial } from "@/lib/proposta-comercial-template";
 import {
   gerarConteudoPedidoCotacao,
@@ -226,6 +228,7 @@ interface OportunidadeDetalhe {
   uf: string;
   municipio?: string | null;
   modalidade: string;
+  portalDisputa?: string | null;
   valorEstimado: number;
   dataAbertura: string;
   dataEncerramentoProposta?: string | null;
@@ -255,6 +258,23 @@ interface OportunidadeDetalhe {
   repositoriosSimilares?: RepositorioItem[];
   analisesIA?: AnaliseIAItem[];
   notas?: NotaItemUI[];
+  regrasDisputaDetectadas?: RegrasDisputaDetectadas | null;
+  calculadoraDados?: {
+    parametrosPadrao?: {
+      impostosPercentual: number;
+      bdiPercentual: number;
+      margemMinimaPercentual: number;
+      margemAlvoPercentual: number;
+    };
+    itens?: ItemCalculadoraInput[];
+    propostaConfig?: Partial<ConfiguracaoPropostaInput>;
+    cotacaoConfig?: Record<string, unknown> & {
+      itensSelecionados?: Record<string, boolean>;
+    };
+    disputaConfig?: Partial<DisputaConfig>;
+    regrasDisputaDetectadas?: RegrasDisputaDetectadas | null;
+    atualizadoEm?: string;
+  } | null;
 }
 
 interface OportunidadesDetalhePageProps {
@@ -682,6 +702,8 @@ function OportunidadesDetalheContent({
   const [tempoRespostaSegundos, setTempoRespostaSegundos] = React.useState<number>(3);
   const [segundosFinaisSniper, setSegundosFinaisSniper] = React.useState<number>(10);
   const [regrasDisputaItens, setRegrasDisputaItens] = React.useState<DisputaItemRegra[]>([]);
+  const [regrasDisputaDetectadas, setRegrasDisputaDetectadas] =
+    React.useState<RegrasDisputaDetectadas | null>(null);
   const [salvandoDisputaCertame, setSalvandoDisputaCertame] = React.useState(false);
   const [disputaFeedback, setDisputaFeedback] = React.useState<{ tipo: "success" | "error"; msg: string } | null>(null);
   const [modalSimuladorDisputaAberto, setModalSimuladorDisputaAberto] = React.useState(false);
@@ -785,6 +807,33 @@ function OportunidadesDetalheContent({
       setValorHomologarInput(finalHomologado);
 
       const objetoCertame = obterObjetoCertame(opp);
+      const detectadasInicial: RegrasDisputaDetectadas | null =
+        opp.regrasDisputaDetectadas || opp.calculadoraDados?.regrasDisputaDetectadas || null;
+      setRegrasDisputaDetectadas(detectadasInicial);
+
+      const aplicarPrefillDetectadasSemSobrescrever = () => {
+        setDisputaOrigemPrecos("CALCULADORA");
+        const portalDetectado =
+          detectadasInicial?.portal &&
+          (PORTAIS_DISPUTA_OPCOES as readonly string[]).includes(detectadasInicial.portal)
+            ? detectadasInicial.portal
+            : null;
+        if (portalDetectado) {
+          setPortalDisputa(portalDetectado);
+        }
+        if (detectadasInicial?.modoDisputaEdital) {
+          setModoDisputaEdital(detectadasInicial.modoDisputaEdital);
+        }
+        if (detectadasInicial?.intervaloMinimoLances) {
+          setIntervaloMinimoLances(detectadasInicial.intervaloMinimoLances);
+        }
+        setIdentificadorSalaDisputa(
+          detectadasInicial?.identificadorSala ||
+            (detectadasInicial?.uasg ? `UASG ${detectadasInicial.uasg}` : "") ||
+            opp.numeroEdital ||
+            "",
+        );
+      };
 
       // Hidratação dos dados da Calculadora Multi-Item e Proposta
       if (opp.calculadoraDados) {
@@ -859,12 +908,10 @@ function OportunidadesDetalheContent({
             setRegrasDisputaItens(disp.regrasItens);
           }
         } else {
-          setDisputaOrigemPrecos("CALCULADORA");
-          setIdentificadorSalaDisputa(opp.numeroEdital || "");
+          aplicarPrefillDetectadasSemSobrescrever();
         }
       } else {
-        setDisputaOrigemPrecos("CALCULADORA");
-        setIdentificadorSalaDisputa(opp.numeroEdital || "");
+        aplicarPrefillDetectadasSemSobrescrever();
         setItensCalculadora([
           {
             id: "item_01",
@@ -1243,6 +1290,7 @@ function OportunidadesDetalheContent({
           regrasItens: regrasDisputaItens,
           atualizadoEm: new Date().toISOString(),
         },
+        ...(regrasDisputaDetectadas ? { regrasDisputaDetectadas } : {}),
         atualizadoEm: new Date().toISOString(),
       };
       const res = await fetch(`/api/oportunidades/${id}/status`, {
@@ -1332,6 +1380,7 @@ function OportunidadesDetalheContent({
           regrasItens: regrasDisputaItens,
           atualizadoEm: new Date().toISOString(),
         },
+        ...(regrasDisputaDetectadas ? { regrasDisputaDetectadas } : {}),
         atualizadoEm: new Date().toISOString(),
       };
       const res = await fetch(`/api/oportunidades/${id}/status`, {
@@ -1409,6 +1458,35 @@ function OportunidadesDetalheContent({
     setTimeout(() => setDisputaFeedback(null), 4000);
   };
 
+  const handleAplicarRegrasDetectadas = () => {
+    if (!regrasDisputaDetectadas) return;
+    if (
+      regrasDisputaDetectadas.portal &&
+      (PORTAIS_DISPUTA_OPCOES as readonly string[]).includes(regrasDisputaDetectadas.portal)
+    ) {
+      setPortalDisputa(regrasDisputaDetectadas.portal);
+    } else if (regrasDisputaDetectadas.portal) {
+      setPortalDisputa("Outro Portal");
+    }
+    if (regrasDisputaDetectadas.modoDisputaEdital) {
+      setModoDisputaEdital(regrasDisputaDetectadas.modoDisputaEdital);
+    }
+    if (regrasDisputaDetectadas.intervaloMinimoLances) {
+      setIntervaloMinimoLances(regrasDisputaDetectadas.intervaloMinimoLances);
+    }
+    if (regrasDisputaDetectadas.identificadorSala || regrasDisputaDetectadas.uasg) {
+      setIdentificadorSalaDisputa(
+        regrasDisputaDetectadas.identificadorSala ||
+          `UASG ${regrasDisputaDetectadas.uasg}`,
+      );
+    }
+    setDisputaFeedback({
+      tipo: "success",
+      msg: "Regras detectadas do Edital/PNCP aplicadas nos campos da sessão. Clique em 'Salvar Disputa & Robô' para confirmar.",
+    });
+    setTimeout(() => setDisputaFeedback(null), 5000);
+  };
+
   const handleSalvarPedidoCotacao = async () => {
     if (!id || !oportunidade) return;
     setSalvandoCotacao(true);
@@ -1449,6 +1527,7 @@ function OportunidadesDetalheContent({
           regrasItens: regrasDisputaItens,
           atualizadoEm: new Date().toISOString(),
         },
+        ...(regrasDisputaDetectadas ? { regrasDisputaDetectadas } : {}),
         atualizadoEm: new Date().toISOString(),
       };
 
@@ -1528,6 +1607,7 @@ function OportunidadesDetalheContent({
         propostaConfig,
         cotacaoConfig: { ...configCotacao, itensSelecionados: itensSelecionadosCotacao },
         disputaConfig: configDisputa,
+        ...(regrasDisputaDetectadas ? { regrasDisputaDetectadas } : {}),
         atualizadoEm: new Date().toISOString(),
       };
 
@@ -1805,6 +1885,46 @@ function OportunidadesDetalheContent({
             )
           : consolidadoSync.propostaTotalGeral;
 
+      let portalSync = portalDisputa;
+      let modoSync = modoDisputaEdital;
+      let intervaloSync = intervaloMinimoLances;
+      let salaSync = identificadorSalaDisputa.trim() || oportunidade?.numeroEdital || "";
+
+      const regrasSyncAtualizadas = data.regrasDisputaDetectadas
+        ? mesclarRegrasDisputaDetectadas(
+            regrasDisputaDetectadas,
+            data.regrasDisputaDetectadas,
+          )
+        : regrasDisputaDetectadas;
+
+      if (regrasSyncAtualizadas) {
+        setRegrasDisputaDetectadas(regrasSyncAtualizadas);
+        const temConfigManualSalva = Boolean(oportunidade?.calculadoraDados?.disputaConfig);
+        if (!temConfigManualSalva) {
+          if (
+            regrasSyncAtualizadas.portal &&
+            (PORTAIS_DISPUTA_OPCOES as readonly string[]).includes(regrasSyncAtualizadas.portal)
+          ) {
+            portalSync = regrasSyncAtualizadas.portal;
+            setPortalDisputa(portalSync);
+          }
+          if (regrasSyncAtualizadas.modoDisputaEdital) {
+            modoSync = regrasSyncAtualizadas.modoDisputaEdital;
+            setModoDisputaEdital(modoSync);
+          }
+          if (regrasSyncAtualizadas.intervaloMinimoLances) {
+            intervaloSync = regrasSyncAtualizadas.intervaloMinimoLances;
+            setIntervaloMinimoLances(intervaloSync);
+          }
+          if (regrasSyncAtualizadas.identificadorSala || regrasSyncAtualizadas.uasg) {
+            salaSync =
+              regrasSyncAtualizadas.identificadorSala ||
+              `UASG ${regrasSyncAtualizadas.uasg}`;
+            setIdentificadorSalaDisputa(salaSync);
+          }
+        }
+      }
+
       let salvoAutomaticamente = false;
       if (oportunidade) {
         const dadosCalculadoraSync = {
@@ -1813,10 +1933,10 @@ function OportunidadesDetalheContent({
           propostaConfig,
           cotacaoConfig: { ...configCotacao, itensSelecionados: proximaSelecaoCotacao },
           disputaConfig: {
-            portal: portalDisputa,
-            identificadorSala: identificadorSalaDisputa.trim() || oportunidade.numeroEdital || "",
-            modoDisputaEdital,
-            intervaloMinimoLances,
+            portal: portalSync,
+            identificadorSala: salaSync,
+            modoDisputaEdital: modoSync,
+            intervaloMinimoLances: intervaloSync,
             origemPrecos: disputaOrigemPrecos,
             statusGeral: statusGeralDisputa,
             pausaEmergencia: pausaEmergenciaDisputa,
@@ -1825,6 +1945,7 @@ function OportunidadesDetalheContent({
             regrasItens: proximasRegras,
             atualizadoEm: new Date().toISOString(),
           },
+          ...(regrasSyncAtualizadas ? { regrasDisputaDetectadas: regrasSyncAtualizadas } : {}),
           atualizadoEm: new Date().toISOString(),
         };
 
@@ -1884,6 +2005,7 @@ function OportunidadesDetalheContent({
     pausaEmergenciaDisputa,
     tempoRespostaSegundos,
     segundosFinaisSniper,
+    regrasDisputaDetectadas,
   ]);
 
   const handleImprimirCotacaoLimpa = () => {
@@ -3575,6 +3697,45 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                             </p>
                           </div>
                         </div>
+
+                        {r.regrasDisputa &&
+                          (r.regrasDisputa.portal ||
+                            r.regrasDisputa.modoDisputaEdital ||
+                            r.regrasDisputa.intervaloMinimoLances ||
+                            r.regrasDisputa.criterioJulgamento) && (
+                            <div
+                              style={{
+                                marginBottom: "1rem",
+                                padding: "0.75rem 1rem",
+                                backgroundColor: "var(--cds-layer-02)",
+                                borderLeft: "4px solid var(--cds-support-info)",
+                                borderRadius: "4px",
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: "0.75rem",
+                                alignItems: "center",
+                              }}
+                            >
+                              <strong style={{ fontSize: "0.8125rem", color: "var(--cds-text-primary)" }}>
+                                ⚡ Regras de Disputa Extraídas:
+                              </strong>
+                              {r.regrasDisputa.portal && (
+                                <Tag type="cool-gray" size="sm">Portal: {r.regrasDisputa.portal}</Tag>
+                              )}
+                              {r.regrasDisputa.modoDisputaEdital && (
+                                <Tag type="cyan" size="sm">Modo: {r.regrasDisputa.modoDisputaEdital}</Tag>
+                              )}
+                              {r.regrasDisputa.intervaloMinimoLances && (
+                                <Tag type="teal" size="sm">Intervalo: {r.regrasDisputa.intervaloMinimoLances}</Tag>
+                              )}
+                              {r.regrasDisputa.criterioJulgamento && (
+                                <Tag type="purple" size="sm">{r.regrasDisputa.criterioJulgamento}</Tag>
+                              )}
+                              {r.regrasDisputa.uasg && (
+                                <Tag type="outline" size="sm">UASG {r.regrasDisputa.uasg}</Tag>
+                              )}
+                            </div>
+                          )}
 
                         {/* CNAEs Sugeridos (quando ausentes na empresa ou detectados no certame) */}
                         {r.cnaesAptosSugeridos && r.cnaesAptosSugeridos.length > 0 && (
@@ -5377,6 +5538,102 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: "0.75rem" }}>
                   🌐 Dados da Sessão Pública & Conexão ao Portal
                 </div>
+
+                {regrasDisputaDetectadas &&
+                  (regrasDisputaDetectadas.portal ||
+                    regrasDisputaDetectadas.modoDisputaEdital ||
+                    regrasDisputaDetectadas.intervaloMinimoLances ||
+                    regrasDisputaDetectadas.criterioJulgamento ||
+                    regrasDisputaDetectadas.uasg ||
+                    regrasDisputaDetectadas.identificadorSala ||
+                    regrasDisputaDetectadas.linkSessao) && (
+                    <Tile
+                      data-testid="disputa-regras-detectadas-banner"
+                      style={{
+                        padding: "0.875rem 1rem",
+                        marginBottom: "1rem",
+                        backgroundColor: "var(--cds-layer-02)",
+                        borderLeft: "4px solid var(--cds-support-info)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                          <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--cds-text-primary)" }}>
+                            🧭 Referência automática importada (PNCP / Edital / IA) — edições manuais são preservadas:
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", alignItems: "center" }}>
+                            {regrasDisputaDetectadas.portal && (
+                              <Tag type="cool-gray" size="sm">Portal: {regrasDisputaDetectadas.portal}</Tag>
+                            )}
+                            {regrasDisputaDetectadas.modoDisputaEdital && (
+                              <Tag type="cyan" size="sm">
+                                Modo:{" "}
+                                {regrasDisputaDetectadas.modoDisputaEdital === "ABERTO_FECHADO"
+                                  ? "Aberto e Fechado"
+                                  : regrasDisputaDetectadas.modoDisputaEdital === "FECHADO_ABERTO"
+                                    ? "Fechado e Aberto"
+                                    : "Aberto"}
+                              </Tag>
+                            )}
+                            {regrasDisputaDetectadas.intervaloMinimoLances && (
+                              <Tag type="teal" size="sm">
+                                Intervalo mín.: {regrasDisputaDetectadas.intervaloMinimoLances}
+                              </Tag>
+                            )}
+                            {regrasDisputaDetectadas.criterioJulgamento && (
+                              <Tag type="purple" size="sm">
+                                Critério: {regrasDisputaDetectadas.criterioJulgamento}
+                              </Tag>
+                            )}
+                            {(regrasDisputaDetectadas.uasg || regrasDisputaDetectadas.identificadorSala) && (
+                              <Tag type="outline" size="sm">
+                                {regrasDisputaDetectadas.identificadorSala ||
+                                  `UASG ${regrasDisputaDetectadas.uasg}`}
+                              </Tag>
+                            )}
+                            {Array.isArray(regrasDisputaDetectadas.fontes) &&
+                              regrasDisputaDetectadas.fontes.length > 0 && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                                  Fontes: {regrasDisputaDetectadas.fontes.join(", ")}
+                                </span>
+                              )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                          {regrasDisputaDetectadas.linkSessao &&
+                            /^https?:\/\//i.test(regrasDisputaDetectadas.linkSessao) && (
+                              <Button
+                                kind="ghost"
+                                size="sm"
+                                renderIcon={Launch}
+                                href={regrasDisputaDetectadas.linkSessao}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Abrir Portal de Origem
+                              </Button>
+                            )}
+                          <Button
+                            kind="tertiary"
+                            size="sm"
+                            onClick={handleAplicarRegrasDetectadas}
+                            data-testid="btn-aplicar-regras-edital"
+                          >
+                            Aplicar regras detectadas
+                          </Button>
+                        </div>
+                      </div>
+                    </Tile>
+                  )}
                 <div
                   style={{
                     display: "grid",

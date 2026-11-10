@@ -32,6 +32,11 @@ export const pncpContratacaoRawSchema = z
     informacaoComplementar: z.string().optional().nullable(),
     modalidadeId: z.coerce.number().optional().nullable(),
     modalidadeNome: z.string().optional().nullable(),
+    modoDisputaId: z.coerce.number().optional().nullable(),
+    modoDisputaNome: z.string().optional().nullable(),
+    criterioJulgamentoId: z.coerce.number().optional().nullable(),
+    criterioJulgamentoNome: z.string().optional().nullable(),
+    usuarioNome: z.string().optional().nullable(),
     valorTotalEstimado: z.coerce.number().optional().nullable(),
     valorTotalHomologado: z.coerce.number().optional().nullable(),
     dataPublicacaoPncp: z.string().optional().nullable(),
@@ -52,6 +57,7 @@ export const pncpContratacaoRawSchema = z
       .nullable(),
     unidadeOrgao: z
       .object({
+        codigoUnidade: z.union([z.string(), z.number()]).optional().nullable(),
         nomeUnidade: z.string().optional().nullable(),
         ufSigla: z.string().optional().nullable(),
         municipioNome: z.string().optional().nullable(),

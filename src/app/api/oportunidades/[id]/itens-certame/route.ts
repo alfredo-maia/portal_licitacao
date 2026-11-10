@@ -106,6 +106,7 @@ export async function GET(request: Request, context: RouteContext) {
         origem: resultado.origem,
         documentosLidos: resultado.documentosLidos,
         avisos: resultado.avisos,
+        regrasDisputaDetectadas: resultado.regrasDisputaDetectadas ?? null,
       },
       { status: 200 },
     );

@@ -65,6 +65,11 @@ import {
   type MacroSegmento,
 } from "@/server/schemas/segmentos.schema";
 import { inMemoryTenants } from "@/server/services/tenant.service";
+import {
+  extrairRegrasDisputaDeTextoEdital,
+  mesclarRegrasDisputaDetectadas,
+} from "@/lib/regras-disputa-edital";
+import type { RegrasDisputaDetectadas } from "@/server/schemas/proposta-calculadora.schema";
 
 export function obterPalavrasChaveSubsegmento(subsegmento: string): string[] {
   const norm = subsegmento.toLowerCase().trim();
@@ -579,7 +584,18 @@ export async function listOportunidades(
   const filters = oportunidadesFilterSchema.parse(rawFilters ?? {});
 
   let tenantCriadoEm: Date | null = null;
-  const tenantStatusMap = new Map<string, { statusKanban: string; motivoRecusa?: string | null }>();
+  const tenantStatusMap = new Map<
+    string,
+    {
+      statusKanban: string;
+      motivoRecusa?: string | null;
+      lanceMinimo?: number | null;
+      valorProposta?: number | null;
+      valorHomologado?: number | null;
+      calculadoraDados?: unknown;
+      atualizadoEm?: Date | null;
+    }
+  >();
   if (tenantId) {
     const memTenant = inMemoryTenants.get(tenantId);
     if (memTenant) {
@@ -604,14 +620,28 @@ export async function listOportunidades(
         tenantStatusMap.set(r.licitacaoId, {
           statusKanban: r.statusKanban,
           motivoRecusa: r.motivoRecusa,
+          lanceMinimo: r.lanceMinimo,
+          valorProposta: r.valorProposta,
+          valorHomologado: r.valorHomologado,
+          calculadoraDados: r.calculadoraDados,
+          atualizadoEm: r.atualizadoEm,
         });
       }
     } catch {}
 
     for (const r of listInMemoryTenantLicitacoes(tenantId)) {
+      const existente = tenantStatusMap.get(r.licitacaoId);
       tenantStatusMap.set(r.licitacaoId, {
         statusKanban: r.statusKanban,
         motivoRecusa: r.motivoRecusa,
+        lanceMinimo: r.lanceMinimo ?? existente?.lanceMinimo ?? null,
+        valorProposta: r.valorProposta ?? existente?.valorProposta ?? null,
+        valorHomologado: r.valorHomologado ?? existente?.valorHomologado ?? null,
+        calculadoraDados:
+          r.calculadoraDados !== undefined
+            ? r.calculadoraDados
+            : (existente?.calculadoraDados ?? null),
+        atualizadoEm: existente?.atualizadoEm ?? r.dataDecisao ?? null,
       });
     }
   }
@@ -652,7 +682,12 @@ export async function listOportunidades(
       ...rec,
       status: (tInfo?.statusKanban || "PENDENTE") as any,
       motivoRecusa: tInfo?.motivoRecusa ?? (tInfo ? null : rec.motivoRecusa),
-    };
+      ...(tInfo?.lanceMinimo !== undefined ? { lanceMinimo: tInfo.lanceMinimo } : {}),
+      ...(tInfo?.valorProposta !== undefined ? { valorProposta: tInfo.valorProposta } : {}),
+      ...(tInfo?.valorHomologado !== undefined ? { valorHomologado: tInfo.valorHomologado } : {}),
+      ...(tInfo?.calculadoraDados !== undefined ? { calculadoraDados: tInfo.calculadoraDados } : {}),
+      ...(tInfo?.atualizadoEm ? { updatedAt: tInfo.atualizadoEm } : {}),
+    } as LicitacaoRecord;
   };
 
   const mergedByIdPncp = new Map<string, LicitacaoRecord>();
@@ -965,6 +1000,43 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
     }
   }
 
+  interface CalculadoraDadosComRegras {
+    regrasDisputaDetectadas?: Partial<RegrasDisputaDetectadas> | null;
+  }
+  interface AnaliseComRegrasItem {
+    status?: string;
+    concluidoEm?: Date | string | null;
+    criadoEm?: Date | string | null;
+    relatorioJson?: { regrasDisputa?: Partial<RegrasDisputaDetectadas> | null } | null;
+  }
+
+  const baseRecordComCalc = base as LicitacaoRecord & {
+    calculadoraDados?: CalculadoraDadosComRegras | null;
+  };
+  const calcDados = tenantLic?.calculadoraDados ?? baseRecordComCalc.calculadoraDados ?? null;
+  const calcDadosComRegras = (calcDados ?? null) as CalculadoraDadosComRegras | null;
+  const analisesLista = Array.from(analisesMap.values()) as AnaliseComRegrasItem[];
+  const analiseComRegras = analisesLista
+    .filter((an) => an?.status === "CONCLUIDO" && Boolean(an?.relatorioJson?.regrasDisputa))
+    .sort(
+      (a, b) =>
+        new Date(b.concluidoEm || b.criadoEm || 0).getTime() -
+        new Date(a.concluidoEm || a.criadoEm || 0).getTime(),
+    )[0];
+
+  const regrasDisputaBaseline = extrairRegrasDisputaDeTextoEdital("", {
+    portalAtual: base.portalDisputa ?? null,
+    linkSistemaOrigem: base.linkSistemaOrigem ?? null,
+    linkPncp: base.linkPncp ?? null,
+    numeroEdital: base.numeroEdital ?? null,
+  });
+
+  const regrasDisputaDetectadas = mesclarRegrasDisputaDetectadas(
+    regrasDisputaBaseline,
+    analiseComRegras?.relatorioJson?.regrasDisputa ?? null,
+    calcDadosComRegras?.regrasDisputaDetectadas ?? null,
+  );
+
   return {
     ...base,
     status: statusKanban,
@@ -972,13 +1044,14 @@ async function hydrateDossieRelations(base: any, tenantId?: string | null): Prom
     lanceMinimo: tenantLic?.lanceMinimo ?? base.lanceMinimo ?? null,
     valorProposta: tenantLic?.valorProposta ?? (base as any).valorProposta ?? null,
     valorHomologado: tenantLic?.valorHomologado ?? (base as any).valorHomologado ?? base.valorArrematado ?? null,
-    calculadoraDados: tenantLic?.calculadoraDados ?? (base as any).calculadoraDados ?? null,
+    calculadoraDados: calcDados,
+    regrasDisputaDetectadas,
     responsavelId,
     responsavel,
     atribuidos,
     arquivos: arquivosFiltrados,
     repositoriosSimilares: Array.from(reposMap.values()),
-    analisesIA: Array.from(analisesMap.values()),
+    analisesIA: analisesLista,
     notas: Array.from(notasMap.values()),
   };
 }

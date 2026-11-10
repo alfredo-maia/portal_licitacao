@@ -262,7 +262,7 @@ describe("Página /robo-de-lances — Painel Central Conectado ao Tenant", () =>
     render(<RoboDeLancesPage />);
 
     expect(
-      screen.getByRole("heading", { name: /Painel Central de Disputas em Tempo Real/i }),
+      screen.getByRole("heading", { name: /Painel Central de Disputas/i }),
     ).toBeInTheDocument();
 
     // Aguarda carregar as salas do tenant

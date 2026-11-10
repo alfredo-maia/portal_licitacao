@@ -8,6 +8,7 @@ import {
   type PncpContratacaoRaw,
 } from "@/server/schemas/pncp-ingestao.schema";
 import type { IngestaoLicitacaoItemInput } from "@/server/schemas/ingestao.schema";
+import { detectarPortalDisputaPorTextoEUrl } from "@/lib/regras-disputa-edital";
 import { ingestLicitacoesV2 } from "./ingestao.service";
 import { gerarTitulosEmLotePrioridadeDupla } from "./resumo-objeto-licitacao.service";
 
@@ -101,6 +102,13 @@ function mapPncpItemParaIngestao(
     normMod.codigo === 7 ||
     /presencial/i.test(`${raw.modalidadeNome || ""} ${objeto}`);
 
+  const portalDetectado = detectarPortalDisputaPorTextoEUrl({
+    linkSistemaOrigem: raw.linkSistemaOrigem ?? null,
+    linkProcessoEletronico: raw.linkProcessoEletronico ?? null,
+    usuarioNome: raw.usuarioNome ?? null,
+    portalAtual: null,
+  }).portal;
+
   return {
     pncpId: raw.numeroControlePNCP,
     numeroEdital,
@@ -116,7 +124,7 @@ function mapPncpItemParaIngestao(
       poder: raw.orgaoEntidade?.poderId ?? null,
     },
     modalidade: normMod.nome,
-    portalDisputa: "PNCP",
+    portalDisputa: portalDetectado || "PNCP",
     valorEstimado: Math.max(0, Number(raw.valorTotalEstimado ?? 0)),
     dataPublicacaoPncp: dataPub,
     dataAbertura,
@@ -238,7 +246,10 @@ export async function executarIngestaoDiariaPncp(
             break;
           }
 
-          const body: any = await res.json();
+          const body = (await res.json()) as {
+            data?: unknown[];
+            totalPaginas?: number;
+          } | null;
           const itensRaw = Array.isArray(body?.data) ? body.data : [];
           paginasProcessadas += 1;
 
@@ -258,9 +269,10 @@ export async function executarIngestaoDiariaPncp(
           ) {
             break;
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const msgErro = err instanceof Error ? err.message : "erro de rede";
           errosModalidade.push(
-            `mod=${modalidadeCod} p=${pagina}: ${err?.message || "erro de rede"}`,
+            `mod=${modalidadeCod} p=${pagina}: ${msgErro}`,
           );
           break;
         }

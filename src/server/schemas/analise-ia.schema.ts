@@ -269,6 +269,25 @@ export const relatorioParticipacaoSchema = z.object({
     )
     .optional(),
   recomendacoesPraticas: z.array(z.string()).default([]),
+  regrasDisputa: z
+    .object({
+      portal: z.string().nullable().optional().default(null),
+      modoDisputaEdital: z
+        .enum(["ABERTO", "ABERTO_FECHADO", "FECHADO_ABERTO"])
+        .nullable()
+        .optional()
+        .default(null),
+      modoDisputaNomeOriginal: z.string().nullable().optional().default(null),
+      intervaloMinimoLances: z.string().nullable().optional().default(null),
+      criterioJulgamento: z.string().nullable().optional().default(null),
+      identificadorSala: z.string().nullable().optional().default(null),
+      uasg: z.string().nullable().optional().default(null),
+      linkSessao: z.string().nullable().optional().default(null),
+      fontes: z.array(z.string()).default([]),
+      confianca: z.enum(["ALTA", "MEDIA", "BAIXA"]).optional().default("MEDIA"),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type RelatorioParticipacao = z.infer<typeof relatorioParticipacaoSchema>;

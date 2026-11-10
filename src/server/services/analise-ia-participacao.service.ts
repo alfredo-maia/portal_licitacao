@@ -42,6 +42,12 @@ import {
   pareceCabecalhoDeLoteOuObjeto,
 } from "./extracao-itens-certame.service";
 import {
+  extrairRegrasDisputaDeTextoEdital,
+  mesclarRegrasDisputaDetectadas,
+  normalizarModoDisputaPncp,
+} from "@/lib/regras-disputa-edital";
+import type { RegrasDisputaDetectadas } from "@/server/schemas/proposta-calculadora.schema";
+import {
   chamarLlmJsonMultimodal,
   type LlmInlinePart,
 } from "./llm-multimodal.service";
@@ -670,7 +676,7 @@ export function gerarPdfRelatorioParticipacao(params: {
     }
   }
 
-  if (r.checklistDocumental?.length || r.statusPortalDisputa) {
+  if (r.checklistDocumental?.length || r.statusPortalDisputa || r.regrasDisputa) {
     blocos.push(
       { text: "----------------------------------------------------------------------------------------" },
       { bold: true, size: 10.5, text: "7. PORTAL DE DISPUTA E AUDITORIA DOCUMENTAL" },
@@ -679,6 +685,24 @@ export function gerarPdfRelatorioParticipacao(params: {
       blocos.push({
         text: `Portal: ${r.statusPortalDisputa.portalNome} (${r.statusPortalDisputa.status}) - ${r.statusPortalDisputa.detalhe}`,
       });
+    }
+    if (r.regrasDisputa) {
+      const partesRegras = [
+        r.regrasDisputa.portal ? `Portal: ${r.regrasDisputa.portal}` : null,
+        r.regrasDisputa.modoDisputaEdital ? `Modo: ${r.regrasDisputa.modoDisputaEdital}` : null,
+        r.regrasDisputa.intervaloMinimoLances
+          ? `Intervalo Minimo: ${r.regrasDisputa.intervaloMinimoLances}`
+          : null,
+        r.regrasDisputa.criterioJulgamento
+          ? `Criterio: ${r.regrasDisputa.criterioJulgamento}`
+          : null,
+        r.regrasDisputa.uasg ? `UASG: ${r.regrasDisputa.uasg}` : null,
+      ].filter(Boolean);
+      if (partesRegras.length > 0) {
+        for (const l of quebrarLinhasPdf(`Regras Detectadas: ${partesRegras.join(" | ")}`, 86)) {
+          blocos.push({ text: l });
+        }
+      }
     }
   }
 
@@ -797,6 +821,7 @@ async function tentarEnriquecerComLLM(
   };
   recomendacoesExtras?: string[];
   observacoesCustos?: string;
+  regrasDisputa?: Partial<RegrasDisputaDetectadas>;
   _llmProvider?: "LLM_GEMINI" | "LLM_OPENAI";
 } | null> {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
@@ -823,7 +848,8 @@ async function tentarEnriquecerComLLM(
     "5. A Matriz SWOT deve destacar fatos concretos do certame (orçamento, Transferegov, prazos de pagamento, garantias, mobilização, rigor do TCE/TCU).\n" +
     "6. EXTRAÇÃO DE ITENS DO CERTAME: Nunca copie o título geral do certame ou cabeçalho do Lote 01 como Item 1 se o Termo de Referência/planilha listar os produtos individuais reais. Converta separadores de milhar brasileiros corretamente (ex: '13.000' -> 13000).\n" +
     "7. RESPEITO AO COFRE /documentacao: Documentos com possuiAnexo=false NÃO foram comprovados por PDF/imagem — aponte como 'Pendente de anexo em /documentacao', e NUNCA os chame de 'vencidos' se não estiverem com data expirada. Documentos com validacaoStatus='DIVERGENTE' possuem erro real detectado no arquivo enviado.\n" +
-    "8. CNAES PRINCIPAIS E SECUNDÁRIOS: Considere empresaCnaePrincipal E todos os empresaCnaesSecundarios cadastrados em Configurações/Cartão CNPJ. A empresa É COMPATÍVEL quando o CNAE Principal OU qualquer CNAE Secundário contempla o objeto licitado. Reconheça também 'Cartão CNPJ' (semValidade=true) em /documentacao como comprovação jurídica regular.\n\n" +
+    "8. CNAES PRINCIPAIS E SECUNDÁRIOS: Considere empresaCnaePrincipal E todos os empresaCnaesSecundarios cadastrados em Configurações/Cartão CNPJ. A empresa É COMPATÍVEL quando o CNAE Principal OU qualquer CNAE Secundário contempla o objeto licitado. Reconheça também 'Cartão CNPJ' (semValidade=true) em /documentacao como comprovação jurídica regular.\n" +
+    "9. REGRAS DA SESSÃO DE DISPUTA: Extraia do Edital o portal real (ex: Compras.gov.br, Portal de Compras Públicas, Licitar Digital, BLL Compras, BBMNet), o modoDisputaEdital ('ABERTO', 'ABERTO_FECHADO' ou 'FECHADO_ABERTO'), intervaloMinimoLances (ex: 'R$ 5,00' ou '0,5%'), criterioJulgamento e uasg no objeto opcional 'regrasDisputa'.\n\n" +
     "Retorne estritamente um JSON com a seguinte estrutura:\n" +
     "{\n" +
     '  "resumoExecutivo": "string com análise executiva em até 3 parágrafos claros",\n' +
@@ -879,6 +905,13 @@ async function tentarEnriquecerComLLM(
     '    "fraquezas": ["string com pontos de atenção operacional/técnica da oportunidade"],\n' +
     '    "oportunidades": ["string com ganhos estratégicos e de acervo"],\n' +
     '    "ameacas": ["string com riscos de fiscalização, multas ou flutuação de insumos"]\n' +
+    "  },\n" +
+    '  "regrasDisputa": {\n' +
+    '    "portal": "Compras.gov.br ou portal detectado ou null",\n' +
+    '    "modoDisputaEdital": "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO" | null,\n' +
+    '    "intervaloMinimoLances": "Ex: R$ 5,00 ou 0,5% ou null",\n' +
+    '    "criterioJulgamento": "Ex: Menor Preço ou null",\n' +
+    '    "uasg": "Ex: 158123 ou null"\n' +
     "  }\n" +
     "}";
 
@@ -1499,6 +1532,7 @@ export async function construirRelatorioParticipacaoHibrido(
     );
 
   let listaItensBase: ItemDisputaEdital[] = [];
+  let regrasDisputaExtracao: RegrasDisputaDetectadas | null = null;
   if (!itensSalvosParecemGenericos && (leituraCertame?.documentosLidos.length ?? 0) === 0) {
     for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
       listaItensBase.push({
@@ -1519,6 +1553,9 @@ export async function construirRelatorioParticipacaoHibrido(
         forcarVarreduraDocumentos: (leituraCertame?.documentosLidos.length ?? 0) > 0,
         leituraPrevia: leituraCertame ?? undefined,
       });
+      if (extracaoCompleta.regrasDisputaDetectadas) {
+        regrasDisputaExtracao = extracaoCompleta.regrasDisputaDetectadas;
+      }
       if (extracaoCompleta.itens.length > 0) {
         listaItensBase = extracaoCompleta.itens.map((it) => ({
           ...it,
@@ -1879,6 +1916,40 @@ export async function construirRelatorioParticipacaoHibrido(
     (qtdDocsSemAnexo > 0 || qtdDocsDivergentes > 0) &&
     /vencid/i.test(String(resumoHabilitacaoLLM));
 
+  const regrasDisputaDeterministicas = extrairRegrasDisputaDeTextoEdital(
+    leituraCertame?.textoConsolidado || "",
+    {
+      portalAtual: oportunidade.portalDisputa ?? null,
+      linkSistemaOrigem: oportunidade.linkSistemaOrigem ?? null,
+      linkPncp: oportunidade.linkPncp ?? null,
+      numeroEdital: oportunidade.numeroEdital ?? null,
+    },
+  );
+
+  const regrasDisputaLlmNormalizada: Partial<RegrasDisputaDetectadas> | null =
+    enriquecidoLLM?.regrasDisputa && typeof enriquecidoLLM.regrasDisputa === "object"
+      ? {
+          portal: enriquecidoLLM.regrasDisputa.portal ?? null,
+          modoDisputaEdital:
+            normalizarModoDisputaPncp(
+              null,
+              enriquecidoLLM.regrasDisputa.modoDisputaEdital ?? null,
+            ) ?? null,
+          intervaloMinimoLances: enriquecidoLLM.regrasDisputa.intervaloMinimoLances ?? null,
+          criterioJulgamento: enriquecidoLLM.regrasDisputa.criterioJulgamento ?? null,
+          uasg: enriquecidoLLM.regrasDisputa.uasg ?? null,
+          identificadorSala: enriquecidoLLM.regrasDisputa.identificadorSala ?? null,
+          linkSessao: enriquecidoLLM.regrasDisputa.linkSessao ?? null,
+          fontes: ["Raio-X IA"],
+        }
+      : null;
+
+  const regrasDisputaFinal = mesclarRegrasDisputaDetectadas(
+    regrasDisputaDeterministicas,
+    regrasDisputaExtracao,
+    regrasDisputaLlmNormalizada,
+  );
+
   const relatorio: RelatorioParticipacao = {
     parecer: statusFinal,
     scoreAderencia: scoreFinal,
@@ -2052,6 +2123,20 @@ export async function construirRelatorioParticipacaoHibrido(
     },
     riscosIdentificados,
     recomendacoesPraticas,
+    regrasDisputa: regrasDisputaFinal
+      ? {
+          portal: regrasDisputaFinal.portal ?? null,
+          modoDisputaEdital: regrasDisputaFinal.modoDisputaEdital ?? null,
+          modoDisputaNomeOriginal: regrasDisputaFinal.modoDisputaNomeOriginal ?? null,
+          intervaloMinimoLances: regrasDisputaFinal.intervaloMinimoLances ?? null,
+          criterioJulgamento: regrasDisputaFinal.criterioJulgamento ?? null,
+          identificadorSala: regrasDisputaFinal.identificadorSala ?? null,
+          uasg: regrasDisputaFinal.uasg ?? null,
+          linkSessao: regrasDisputaFinal.linkSessao ?? null,
+          fontes: regrasDisputaFinal.fontes ?? [],
+          confianca: regrasDisputaFinal.confianca ?? "MEDIA",
+        }
+      : null,
   };
 
   const impedimentosTexto =
@@ -2080,6 +2165,13 @@ export async function construirRelatorioParticipacaoHibrido(
     `- Prazo de Entrega: ${relatorio.cronograma.prazoEntregaExecucao}`,
     `- Endereço de Entrega/Execução: ${relatorio.cronograma.enderecoExecucaoOuEntrega}`,
     `- Presencial: ${relatorio.cronograma.isPresencial ? "SIM" : "NÃO"}`,
+    ...(relatorio.regrasDisputa
+      ? [
+          "",
+          `4.1 REGRAS DA DISPUTA DETECTADAS`,
+          `- Portal: ${relatorio.regrasDisputa.portal || "Não identificado"} | Modo: ${relatorio.regrasDisputa.modoDisputaEdital || "Não identificado"} | Intervalo Mínimo: ${relatorio.regrasDisputa.intervaloMinimoLances || "Não especificado"} | Critério: ${relatorio.regrasDisputa.criterioJulgamento || "Não especificado"}`,
+        ]
+      : []),
     "",
     `4. ITENS E MARCAS EXIGIDAS`,
     `Total de Itens: ${relatorio.itens.totalItens} | Valor: ${fmtBRL(relatorio.itens.valorTotalEstimado)}`,

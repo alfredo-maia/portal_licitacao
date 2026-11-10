@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import RoboDeLancesPage from "@/app/robo-de-lances/page";
 
 describe("Sprint SaaS 5 — Frontend Arsenal de Disputa (/robo-de-lances)", () => {
-  it("deve renderizar o ModulePageShell de /robo-de-lances e o painel central de Auto-Bidder", () => {
+  it("deve renderizar o ModulePageShell de /robo-de-lances e o painel central de Disputas", () => {
     render(<RoboDeLancesPage />);
 
     expect(
@@ -12,7 +12,7 @@ describe("Sprint SaaS 5 — Frontend Arsenal de Disputa (/robo-de-lances)", () =
     ).toBeInTheDocument();
 
     expect(
-      screen.getByText("Painel Central de Disputas em Tempo Real (Auto-Bidder)"),
+      screen.getByText(/Painel Central de Disputas/i),
     ).toBeInTheDocument();
 
     expect(
@@ -24,20 +24,18 @@ describe("Sprint SaaS 5 — Frontend Arsenal de Disputa (/robo-de-lances)", () =
     ).toBeInTheDocument();
   });
 
-  it("deve permitir pausar e reativar o motor global de lances em tempo real", () => {
+  it("deve exibir aviso de Sandbox isolado, remover selects globais sem efeito e manter preferência ME/EPP", () => {
     render(<RoboDeLancesPage />);
 
-    expect(screen.getByText("● Motor em Tempo Real ATIVO")).toBeInTheDocument();
+    expect(screen.getByTestId("robo-lances-sandbox-aviso")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pausar Motor Global/i })).not.toBeInTheDocument();
+    expect(document.getElementById("select-decremento-padrao")).toBeNull();
+    expect(document.getElementById("select-tempo-disparo")).toBeNull();
 
-    const btnPausar = screen.getByRole("button", { name: /Pausar Motor Global/i });
-    expect(btnPausar).toBeInTheDocument();
-    fireEvent.click(btnPausar);
-
-    expect(screen.getByText("⏸️ Motor PAUSADO")).toBeInTheDocument();
-
-    const btnLigar = screen.getByRole("button", { name: /Ligar Motor Global/i });
-    fireEvent.click(btnLigar);
-
-    expect(screen.getByText("● Motor em Tempo Real ATIVO")).toBeInTheDocument();
+    const selectMe = document.getElementById("select-empate-me") as HTMLSelectElement;
+    expect(selectMe).toBeInTheDocument();
+    expect(selectMe.value).toBe("ATIVO");
+    fireEvent.change(selectMe, { target: { value: "DESATIVO" } });
+    expect(selectMe.value).toBe("DESATIVO");
   });
 });
