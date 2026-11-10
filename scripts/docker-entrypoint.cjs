@@ -620,6 +620,22 @@ async function bootstrapDatabase() {
       );`,
       `CREATE INDEX IF NOT EXISTS "pncp_ingest_runs_executadoEm_idx" ON "pncp_ingest_runs"("executadoEm");`,
       `CREATE INDEX IF NOT EXISTS "pncp_ingest_runs_status_idx" ON "pncp_ingest_runs"("status");`,
+      `CREATE TABLE IF NOT EXISTS "notification_delivery_log" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "canal" TEXT NOT NULL,
+        "evento" TEXT NOT NULL,
+        "destinatario" TEXT NOT NULL,
+        "assunto" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'ENVIADO',
+        "providerMessageId" TEXT,
+        "erro" TEXT,
+        "tenantId" TEXT,
+        "userId" TEXT,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "notification_delivery_log_canal_status_idx" ON "notification_delivery_log"("canal", "status");`,
+      `CREATE INDEX IF NOT EXISTS "notification_delivery_log_tenantId_criadoEm_idx" ON "notification_delivery_log"("tenantId", "criadoEm");`,
+      `CREATE INDEX IF NOT EXISTS "notification_delivery_log_evento_criadoEm_idx" ON "notification_delivery_log"("evento", "criadoEm");`,
     ];
 
     for (const stmt of ddlSaaS) {

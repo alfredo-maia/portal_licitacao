@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { APP_CONFIG } from "@/config/brand";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import { CadastroInput, cadastroContaSchema } from "@/server/schemas/cadastro.schema";
-import { enfileirarMensagemWhatsApp } from "@/server/services/whatsapp.service";
+import { enviarEmailBoasVindas } from "@/server/services/email.service";
+import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import { upsertInMemoryAuthUser } from "@/server/auth";
 import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
 import { updateInMemoryConfiguracaoEmpresa, insertInMemoryUsuario, updateInMemoryUsuario } from "@/server/services/licitacoes-store";
@@ -240,13 +242,27 @@ export async function realizarCadastroConta(
     telefone: input.whatsapp,
   });
 
-  // 8. Agenda WhatsApp de boas-vindas com jitter anti-ban
+  // 8. Dispara boas-vindas via E-mail (Resend) e WhatsApp (Evolution API) sem travar cadastro
   try {
-    await enfileirarMensagemWhatsApp({
-      destinatario: input.whatsapp,
-      mensagem: `Olá, ${nomeFinal}! Bem-vindo ao Portal de Licitações. Seu período de degustação gratuita de 14 dias para a empresa ${input.razaoSocial} foi iniciado com sucesso!`,
-      tipo: "BOAS_VINDAS",
+    await enviarEmailBoasVindas({
+      nome: nomeFinal,
+      email: normalizedEmail,
+      razaoSocial: input.razaoSocial,
+      cnpj: input.cnpj,
+      diasTrial: 14,
       tenantId,
+      userId,
+    });
+  } catch {}
+
+  try {
+    await enviarNotificacaoWhatsApp({
+      destinatario: input.whatsapp,
+      mensagem: `Olá, ${nomeFinal}! Bem-vindo ao ${APP_CONFIG.brandName}. Seu período Grátis - Pro (14 dias) para a empresa ${input.razaoSocial} foi iniciado com sucesso!`,
+      tipo: "BOAS_VINDAS",
+      evento: "BOAS_VINDAS",
+      tenantId,
+      userId,
     });
   } catch {
     // Ignora falha de WhatsApp no cadastro

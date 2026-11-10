@@ -10,6 +10,7 @@ import {
   type PlanoAssinatura,
   type TenantRole,
 } from "@/server/schemas/tenant.schema";
+import { enviarEmailConviteEquipe } from "./email.service";
 import { updateInMemoryConfiguracaoEmpresa } from "./licitacoes-store";
 
 export class TenantCollisionError extends Error {
@@ -457,6 +458,19 @@ export async function inviteTeamMember(params: {
     });
   } catch {
     // Fallback gracioso
+  }
+
+  try {
+    await enviarEmailConviteEquipe({
+      destinatarioEmail: normalizedEmail,
+      role: input.role,
+      razaoSocial: tenant.razaoSocial,
+      convidadoPor: senderMembership.userName,
+      token: conviteRecord.token,
+      tenantId,
+    });
+  } catch {
+    // Não bloqueia retorno do convite caso o provedor de e-mail falhe
   }
 
   return conviteRecord;

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
+import { enviarEmailAlertaVencimento } from "@/server/services/email.service";
+import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import {
   STATUS_PIPELINE_ATIVO,
   OPERACAO_TIMEZONE,
@@ -35,6 +37,92 @@ import {
 /* =========================================================================
    1. Criar Notificação (com Fan-out e Idempotência)
 ========================================================================= */
+
+async function despacharNotificacoesExternas(params: {
+  destinatarioIds: string[];
+  tenantId?: string | null;
+  nomeItem: string;
+  tipoItem: "DOCUMENTO" | "PORTAL" | "LICITACAO";
+  diasRestantes: number;
+  descricao: string;
+  linkDestino?: string;
+  eventoWhatsApp: string;
+}): Promise<void> {
+  if (!params.destinatarioIds || params.destinatarioIds.length === 0) return;
+
+  const idSet = new Set(params.destinatarioIds);
+  const recipientsMap = new Map<
+    string,
+    { id: string; email?: string | null; telefone?: string | null }
+  >();
+
+  try {
+    const dbUsers = await prisma.user.findMany({
+      where: { id: { in: params.destinatarioIds }, ativo: true },
+      select: { id: true, email: true, telefone: true },
+    });
+    for (const u of dbUsers) {
+      recipientsMap.set(u.id, { id: u.id, email: u.email, telefone: u.telefone });
+    }
+  } catch {
+    // Fallback para usuários em memória quando banco estiver indisponível
+  }
+
+  for (const u of listInMemoryUsuarios()) {
+    if (u.ativo === false) continue;
+    if (!idSet.has(u.id)) continue;
+    if (!recipientsMap.has(u.id)) {
+      recipientsMap.set(u.id, {
+        id: u.id,
+        email: u.email ?? null,
+        telefone: u.telefone ?? null,
+      });
+    }
+  }
+
+  const recipients = Array.from(recipientsMap.values());
+  if (recipients.length === 0) return;
+
+  const prazoLabel =
+    params.diasRestantes < 0
+      ? `vencido há ${Math.abs(params.diasRestantes)} dia(s)`
+      : params.diasRestantes === 0
+        ? "vence hoje"
+        : `expira em ${params.diasRestantes} dia(s)`;
+
+  await Promise.allSettled(
+    recipients.flatMap((user) => {
+      const tasks: Promise<unknown>[] = [];
+      if (user.email) {
+        tasks.push(
+          enviarEmailAlertaVencimento({
+            destinatarioEmail: user.email,
+            nomeItem: params.nomeItem,
+            tipoItem: params.tipoItem,
+            diasRestantes: params.diasRestantes,
+            descricao: params.descricao,
+            linkDestino: params.linkDestino,
+            tenantId: params.tenantId,
+            userId: user.id,
+          }),
+        );
+      }
+      if (user.telefone) {
+        tasks.push(
+          enviarNotificacaoWhatsApp({
+            destinatario: user.telefone,
+            mensagem: `Alerta ${params.tipoItem}: ${params.nomeItem} (${prazoLabel}). ${params.descricao}`,
+            tipo: "ALERTA",
+            evento: params.eventoWhatsApp,
+            tenantId: params.tenantId,
+            userId: user.id,
+          }),
+        );
+      }
+      return tasks;
+    }),
+  );
+}
 
 export async function criarNotificacao(
   rawInput: NotificacaoCriarInput,
@@ -396,8 +484,21 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: fallbackDestinatarios,
       });
 
-      if (res.criada) contagens.N3_ABERTURA_AMANHA++;
-      else ignoradas++;
+      if (res.criada) {
+        contagens.N3_ABERTURA_AMANHA++;
+        await despacharNotificacoesExternas({
+          destinatarioIds: fallbackDestinatarios,
+          tenantId: lic.tenantId ?? null,
+          nomeItem: `${lic.numeroEdital} (${lic.orgaoNome})`,
+          tipoItem: "LICITACAO",
+          diasRestantes: diffDias,
+          descricao: `Prazo fatal para envio da proposta amanhã às ${horaStr}.`,
+          linkDestino: `/oportunidades/${lic.id}`,
+          eventoWhatsApp: "N3_ABERTURA_AMANHA",
+        }).catch(() => {});
+      } else {
+        ignoradas++;
+      }
     }
 
     // N4 — Presencial Próxima (D-7 ou D-1)
@@ -448,8 +549,21 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: diretoriaEComercialIds,
       });
 
-      if (res.criada) contagens.N5_PENDENTE_CRITICA++;
-      else ignoradas++;
+      if (res.criada) {
+        contagens.N5_PENDENTE_CRITICA++;
+        await despacharNotificacoesExternas({
+          destinatarioIds: diretoriaEComercialIds,
+          tenantId: lic.tenantId ?? null,
+          nomeItem: `${lic.numeroEdital} (${lic.orgaoNome})`,
+          tipoItem: "LICITACAO",
+          diasRestantes: Math.max(0, diffDias),
+          descricao: `O certame ${lic.numeroEdital} ainda aguarda decisão GO / No-GO e abre em menos de 72h.`,
+          linkDestino: `/oportunidades?status=PENDENTE`,
+          eventoWhatsApp: "N5_PENDENTE_CRITICA",
+        }).catch(() => {});
+      } else {
+        ignoradas++;
+      }
     }
 
     // N8 — Alerta Antecipado de Impugnação (D-4 da data limite / 1 dia antes do prazo fatal de 3 dias úteis)
@@ -526,8 +640,21 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: destinatariosPortal,
       });
 
-      if (res.criada) contagens.N6_VENCIMENTO_PORTAL++;
-      else ignoradas++;
+      if (res.criada) {
+        contagens.N6_VENCIMENTO_PORTAL++;
+        await despacharNotificacoesExternas({
+          destinatarioIds: destinatariosPortal,
+          tenantId: portal.tenantId ?? null,
+          nomeItem: portal.nome,
+          tipoItem: "PORTAL",
+          diasRestantes: diffDias,
+          descricao: `A assinatura da plataforma ${portal.nome} expira em ${diffDias} dia(s).`,
+          linkDestino: `/portais/${portal.id}`,
+          eventoWhatsApp: "VENCIMENTO_PORTAL",
+        }).catch(() => {});
+      } else {
+        ignoradas++;
+      }
     }
   }
 
@@ -574,8 +701,21 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
         destinatarioIds: destinatariosDoc,
       });
 
-      if (res.criada) contagens.N7_VENCIMENTO_DOCUMENTO++;
-      else ignoradas++;
+      if (res.criada) {
+        contagens.N7_VENCIMENTO_DOCUMENTO++;
+        await despacharNotificacoesExternas({
+          destinatarioIds: destinatariosDoc,
+          tenantId: doc.tenantId ?? null,
+          nomeItem: doc.nome,
+          tipoItem: "DOCUMENTO",
+          diasRestantes: diffDias,
+          descricao: `O documento ${doc.nome} (${doc.categoria}) expira em ${diffDias} dia(s).`,
+          linkDestino: `/documentacao`,
+          eventoWhatsApp: "VENCIMENTO_DOCUMENTO",
+        }).catch(() => {});
+      } else {
+        ignoradas++;
+      }
     }
   }
 
@@ -975,6 +1115,19 @@ export async function verificarDisparoImediatoVencimentoDocumento(doc: {
     destinatarioIds: destinatarios,
   });
 
+  if (res.criada) {
+    await despacharNotificacoesExternas({
+      destinatarioIds: destinatarios,
+      tenantId: doc.tenantId ?? null,
+      nomeItem: doc.nome,
+      tipoItem: "DOCUMENTO",
+      diasRestantes: diffDias,
+      descricao: `O documento de habilitação ${doc.nome} (${doc.categoria}) requer atenção imediata.`,
+      linkDestino: `/documentacao`,
+      eventoWhatsApp: "VENCIMENTO_DOCUMENTO",
+    }).catch(() => {});
+  }
+
   return { acionada: res.criada };
 }
 
@@ -1051,6 +1204,19 @@ export async function verificarDisparoImediatoVencimentoPortal(portal: {
     chaveIdempotencia: chave,
     destinatarioIds: destinatarios,
   });
+
+  if (res.criada) {
+    await despacharNotificacoesExternas({
+      destinatarioIds: destinatarios,
+      tenantId: portal.tenantId ?? null,
+      nomeItem: portal.nome,
+      tipoItem: "PORTAL",
+      diasRestantes: diffDias,
+      descricao: `A assinatura da plataforma ${portal.nome} requer renovação.`,
+      linkDestino: `/portais/${portal.id}`,
+      eventoWhatsApp: "VENCIMENTO_PORTAL",
+    }).catch(() => {});
+  }
 
   return { acionada: res.criada };
 }

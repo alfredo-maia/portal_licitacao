@@ -11,9 +11,13 @@ export const ROTAS_WHITELIST_PAYWALL = [
   "/recuperar-senha",
   "/faturamento",
   "/checkout",
+  "/planos",
+  "/configuracoes",
   "/api/auth",
   "/api/webhooks",
   "/api/suporte",
+  "/api/planos",
+  "/api/faturamento",
   "/_next",
   "/favicon.ico",
 ];

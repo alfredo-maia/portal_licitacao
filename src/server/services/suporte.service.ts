@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { APP_CONFIG } from "@/config/brand";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
+import { enviarEmailProtocoloSuporte } from "@/server/services/email.service";
+import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import {
   criarTicketSuporteInputSchema,
   responderTicketSuporteInputSchema,
@@ -236,6 +239,60 @@ export async function criarTicketSuporte(
     },
   });
 
+  // Confirmações via E-mail (Resend) e WhatsApp (Evolution) para cliente + equipe interna
+  const teamNotifyEmail = process.env.SUPPORT_NOTIFY_EMAIL?.trim();
+  const teamNotifyWhatsApp = process.env.SUPPORT_NOTIFY_WHATSAPP?.trim();
+
+  if (actor.email) {
+    await enviarEmailProtocoloSuporte({
+      destinatarioEmail: actor.email,
+      protocolo: ticketFinal.protocolo,
+      autorNome,
+      assunto: ticketFinal.assunto,
+      categoria: ticketFinal.categoria,
+      urgencia: ticketFinal.urgencia,
+      mensagem: input.descricao,
+      tenantId: actor.tenantId ?? null,
+      userId: actor.id ?? null,
+    }).catch(() => undefined);
+  }
+
+  if (teamNotifyEmail) {
+    await enviarEmailProtocoloSuporte({
+      destinatarioEmail: teamNotifyEmail,
+      protocolo: ticketFinal.protocolo,
+      autorNome,
+      assunto: ticketFinal.assunto,
+      categoria: ticketFinal.categoria,
+      urgencia: ticketFinal.urgencia,
+      mensagem: input.descricao,
+      isEquipeInterna: true,
+      tenantId: actor.tenantId ?? null,
+      userId: actor.id ?? null,
+    }).catch(() => undefined);
+  }
+
+  if (actor.telefone) {
+    await enviarNotificacaoWhatsApp({
+      destinatario: actor.telefone,
+      mensagem: `${APP_CONFIG.brandName}: Seu chamado ${ticketFinal.protocolo} ("${ticketFinal.assunto}") foi registrado e está na fila de atendimento.`,
+      tipo: "SISTEMA",
+      evento: "SUPORTE_PROTOCOLO",
+      tenantId: actor.tenantId ?? null,
+      userId: actor.id ?? null,
+    }).catch(() => undefined);
+  }
+
+  if (teamNotifyWhatsApp) {
+    await enviarNotificacaoWhatsApp({
+      destinatario: teamNotifyWhatsApp,
+      mensagem: `[Suporte Interno] Novo protocolo ${ticketFinal.protocolo} (${ticketFinal.urgencia}) de ${autorNome}: ${ticketFinal.assunto}`,
+      tipo: "SISTEMA",
+      evento: "SUPORTE_EQUIPE",
+      tenantId: actor.tenantId ?? null,
+    }).catch(() => undefined);
+  }
+
   return ticketFinal;
 }
 
@@ -414,6 +471,50 @@ export async function adicionarMensagemTicketSuporte(
     usuarioNome: autorNome,
     depois: { autorTipo, status: novoStatus },
   });
+
+  if (autorTipo === "SUPORTE") {
+    if (existente.autorEmail) {
+      await enviarEmailProtocoloSuporte({
+        destinatarioEmail: existente.autorEmail,
+        protocolo: existente.protocolo,
+        autorNome: existente.autorNome,
+        assunto: existente.assunto,
+        categoria: existente.categoria,
+        urgencia: existente.urgencia,
+        mensagem: input.mensagem,
+        isAtualizacao: true,
+        tenantId: existente.tenantId,
+        userId: existente.userId,
+      }).catch(() => undefined);
+    }
+
+    if (existente.autorTelefone) {
+      await enviarNotificacaoWhatsApp({
+        destinatario: existente.autorTelefone,
+        mensagem: `${APP_CONFIG.brandName}: Atualização no protocolo ${existente.protocolo}: ${input.mensagem}`,
+        tipo: "SISTEMA",
+        evento: "SUPORTE_ATUALIZACAO",
+        tenantId: existente.tenantId,
+        userId: existente.userId,
+      }).catch(() => undefined);
+    }
+  } else {
+    const teamNotifyEmail = process.env.SUPPORT_NOTIFY_EMAIL?.trim();
+    if (teamNotifyEmail) {
+      await enviarEmailProtocoloSuporte({
+        destinatarioEmail: teamNotifyEmail,
+        protocolo: existente.protocolo,
+        autorNome,
+        assunto: `Nova mensagem em ${existente.protocolo}`,
+        categoria: existente.categoria,
+        urgencia: existente.urgencia,
+        mensagem: input.mensagem,
+        isEquipeInterna: true,
+        tenantId: existente.tenantId,
+        userId: actor.id ?? null,
+      }).catch(() => undefined);
+    }
+  }
 
   return atualizado;
 }

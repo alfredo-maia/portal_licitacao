@@ -27,9 +27,42 @@ export const AsaasEventTypeEnum = z.enum([
   "PAYMENT_DUNNING_REQUESTED",
   "PAYMENT_BANK_SLIP_VIEWED",
   "PAYMENT_CHECKOUT_VIEWED",
+  "SUBSCRIPTION_CREATED",
+  "SUBSCRIPTION_UPDATED",
+  "SUBSCRIPTION_INACTIVATED",
+  "SUBSCRIPTION_DELETED",
 ]);
 
 export type AsaasEventType = z.infer<typeof AsaasEventTypeEnum>;
+
+/**
+ * Tabela oficial de preços mensais dos planos em BRL (sincronizada com /planos)
+ */
+export const ASAAS_PLAN_PRICES_BRL = {
+  BASICO: 197.0,
+  PRO: 497.0,
+  ENTERPRISE: 997.0,
+} as const;
+
+export const ASAAS_PLAN_LABELS = {
+  BASICO: "Básico",
+  PRO: "Pro",
+  ENTERPRISE: "Enterprise",
+} as const;
+
+export const AsaasBillingTypeEnum = z.enum(["PIX", "BOLETO", "CREDIT_CARD"]);
+export type AsaasBillingType = z.infer<typeof AsaasBillingTypeEnum>;
+
+export const PlanoCheckoutInputSchema = z.object({
+  plano: z.enum(["BASICO", "PRO", "ENTERPRISE"]),
+  billingType: AsaasBillingTypeEnum.default("PIX"),
+  cpfCnpj: z.string().trim().min(11).max(20).optional(),
+  nome: z.string().trim().min(2).max(200).optional(),
+  email: z.string().trim().email().optional(),
+  telefone: z.string().trim().min(8).max(25).optional(),
+});
+
+export type PlanoCheckoutInput = z.input<typeof PlanoCheckoutInputSchema>;
 
 /**
  * Dados de pagamento contidos no payload do Asaas
@@ -58,16 +91,56 @@ export const AsaasPaymentDataSchema = z.object({
 export type AsaasPaymentData = z.infer<typeof AsaasPaymentDataSchema>;
 
 /**
- * Payload completo do Webhook Asaas
+ * Dados de assinatura contidos em eventos SUBSCRIPTION_* do Asaas
+ */
+export const AsaasSubscriptionDataSchema = z.object({
+  id: z.string().min(1, "ID da assinatura obrigatório"),
+  customer: z.string().min(1, "ID do cliente obrigatório").optional().nullable(),
+  value: z.number().nonnegative().optional().nullable(),
+  cycle: z.string().optional().nullable(),
+  billingType: z.enum(["BOLETO", "CREDIT_CARD", "PIX", "UNDEFINED"]).optional().nullable(),
+  status: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  externalReference: z.string().optional().nullable(),
+  nextDueDate: z.string().optional().nullable(),
+  deleted: z.boolean().optional().nullable(),
+});
+
+export type AsaasSubscriptionData = z.infer<typeof AsaasSubscriptionDataSchema>;
+
+/**
+ * Payload canônico de Webhook Asaas com objeto payment
  */
 export const AsaasWebhookPayloadSchema = z.object({
   id: z.string().min(1, "ID único do evento de webhook é obrigatório para idempotência"),
   event: AsaasEventTypeEnum,
   dateCreated: z.string().optional(),
   payment: AsaasPaymentDataSchema,
+  subscription: AsaasSubscriptionDataSchema.optional().nullable(),
 });
 
-export type AsaasWebhookPayload = z.infer<typeof AsaasWebhookPayloadSchema>;
+/**
+ * Payload de Webhook Asaas para eventos de assinatura sem objeto payment obrigatório
+ */
+export const AsaasSubscriptionWebhookPayloadSchema = z.object({
+  id: z.string().min(1, "ID único do evento de webhook é obrigatório para idempotência"),
+  event: z.enum([
+    "SUBSCRIPTION_CREATED",
+    "SUBSCRIPTION_UPDATED",
+    "SUBSCRIPTION_INACTIVATED",
+    "SUBSCRIPTION_DELETED",
+  ]),
+  dateCreated: z.string().optional(),
+  subscription: AsaasSubscriptionDataSchema,
+  payment: AsaasPaymentDataSchema.optional().nullable(),
+});
+
+export const AsaasAnyWebhookPayloadSchema = z.union([
+  AsaasWebhookPayloadSchema,
+  AsaasSubscriptionWebhookPayloadSchema,
+]);
+
+export type AsaasWebhookPayload = z.infer<typeof AsaasAnyWebhookPayloadSchema>;
 
 /**
  * Status de Faturamento do Tenant (Ciclo de Vida)

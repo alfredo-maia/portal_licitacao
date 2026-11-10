@@ -831,5 +831,26 @@ model PncpIngestRun {
   @@map("pncp_ingest_runs")
 }
 
+// Bloco 3 (Issue #40) — Trilha de Entregas Transacionais (Resend E-mail & Evolution API WhatsApp)
+model NotificationDeliveryLog {
+  id                String   @id @default(cuid())
+  canal             String
+  evento            String
+  destinatario      String
+  assunto           String?
+  status            String   @default("ENVIADO")
+  providerMessageId String?
+  erro              String?  @db.Text
+  tenantId          String?
+  userId            String?
+  criadoEm          DateTime @default(now())
+
+  @@index([canal, status])
+  @@index([tenantId, criadoEm])
+  @@index([evento, criadoEm])
+  @@map("notification_delivery_log")
+}
+
+
 
 

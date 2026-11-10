@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import { esqueciSenhaSchema } from "@/server/schemas/esqueci-senha.schema";
+import { enviarEmailRecuperacaoSenha } from "@/server/services/email.service";
 
 export interface EsqueciSenhaResponse {
   ok: boolean;
@@ -59,6 +61,8 @@ export async function solicitarRecuperacaoSenha(
     "Enviamos as instruções de recuperação para o seu e-mail. Verifique sua caixa de entrada e spam.";
 
   if (user) {
+    const resetToken = randomBytes(4).toString("hex").toUpperCase();
+
     try {
       await recordAuditLog({
         acao: "AUTH_PASSWORD_RESET_REQUESTED",
@@ -73,6 +77,17 @@ export async function solicitarRecuperacaoSenha(
       });
     } catch {
       // Ignora erro de auditoria para não travar o fluxo do usuário
+    }
+
+    try {
+      await enviarEmailRecuperacaoSenha({
+        nome: user.name,
+        email: normalizedEmail,
+        token: resetToken,
+        userId: user.id,
+      });
+    } catch {
+      // Ignora erro externo para manter fluxo resiliente e anti-enumeração
     }
   }
 
