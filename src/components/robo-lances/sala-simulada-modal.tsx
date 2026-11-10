@@ -10,6 +10,7 @@ import {
   Select,
   SelectItem,
   Tag,
+  TextInput,
   Tile,
   Toggle,
 } from "@carbon/react";
@@ -32,6 +33,7 @@ import {
   exercerDesempateMeEpp,
   gerarCenarioDemoDisputa,
   injetarLanceRival,
+  listarItensAbaixoIntervaloMinimo,
   listarItensPisoMaiorQueProposta,
   listarItensSemPiso,
   normalizarItensParaSimulacao,
@@ -43,7 +45,9 @@ interface CertameSimulavel {
   orgao: string;
   portal?: string;
   modoDisputaEdital?: "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
+  intervaloMinimoLances?: string;
   pausaEmergencia?: boolean;
+  tempoRespostaSegundos?: number;
   segundosFinaisSniper?: number;
   regrasItens?: unknown[];
 }
@@ -107,7 +111,14 @@ export function SalaSimuladaModal({
   const [pausaEmergencia, setPausaEmergencia] = useState(false);
   const [modoDisputa, setModoDisputa] = useState<ModoDisputaSimulacao>("ABERTO");
   const [minhaEmpresaMeEpp, setMinhaEmpresaMeEpp] = useState(preferenciaMeInicial);
+  const [intervaloMinimoLances, setIntervaloMinimoLances] = useState<string>("R$ 0,01");
+  const [tempoRespostaSegundos, setTempoRespostaSegundos] = useState<number>(3);
+  const [tempoRespostaDraft, setTempoRespostaDraft] = useState<string>("3");
   const [segundosSniper, setSegundosSniper] = useState(10);
+
+  useEffect(() => {
+    setTempoRespostaDraft(String(tempoRespostaSegundos));
+  }, [tempoRespostaSegundos]);
 
   const [notificacao, setNotificacao] = useState<Omit<AvisoSimulacao, "id"> | null>(null);
   const [avisoOrigem, setAvisoOrigem] = useState<Omit<AvisoSimulacao, "id"> | null>(null);
@@ -116,8 +127,10 @@ export function SalaSimuladaModal({
     perfil: perfilConcorrente,
     pausaEmergencia,
     segundosFinaisSniper: segundosSniper,
+    tempoRespostaSegundos,
     minhaEmpresaMeEpp,
     modoDisputa,
+    intervaloMinimoLances,
   };
   const parametrosRef = useRef(parametros);
   parametrosRef.current = parametros;
@@ -148,6 +161,8 @@ export function SalaSimuladaModal({
         setPortal(demo.portal);
         setOrigemSelecionada(ORIGEM_DEMO);
         setModoDisputa("ABERTO");
+        setIntervaloMinimoLances("R$ 0,01");
+        setTempoRespostaSegundos(3);
         setSegundosSniper(10);
         setPausaEmergencia(false);
         if (certame) {
@@ -164,6 +179,13 @@ export function SalaSimuladaModal({
       setOrigemSelecionada(certame.id);
       const pausaInicial = Boolean(certame.pausaEmergencia);
       setPausaEmergencia(pausaInicial);
+      setIntervaloMinimoLances(certame.intervaloMinimoLances || "R$ 0,01");
+      const cadenciaInicial = certame.tempoRespostaSegundos;
+      setTempoRespostaSegundos(
+        typeof cadenciaInicial === "number" && Number.isFinite(cadenciaInicial) && cadenciaInicial >= 1
+          ? Math.min(60, Math.round(cadenciaInicial))
+          : 3,
+      );
       if (certame.modoDisputaEdital === "ABERTO_FECHADO") {
         setModoDisputa("ABERTO_FECHADO");
       } else if (certame.modoDisputaEdital === "FECHADO_ABERTO") {
@@ -171,7 +193,7 @@ export function SalaSimuladaModal({
       } else {
         setModoDisputa("ABERTO");
       }
-      if (certame.segundosFinaisSniper && [5, 10, 15, 20].includes(certame.segundosFinaisSniper)) {
+      if (certame.segundosFinaisSniper && [5, 10, 15, 20, 30].includes(certame.segundosFinaisSniper)) {
         setSegundosSniper(certame.segundosFinaisSniper);
       } else {
         setSegundosSniper(10);
@@ -238,6 +260,10 @@ export function SalaSimuladaModal({
   const itensPisoInvalido = useMemo(
     () => listarItensPisoMaiorQueProposta(estado.itens),
     [estado.itens],
+  );
+  const itensAbaixoIntervalo = useMemo(
+    () => listarItensAbaixoIntervaloMinimo(estado.itens, intervaloMinimoLances),
+    [estado.itens, intervaloMinimoLances],
   );
   const encerrada = estado.fase === "ENCERRADA";
   const sessaoIniciada = emExecucao || encerrada || estado.tempoRestante < 45;
@@ -397,7 +423,7 @@ export function SalaSimuladaModal({
         ))}
 
         {/* Controles da sessão */}
-        <Tile style={{ padding: "1.25rem", marginBottom: "1rem", backgroundColor: "var(--cds-layer-01, #ffffff)" }}>
+        <Tile style={{ padding: "1.25rem", marginBottom: "1rem", backgroundColor: "var(--cds-layer-01)" }}>
           <Grid style={{ padding: 0 }}>
             <Column lg={5} md={4} sm={4} style={{ marginBottom: "0.75rem" }}>
               <Select
@@ -443,8 +469,8 @@ export function SalaSimuladaModal({
                   color: encerrada
                     ? "var(--cds-text-secondary)"
                     : estado.tempoRestante <= 10
-                    ? "var(--cds-support-error, #da1e28)"
-                    : "var(--cds-interactive, #0f62fe)",
+                    ? "var(--cds-support-error)"
+                    : "var(--cds-interactive)",
                 }}
               >
                 <Time size={22} />
@@ -468,7 +494,7 @@ export function SalaSimuladaModal({
               </Button>
             </Column>
 
-            <Column lg={5} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
+            <Column lg={4} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
               <Select
                 id="select-modo-disputa-simulada"
                 labelText="Modo de Disputa do Edital"
@@ -478,11 +504,52 @@ export function SalaSimuladaModal({
               >
                 <SelectItem value="ABERTO" text="Aberto (prorrogação +15s nos 10s finais)" />
                 <SelectItem value="ABERTO_FECHADO" text="Aberto e Fechado (lance final sigiloso)" />
-                <SelectItem value="FECHADO_ABERTO" text="Fechado e Aberto (etapa aberta com prorrogação)" />
+                <SelectItem value="FECHADO_ABERTO" text="Fechado e Aberto (Art. 25 +10% e etapa aberta)" />
               </Select>
             </Column>
 
             <Column lg={4} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
+              <TextInput
+                id="input-intervalo-minimo-simulada"
+                data-testid="input-intervalo-minimo-simulada"
+                labelText="Intervalo Mínimo do Edital"
+                placeholder="Ex: R$ 5,00 ou 0,5%"
+                value={intervaloMinimoLances}
+                disabled={encerrada}
+                onChange={(e) => setIntervaloMinimoLances(e.target.value)}
+              />
+            </Column>
+
+            <Column lg={3} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
+              <TextInput
+                id="input-tempo-resposta-simulada"
+                data-testid="input-tempo-resposta-simulada"
+                type="number"
+                min={1}
+                max={60}
+                labelText="Tempo de Resposta (s)"
+                value={tempoRespostaDraft}
+                disabled={encerrada}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setTempoRespostaDraft(raw);
+                  const n = Number.parseInt(raw, 10);
+                  if (!Number.isNaN(n)) {
+                    setTempoRespostaSegundos(Math.min(60, Math.max(1, n)));
+                  }
+                }}
+                onBlur={() => {
+                  const n = Number.parseInt(tempoRespostaDraft, 10);
+                  const clamped = !Number.isNaN(n)
+                    ? Math.min(60, Math.max(1, n))
+                    : tempoRespostaSegundos;
+                  setTempoRespostaSegundos(clamped);
+                  setTempoRespostaDraft(String(clamped));
+                }}
+              />
+            </Column>
+
+            <Column lg={3} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
               <Select
                 id="select-janela-sniper"
                 labelText="Janela da Tática Sniper"
@@ -493,14 +560,15 @@ export function SalaSimuladaModal({
                 <SelectItem value="10" text="Últimos 10 segundos" />
                 <SelectItem value="15" text="Últimos 15 segundos" />
                 <SelectItem value="20" text="Últimos 20 segundos" />
+                <SelectItem value="30" text="Últimos 30 segundos" />
               </Select>
             </Column>
 
-            <Column lg={7} md={8} sm={4} style={{ marginBottom: "0.5rem" }}>
+            <Column lg={2} md={4} sm={4} style={{ marginBottom: "0.5rem" }}>
               <Toggle
                 id="toggle-me-epp-simulada"
                 size="sm"
-                labelText="Minha empresa é ME/EPP (LC 123/2006)"
+                labelText="Empresa ME/EPP"
                 labelA="Não"
                 labelB="Sim"
                 toggled={minhaEmpresaMeEpp}
@@ -509,6 +577,18 @@ export function SalaSimuladaModal({
             </Column>
           </Grid>
 
+          {itensAbaixoIntervalo.length > 0 && (
+            <InlineNotification
+              data-testid="alerta-intervalo-minimo-simulada"
+              style={{ marginTop: "0.75rem", marginBottom: "0.5rem" }}
+              kind="warning"
+              lowContrast
+              hideCloseButton
+              title={`Intervalo mínimo do edital (${intervaloMinimoLances}) ativo no motor:`}
+              subtitle={`Item(ns) ${itensAbaixoIntervalo.map((a) => `#${a.item.numeroItem}`).join(", ")} têm decremento menor que o exigido. Durante a simulação o robô ajustará o passo mínimo automaticamente sem violar o Piso Seguro.`}
+            />
+          )}
+
           <div
             style={{
               display: "flex",
@@ -516,7 +596,7 @@ export function SalaSimuladaModal({
               flexWrap: "wrap",
               marginTop: "0.5rem",
               paddingTop: "0.75rem",
-              borderTop: "1px solid var(--cds-border-subtle, #e0e0e0)",
+              borderTop: "1px solid var(--cds-border-subtle)",
               fontSize: "0.85rem",
             }}
           >
@@ -557,12 +637,16 @@ export function SalaSimuladaModal({
               const posicao = rotuloPosicao(item);
               const lider = estado.liderConcorrente[item.itemId];
               const semPiso = !(item.pisoUnitarioSeguro > 0 && item.propostaUnitaria > 0);
+              const cooldownSeg = estado.cooldownResposta?.[item.itemId] ?? 0;
+              const classifFechado = estado.classificacaoFechadoAberto?.[item.itemId];
+              const itemEncerrado =
+                encerrada || item.statusItem === "FINALIZADO" || item.statusItem === "VENCEDOR";
               const corBorda =
                 item.minhaPosicao === 1
-                  ? "var(--cds-support-success, #24a148)"
-                  : item.statusItem === "PISO_ATINGIDO"
-                  ? "var(--cds-support-error, #da1e28)"
-                  : "var(--cds-interactive, #0f62fe)";
+                  ? "var(--cds-support-success)"
+                  : item.statusItem === "PISO_ATINGIDO" || classifFechado?.classificado === false
+                  ? "var(--cds-support-error)"
+                  : "var(--cds-interactive)";
 
               return (
                 <Tile key={item.itemId} style={{ padding: "1rem", borderLeft: `4px solid ${corBorda}` }}>
@@ -580,6 +664,16 @@ export function SalaSimuladaModal({
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
                       <Tag type={posicao.tipo} size="sm">{posicao.texto}</Tag>
+                      {classifFechado?.apurada && (
+                        <Tag type={classifFechado.classificado ? "teal" : "red"} size="sm">
+                          {classifFechado.classificado
+                            ? "✅ Classificado (Art. 25)"
+                            : "❌ Fora dos +10% (Art. 25)"}
+                        </Tag>
+                      )}
+                      {cooldownSeg > 0 && !itemEncerrado && (
+                        <Tag type="blue" size="sm">⏳ Resposta em {cooldownSeg}s</Tag>
+                      )}
                       {!item.ativoNoRobo && <Tag type="cool-gray" size="sm">⏸️ Robô desativado</Tag>}
                       {semPiso && <Tag type="warm-gray" size="sm">⚠️ Sem Piso</Tag>}
                     </div>
@@ -590,7 +684,7 @@ export function SalaSimuladaModal({
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
                       gap: "0.5rem",
-                      backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                      backgroundColor: "var(--cds-layer-02)",
                       padding: "0.6rem 0.75rem",
                       borderRadius: "4px",
                       marginBottom: "0.75rem",
@@ -603,13 +697,13 @@ export function SalaSimuladaModal({
                     </div>
                     <div>
                       <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.72rem" }}>Seu Último Lance</div>
-                      <div style={{ fontWeight: 700, color: item.minhaPosicao === 1 ? "var(--cds-support-success, #24a148)" : "inherit" }}>
+                      <div style={{ fontWeight: 700, color: item.minhaPosicao === 1 ? "var(--cds-support-success)" : "inherit" }}>
                         {formatBRL(item.meuUltimoLance ?? item.propostaUnitaria)}
                       </div>
                     </div>
                     <div>
                       <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.72rem" }}>Piso Seguro 🔒</div>
-                      <div style={{ fontWeight: 700, color: "var(--cds-support-info, #0043ce)" }}>{formatBRL(item.pisoUnitarioSeguro)}</div>
+                      <div style={{ fontWeight: 700, color: "var(--cds-support-info)" }}>{formatBRL(item.pisoUnitarioSeguro)}</div>
                     </div>
                     <div>
                       <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.72rem" }}>Decremento</div>
@@ -630,7 +724,7 @@ export function SalaSimuladaModal({
                           key={tatica}
                           size="sm"
                           kind={item.tatica === tatica ? "primary" : "ghost"}
-                          disabled={encerrada}
+                          disabled={itemEncerrado}
                           onClick={() => setEstado((prev) => alterarTaticaItem(prev, item.itemId, tatica))}
                         >
                           {tatica === "IMEDIATO" ? "Imediato" : tatica === "SNIPER" ? "Sniper" : "Monitorar"}
@@ -640,7 +734,7 @@ export function SalaSimuladaModal({
                     <Button
                       size="sm"
                       kind="tertiary"
-                      disabled={encerrada}
+                      disabled={itemEncerrado}
                       onClick={() => setEstado((prev) => injetarLanceRival(prev, item.itemId, parametrosRef.current))}
                     >
                       💥 Forçar Rival
@@ -653,7 +747,7 @@ export function SalaSimuladaModal({
         </div>
 
         {/* Fita de lances */}
-        <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-01, #ffffff)" }}>
+        <Tile style={{ padding: "1.25rem", backgroundColor: "var(--cds-layer-01)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Flash size={18} />
@@ -671,8 +765,8 @@ export function SalaSimuladaModal({
               overflowY: "auto",
               fontFamily: "var(--cds-code-01-font-family, 'IBM Plex Mono', monospace)",
               fontSize: "0.78rem",
-              border: "1px solid var(--cds-border-subtle, #e0e0e0)",
-              backgroundColor: "var(--cds-layer-accent, #fafafa)",
+              border: "1px solid var(--cds-border-subtle)",
+              backgroundColor: "var(--cds-layer-02)",
               borderRadius: "4px",
               padding: "0.5rem",
             }}
@@ -691,7 +785,7 @@ export function SalaSimuladaModal({
                     alignItems: "center",
                     gap: "0.5rem",
                     padding: "0.35rem 0.5rem",
-                    borderBottom: "1px solid var(--cds-border-subtle, #ebebeb)",
+                    borderBottom: "1px solid var(--cds-border-subtle)",
                     backgroundColor: ev.isMinhaEmpresa ? "rgba(36, 161, 72, 0.08)" : "transparent",
                   }}
                 >

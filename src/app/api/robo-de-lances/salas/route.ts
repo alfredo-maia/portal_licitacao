@@ -213,6 +213,10 @@ export async function GET(req: Request) {
             disputa.modoDisputaEdital ||
             regrasDetectadas?.modoDisputaEdital ||
             "ABERTO",
+          intervaloMinimoLances:
+            disputa.intervaloMinimoLances ||
+            regrasDetectadas?.intervaloMinimoLances ||
+            "R$ 0,01",
           statusGeral:
             disputa.statusGeral ||
             (statusEfetivo === "EM_DISPUTA" ? "EM_DISPUTA" : "CONFIGURADA"),

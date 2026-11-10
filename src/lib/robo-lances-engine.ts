@@ -4,6 +4,7 @@ import {
   type TaticaDisputa,
   type TipoDecremento,
   disputaItemRegraSchema,
+  parseDecimalFlexivel,
   round2,
 } from "@/server/schemas/proposta-calculadora.schema";
 
@@ -41,6 +42,28 @@ export interface ContextoDisputa {
   tempoRespostaSegundos: number;
   modoDisputa: "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
   minhaEmpresaMeEpp: boolean;
+  intervaloMinimoLances?: string | null;
+}
+
+export interface IntervaloMinimoEditalParsed {
+  tipo: "FIXO_REAIS" | "PERCENTUAL";
+  valor: number;
+  textoFormatado: string;
+}
+
+export interface ValidacaoIntervaloItem {
+  compativel: boolean;
+  decrementoItemReais: number;
+  intervaloEditalReais: number;
+  motivo?: string;
+}
+
+export interface ResultadoAplicarDecremento {
+  novoValor: number;
+  pisoAtingido: boolean;
+  ajustadoPeloIntervaloEdital?: boolean;
+  bloqueadoPorIntervaloNoPiso?: boolean;
+  decrementoAplicado?: number;
 }
 
 export type TipoDecisaoRobo =
@@ -65,41 +88,292 @@ export interface DecisaoRoboLance {
 }
 
 /**
- * Calcula o próximo lance aplicando a regra de decremento configurada,
- * com trava matemática inviolável para jamais ficar abaixo do piso seguro.
+ * Interpreta o texto do Intervalo Mínimo entre Lances do edital ("R$ 5,00", "0,5%", "10.50").
+ * Retorna null se vazio, inválido ou zero/negativo.
+ */
+export function parseIntervaloMinimoEdital(
+  raw?: string | null,
+): IntervaloMinimoEditalParsed | null {
+  if (!raw || typeof raw !== "string") return null;
+  const limpo = raw.trim();
+  if (!limpo) return null;
+
+  const matchPerc = limpo.match(/(\d+(?:[.,]\d{1,2})?)\s*%/);
+  if (matchPerc?.[1]) {
+    const val = parseDecimalFlexivel(matchPerc[1]);
+    if (val != null && val > 0) {
+      const arredondado = round2(val);
+      return {
+        tipo: "PERCENTUAL",
+        valor: arredondado,
+        textoFormatado: `${arredondado.toLocaleString("pt-BR", {
+          maximumFractionDigits: 2,
+        })}%`,
+      };
+    }
+    return null;
+  }
+
+  const matchValor = limpo.match(
+    /(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/i,
+  );
+  if (matchValor?.[1]) {
+    const val = parseDecimalFlexivel(matchValor[1]);
+    if (val != null && val > 0) {
+      const arredondado = round2(val);
+      return {
+        tipo: "FIXO_REAIS",
+        valor: arredondado,
+        textoFormatado: `R$ ${arredondado.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/** Calcula em R$ o passo mínimo exigido pelo edital sobre uma referência de lance. */
+export function calcularDecrementoMinimoReaisEdital(
+  valorBase: number,
+  intervalo?: string | IntervaloMinimoEditalParsed | null,
+): number {
+  if (!intervalo) return 0;
+  const parsed =
+    typeof intervalo === "string"
+      ? parseIntervaloMinimoEdital(intervalo)
+      : intervalo;
+  if (!parsed) return 0;
+  if (parsed.tipo === "FIXO_REAIS") {
+    return Math.max(0.01, round2(parsed.valor));
+  }
+  return Math.max(0.01, round2(Math.max(0, valorBase) * (parsed.valor / 100)));
+}
+
+function calcularDecrementoConfigReais(
+  valorAtual: number,
+  tipo: TipoDecremento,
+  valorDecrementoConfig: number,
+): number {
+  if (tipo === "FIXO_REAIS") {
+    return Math.max(0.01, round2(valorDecrementoConfig || 1.0));
+  }
+  if (tipo === "PERCENTUAL") {
+    const perc = Math.max(0.01, valorDecrementoConfig || 0.5);
+    return Math.max(0.01, round2(valorAtual * (perc / 100)));
+  }
+  return 0.01;
+}
+
+/** Verifica se o decremento configurado em um item atende ao intervalo mínimo exigido pelo edital. */
+export function validarItemContraIntervaloMinimo(
+  item: DisputaItemRegra,
+  intervaloRaw?: string | null,
+): ValidacaoIntervaloItem {
+  const baseReferencia =
+    item.melhorLanceSala != null && item.melhorLanceSala > 0
+      ? item.melhorLanceSala
+      : item.propostaUnitaria > 0
+        ? item.propostaUnitaria
+        : item.pisoUnitarioSeguro > 0
+          ? item.pisoUnitarioSeguro
+          : 100;
+
+  const decrementoItemReais = calcularDecrementoConfigReais(
+    baseReferencia,
+    item.tipoDecremento,
+    item.valorDecremento,
+  );
+  const parsed = parseIntervaloMinimoEdital(intervaloRaw);
+  if (!parsed) {
+    return {
+      compativel: true,
+      decrementoItemReais,
+      intervaloEditalReais: 0,
+    };
+  }
+
+  const intervaloEditalReais = calcularDecrementoMinimoReaisEdital(
+    baseReferencia,
+    parsed,
+  );
+
+  if (parsed.tipo === "PERCENTUAL" && item.tipoDecremento === "PERCENTUAL") {
+    const compativel = item.valorDecremento + 1e-9 >= parsed.valor;
+    return {
+      compativel,
+      decrementoItemReais,
+      intervaloEditalReais,
+      motivo: compativel
+        ? undefined
+        : `Item #${item.numeroItem} está em ${item.valorDecremento}% abaixo do mínimo de ${parsed.textoFormatado} exigido no edital.`,
+    };
+  }
+
+  const compativel = decrementoItemReais + 1e-9 >= intervaloEditalReais;
+  return {
+    compativel,
+    decrementoItemReais,
+    intervaloEditalReais,
+    motivo: compativel
+      ? undefined
+      : `Item #${item.numeroItem} usa decremento de R$ ${decrementoItemReais.toFixed(2)}, menor que o mínimo de ${parsed.textoFormatado} do edital.`,
+  };
+}
+
+/** Lista itens ativos cujo decremento está abaixo do intervalo mínimo do edital. */
+export function listarItensAbaixoIntervaloMinimo(
+  itens: DisputaItemRegra[],
+  intervaloRaw?: string | null,
+): Array<{
+  item: DisputaItemRegra;
+  motivo: string;
+  intervaloEditalReais: number;
+  decrementoItemReais: number;
+}> {
+  const resultado: Array<{
+    item: DisputaItemRegra;
+    motivo: string;
+    intervaloEditalReais: number;
+    decrementoItemReais: number;
+  }> = [];
+
+  for (const item of itens) {
+    if (!item.ativoNoRobo) continue;
+    const valid = validarItemContraIntervaloMinimo(item, intervaloRaw);
+    if (!valid.compativel && valid.motivo) {
+      resultado.push({
+        item,
+        motivo: valid.motivo,
+        intervaloEditalReais: valid.intervaloEditalReais,
+        decrementoItemReais: valid.decrementoItemReais,
+      });
+    }
+  }
+  return resultado;
+}
+
+/** Atualiza itens ativos incompatíveis para atender ao intervalo mínimo do edital. */
+export function adequarItensAoIntervaloMinimo(
+  itens: DisputaItemRegra[],
+  intervaloRaw?: string | null,
+): DisputaItemRegra[] {
+  const parsed = parseIntervaloMinimoEdital(intervaloRaw);
+  if (!parsed) return itens;
+
+  return itens.map((item) => {
+    if (!item.ativoNoRobo) return item;
+    const check = validarItemContraIntervaloMinimo(item, parsed.textoFormatado);
+    if (check.compativel) return item;
+
+    if (parsed.tipo === "PERCENTUAL") {
+      return {
+        ...item,
+        tipoDecremento: "PERCENTUAL",
+        valorDecremento: round2(parsed.valor),
+      };
+    }
+
+    return {
+      ...item,
+      tipoDecremento: parsed.valor <= 0.01 ? "CENTAVOS_1" : "FIXO_REAIS",
+      valorDecremento: round2(parsed.valor),
+    };
+  });
+}
+
+/**
+ * Calcula o próximo lance aplicando a regra de decremento configurada e o
+ * intervalo mínimo exigido pelo edital (quando informado), com trava
+ * matemática inviolável para jamais ficar abaixo do piso seguro.
  */
 export function aplicarDecremento(
   valorAtual: number,
   tipo: TipoDecremento,
   valorDecrementoConfig: number,
   pisoSeguro: number,
-): { novoValor: number; pisoAtingido: boolean } {
-  let decrementoEfetivo = 0.01;
+  intervaloMinimoEdital?: string | IntervaloMinimoEditalParsed | null,
+): ResultadoAplicarDecremento {
+  const decrementoConfig = calcularDecrementoConfigReais(
+    valorAtual,
+    tipo,
+    valorDecrementoConfig,
+  );
+  const parsedIntervalo =
+    typeof intervaloMinimoEdital === "string"
+      ? parseIntervaloMinimoEdital(intervaloMinimoEdital)
+      : (intervaloMinimoEdital ?? null);
+  const minimoEditalReais = parsedIntervalo
+    ? calcularDecrementoMinimoReaisEdital(valorAtual, parsedIntervalo)
+    : 0;
 
-  if (tipo === "FIXO_REAIS") {
-    decrementoEfetivo = Math.max(0.01, valorDecrementoConfig || 1.0);
-  } else if (tipo === "PERCENTUAL") {
-    const perc = Math.max(0.01, valorDecrementoConfig || 0.5);
-    decrementoEfetivo = Math.max(0.01, round2(valorAtual * (perc / 100)));
-  }
-
+  const ajustadoPeloIntervaloEdital =
+    minimoEditalReais > decrementoConfig + 1e-9;
+  const decrementoEfetivo = Math.max(decrementoConfig, minimoEditalReais);
   const valorCalculado = round2(valorAtual - decrementoEfetivo);
 
-  if (valorCalculado < pisoSeguro) {
-    return { novoValor: pisoSeguro, pisoAtingido: true };
+  // Se até o mínimo exigido pelo edital ultrapassar o Piso Seguro, bloqueia em vez de enviar lance ilegal ou com prejuízo
+  if (
+    minimoEditalReais > 0.01 + 1e-9 &&
+    round2(valorAtual - minimoEditalReais) < pisoSeguro
+  ) {
+    return {
+      novoValor: pisoSeguro,
+      pisoAtingido: true,
+      ajustadoPeloIntervaloEdital,
+      bloqueadoPorIntervaloNoPiso: true,
+      decrementoAplicado: 0,
+    };
   }
 
-  return { novoValor: valorCalculado, pisoAtingido: false };
+  if (valorCalculado < pisoSeguro) {
+    return {
+      novoValor: pisoSeguro,
+      pisoAtingido: true,
+      ...(parsedIntervalo
+        ? {
+            ajustadoPeloIntervaloEdital,
+            bloqueadoPorIntervaloNoPiso: false,
+            decrementoAplicado: round2(valorAtual - pisoSeguro),
+          }
+        : {}),
+    };
+  }
+
+  return {
+    novoValor: valorCalculado,
+    pisoAtingido: valorCalculado <= pisoSeguro && Boolean(parsedIntervalo),
+    ...(parsedIntervalo
+      ? {
+          ajustadoPeloIntervaloEdital,
+          bloqueadoPorIntervaloNoPiso: false,
+          decrementoAplicado: decrementoEfetivo,
+        }
+      : {}),
+  };
 }
 
 /**
  * Avalia o estado de um item e decide deterministicamente se o robô deve ou não
- * disparar um lance, respeitando piso seguro, tática (Imediato vs Sniper) e regras de disputa.
+ * disparar um lance, respeitando piso seguro, tática (Imediato vs Sniper), intervalo mínimo e regras de disputa.
  */
 export function avaliarProximoLance(
   item: DisputaItemRegra,
   contexto: ContextoDisputa,
 ): DecisaoRoboLance {
+  if (item.statusItem === "FINALIZADO" || item.statusItem === "VENCEDOR") {
+    return {
+      tipo: "ITEM_INATIVO",
+      deveDisparar: false,
+      motivo:
+        item.statusItem === "VENCEDOR"
+          ? "Item já encerrado como vencedor."
+          : "Item finalizado/desclassificado nesta sessão.",
+    };
+  }
+
   if (!item.ativoNoRobo) {
     return {
       tipo: "ITEM_INATIVO",
@@ -182,14 +456,34 @@ export function avaliarProximoLance(
     };
   }
 
-  const { novoValor, pisoAtingido } = aplicarDecremento(
+  const intervaloParsed = parseIntervaloMinimoEdital(contexto.intervaloMinimoLances);
+  const {
+    novoValor,
+    pisoAtingido,
+    ajustadoPeloIntervaloEdital,
+    bloqueadoPorIntervaloNoPiso,
+  } = aplicarDecremento(
     baseReferencia,
     item.tipoDecremento,
     item.valorDecremento,
     item.pisoUnitarioSeguro,
+    intervaloParsed,
   );
 
+  if (bloqueadoPorIntervaloNoPiso) {
+    return {
+      tipo: "BLOQUEADO_PISO_SEGURO",
+      deveDisparar: false,
+      pisoAtingido: true,
+      motivo: `Respeitando o intervalo mínimo do edital (${intervaloParsed?.textoFormatado || contexto.intervaloMinimoLances}), o próximo lance ficaria abaixo do Piso Seguro (R$ ${item.pisoUnitarioSeguro.toFixed(2)}). Robô bloqueado por segurança.`,
+    };
+  }
+
   const novoTotal = round2(novoValor * (item.quantidade > 0 ? item.quantidade : 1));
+  const sufixoIntervalo =
+    ajustadoPeloIntervaloEdital && intervaloParsed
+      ? ` (ajustado ao intervalo mínimo de ${intervaloParsed.textoFormatado} do edital)`
+      : "";
 
   return {
     tipo: "ENVIAR_LANCE",
@@ -200,8 +494,8 @@ export function avaliarProximoLance(
     pisoAtingido,
     motivo:
       item.tatica === "SNIPER"
-        ? `Disparo Sniper executado nos segundos finais: cobrindo R$ ${baseReferencia.toFixed(2)} para R$ ${novoValor.toFixed(2)}.`
-        : `Lance Imediato disparado: cobrindo R$ ${baseReferencia.toFixed(2)} para R$ ${novoValor.toFixed(2)}.`,
+        ? `Disparo Sniper executado nos segundos finais: cobrindo R$ ${baseReferencia.toFixed(2)} para R$ ${novoValor.toFixed(2)}${sufixoIntervalo}.`
+        : `Lance Imediato disparado: cobrindo R$ ${baseReferencia.toFixed(2)} para R$ ${novoValor.toFixed(2)}${sufixoIntervalo}.`,
   };
 }
 
@@ -491,12 +785,31 @@ export interface LiderConcorrente {
   isMeEpp: boolean;
 }
 
+export interface ClassificacaoFechadoAbertoItem {
+  apurada: boolean;
+  classificado: boolean;
+  melhorPropostaInicial: number;
+  minhaPropostaInicial: number | null;
+  limiteFaixa10PorCento: number;
+  propostasConcorrentes: number[];
+  motivo: string;
+}
+
 export interface EstadoSimulacao {
   itens: DisputaItemRegra[];
   /** Concorrente que lidera cada item (ausente quando sua empresa lidera) */
   liderConcorrente: Record<string, LiderConcorrente | undefined>;
   /** Último lance de concorrente por item (usado na fase fechada) */
   ultimoLanceConcorrente: Record<string, number | undefined>;
+  /** Contagem regressiva em segundos/ticks antes de o robô disparar em cada item */
+  cooldownResposta?: Record<string, number>;
+  /** Indica se a etapa fechada inicial (Art. 25, FECHADO_ABERTO) já foi apurada */
+  etapaFechadaApurada?: boolean;
+  /** Resultado da classificação da etapa fechada inicial por item */
+  classificacaoFechadoAberto?: Record<
+    string,
+    ClassificacaoFechadoAbertoItem | undefined
+  >;
   tempoRestante: number;
   fase: "ABERTA" | "ENCERRADA";
   sequencia: number;
@@ -510,8 +823,10 @@ export interface ParametrosSimulacao {
   perfil: PerfilConcorrenteVirtual;
   pausaEmergencia: boolean;
   segundosFinaisSniper: number;
+  tempoRespostaSegundos?: number;
   minhaEmpresaMeEpp: boolean;
   modoDisputa: ModoDisputaSimulacao;
+  intervaloMinimoLances?: string | null;
   random?: () => number;
 }
 
@@ -631,6 +946,9 @@ export function criarEstadoSimulacao(
     itens,
     liderConcorrente,
     ultimoLanceConcorrente,
+    cooldownResposta: {},
+    etapaFechadaApurada: false,
+    classificacaoFechadoAberto: {},
     tempoRestante: tempoInicial,
     fase: "ABERTA",
     sequencia: seq,
@@ -640,14 +958,23 @@ export function criarEstadoSimulacao(
   };
 }
 
+function resolverCadenciaResposta(params: ParametrosSimulacao): number {
+  const raw = params.tempoRespostaSegundos;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 1) {
+    return Math.min(60, Math.round(raw));
+  }
+  return 1;
+}
+
 function montarContexto(params: ParametrosSimulacao, tempoRestante: number): ContextoDisputa {
   return {
     pausaEmergencia: params.pausaEmergencia,
     tempoRestanteSegundos: tempoRestante,
     segundosFinaisSniper: params.segundosFinaisSniper,
-    tempoRespostaSegundos: 1,
+    tempoRespostaSegundos: resolverCadenciaResposta(params),
     modoDisputa: params.modoDisputa,
     minhaEmpresaMeEpp: params.minhaEmpresaMeEpp,
+    intervaloMinimoLances: params.intervaloMinimoLances ?? null,
   };
 }
 
@@ -655,17 +982,35 @@ interface ResultadoReacaoRobo {
   item: DisputaItemRegra;
   evento: Omit<LanceDisputaEvento, "id" | "itemId" | "numeroItem" | "valorTotal" | "timestamp"> | null;
   travouNoPiso: boolean;
+  aguardandoCadencia: boolean;
+  cooldownAtualizado?: number;
 }
 
 function reagirRobo(
   itemEntrada: DisputaItemRegra,
   params: ParametrosSimulacao,
   tempoRestante: number,
+  cooldownAtual?: number,
 ): ResultadoReacaoRobo {
   const item = { ...itemEntrada };
-  const decisao = avaliarProximoLance(item, montarContexto(params, tempoRestante));
+  const contexto = montarContexto(params, tempoRestante);
+  const decisao = avaliarProximoLance(item, contexto);
 
   if (decisao.deveDisparar && decisao.novoValorUnitario != null) {
+    const cadencia = contexto.tempoRespostaSegundos;
+    const restanteCooldown =
+      cooldownAtual == null ? cadencia - 1 : Math.max(0, cooldownAtual - 1);
+
+    if (restanteCooldown > 0) {
+      return {
+        item,
+        evento: null,
+        travouNoPiso: false,
+        aguardandoCadencia: true,
+        cooldownAtualizado: restanteCooldown,
+      };
+    }
+
     item.meuUltimoLance = decisao.novoValorUnitario;
     item.melhorLanceSala = decisao.novoValorUnitario;
     item.minhaPosicao = 1;
@@ -673,6 +1018,8 @@ function reagirRobo(
     return {
       item,
       travouNoPiso: false,
+      aguardandoCadencia: false,
+      cooldownAtualizado: undefined,
       evento: {
         autorNome: `Sua Empresa (Robô ${decisao.taticaUsada === "SNIPER" ? "Sniper" : "Imediato"})`,
         isMinhaEmpresa: true,
@@ -690,11 +1037,265 @@ function reagirRobo(
   if (decisao.tipo === "BLOQUEADO_PISO_SEGURO") {
     item.statusItem = "PISO_ATINGIDO";
   }
-  return { item, evento: null, travouNoPiso };
+
+  const manterCooldown = decisao.tipo === "PAUSADO_EMERGENCIA";
+  return {
+    item,
+    evento: null,
+    travouNoPiso,
+    aguardandoCadencia: false,
+    cooldownAtualizado: manterCooldown ? cooldownAtual : undefined,
+  };
 }
 
 function itemFinalizado(item: DisputaItemRegra): boolean {
   return item.statusItem === "VENCEDOR" || item.statusItem === "FINALIZADO";
+}
+
+function gerarPropostasFechadasConcorrentes(
+  propostaReferencia: number,
+  perfil: PerfilConcorrenteVirtual,
+  random: () => number,
+): number[] {
+  const fatores: Record<PerfilConcorrenteVirtual, [number, number, number]> = {
+    CONSERVADOR: [0.98 + random() * 0.02, 1.01 + random() * 0.02, 1.04 + random() * 0.03],
+    MODERADO: [0.93 + random() * 0.05, 0.98 + random() * 0.03, 1.02 + random() * 0.03],
+    AGRESSIVO: [0.84 + random() * 0.05, 0.89 + random() * 0.04, 0.93 + random() * 0.04],
+  };
+  return fatores[perfil]
+    .map((f) => Math.max(0.01, round2(propostaReferencia * f)))
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Executa a triagem da etapa fechada inicial do Modo Fechado e Aberto (Art. 25 da IN SEGES/ME nº 73/2022):
+ * classifica o autor da menor proposta e os autores das propostas com valor até +10% superiores,
+ * ou, não havendo pelo menos 3 nessas condições, os 3 melhores colocados.
+ */
+export function executarEtapaFechadaInicial(
+  estado: EstadoSimulacao,
+  params: ParametrosSimulacao,
+  propostasIniciaisPorItem?: Record<string, number[]>,
+): EstadoSimulacao {
+  if (params.modoDisputa !== "FECHADO_ABERTO") {
+    return estado;
+  }
+
+  const random = params.random ?? Math.random;
+  let seq = estado.sequencia;
+  const novosEventos: LanceDisputaEvento[] = [];
+  const liderConcorrente = { ...estado.liderConcorrente };
+  const ultimoLanceConcorrente = { ...estado.ultimoLanceConcorrente };
+  const cooldownResposta = { ...(estado.cooldownResposta || {}) };
+  const classificacaoFechadoAberto: Record<
+    string,
+    ClassificacaoFechadoAbertoItem | undefined
+  > = { ...(estado.classificacaoFechadoAberto || {}) };
+
+  let qtdClassificados = 0;
+  let qtdDesclassificados = 0;
+
+  const itens = estado.itens.map((original, idx) => {
+    const item = { ...original };
+    if (itemFinalizado(item)) {
+      classificacaoFechadoAberto[item.itemId] = {
+        apurada: true,
+        classificado: false,
+        melhorPropostaInicial: item.melhorLanceSala ?? item.propostaUnitaria,
+        minhaPropostaInicial: item.meuUltimoLance ?? item.propostaUnitaria,
+        limiteFaixa10PorCento: round2(
+          (item.melhorLanceSala ?? item.propostaUnitaria) *
+            (1 + SIMULACAO_CONFIG.margemFaseFechadaPercentual / 100),
+        ),
+        propostasConcorrentes: [],
+        motivo: "Item finalizado antes da etapa fechada.",
+      };
+      return item;
+    }
+
+    const minhaProposta =
+      item.meuUltimoLance != null && item.meuUltimoLance > 0
+        ? item.meuUltimoLance
+        : item.propostaUnitaria > 0
+          ? item.propostaUnitaria
+          : null;
+
+    const concExplicito = propostasIniciaisPorItem?.[item.itemId]?.filter(
+      (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+    );
+    const jaTemConcSeedado =
+      ultimoLanceConcorrente[item.itemId] != null &&
+      (ultimoLanceConcorrente[item.itemId] ?? 0) > 0;
+
+    const propostasConcorrentes =
+      concExplicito && concExplicito.length > 0
+        ? [...concExplicito].sort((a, b) => a - b)
+        : jaTemConcSeedado
+          ? [ultimoLanceConcorrente[item.itemId]!]
+          : minhaProposta != null
+            ? gerarPropostasFechadasConcorrentes(
+                minhaProposta,
+                params.perfil,
+                random,
+              )
+            : [];
+
+    const todasPropostas: Array<{ autor: "MINHA" | "CONC"; valor: number; concIdx?: number }> = [];
+    if (minhaProposta != null) {
+      todasPropostas.push({ autor: "MINHA", valor: minhaProposta });
+    }
+    propostasConcorrentes.forEach((valor, cIdx) => {
+      todasPropostas.push({ autor: "CONC", valor, concIdx: cIdx });
+    });
+
+    if (todasPropostas.length === 0) {
+      return item;
+    }
+
+    todasPropostas.sort(
+      (a, b) => a.valor - b.valor || (a.autor === "MINHA" ? -1 : 1),
+    );
+
+    const melhorPropostaInicial = todasPropostas[0].valor;
+    const limiteFaixa10PorCento = round2(
+      melhorPropostaInicial *
+        (1 + SIMULACAO_CONFIG.margemFaseFechadaPercentual / 100),
+    );
+    const qtdNaFaixa10 = todasPropostas.filter(
+      (p) => p.valor <= limiteFaixa10PorCento,
+    ).length;
+    const minhaPosicaoRank = todasPropostas.findIndex(
+      (p) => p.autor === "MINHA",
+    );
+
+    const classificado =
+      minhaProposta != null &&
+      (minhaProposta <= limiteFaixa10PorCento ||
+        (qtdNaFaixa10 < 3 && minhaPosicaoRank >= 0 && minhaPosicaoRank < 3));
+
+    const melhorConc =
+      propostasConcorrentes.length > 0
+        ? Math.min(...propostasConcorrentes)
+        : null;
+
+    if (melhorConc != null && (minhaProposta == null || melhorConc < minhaProposta)) {
+      const concorrenteLider =
+        liderConcorrente[item.itemId] ??
+        CONCORRENTES_VIRTUAIS[idx % CONCORRENTES_VIRTUAIS.length];
+      liderConcorrente[item.itemId] = concorrenteLider;
+      ultimoLanceConcorrente[item.itemId] = melhorConc;
+      item.melhorLanceSala = melhorConc;
+      item.minhaPosicao = minhaPosicaoRank >= 0 ? minhaPosicaoRank + 1 : 2;
+      if (!jaTemConcSeedado) {
+        seq++;
+        novosEventos.push(
+          criarEvento(seq, item, {
+            autorNome: `${concorrenteLider.nome} (Etapa Fechada)`,
+            isMinhaEmpresa: false,
+            isMeEpp: concorrenteLider.isMeEpp,
+            valorUnitario: melhorConc,
+            tempoRestanteSegundos: estado.tempoRestante,
+            tipoDisparo: "LANCE_FECHADO",
+            mensagem: `Proposta inicial sigilosa aberta na faixa competitiva (Art. 25 IN 73/2022).`,
+          }),
+        );
+      }
+    } else if (minhaProposta != null) {
+      liderConcorrente[item.itemId] = undefined;
+      item.melhorLanceSala = minhaProposta;
+      item.minhaPosicao = 1;
+    }
+
+    if (classificado) {
+      qtdClassificados++;
+      const motivoClass =
+        minhaProposta != null && minhaProposta <= limiteFaixa10PorCento
+          ? `Classificado na etapa fechada (Art. 25 IN 73/2022): dentro dos +10% da menor proposta (limite ${limiteFaixa10PorCento.toFixed(2)}).`
+          : `Classificado pelo critério das 3 melhores propostas na etapa fechada (Art. 25 §1º IN 73/2022).`;
+      classificacaoFechadoAberto[item.itemId] = {
+        apurada: true,
+        classificado: true,
+        melhorPropostaInicial,
+        minhaPropostaInicial: minhaProposta,
+        limiteFaixa10PorCento,
+        propostasConcorrentes,
+        motivo: motivoClass,
+      };
+      if (item.statusItem === "PRONTO") {
+        item.statusItem = "EM_DISPUTA";
+      }
+      if (!jaTemConcSeedado && propostasConcorrentes.length > 0) {
+        seq++;
+        novosEventos.push(
+          criarEvento(seq, item, {
+            autorNome: "Sessão Pública (Art. 25 IN 73/2022)",
+            isMinhaEmpresa: true,
+            isMeEpp: params.minhaEmpresaMeEpp,
+            valorUnitario: minhaProposta ?? melhorPropostaInicial,
+            tempoRestanteSegundos: estado.tempoRestante,
+            tipoDisparo: "PROPOSTA_INICIAL",
+            mensagem: motivoClass,
+          }),
+        );
+      }
+    } else {
+      qtdDesclassificados++;
+      delete cooldownResposta[item.itemId];
+      item.statusItem = "FINALIZADO";
+      const diffPct =
+        minhaProposta != null && melhorPropostaInicial > 0
+          ? round2(((minhaProposta - melhorPropostaInicial) / melhorPropostaInicial) * 100)
+          : 0;
+      const motivoElim = `Desclassificado na etapa fechada (Art. 25 IN 73/2022): proposta inicial R$ ${(minhaProposta ?? 0).toFixed(2)} (+${diffPct.toFixed(1)}%) excedeu +10% da melhor (R$ ${melhorPropostaInicial.toFixed(2)}) e ficou fora das 3 melhores.`;
+      classificacaoFechadoAberto[item.itemId] = {
+        apurada: true,
+        classificado: false,
+        melhorPropostaInicial,
+        minhaPropostaInicial: minhaProposta,
+        limiteFaixa10PorCento,
+        propostasConcorrentes,
+        motivo: motivoElim,
+      };
+      seq++;
+      novosEventos.push(
+        criarEvento(seq, item, {
+          autorNome: "Pregoeiro / Sistema (Art. 25 IN 73/2022)",
+          isMinhaEmpresa: false,
+          valorUnitario: minhaProposta ?? melhorPropostaInicial,
+          tempoRestanteSegundos: estado.tempoRestante,
+          tipoDisparo: "LANCE_FECHADO",
+          mensagem: motivoElim,
+        }),
+      );
+    }
+
+    return item;
+  });
+
+  seq++;
+  return {
+    ...estado,
+    itens,
+    liderConcorrente,
+    ultimoLanceConcorrente,
+    cooldownResposta,
+    etapaFechadaApurada: true,
+    classificacaoFechadoAberto,
+    sequencia: seq,
+    eventos: anexarEventos(estado.eventos, novosEventos),
+    ultimoAviso:
+      qtdDesclassificados > 0
+        ? {
+            id: seq,
+            tipo: "warning",
+            texto: `📋 Etapa Fechada (Art. 25 IN 73/2022): ${qtdClassificados} item(ns) classificado(s) e ${qtdDesclassificados} desclassificado(s) por exceder +10% da menor proposta.`,
+          }
+        : {
+            id: seq,
+            tipo: "info",
+            texto: `📋 Etapa Fechada apurada (Art. 25 IN 73/2022): ${qtdClassificados} item(ns) classificado(s) para a etapa aberta.`,
+          },
+  };
 }
 
 function encerrarSessao(
@@ -726,7 +1327,7 @@ function encerrarSessao(
         finalConcorrente = Math.min(ultimoConc, Math.max(pisoConc, proposto));
       }
 
-      // Lance fechado do robô (somente se ativo, não pausado e não em monitoramento)
+      // Lance fechado do robô (somente se ativo, não pausado, não monitoramento e dentro do intervalo mínimo)
       let meuFinal = item.meuUltimoLance;
       const roboPodeAtuar =
         item.ativoNoRobo &&
@@ -743,24 +1344,28 @@ function encerrarSessao(
         (item.minhaPosicao !== 1 || concorrenteNaFaixa) &&
         melhor > item.pisoUnitarioSeguro
       ) {
-        meuFinal = aplicarDecremento(
+        const resultadoFechado = aplicarDecremento(
           melhor,
           item.tipoDecremento,
           item.valorDecremento,
           item.pisoUnitarioSeguro,
-        ).novoValor;
-        seq++;
-        novosEventos.push(
-          criarEvento(seq, item, {
-            autorNome: "Sua Empresa (Lance Fechado)",
-            isMinhaEmpresa: true,
-            isMeEpp: params.minhaEmpresaMeEpp,
-            valorUnitario: meuFinal,
-            tempoRestanteSegundos: 0,
-            tipoDisparo: "LANCE_FECHADO",
-            mensagem: "Lance final sigiloso enviado na fase fechada.",
-          }),
+          params.intervaloMinimoLances,
         );
+        if (!resultadoFechado.bloqueadoPorIntervaloNoPiso) {
+          meuFinal = resultadoFechado.novoValor;
+          seq++;
+          novosEventos.push(
+            criarEvento(seq, item, {
+              autorNome: "Sua Empresa (Lance Fechado)",
+              isMinhaEmpresa: true,
+              isMeEpp: params.minhaEmpresaMeEpp,
+              valorUnitario: meuFinal,
+              tempoRestanteSegundos: 0,
+              tipoDisparo: "LANCE_FECHADO",
+              mensagem: "Lance final sigiloso enviado na fase fechada.",
+            }),
+          );
+        }
       }
 
       if (finalConcorrente != null && finalConcorrente < (ultimoConc ?? Infinity)) {
@@ -808,6 +1413,9 @@ function encerrarSessao(
   const desempates: OportunidadeDesempate[] = [];
   if (params.minhaEmpresaMeEpp) {
     for (const item of itens) {
+      if (estado.classificacaoFechadoAberto?.[item.itemId]?.classificado === false) {
+        continue;
+      }
       if (item.minhaPosicao === 1 || item.melhorLanceSala == null) continue;
       const check = verificarEmpateFictoMeEpp(
         item.melhorLanceSala,
@@ -839,6 +1447,7 @@ function encerrarSessao(
     itens,
     liderConcorrente,
     ultimoLanceConcorrente,
+    cooldownResposta: {},
     tempoRestante: 0,
     fase: "ENCERRADA",
     sequencia: seq + 1,
@@ -854,8 +1463,9 @@ function encerrarSessao(
 
 /**
  * Avança a sessão simulada em 1 segundo:
- * 1) concorrentes reagem quando sua empresa lidera; 2) o robô reage pelas regras;
- * 3) prorrogação automática (modo Aberto); 4) encerramento e fase fechada.
+ * 0) no modo FECHADO_ABERTO, apura na abertura a etapa fechada (+10% / Top 3 - Art. 25);
+ * 1) concorrentes reagem quando sua empresa lidera; 2) o robô reage respeitando cadência e intervalo mínimo;
+ * 3) prorrogação automática; 4) encerramento e fase fechada.
  * Função pura: não altera o estado recebido.
  */
 export function executarTickSimulacao(
@@ -865,21 +1475,32 @@ export function executarTickSimulacao(
   if (estado.fase === "ENCERRADA") return estado;
 
   const random = params.random ?? Math.random;
-  const novoTempo = Math.max(0, estado.tempoRestante - 1);
+  const estadoBase =
+    params.modoDisputa === "FECHADO_ABERTO" && !estado.etapaFechadaApurada
+      ? executarEtapaFechadaInicial(estado, params)
+      : estado;
+
+  const novoTempo = Math.max(0, estadoBase.tempoRestante - 1);
   if (novoTempo <= 0) {
-    return encerrarSessao(estado, params, random);
+    return encerrarSessao(estadoBase, params, random);
   }
   const janela = SIMULACAO_CONFIG.janelaProrrogacaoSegundos;
-  const liderConcorrente = { ...estado.liderConcorrente };
-  const ultimoLanceConcorrente = { ...estado.ultimoLanceConcorrente };
+  const liderConcorrente = { ...estadoBase.liderConcorrente };
+  const ultimoLanceConcorrente = { ...estadoBase.ultimoLanceConcorrente };
+  const cooldownResposta: Record<string, number> = {
+    ...(estadoBase.cooldownResposta || {}),
+  };
   const novosEventos: LanceDisputaEvento[] = [];
-  let seq = estado.sequencia;
+  let seq = estadoBase.sequencia;
   let houveLanceNaJanela = false;
   let aviso: AvisoSimulacao | null = null;
 
-  const itens = estado.itens.map((original, idx) => {
+  const itens = estadoBase.itens.map((original, idx) => {
     let item = { ...original };
-    if (itemFinalizado(item)) return item;
+    if (itemFinalizado(item)) {
+      delete cooldownResposta[item.itemId];
+      return item;
+    }
 
     // 1. Concorrente virtual só reage quando sua empresa está na liderança
     if (item.minhaPosicao === 1) {
@@ -891,14 +1512,21 @@ export function executarTickSimulacao(
         ultimoLanceConcorrente[item.itemId] = lance.valorUnitario;
         item.melhorLanceSala = lance.valorUnitario;
         item.minhaPosicao = 2;
+        delete cooldownResposta[item.itemId];
         if (item.statusItem === "PRONTO") item.statusItem = "EM_DISPUTA";
         if (novoTempo <= janela) houveLanceNaJanela = true;
       }
     }
 
-    // 2. Reação do robô
-    const reacao = reagirRobo(item, params, novoTempo);
+    // 2. Reação do robô respeitando cadência (tempoRespostaSegundos) e intervalo mínimo
+    const reacao = reagirRobo(item, params, novoTempo, cooldownResposta[item.itemId]);
     item = reacao.item;
+    if (reacao.cooldownAtualizado != null && reacao.cooldownAtualizado > 0) {
+      cooldownResposta[item.itemId] = reacao.cooldownAtualizado;
+    } else {
+      delete cooldownResposta[item.itemId];
+    }
+
     if (reacao.evento) {
       seq++;
       novosEventos.push(criarEvento(seq, item, reacao.evento));
@@ -909,7 +1537,7 @@ export function executarTickSimulacao(
       aviso = {
         id: seq,
         tipo: "warning",
-        texto: `🔒 Item ${item.numeroItem}: concorrente abaixo do seu Piso Seguro (${item.pisoUnitarioSeguro.toFixed(2)}). Robô travado para proteger sua margem.`,
+        texto: `🔒 Item ${item.numeroItem}: concorrente abaixo do seu Piso Seguro (${item.pisoUnitarioSeguro.toFixed(2)}) ou bloqueado pelo intervalo mínimo do edital. Robô travado para proteger sua margem.`,
       };
     }
     return item;
@@ -932,14 +1560,15 @@ export function executarTickSimulacao(
   }
 
   const proximo: EstadoSimulacao = {
-    ...estado,
+    ...estadoBase,
     itens,
     liderConcorrente,
     ultimoLanceConcorrente,
+    cooldownResposta,
     tempoRestante,
     sequencia: seq,
-    eventos: anexarEventos(estado.eventos, novosEventos),
-    ultimoAviso: aviso ?? estado.ultimoAviso,
+    eventos: anexarEventos(estadoBase.eventos, novosEventos),
+    ultimoAviso: aviso ?? estadoBase.ultimoAviso,
   };
 
   return tempoRestante <= 0 ? encerrarSessao(proximo, params, random) : proximo;
@@ -953,7 +1582,7 @@ export function injetarLanceRival(
 ): EstadoSimulacao {
   if (estado.fase === "ENCERRADA") return estado;
   const alvo = estado.itens.find((it) => it.itemId === itemId);
-  if (!alvo) return estado;
+  if (!alvo || itemFinalizado(alvo)) return estado;
 
   const base = alvo.melhorLanceSala || alvo.propostaUnitaria;
   const passoRival =
@@ -965,6 +1594,9 @@ export function injetarLanceRival(
   let seq = estado.sequencia;
   const novosEventos: LanceDisputaEvento[] = [];
   const rival: LiderConcorrente = { nome: "Concorrente Desafiante (Injetado)", isMeEpp: false };
+  const cooldownResposta: Record<string, number> = {
+    ...(estado.cooldownResposta || {}),
+  };
 
   seq++;
   novosEventos.push(
@@ -985,7 +1617,30 @@ export function injetarLanceRival(
     minhaPosicao: 2,
     statusItem: alvo.statusItem === "PRONTO" ? "EM_DISPUTA" : alvo.statusItem,
   };
-  const reacao = reagirRobo(itemComRival, params, estado.tempoRestante);
+
+  const cadencia = resolverCadenciaResposta(params);
+  let reacao: ResultadoReacaoRobo;
+  if (cadencia > 1) {
+    const contexto = montarContexto(params, estado.tempoRestante);
+    const decisao = avaliarProximoLance(itemComRival, contexto);
+    if (decisao.deveDisparar) {
+      cooldownResposta[itemId] = cadencia;
+      reacao = {
+        item: itemComRival,
+        evento: null,
+        travouNoPiso: false,
+        aguardandoCadencia: true,
+        cooldownAtualizado: cadencia,
+      };
+    } else {
+      reacao = reagirRobo(itemComRival, params, estado.tempoRestante);
+      delete cooldownResposta[itemId];
+    }
+  } else {
+    reacao = reagirRobo(itemComRival, params, estado.tempoRestante);
+    delete cooldownResposta[itemId];
+  }
+
   const liderConcorrente = { ...estado.liderConcorrente, [itemId]: rival };
   if (reacao.evento) {
     seq++;
@@ -1009,6 +1664,7 @@ export function injetarLanceRival(
     itens: estado.itens.map((it) => (it.itemId === itemId ? reacao.item : it)),
     liderConcorrente,
     ultimoLanceConcorrente: { ...estado.ultimoLanceConcorrente, [itemId]: novoValorRival },
+    cooldownResposta,
     tempoRestante,
     sequencia: seq,
     eventos: anexarEventos(estado.eventos, novosEventos),
@@ -1020,7 +1676,9 @@ export function injetarLanceRival(
         : `💥 Lance concorrente de R$ ${novoValorRival.toFixed(2)} injetado no Item ${alvo.numeroItem}. ${
             reacao.evento
               ? "O robô respondeu na hora."
-              : "O robô aguardou conforme a tática configurada."
+              : reacao.aguardandoCadencia
+                ? `Robô aguardará ${cadencia}s da cadência configurada.`
+                : "O robô aguardou conforme a tática configurada."
           }`,
     },
   };

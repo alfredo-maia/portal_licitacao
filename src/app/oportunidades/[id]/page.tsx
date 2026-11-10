@@ -107,6 +107,11 @@ import {
 } from "@/lib/pedido-cotacao-template";
 import type { ItemDisputaEdital } from "@/server/schemas/analise-ia.schema";
 import {
+  adequarItensAoIntervaloMinimo,
+  listarItensAbaixoIntervaloMinimo,
+  parseIntervaloMinimoEdital,
+} from "@/lib/robo-lances-engine";
+import {
   mesclarItensCertameNaCalculadora,
   normalizarChaveItem,
   normalizarMapaSelecaoCotacao,
@@ -700,7 +705,12 @@ function OportunidadesDetalheContent({
   const [statusGeralDisputa, setStatusGeralDisputa] = React.useState<"CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA">("CONFIGURADA");
   const [pausaEmergenciaDisputa, setPausaEmergenciaDisputa] = React.useState<boolean>(false);
   const [tempoRespostaSegundos, setTempoRespostaSegundos] = React.useState<number>(3);
+  const [tempoRespostaDraft, setTempoRespostaDraft] = React.useState<string>("3");
   const [segundosFinaisSniper, setSegundosFinaisSniper] = React.useState<number>(10);
+
+  React.useEffect(() => {
+    setTempoRespostaDraft(String(tempoRespostaSegundos));
+  }, [tempoRespostaSegundos]);
   const [regrasDisputaItens, setRegrasDisputaItens] = React.useState<DisputaItemRegra[]>([]);
   const [regrasDisputaDetectadas, setRegrasDisputaDetectadas] =
     React.useState<RegrasDisputaDetectadas | null>(null);
@@ -1047,6 +1057,22 @@ function OportunidadesDetalheContent({
     [regrasDisputaItens, disputaOrigemPrecos],
   );
 
+  const itensAbaixoIntervaloDisputa = React.useMemo(
+    () => listarItensAbaixoIntervaloMinimo(regrasDisputaItens, intervaloMinimoLances),
+    [regrasDisputaItens, intervaloMinimoLances],
+  );
+
+  const intervaloIaDivergente = React.useMemo(() => {
+    const parsedIa = parseIntervaloMinimoEdital(regrasDisputaDetectadas?.intervaloMinimoLances);
+    if (!parsedIa) return null;
+    const parsedAtual = parseIntervaloMinimoEdital(intervaloMinimoLances);
+    if (!parsedAtual) return parsedIa;
+    if (parsedIa.tipo === parsedAtual.tipo) {
+      return parsedIa.valor > parsedAtual.valor + 1e-9 ? parsedIa : null;
+    }
+    return parsedIa.textoFormatado !== parsedAtual.textoFormatado ? parsedIa : null;
+  }, [regrasDisputaDetectadas?.intervaloMinimoLances, intervaloMinimoLances]);
+
   const validacaoPropostaAtual = React.useMemo(
     () => validarPropostaManual(itensCalculadora, propostaConfig),
     [itensCalculadora, propostaConfig],
@@ -1241,6 +1267,24 @@ function OportunidadesDetalheContent({
     setRegrasDisputaItens((prev) =>
       prev.map((r) => (r.itemId === itemId ? { ...r, [campo]: valorLimpo } : r)),
     );
+  };
+
+  const handleAdequarItensAoIntervaloMinimo = (intervaloAlvo?: string) => {
+    const intervaloEfetivo = intervaloAlvo ?? intervaloMinimoLances;
+    if (intervaloAlvo) {
+      setIntervaloMinimoLances(intervaloAlvo);
+    }
+    setRegrasDisputaItens((prev) =>
+      adequarItensAoIntervaloMinimo(prev, intervaloEfetivo),
+    );
+    const parsed = parseIntervaloMinimoEdital(intervaloEfetivo);
+    setDisputaFeedback({
+      tipo: "success",
+      msg: `Itens ativos adequados ao intervalo mínimo de ${
+        parsed?.textoFormatado || intervaloEfetivo
+      }. Clique em 'Salvar Configuração de Disputa' para confirmar.`,
+    });
+    setTimeout(() => setDisputaFeedback(null), 5000);
   };
 
   const handleAplicarParametrosPadraoCalc = () => {
@@ -5677,6 +5721,11 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       id="input-intervalo-minimo-lances"
                       labelText="Intervalo Mínimo entre Lances Exigido pelo Edital"
                       placeholder="Ex: R$ 0,05 ou 0,5%"
+                      helperText={
+                        regrasDisputaDetectadas?.intervaloMinimoLances
+                          ? `Edital/IA: ${regrasDisputaDetectadas.intervaloMinimoLances} (editável e validado no simulador)`
+                          : "Ex.: R$ 5,00 ou 0,5% (imposto no simulador)"
+                      }
                       value={intervaloMinimoLances}
                       onChange={(e) => setIntervaloMinimoLances(e.target.value)}
                     />
@@ -5690,6 +5739,62 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       value={identificadorSalaDisputa}
                       onChange={(e) => setIdentificadorSalaDisputa(e.target.value)}
                     />
+                  </div>
+
+                  <div>
+                    <TextInput
+                      id="input-tempo-resposta-disputa"
+                      data-testid="input-tempo-resposta-disputa"
+                      type="number"
+                      min={1}
+                      max={60}
+                      labelText="Tempo de Resposta do Robô (segundos)"
+                      helperText="Cadência após perder 1º lugar (1s a 60s)"
+                      value={tempoRespostaDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setTempoRespostaDraft(raw);
+                        const parsed = Number.parseInt(raw, 10);
+                        if (Number.isFinite(parsed)) {
+                          setTempoRespostaSegundos(Math.min(60, Math.max(1, parsed)));
+                        }
+                      }}
+                      onBlur={() => {
+                        const parsed = Number.parseInt(tempoRespostaDraft, 10);
+                        const clamped = Number.isFinite(parsed)
+                          ? Math.min(60, Math.max(1, parsed))
+                          : tempoRespostaSegundos;
+                        setTempoRespostaSegundos(clamped);
+                        setTempoRespostaDraft(String(clamped));
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <Select
+                      id="select-janela-sniper-disputa"
+                      data-testid="select-janela-sniper-disputa"
+                      labelText="Janela da Tática Sniper"
+                      value={String(segundosFinaisSniper)}
+                      onChange={(e) => {
+                        const parsed = Number.parseInt(e.target.value, 10);
+                        if (Number.isFinite(parsed)) {
+                          setSegundosFinaisSniper(Math.min(60, Math.max(3, parsed)));
+                        }
+                      }}
+                    >
+                      <SelectItem value="5" text="Últimos 5 segundos" />
+                      <SelectItem value="10" text="Últimos 10 segundos" />
+                      <SelectItem value="15" text="Últimos 15 segundos" />
+                      <SelectItem value="20" text="Últimos 20 segundos" />
+                      <SelectItem value="30" text="Últimos 30 segundos" />
+                      {![5, 10, 15, 20, 30].includes(segundosFinaisSniper) && (
+                        <SelectItem
+                          value={String(segundosFinaisSniper)}
+                          text={`Últimos ${segundosFinaisSniper} segundos`}
+                        />
+                      )}
+                    </Select>
                   </div>
 
                   <div>
@@ -5722,13 +5827,73 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     />
                   </div>
                 </div>
+
+                {(itensAbaixoIntervaloDisputa.length > 0 || Boolean(intervaloIaDivergente)) && (
+                  <div
+                    style={{ marginTop: "1rem" }}
+                    data-testid="alerta-intervalo-minimo-disputa"
+                  >
+                    <InlineNotification
+                      kind="warning"
+                      lowContrast
+                      hideCloseButton
+                      title="Atenção ao Intervalo Mínimo entre Lances do Edital:"
+                      subtitle={
+                        itensAbaixoIntervaloDisputa.length > 0
+                          ? `${itensAbaixoIntervaloDisputa.length} ${
+                              itensAbaixoIntervaloDisputa.length === 1
+                                ? "item ativo está"
+                                : "itens ativos estão"
+                            } com decremento inferior ao mínimo configurado (${
+                              parseIntervaloMinimoEdital(intervaloMinimoLances)?.textoFormatado ||
+                              intervaloMinimoLances
+                            }). O simulador ajustará o passo para respeitar o edital (bloqueando se cruzar o Piso Seguro).`
+                          : `A leitura do Edital/IA identificou intervalo mínimo de ${intervaloIaDivergente?.textoFormatado}, diferente do campo atual (${intervaloMinimoLances || "não informado"}).`
+                      }
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.75rem",
+                        flexWrap: "wrap",
+                        marginTop: "0.5rem",
+                      }}
+                    >
+                      {itensAbaixoIntervaloDisputa.length > 0 && (
+                        <Button
+                          kind="tertiary"
+                          size="sm"
+                          onClick={() => handleAdequarItensAoIntervaloMinimo()}
+                          data-testid="btn-adequar-intervalo-minimo"
+                        >
+                          Adequar {itensAbaixoIntervaloDisputa.length}{" "}
+                          {itensAbaixoIntervaloDisputa.length === 1 ? "item" : "itens"} para{" "}
+                          {parseIntervaloMinimoEdital(intervaloMinimoLances)?.textoFormatado ||
+                            intervaloMinimoLances}
+                        </Button>
+                      )}
+                      {intervaloIaDivergente && (
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          onClick={() =>
+                            handleAdequarItensAoIntervaloMinimo(intervaloIaDivergente.textoFormatado)
+                          }
+                          data-testid="btn-adotar-intervalo-ia"
+                        >
+                          Adotar {intervaloIaDivergente.textoFormatado} do Edital/IA e adequar itens
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Origem dos Preços da Disputa (Calculadora vs Manual R$) */}
               <Tile
                 style={{
                   padding: "1rem 1.25rem",
-                  backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                  backgroundColor: "var(--cds-layer-02)",
                   borderLeft: "4px solid var(--cds-interactive, #0f62fe)",
                   marginBottom: "1.25rem",
                 }}
@@ -5881,7 +6046,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     {tempoRespostaSegundos}s Resposta • {segundosFinaisSniper}s Sniper
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                    Cadência anti-detecção randômica
+                    Cadência configurada para cobertura de lances
                   </div>
                 </Tile>
               </div>
@@ -5891,7 +6056,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 style={{
                   padding: "1rem 1.25rem",
                   marginBottom: "1.5rem",
-                  backgroundColor: "var(--cds-layer-accent, #f4f4f4)",
+                  backgroundColor: "var(--cds-layer-02)",
                   borderLeft: "4px solid #0f62fe",
                 }}
               >
@@ -6037,7 +6202,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                               ? "rgba(218, 30, 40, 0.06)"
                               : item.ativoNoRobo
                                 ? "inherit"
-                                : "var(--cds-layer-accent, #fbfbfb)",
+                                : "var(--cds-layer-02)",
                           }}
                         >
                           {/* Toggle Robô Ativo */}
@@ -6123,7 +6288,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                       pisoMaiorQueProposta || faltaPisoCalculadora
                                         ? "var(--cds-support-error, #da1e28)"
                                         : "var(--cds-support-success, #24a148)",
-                                    backgroundColor: "var(--cds-layer-02, #f4f4f4)",
+                                    backgroundColor: "var(--cds-layer-02)",
                                     padding: "0.2rem 0.5rem",
                                     borderRadius: "3px",
                                     border: "1px solid var(--cds-border-subtle, #e0e0e0)",
@@ -7141,6 +7306,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   orgao: oportunidade.orgaoNome,
                   portal: portalDisputa,
                   modoDisputaEdital,
+                  intervaloMinimoLances,
+                  tempoRespostaSegundos,
                   pausaEmergencia: pausaEmergenciaDisputa,
                   segundosFinaisSniper,
                   regrasItens: regrasDisputaItens,

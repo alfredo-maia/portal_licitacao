@@ -40,6 +40,7 @@ interface SalaDisputaTenant {
   portal: string;
   identificadorSala: string;
   modoDisputaEdital?: "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
+  intervaloMinimoLances?: string;
   statusGeral: "CONFIGURADA" | "EM_DISPUTA" | "PAUSADA" | "CONCLUIDA";
   pausaEmergencia: boolean;
   tempoRespostaSegundos: number;
@@ -53,47 +54,6 @@ interface SalaDisputaTenant {
   statusKanban: string;
   atualizadoEm?: string | null;
 }
-
-const INITIAL_SALAS_DEMO: SalaDisputaTenant[] = [
-  {
-    id: "lic-demo-1",
-    titulo: "PE 099/2026 - TRE-GO",
-    orgao: "Tribunal Regional Eleitoral de Goiás",
-    uf: "GO",
-    numeroEdital: "PE 099/2026 - TRE-GO",
-    portal: "Compras.gov.br",
-    identificadorSala: "UASG 070001",
-    statusGeral: "EM_DISPUTA",
-    pausaEmergencia: false,
-    tempoRespostaSegundos: 3,
-    segundosFinaisSniper: 10,
-    totalItens: 1,
-    itensAtivosNoRobo: 1,
-    pisoSeguroTotal: 3850.0,
-    propostaInicialTotal: 4150.0,
-    regrasItens: [],
-    statusKanban: "EM_DISPUTA",
-  },
-  {
-    id: "lic-demo-2",
-    titulo: "PE 045/2026 - Prefeitura de Anápolis/GO",
-    orgao: "Prefeitura de Anápolis",
-    uf: "GO",
-    numeroEdital: "PE 045/2026 - Prefeitura de Anápolis/GO",
-    portal: "BBMNet",
-    identificadorSala: "Sala 45",
-    statusGeral: "CONFIGURADA",
-    pausaEmergencia: false,
-    tempoRespostaSegundos: 3,
-    segundosFinaisSniper: 10,
-    totalItens: 1,
-    itensAtivosNoRobo: 1,
-    pisoSeguroTotal: 82000.0,
-    propostaInicialTotal: 89200.0,
-    regrasItens: [],
-    statusKanban: "EM_DISPUTA",
-  },
-];
 
 function formatBRL(valor: number): string {
   return (valor || 0).toLocaleString("pt-BR", {
@@ -115,8 +75,9 @@ export default function RoboDeLancesPage() {
   } | null>(null);
 
   // Estado das Salas Configuradas do Tenant e Preferência Sandbox
-  const [salas, setSalas] = useState<SalaDisputaTenant[]>(INITIAL_SALAS_DEMO);
-  const [carregandoSalas, setCarregandoSalas] = useState(false);
+  const [salas, setSalas] = useState<SalaDisputaTenant[]>([]);
+  const [carregandoSalas, setCarregandoSalas] = useState(true);
+  const [erroCarregarSalas, setErroCarregarSalas] = useState<string | null>(null);
   const [preferenciaMe, setPreferenciaMe] = useState("ATIVO");
 
   // Estado da Sala Simulada (Sandbox)
@@ -126,17 +87,26 @@ export default function RoboDeLancesPage() {
 
   const carregarSalasDisputa = useCallback(async () => {
     setCarregandoSalas(true);
+    setErroCarregarSalas(null);
     try {
       const res = await fetch("/api/robo-de-lances/salas", { cache: "no-store" });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (res.ok && data?.ok && Array.isArray(data.salas)) {
         setSalas(data.salas);
         if (data.plano) {
           setPlanoTenant(data.plano);
         }
+      } else {
+        setSalas([]);
+        setErroCarregarSalas(
+          data?.error || "Não foi possível carregar as salas de disputa da empresa.",
+        );
       }
     } catch {
-      // Falha silenciosa em caso de offline
+      setSalas([]);
+      setErroCarregarSalas(
+        "Falha de conexão ao carregar as salas de disputa da empresa.",
+      );
     } finally {
       setCarregandoSalas(false);
     }
@@ -346,17 +316,32 @@ export default function RoboDeLancesPage() {
           </div>
 
           {carregandoSalas && salas.length === 0 ? (
-            <div style={{ padding: "2rem", textAlign: "center" }}>
+            <div style={{ padding: "2rem", textAlign: "center" }} data-testid="salas-loading-state">
               <InlineLoading status="active" description="Carregando salas de disputa da empresa..." />
+            </div>
+          ) : erroCarregarSalas ? (
+            <div data-testid="salas-error-state" style={{ padding: "1rem 0" }}>
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title="Erro ao carregar salas de disputa:"
+                subtitle={erroCarregarSalas}
+                style={{ marginBottom: "0.75rem" }}
+              />
+              <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={carregarSalasDisputa}>
+                Tentar novamente
+              </Button>
             </div>
           ) : salas.length === 0 ? (
             <div
+              data-testid="salas-empty-state"
               style={{
                 padding: "2.5rem 1.5rem",
                 textAlign: "center",
-                border: "1px dashed var(--cds-border-subtle, #c6c6c6)",
+                border: "1px dashed var(--cds-border-subtle)",
                 borderRadius: "4px",
-                backgroundColor: "var(--cds-layer-01, #ffffff)",
+                backgroundColor: "var(--cds-layer-02)",
               }}
             >
               <div style={{ fontSize: "1.8rem", marginBottom: "0.5rem" }}>⚡</div>
@@ -556,7 +541,9 @@ export default function RoboDeLancesPage() {
             orgao: s.orgao,
             portal: s.portal,
             modoDisputaEdital: s.modoDisputaEdital,
+            intervaloMinimoLances: s.intervaloMinimoLances,
             pausaEmergencia: s.pausaEmergencia,
+            tempoRespostaSegundos: s.tempoRespostaSegundos,
             segundosFinaisSniper: s.segundosFinaisSniper,
             regrasItens: s.regrasItens || [],
           }))}
