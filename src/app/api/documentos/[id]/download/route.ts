@@ -8,6 +8,15 @@ import { authOptions } from "@/server/auth";
 import { obterDocumento } from "@/server/services/documentos.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
+function escapeHtmlText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -78,7 +87,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${doc.nome} - Espelho Oficial</title>
+  <title>${escapeHtmlText(doc.nome)} - Espelho Oficial</title>
   <style>
     @page { size: A4; margin: 20mm; }
     body {
@@ -129,48 +138,41 @@ export async function GET(_request: Request, { params }: RouteParams) {
     <span class="badge">LEI 14.133/2021</span>
   </div>
 
-  <h2>${doc.nome}</h2>
+  <h2>${escapeHtmlText(doc.nome)}</h2>
 
   <div class="grid">
     <div class="field">
       <label>Categoria</label>
-      <span>${doc.categoria}</span>
+      <span>${escapeHtmlText(doc.categoria)}</span>
     </div>
     <div class="field">
       <label>Órgão Emissor</label>
-      <span>${doc.orgaoEmissor || "Não informado"}</span>
+      <span>${escapeHtmlText(doc.orgaoEmissor || "Não informado")}</span>
     </div>
     <div class="field">
       <label>Data de Emissão</label>
-      <span>${dataEmissaoFormatada}</span>
+      <span>${escapeHtmlText(dataEmissaoFormatada)}</span>
     </div>
     <div class="field">
       <label>Validade / Vencimento</label>
-      <span>${dataVencimentoFormatada}</span>
+      <span>${escapeHtmlText(dataVencimentoFormatada)}</span>
     </div>
     <div class="field">
       <label>Versão</label>
-      <span>Versão ${doc.versao}</span>
+      <span>Versão ${escapeHtmlText(doc.versao)}</span>
     </div>
     <div class="field">
       <label>Status Cadastral</label>
-      <span>${doc.status}</span>
+      <span>${escapeHtmlText(doc.status)}</span>
     </div>
   </div>
 
   <div class="stamp">
     <strong>Autenticidade e Registro Corporativo</strong><br>
-    Identificador Único: <code>${doc.id}</code><br>
-    Arquivo Vinculado: <code>${doc.arquivoNome || doc.nome}</code><br>
+    Identificador Único: <code>${escapeHtmlText(doc.id)}</code><br>
+    Arquivo Vinculado: <code>${escapeHtmlText(doc.arquivoNome || doc.nome)}</code><br>
     Registro emitido eletronicamente pela Plataforma de Licitações.
   </div>
-
-  <script>
-    // Se aberto no navegador, sugere impressão ou download em PDF
-    window.onload = function() {
-      // document pronto
-    };
-  </script>
 </body>
 </html>`;
 
@@ -179,6 +181,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
     headers: {
       "Content-Disposition": `attachment; filename="${encodeURIComponent(nomeArquivoDownload.replace(/\.[^/.]+$/, ""))}.html"`,
       "Content-Type": "text/html; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, no-store, max-age=0",
     },
   });
 }

@@ -1,16 +1,13 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { authOptions, DIRECTORS_SEED } from "@/server/auth";
+import { authOptions } from "@/server/auth";
 import { getCalendarioData } from "@/server/services/calendario.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  let user = session?.user;
-  if (!user && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    user = DIRECTORS_SEED[0] as any;
-  }
+  const session = await getServerSession(authOptions).catch(() => null);
+  const user = session?.user;
   if (!user) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }

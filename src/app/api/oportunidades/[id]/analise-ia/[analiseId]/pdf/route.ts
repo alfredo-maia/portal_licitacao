@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { RbacUser } from "@/lib/rbac";
-import { authOptions, DIRECTORS_SEED } from "@/server/auth";
+import { authOptions } from "@/server/auth";
 import { obterAnaliseIAPorId } from "@/server/services/analise-ia-participacao.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
@@ -18,9 +18,9 @@ export async function GET(request: Request, context: RouteContext) {
   const { id, analiseId } = await context.params;
 
   const session = await getServerSession(authOptions).catch(() => null);
-  let user = session?.user as RbacUser | undefined;
-  if (!user && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    user = DIRECTORS_SEED[0] as any;
+  const user = session?.user as RbacUser | undefined;
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   let cookieTenant: string | undefined;

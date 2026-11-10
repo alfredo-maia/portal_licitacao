@@ -437,6 +437,18 @@ export function listInMemoryLicitacaoArquivos(licitacaoId: string): any[] {
   return [...(licitacaoArquivosStore.get(licitacaoId) || [])];
 }
 
+export function findInMemoryLicitacaoArquivoByCaminho(caminhos: string[]): any | null {
+  const candidates = new Set(caminhos.filter(Boolean));
+  for (const lista of licitacaoArquivosStore.values()) {
+    for (const arq of lista) {
+      if (arq?.caminho && candidates.has(arq.caminho)) {
+        return arq;
+      }
+    }
+  }
+  return null;
+}
+
 export function deleteInMemoryLicitacaoArquivo(licitacaoId: string, arquivoId: string): boolean {
   const atual = licitacaoArquivosStore.get(licitacaoId) || [];
   const next = atual.filter((a) => a.id !== arquivoId);
@@ -782,23 +794,23 @@ export function deleteInMemoryImpugnacao(id: string): boolean {
 
 let configuracaoEmpresaStore: any = {
   id: "default",
-  razaoSocial: "APONTA TECNOLOGIA E SERVICOS LTDA",
-  cnpj: "12.345.678/0001-90",
-  inscricaoEstadual: "10.123.456-7",
-  cnae: "62.01-5-01 - Desenvolvimento de programas de computador sob encomenda",
+  razaoSocial: "EMPRESA LICITANTE PADRAO LTDA",
+  cnpj: "00.000.000/0001-00",
+  inscricaoEstadual: "",
+  cnae: "",
   cnaesSecundarios: [],
-  endereco: "Av. República do Líbano, 1200, Setor Oeste",
-  cidade: "Goiânia",
-  uf: "GO",
-  cep: "74115-030",
-  representanteNome: "Vítor Henrique de Souza",
-  representanteCpf: "123.456.789-00",
-  representanteRg: "5432109-SSP/GO",
+  endereco: "",
+  cidade: "",
+  uf: "",
+  cep: "",
+  representanteNome: "Representante Legal",
+  representanteCpf: "000.000.000-00",
+  representanteRg: "",
   representanteCargo: "Sócio-Administrador",
-  bancoNome: "Banco do Brasil",
-  agencia: "1234-5",
-  contaCorrente: "98765-4",
-  chavePix: "12.345.678/0001-90",
+  bancoNome: "",
+  agencia: "",
+  contaCorrente: "",
+  chavePix: "",
   logoUrl: null,
   papelTimbradoUrl: null,
   atualizadoEm: new Date(),
@@ -834,7 +846,7 @@ let usuariosStore: Map<string, any> = new Map([
     {
       id: "usr_com_1",
       name: "Mariana Souza",
-      email: "mariana.comercial@aponta.cloud",
+      email: "mariana.comercial@empresa.com.br",
       role: "ANALISTA_COMERCIAL",
       ativo: true,
       createdAt: new Date("2026-02-15T00:00:00.000Z"),
@@ -846,7 +858,7 @@ let usuariosStore: Map<string, any> = new Map([
     {
       id: "usr_tec_1",
       name: "Lucas Ribeiro",
-      email: "lucas.tecnico@aponta.cloud",
+      email: "lucas.tecnico@empresa.com.br",
       role: "OPERADOR_TECNICO",
       ativo: true,
       createdAt: new Date("2026-03-10T00:00:00.000Z"),
@@ -877,7 +889,7 @@ export function getInMemoryConfiguracaoEmpresa(tenantId?: string | null): any {
       complemento: "",
       bairro: "",
       cidade: "",
-      uf: "GO",
+      uf: "",
       cep: "",
       representanteNome: "",
       representanteCpf: "",
@@ -885,7 +897,7 @@ export function getInMemoryConfiguracaoEmpresa(tenantId?: string | null): any {
       representanteCargo: "",
       segmentos: [],
       subsegmentos: [],
-      ufs: ["GO"],
+      ufs: [],
       brasilInteiro: true,
       logoUrl: null,
       papelTimbradoUrl: null,

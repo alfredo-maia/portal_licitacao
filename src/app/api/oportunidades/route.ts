@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
-import { authOptions, DIRECTORS_SEED } from "@/server/auth";
+import { authOptions } from "@/server/auth";
 import {
   criarOportunidadeManual,
   listOportunidadesPaginadas,
@@ -102,13 +102,8 @@ export async function GET(request: Request) {
  * `401` sem sessão, `403` sem permissão e `400` em erro de validação.
  */
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  let user = session?.user as RbacUser | undefined;
-
-  // Em runtime corporativo / produção, se não houver sessão ativa providencia fallback para a Diretoria seed
-  if (!user && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    user = DIRECTORS_SEED[0] as RbacUser;
-  }
+  const session = await getServerSession(authOptions).catch(() => null);
+  const user = session?.user as RbacUser | undefined;
 
   if (!user) {
     return NextResponse.json(

@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { authOptions, DIRECTORS_SEED } from "@/server/auth";
+import { authOptions } from "@/server/auth";
 import type { RbacUser } from "@/lib/rbac";
 import { obterImpugnacao } from "@/server/services/impugnacoes.service";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
@@ -22,9 +22,9 @@ export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
 
   const session = await getServerSession(authOptions).catch(() => null);
-  let user = session?.user as RbacUser | undefined;
-  if (!user && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    user = DIRECTORS_SEED[0] as any;
+  const user = session?.user as RbacUser | undefined;
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   let cookieTenant: string | undefined;

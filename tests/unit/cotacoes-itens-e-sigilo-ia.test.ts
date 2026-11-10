@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("next-auth/next", () => ({
+  getServerSession: vi.fn(),
+}));
+
+import { getServerSession } from "next-auth/next";
 import {
   gerarConteudoPedidoCotacao,
   type ConfigPedidoCotacao,
@@ -17,6 +23,16 @@ import { PLAN_LIMITS } from "@/server/schemas/tenant.schema";
 describe("📦 Pedido de Cotação, Sigilo Comercial, Extração de Itens & Cotas IA", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getServerSession).mockResolvedValue({
+      user: {
+        id: "usr_cotacao_test",
+        name: "Usuário Cotação",
+        email: "cotacao@empresa.com.br",
+        role: "DIRETORIA",
+        activeTenantId: "tenant_cotacao_test",
+      },
+      expires: "2999-01-01",
+    } as any);
   });
 
   describe("1. Regras de Sigilo Comercial e Geração de Conteúdo (HTML / WhatsApp / TXT)", () => {
@@ -180,6 +196,15 @@ describe("📦 Pedido de Cotação, Sigilo Comercial, Extração de Itens & Cota
       expect([200, 403, 404, 500]).toContain(res.status);
       const json = await res.json();
       expect(json).toBeDefined();
+    });
+
+    it("rota GET /api/oportunidades/[id]/itens-certame deve exigir sessão (401) sem usuário autenticado", async () => {
+      vi.mocked(getServerSession).mockResolvedValueOnce(null);
+      const req = new Request("http://localhost:3000/api/oportunidades/lic_mock_1/itens-certame");
+      const context = { params: Promise.resolve({ id: "lic_mock_1" }) };
+
+      const res = await itensCertameGet(req, context);
+      expect(res.status).toBe(401);
     });
   });
 });

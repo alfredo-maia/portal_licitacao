@@ -133,6 +133,7 @@ model User {
   tenantMemberships          TenantUser[]
   tenantConvitesCriados      TenantConvite[]            @relation("ConvitesCriados")
   tenantLicitacoesResponsavel TenantLicitacao[]          @relation("TenantLicitacaoResponsavel")
+  passwordResetTokens        PasswordResetToken[]
 
   @@index([email])
   @@index([role])
@@ -528,28 +529,28 @@ model Impugnacao {
 // Sprint 6 — Configurações Corporativas (PRD §4.11 / Anexo 4)
 model ConfiguracaoEmpresa {
   id                 String   @id @default("default")
-  razaoSocial        String   @default("APONTA TECNOLOGIA E SERVICOS LTDA")
+  razaoSocial        String   @default("EMPRESA LICITANTE LTDA")
   nomeFantasia       String?
-  cnpj               String   @default("12.345.678/0001-90")
+  cnpj               String   @default("00.000.000/0001-00")
   inscricaoEstadual  String?
   inscricaoMunicipal String?
   cnae               String?
   cnaesSecundarios   String[] @default([])
-  endereco           String   @default("Av. República do Líbano, 1200, Setor Oeste")
+  endereco           String   @default("")
   numero             String?
   complemento        String?
   bairro             String?
-  cidade             String   @default("Goiânia")
-  uf                 String   @default("GO")
-  cep                String   @default("74115-030")
-  representanteNome  String   @default("Vítor Henrique de Souza")
-  representanteCpf   String   @default("123.456.789-00")
+  cidade             String   @default("")
+  uf                 String   @default("")
+  cep                String   @default("")
+  representanteNome  String   @default("Representante Legal")
+  representanteCpf   String   @default("000.000.000-00")
   representanteRg    String?
   representanteCargo String   @default("Sócio-Administrador")
-  bancoNome          String?  @default("Banco do Brasil")
-  agencia            String?  @default("1234-5")
-  contaCorrente      String?  @default("98765-4")
-  chavePix           String?  @default("12.345.678/0001-90")
+  bancoNome          String?
+  agencia            String?
+  contaCorrente      String?
+  chavePix           String?
   logoUrl            String?  @db.Text
   papelTimbradoUrl   String?  @db.Text
   tenantId           String?  @unique
@@ -850,6 +851,23 @@ model NotificationDeliveryLog {
   @@index([evento, criadoEm])
   @@map("notification_delivery_log")
 }
+
+// Hardening (Issue #42) — Tokens de Redefinição de Senha com hash SHA-256 e uso único
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_token")
+}
+
 
 
 

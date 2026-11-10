@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
-import { authOptions, DIRECTORS_SEED } from "@/server/auth";
+import { authOptions } from "@/server/auth";
 import {
   AnaliseIAParticipacaoError,
   iniciarAnaliseParticipacaoAssincrona,
@@ -25,9 +25,9 @@ export const dynamic = "force-dynamic";
 
 async function resolveTenantAndUser(request: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
-  let user = session?.user as RbacUser | undefined;
-  if (!user && process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-    user = DIRECTORS_SEED[0] as any;
+  const user = session?.user as RbacUser | undefined;
+  if (!user) {
+    return { user: undefined, tenantId: null };
   }
 
   let cookieTenant: string | undefined;
@@ -55,6 +55,9 @@ async function resolveTenantAndUser(request: Request) {
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
 
   try {
     const userIdentifier = (user as any)?.id || (user as any)?.email || null;
@@ -95,6 +98,9 @@ export async function GET(request: Request, context: RouteContext) {
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
 
   let body: any = {};
   try {

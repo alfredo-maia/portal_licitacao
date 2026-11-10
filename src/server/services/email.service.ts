@@ -184,7 +184,7 @@ export async function enviarEmailTransacional(
   const destinatarioLog = destinatarios.join(", ");
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from =
-    process.env.EMAIL_FROM?.trim() || `${APP_CONFIG.brandName} <noreply@apontatech.com.br>`;
+    process.env.EMAIL_FROM?.trim() || `${APP_CONFIG.brandName} <${APP_CONFIG.noreplyEmail}>`;
 
   if (!apiKey) {
     const log = await registrarDeliveryLog({
@@ -348,7 +348,7 @@ export async function enviarEmailRecuperacaoSenha(params: {
 }): Promise<ResultadoEnvioEmail> {
   const appUrl = resolverAppUrl();
   const linkReset = params.token
-    ? `${appUrl}/esqueci-senha?token=${encodeURIComponent(params.token)}`
+    ? `${appUrl}/recuperar-senha?token=${encodeURIComponent(params.token)}`
     : `${appUrl}/esqueci-senha`;
   const saudacao = params.nome?.trim() ? escapeHtml(params.nome.trim()) : "Usuário";
 

@@ -142,17 +142,21 @@ export async function authorizeCredentials(
         normalizedEmail === "vitorhenrique018@gmail.com" ||
         normalizedEmail === "alfredosouza100@gmail.com";
 
+      const inMemFallback = getInMemoryAuthUserByEmail(normalizedEmail);
+      const resolvedRole = isSuper
+        ? "SUPERADMIN"
+        : dbUser.role ?? inMemFallback?.role ?? "OPERADOR";
       targetUser = {
         id: dbUser.id,
         name: dbUser.name,
         email: dbUser.email,
-        role: isSuper ? "SUPERADMIN" : dbUser.role,
-        ativo: dbUser.ativo,
-        passwordHash: dbUser.passwordHash,
-        activeTenantId: primaryMembership?.tenantId ?? null,
-        cnpj: primaryMembership?.tenant?.cnpj ?? null,
-        plano: primaryMembership?.tenant?.plano ?? null,
-        tenantRole: primaryMembership?.role ?? null,
+        role: resolvedRole,
+        ativo: dbUser.ativo ?? true,
+        passwordHash: dbUser.passwordHash ?? inMemFallback?.passwordHash ?? "",
+        activeTenantId: primaryMembership?.tenantId ?? inMemFallback?.activeTenantId ?? null,
+        cnpj: primaryMembership?.tenant?.cnpj ?? inMemFallback?.cnpj ?? null,
+        plano: primaryMembership?.tenant?.plano ?? inMemFallback?.plano ?? null,
+        tenantRole: primaryMembership?.role ?? inMemFallback?.tenantRole ?? null,
       };
       upsertInMemoryAuthUser(targetUser);
     }

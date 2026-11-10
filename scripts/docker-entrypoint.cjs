@@ -298,26 +298,26 @@ async function bootstrapDatabase() {
     const ddlSprint6 = [
       `CREATE TABLE IF NOT EXISTS "configuracao_empresa" (
         "id" TEXT NOT NULL DEFAULT 'default' PRIMARY KEY,
-        "razaoSocial" TEXT NOT NULL DEFAULT 'APONTA TECNOLOGIA E SERVICOS LTDA',
-        "cnpj" TEXT NOT NULL DEFAULT '12.345.678/0001-90',
+        "razaoSocial" TEXT NOT NULL DEFAULT 'EMPRESA LICITANTE LTDA',
+        "cnpj" TEXT NOT NULL DEFAULT '00.000.000/0001-00',
         "inscricaoEstadual" TEXT,
         "cnae" TEXT,
-        "endereco" TEXT NOT NULL DEFAULT 'Av. República do Líbano, 1200, Setor Oeste',
-        "cidade" TEXT NOT NULL DEFAULT 'Goiânia',
-        "uf" TEXT NOT NULL DEFAULT 'GO',
-        "cep" TEXT NOT NULL DEFAULT '74115-030',
-        "representanteNome" TEXT NOT NULL DEFAULT 'Vítor Henrique de Souza',
-        "representanteCpf" TEXT NOT NULL DEFAULT '123.456.789-00',
+        "endereco" TEXT NOT NULL DEFAULT '',
+        "cidade" TEXT NOT NULL DEFAULT '',
+        "uf" TEXT NOT NULL DEFAULT '',
+        "cep" TEXT NOT NULL DEFAULT '',
+        "representanteNome" TEXT NOT NULL DEFAULT 'Representante Legal',
+        "representanteCpf" TEXT NOT NULL DEFAULT '000.000.000-00',
         "representanteRg" TEXT,
         "representanteCargo" TEXT NOT NULL DEFAULT 'Sócio-Administrador',
-        "bancoNome" TEXT DEFAULT 'Banco do Brasil',
-        "agencia" TEXT DEFAULT '1234-5',
-        "contaCorrente" TEXT DEFAULT '98765-4',
-        "chavePix" TEXT DEFAULT '12.345.678/0001-90',
+        "bancoNome" TEXT,
+        "agencia" TEXT,
+        "contaCorrente" TEXT,
+        "chavePix" TEXT,
         "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );`,
       `INSERT INTO "configuracao_empresa" ("id", "razaoSocial", "cnpj", "endereco", "cidade", "uf", "cep", "representanteNome", "representanteCpf", "representanteCargo", "atualizadoEm")
-       VALUES ('default', 'APONTA TECNOLOGIA E SERVICOS LTDA', '12.345.678/0001-90', 'Av. República do Líbano, 1200, Setor Oeste', 'Goiânia', 'GO', '74115-030', 'Vítor Henrique de Souza', '123.456.789-00', 'Sócio-Administrador', CURRENT_TIMESTAMP)
+       VALUES ('default', 'EMPRESA LICITANTE LTDA', '00.000.000/0001-00', '', '', '', '', 'Representante Legal', '000.000.000-00', 'Sócio-Administrador', CURRENT_TIMESTAMP)
        ON CONFLICT ("id") DO NOTHING;`,
     ];
 
@@ -672,6 +672,17 @@ async function bootstrapDatabase() {
       `CREATE INDEX IF NOT EXISTS "notification_delivery_log_canal_status_idx" ON "notification_delivery_log"("canal", "status");`,
       `CREATE INDEX IF NOT EXISTS "notification_delivery_log_tenantId_criadoEm_idx" ON "notification_delivery_log"("tenantId", "criadoEm");`,
       `CREATE INDEX IF NOT EXISTS "notification_delivery_log_evento_criadoEm_idx" ON "notification_delivery_log"("evento", "criadoEm");`,
+      `CREATE TABLE IF NOT EXISTS "password_reset_token" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "tokenHash" TEXT NOT NULL UNIQUE,
+        "expiresAt" TIMESTAMP(3) NOT NULL,
+        "usedAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "password_reset_token_userId_idx" ON "password_reset_token"("userId");`,
+      `CREATE INDEX IF NOT EXISTS "password_reset_token_expiresAt_idx" ON "password_reset_token"("expiresAt");`,
+      `DO $$ BEGIN ALTER TABLE "password_reset_token" ADD CONSTRAINT "password_reset_token_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
     ];
 
     for (const stmt of ddlSaaS) {
@@ -712,10 +723,10 @@ async function bootstrapDatabase() {
       where: { cnpj: "12.345.678/0001-90" },
       update: {},
       create: {
-        id: "tenant_aponta_matriz",
+        id: "tenant_matriz_padrao",
         cnpj: "12.345.678/0001-90",
-        razaoSocial: "APONTA TECNOLOGIA LTDA",
-        nomeFantasia: "Aponta Tecnologia",
+        razaoSocial: "EMPRESA ADMINISTRADORA LTDA",
+        nomeFantasia: "Conta Administradora",
         plano: "ENTERPRISE",
         billingStatus: "ATIVO",
         brasilInteiro: true,

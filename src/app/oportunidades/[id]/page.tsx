@@ -72,8 +72,10 @@ import {
 import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
+import { APP_CONFIG } from "@/config/brand";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
+import { sanitizarHtmlDocumento } from "@/lib/sanitize-html";
 import {
   CALCULADORA_TOOLTIPS,
   calcularItemProposta,
@@ -1866,8 +1868,8 @@ function OportunidadesDetalheContent({
       itens: itensEfetivos,
       configuracao: {
         ...configCotacao,
-        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
-        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "",
       },
       empresa: empresaConfig,
     });
@@ -1898,8 +1900,8 @@ function OportunidadesDetalheContent({
           itens: itensEfetivos,
           configuracao: {
             ...configCotacao,
-            localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
-            localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+            localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "",
+            localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "",
           },
         }),
       });
@@ -1942,8 +1944,8 @@ function OportunidadesDetalheContent({
       itens: itensEfetivos,
       configuracao: {
         ...configCotacao,
-        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
-        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "",
       },
       empresa: empresaConfig,
     });
@@ -1972,8 +1974,8 @@ function OportunidadesDetalheContent({
       itens: itensEfetivos,
       configuracao: {
         ...configCotacao,
-        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
-        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
+        localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "",
+        localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "",
       },
       empresa: empresaConfig,
     });
@@ -2603,18 +2605,14 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
     );
   }
 
-  const distanciaCalculada =
-    oportunidade.distanciaGoianiaKm !== null && oportunidade.distanciaGoianiaKm !== undefined
-      ? oportunidade.distanciaGoianiaKm
-      : oportunidade.uf === "GO"
-      ? 0
-      : oportunidade.uf === "DF"
-      ? 209
-      : oportunidade.uf === "MG"
-      ? 666
-      : oportunidade.uf === "SP"
-      ? 854
-      : 1200;
+  const sedeUf = String(empresaConfig?.uf || "").trim().toUpperCase();
+  const sedeCidade = String(empresaConfig?.cidade || "").trim();
+  const certameMesmaUfSede = Boolean(sedeUf && oportunidade.uf && sedeUf === oportunidade.uf.toUpperCase());
+  const localSedeRotulo = sedeCidade && sedeUf ? `${sedeCidade}/${sedeUf}` : sedeCidade || sedeUf || "";
+  const localCertameRotulo =
+    oportunidade.municipio && oportunidade.uf
+      ? `${oportunidade.municipio}/${oportunidade.uf}`
+      : oportunidade.municipio || oportunidade.uf || "local do órgão";
 
   const parecerIATagType =
     oportunidade.parecerIA === "GO"
@@ -2909,13 +2907,19 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <WarningAlt size={16} /> Alerta de Logística e Deslocamento Rodoviário
                   </h4>
                   <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
-                    Distância aproximada a partir de <strong>Goiânia/GO</strong>:{" "}
-                    <span style={{ fontWeight: 600, color: "var(--cds-text-primary)" }}>
-                      {distanciaCalculada} km
-                    </span>
-                    {distanciaCalculada === 0
-                      ? " (Certame Local em Goiás)"
-                      : " (Necessário provisionar custos de transporte e diárias para entrega de envelopes e lances presenciais)."}
+                    {localSedeRotulo ? (
+                      <>
+                        Sessão presencial em <strong>{localCertameRotulo}</strong> com origem na sede{" "}
+                        <strong>{localSedeRotulo}</strong>
+                        {certameMesmaUfSede
+                          ? " (Mesma UF da empresa — avaliar deslocamento local)."
+                          : " (Necessário provisionar custos de transporte, deslocamento e diárias para entrega de envelopes e lances presenciais)."}
+                      </>
+                    ) : (
+                      <>
+                        Sessão presencial em <strong>{localCertameRotulo}</strong>. Configure a cidade/UF da sede em Configurações para estimar logística; necessário provisionar custos de deslocamento para entrega de envelopes e lances presenciais.
+                      </>
+                    )}
                   </p>
                 </div>
               )}
@@ -3906,7 +3910,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <TextInput
                       id="input-cotacao-cidade-entrega"
                       labelText="Cidade de Entrega (Destino)"
-                      placeholder="Ex: Goiânia"
+                      placeholder="Ex: Cidade de entrega"
                       value={configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || ""}
                       onChange={(e) => setConfigCotacao((prev) => ({ ...prev, localEntregaCidade: e.target.value }))}
                     />
@@ -3915,7 +3919,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     <TextInput
                       id="input-cotacao-uf-entrega"
                       labelText="UF de Entrega"
-                      placeholder="Ex: GO"
+                      placeholder="Ex: UF"
                       value={configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || ""}
                       onChange={(e) => setConfigCotacao((prev) => ({ ...prev, localEntregaUf: e.target.value }))}
                     />
@@ -6121,23 +6125,25 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
               fontFamily: "var(--cds-font-family, sans-serif)",
             }}
             dangerouslySetInnerHTML={{
-              __html: gerarConteudoPedidoCotacao({
-                orgaoNome: oportunidade?.orgaoNome,
-                numeroEdital: oportunidade?.numeroEdital,
-                itens: itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
-                  numeroItem: it.numeroItem || idx + 1,
-                  descricao: it.descricao,
-                  quantidade: it.quantidade,
-                  unidadeMedida: it.unidade,
-                  marcaSugerida: it.marcaModelo || null,
-                })),
-                configuracao: {
-                  ...configCotacao,
-                  localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "Goiânia",
-                  localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "GO",
-                },
-                empresa: empresaConfig,
-              }).conteudoHtml,
+              __html: sanitizarHtmlDocumento(
+                gerarConteudoPedidoCotacao({
+                  orgaoNome: oportunidade?.orgaoNome,
+                  numeroEdital: oportunidade?.numeroEdital,
+                  itens: itensParaCotacao.length > 0 ? itensParaCotacao : itensCalculadora.map((it, idx) => ({
+                    numeroItem: it.numeroItem || idx + 1,
+                    descricao: it.descricao,
+                    quantidade: it.quantidade,
+                    unidadeMedida: it.unidade,
+                    marcaSugerida: it.marcaModelo || null,
+                  })),
+                  configuracao: {
+                    ...configCotacao,
+                    localEntregaCidade: configCotacao.localEntregaCidade || oportunidade?.municipio || (oportunidade as any)?.cidade || empresaConfig?.cidade || "",
+                    localEntregaUf: configCotacao.localEntregaUf || oportunidade?.uf || empresaConfig?.uf || "",
+                  },
+                  empresa: empresaConfig,
+                }).conteudoHtml,
+              ),
             }}
           />
         </div>
@@ -6243,7 +6249,11 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             }}
           >
             {documentoProposta?.conteudoHtml ? (
-              <div dangerouslySetInnerHTML={{ __html: documentoProposta.conteudoHtml }} />
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: sanitizarHtmlDocumento(documentoProposta.conteudoHtml),
+                }}
+              />
             ) : (
               <div style={{ textAlign: "center", padding: "2rem", color: "var(--cds-text-secondary)" }}>
                 Nenhum dado de proposta disponível para exibição.
@@ -6374,7 +6384,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   <Button
                     kind="tertiary"
                     size="md"
-                    onClick={() => window.open("mailto:comercial@inboxlicitacoes.com.br?subject=Solicitacao de Cota Adicional IA Enterprise", "_blank")}
+                    onClick={() => window.open(`mailto:${APP_CONFIG.commercialEmail}?subject=Solicitacao de Cota Adicional IA Enterprise`, "_blank")}
                     data-testid="btn-contato-vendas-modal"
                     style={{ marginTop: "0.5rem" }}
                   >

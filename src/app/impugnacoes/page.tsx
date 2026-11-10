@@ -44,6 +44,7 @@ import {
   type ImpugnacaoStatus,
 } from "@/server/schemas/impugnacao.schema";
 import { gerarMinutaJuridica } from "@/lib/minuta-juridica";
+import { sanitizarHtmlDocumento } from "@/lib/sanitize-html";
 
 const MOTIVOS_SUGERIDOS = [
   {
@@ -1118,7 +1119,9 @@ export default function ImpugnacoesPage() {
                 overflowY: "auto",
               }}
               dangerouslySetInnerHTML={{
-                __html: gerarMinutaJuridica(impugnacaoSelecionada, empresaAtiva || undefined).minutaHtml,
+                __html: sanitizarHtmlDocumento(
+                  gerarMinutaJuridica(impugnacaoSelecionada, empresaAtiva || undefined).minutaHtml,
+                ),
               }}
             />
           </div>

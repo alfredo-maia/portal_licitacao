@@ -27,6 +27,7 @@ import {
   Template,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { sanitizarHtmlDocumento } from "@/lib/sanitize-html";
 import { maskCnpj, maskCpf } from "@/lib/masks";
 import {
   DECLARACAO_METADATA,
@@ -176,8 +177,8 @@ export default function DeclaracoesPage() {
           representanteCpf: representanteCpf.trim() || "000.000.000-00",
           representanteRg: representanteRg.trim(),
           representanteCargo: representanteCargo.trim() || "Representante Legal",
-          cidade: cidade.trim() || "Goiânia",
-          uf: uf.trim() || "GO",
+          cidade: cidade.trim(),
+          uf: uf.trim(),
           dataDeclaracao,
         }),
       });
@@ -332,8 +333,8 @@ export default function DeclaracoesPage() {
         representanteCpf: representanteCpf.trim() || "000.000.000-00",
         representanteRg: representanteRg.trim(),
         representanteCargo: representanteCargo.trim() || "Representante Legal",
-        cidade: cidade.trim() || "Goiânia",
-        uf: uf.trim() || "GO",
+        cidade: cidade.trim(),
+        uf: uf.trim(),
         dataDeclaracao,
       };
 
@@ -779,7 +780,7 @@ export default function DeclaracoesPage() {
               overflowY: "auto",
             }}
             dangerouslySetInnerHTML={{
-              __html: documentoGerado?.conteudoHtml || "",
+              __html: sanitizarHtmlDocumento(documentoGerado?.conteudoHtml || ""),
             }}
           />
         </div>
