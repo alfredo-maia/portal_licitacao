@@ -81,6 +81,7 @@ import {
   calcularItemProposta,
   consolidarCalculadoraProposta,
   formatarMoedaBrl,
+  parseDecimalFlexivel,
   round2,
   validarPropostaManual,
   validarRegrasDisputa,
@@ -1377,8 +1378,15 @@ function OportunidadesDetalheContent({
   }, [consolidadoCalculadora.itens, disputaOrigemPrecos]);
 
   const aplicarRegraEmMassa = () => {
-    const vDec = parseFloat(massaValorDecremento.replace(/\./g, "").replace(",", "."));
-    const valorFinal = Number.isNaN(vDec) || vDec <= 0 ? (massaTipoDecremento === "CENTAVOS_1" ? 0.01 : 1.0) : vDec;
+    const vDec = parseDecimalFlexivel(massaValorDecremento);
+    const valorFinal =
+      vDec === null || vDec <= 0
+        ? massaTipoDecremento === "CENTAVOS_1"
+          ? 0.01
+          : massaTipoDecremento === "PERCENTUAL"
+          ? 0.5
+          : 1.0
+        : round2(vDec);
 
     setRegrasDisputaItens((prev) =>
       prev.map((r) => ({
@@ -1394,8 +1402,8 @@ function OportunidadesDetalheContent({
         massaTipoDecremento === "CENTAVOS_1"
           ? "R$ 0,01"
           : massaTipoDecremento === "FIXO_REAIS"
-          ? `R$ ${valorFinal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-          : `${valorFinal}%`
+          ? `R$ ${valorFinal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : `${valorFinal.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
       }, Tática: ${massaTatica}) aplicada a todos os itens.`,
     });
     setTimeout(() => setDisputaFeedback(null), 4000);
@@ -1523,11 +1531,14 @@ function OportunidadesDetalheContent({
         atualizadoEm: new Date().toISOString(),
       };
 
+      const nextKanbanStatus =
+        statusGeralDisputa === "EM_DISPUTA" ? "EM_DISPUTA" : oportunidade.status;
+
       const res = await fetch(`/api/oportunidades/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: statusGeralDisputa === "EM_DISPUTA" ? "EM_DISPUTA" : oportunidade.status,
+          status: nextKanbanStatus,
           validarDisputaEstrita: true,
           lanceMinimo: lanceMinEfetivo,
           valorProposta: valorPropEfetivo,
@@ -1540,6 +1551,16 @@ function OportunidadesDetalheContent({
         throw new Error(errJson.message || errJson.error || "Falha ao salvar configuração da disputa");
       }
 
+      setOportunidade((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: nextKanbanStatus,
+              lanceMinimo: lanceMinEfetivo,
+              valorProposta: valorPropEfetivo,
+            }
+          : prev,
+      );
       setLanceMinimoInput(String(lanceMinEfetivo));
       setValorPropostaInput(String(valorPropEfetivo));
       setDisputaFeedback({
@@ -2303,7 +2324,7 @@ function OportunidadesDetalheContent({
     if (!id) return;
     setSalvandoHomologacao(true);
     try {
-      const numHomologado = valorHomologarInput ? parseFloat(valorHomologarInput.replace(/\./g, "").replace(",", ".")) : undefined;
+      const numHomologado = parseDecimalFlexivel(valorHomologarInput) ?? undefined;
       const res = await fetch(`/api/oportunidades/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -2334,9 +2355,9 @@ function OportunidadesDetalheContent({
     setSalvandoValoresProposta(true);
     setValoresPropostaMsg(null);
     try {
-      const numProposta = valorPropostaInput ? parseFloat(valorPropostaInput.replace(/\./g, "").replace(",", ".")) : undefined;
-      const numMinimo = lanceMinimoInput ? parseFloat(lanceMinimoInput.replace(/\./g, "").replace(",", ".")) : undefined;
-      const numHomologado = valorHomologadoTabInput ? parseFloat(valorHomologadoTabInput.replace(/\./g, "").replace(",", ".")) : undefined;
+      const numProposta = parseDecimalFlexivel(valorPropostaInput) ?? undefined;
+      const numMinimo = parseDecimalFlexivel(lanceMinimoInput) ?? undefined;
+      const numHomologado = parseDecimalFlexivel(valorHomologadoTabInput) ?? undefined;
 
       const res = await fetch(`/api/oportunidades/${id}/status`, {
         method: "PATCH",
@@ -5284,6 +5305,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                         ? "green"
                         : statusGeralDisputa === "PAUSADA"
                         ? "warm-gray"
+                        : statusGeralDisputa === "CONCLUIDA"
+                        ? "blue"
                         : "teal"
                     }
                     size="md"
@@ -5294,6 +5317,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       ? "● Sala em Disputa ao Vivo"
                       : statusGeralDisputa === "PAUSADA"
                       ? "⏸️ Disputa Pausada"
+                      : statusGeralDisputa === "CONCLUIDA"
+                      ? "🏁 Disputa Concluída"
                       : "⚙️ Robô Configurado"}
                   </Tag>
                   <Button
@@ -5629,7 +5654,19 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                       id="select-massa-tipo-decremento"
                       labelText="Regra de Decremento"
                       value={massaTipoDecremento}
-                      onChange={(e) => setMassaTipoDecremento(e.target.value as TipoDecremento)}
+                      onChange={(e) => {
+                        const t = e.target.value as TipoDecremento;
+                        setMassaTipoDecremento(t);
+                        if (t === "CENTAVOS_1") {
+                          setMassaValorDecremento("0,01");
+                        } else if (
+                          !massaValorDecremento ||
+                          massaValorDecremento === "0.01" ||
+                          massaValorDecremento === "0,01"
+                        ) {
+                          setMassaValorDecremento(t === "PERCENTUAL" ? "0,5" : "1,00");
+                        }
+                      }}
                     >
                       <SelectItem value="CENTAVOS_1" text="Cobrir por R$ 0,01 (Mínimo)" />
                       <SelectItem value="FIXO_REAIS" text="Valor Fixo em Reais (R$)" />
@@ -5911,6 +5948,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           <TableCell>
                             <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
                               <select
+                                aria-label={`Tipo de decremento do item ${item.numeroItem}`}
                                 value={item.tipoDecremento}
                                 onChange={(e) => {
                                   const t = e.target.value as TipoDecremento;
@@ -5920,7 +5958,14 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                         ? {
                                             ...r,
                                             tipoDecremento: t,
-                                            valorDecremento: t === "CENTAVOS_1" ? 0.01 : r.valorDecremento || 1.0,
+                                            valorDecremento:
+                                              t === "CENTAVOS_1"
+                                                ? 0.01
+                                                : r.tipoDecremento === "CENTAVOS_1" || r.valorDecremento <= 0.01
+                                                ? t === "PERCENTUAL"
+                                                  ? 0.5
+                                                  : 1.0
+                                                : r.valorDecremento,
                                           }
                                         : r,
                                     ),
@@ -5932,6 +5977,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                   borderRadius: "3px",
                                   border: "1px solid var(--cds-border-subtle, #8d8d8d)",
                                   backgroundColor: "var(--cds-field-01, #ffffff)",
+                                  color: "var(--cds-text-primary, #161616)",
                                 }}
                               >
                                 <option value="CENTAVOS_1">R$ 0,01</option>
@@ -5940,26 +5986,26 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                               </select>
 
                               {item.tipoDecremento !== "CENTAVOS_1" && (
-                                <input
-                                  type="text"
-                                  value={item.valorDecremento}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setRegrasDisputaItens((prev) =>
-                                      prev.map((r) =>
-                                        r.itemId === item.itemId ? { ...r, valorDecremento: val } : r,
-                                      ),
-                                    );
-                                  }}
-                                  style={{
-                                    width: "65px",
-                                    fontSize: "0.78rem",
-                                    padding: "0.25rem 0.4rem",
-                                    borderRadius: "3px",
-                                    border: "1px solid var(--cds-border-subtle, #8d8d8d)",
-                                    backgroundColor: "var(--cds-field-01, #ffffff)",
-                                  }}
-                                />
+                                <div style={{ width: "84px" }}>
+                                  <NumericCalcInput
+                                    id={`disputa-decremento-${item.itemId || idx}`}
+                                    size="sm"
+                                    hideLabel
+                                    labelText={`Valor de decremento do item ${item.numeroItem}`}
+                                    placeholder={item.tipoDecremento === "PERCENTUAL" ? "0,5" : "1,00"}
+                                    min={0.01}
+                                    value={item.valorDecremento}
+                                    onChangeValue={(v) =>
+                                      setRegrasDisputaItens((prev) =>
+                                        prev.map((r) =>
+                                          r.itemId === item.itemId
+                                            ? { ...r, valorDecremento: v ?? 0.01 }
+                                            : r,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
                               )}
                             </div>
                           </TableCell>
@@ -5967,6 +6013,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                           {/* Tática de Disparo */}
                           <TableCell>
                             <select
+                              aria-label={`Tática do item ${item.numeroItem}`}
                               value={item.tatica}
                               onChange={(e) => {
                                 const t = e.target.value as TaticaDisputa;
@@ -5980,6 +6027,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                                 borderRadius: "3px",
                                 border: "1px solid var(--cds-border-subtle, #8d8d8d)",
                                 backgroundColor: "var(--cds-field-01, #ffffff)",
+                                color: "var(--cds-text-primary, #161616)",
                               }}
                             >
                               <option value="IMEDIATO">Imediato</option>
@@ -6836,6 +6884,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   orgao: oportunidade.orgaoNome,
                   portal: portalDisputa,
                   modoDisputaEdital,
+                  pausaEmergencia: pausaEmergenciaDisputa,
                   segundosFinaisSniper,
                   regrasItens: regrasDisputaItens,
                 }

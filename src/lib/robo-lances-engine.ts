@@ -8,7 +8,7 @@ import {
 } from "@/server/schemas/proposta-calculadora.schema";
 
 export type PerfilConcorrenteVirtual = "CONSERVADOR" | "MODERADO" | "AGRESSIVO";
-export type ModoDisputaSimulacao = "ABERTO" | "ABERTO_FECHADO";
+export type ModoDisputaSimulacao = "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
 
 export type TipoDisparoLance =
   | "PROPOSTA_INICIAL"
@@ -307,7 +307,10 @@ const PERFIS_CONCORRENTE: Record<
   AGRESSIVO: {
     probabilidade: 0.75,
     fatorPiso: 0.78,
-    desconto: (melhor) => round2(Math.max(0.5, melhor * 0.01)),
+    desconto: (melhor) =>
+      round2(
+        melhor > 20 ? Math.max(0.5, melhor * 0.01) : Math.max(0.01, melhor * 0.02),
+      ),
   },
   // Moderado: disputa equilibrada, aceita até ~18% de desconto
   MODERADO: {
@@ -913,7 +916,9 @@ export function executarTickSimulacao(
   });
 
   let tempoRestante = novoTempo;
-  if (houveLanceNaJanela && params.modoDisputa === "ABERTO") {
+  const permiteProrrogacao =
+    params.modoDisputa === "ABERTO" || params.modoDisputa === "FECHADO_ABERTO";
+  if (houveLanceNaJanela && permiteProrrogacao) {
     tempoRestante = Math.min(
       novoTempo + SIMULACAO_CONFIG.prorrogacaoSegundos,
       SIMULACAO_CONFIG.tempoMaximoSegundos,
@@ -951,7 +956,9 @@ export function injetarLanceRival(
   if (!alvo) return estado;
 
   const base = alvo.melhorLanceSala || alvo.propostaUnitaria;
-  const novoValorRival = round2(base - Math.max(1.0, round2(base * 0.01)));
+  const passoRival =
+    base > 10 ? Math.max(1.0, round2(base * 0.01)) : Math.max(0.01, round2(base * 0.05));
+  const novoValorRival = round2(base - passoRival);
   if (!(novoValorRival > 0)) return estado;
 
   const janela = SIMULACAO_CONFIG.janelaProrrogacaoSegundos;
@@ -986,7 +993,9 @@ export function injetarLanceRival(
     liderConcorrente[itemId] = undefined;
   }
 
-  const prorroga = estado.tempoRestante <= janela && params.modoDisputa === "ABERTO";
+  const prorroga =
+    estado.tempoRestante <= janela &&
+    (params.modoDisputa === "ABERTO" || params.modoDisputa === "FECHADO_ABERTO");
   const tempoRestante = prorroga
     ? Math.min(
         estado.tempoRestante + SIMULACAO_CONFIG.prorrogacaoSegundos,

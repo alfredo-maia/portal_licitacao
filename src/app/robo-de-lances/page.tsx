@@ -456,6 +456,8 @@ export default function RoboDeLancesPage() {
                               ? "green"
                               : sala.statusGeral === "PAUSADA"
                               ? "warm-gray"
+                              : sala.statusGeral === "CONCLUIDA"
+                              ? "blue"
                               : "teal"
                           }
                           size="sm"
@@ -466,6 +468,8 @@ export default function RoboDeLancesPage() {
                             ? "● Em Disputa"
                             : sala.statusGeral === "PAUSADA"
                             ? "Pausada"
+                            : sala.statusGeral === "CONCLUIDA"
+                            ? "🏁 Concluída"
                             : "Configurada"}
                         </Tag>
                       </TableCell>
@@ -574,6 +578,7 @@ export default function RoboDeLancesPage() {
             orgao: s.orgao,
             portal: s.portal,
             modoDisputaEdital: s.modoDisputaEdital,
+            pausaEmergencia: s.pausaEmergencia,
             segundosFinaisSniper: s.segundosFinaisSniper,
             regrasItens: s.regrasItens || [],
           }))}

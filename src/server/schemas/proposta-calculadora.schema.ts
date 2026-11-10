@@ -247,6 +247,56 @@ export function round2(num: number): number {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * Interpreta números decimais tanto em formato brasileiro ("0,5", "1.250,50", "45.000", "R$ 10,50", "0,5%")
+ * quanto em formato decimal com ponto ("0.5", "160.26", "450000.00").
+ */
+export function parseDecimalFlexivel(
+  raw: string | number | null | undefined,
+): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const limpo = raw
+    .trim()
+    .replace(/[R$\s%]/gi, "")
+    .replace(/[^\d.,-]/g, "");
+  if (!limpo || limpo === "-" || limpo === "." || limpo === ",") {
+    return null;
+  }
+
+  let normalizado = limpo;
+  const temVirgula = limpo.includes(",");
+  const temPonto = limpo.includes(".");
+
+  if (temVirgula && temPonto) {
+    if (limpo.lastIndexOf(",") > limpo.lastIndexOf(".")) {
+      normalizado = limpo.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalizado = limpo.replace(/,/g, "");
+    }
+  } else if (temVirgula) {
+    const partes = limpo.split(",");
+    if (partes.length > 2) {
+      const ultima = partes.pop()!;
+      normalizado = `${partes.join("")}.${ultima}`;
+    } else {
+      normalizado = limpo.replace(",", ".");
+    }
+  } else if (temPonto) {
+    const partes = limpo.split(".");
+    if (partes.length > 2) {
+      normalizado = limpo.replace(/\./g, "");
+    } else if (/^-?[1-9]\d{0,2}\.\d{3}$/.test(limpo)) {
+      normalizado = limpo.replace(".", "");
+    }
+  }
+
+  const parsed = Number.parseFloat(normalizado);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function calcularItemProposta(
   input: ItemCalculadoraInput,
   options?: { usarPropostaManual?: boolean },

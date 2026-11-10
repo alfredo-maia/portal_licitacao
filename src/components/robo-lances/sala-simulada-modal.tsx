@@ -43,6 +43,7 @@ interface CertameSimulavel {
   orgao: string;
   portal?: string;
   modoDisputaEdital?: "ABERTO" | "ABERTO_FECHADO" | "FECHADO_ABERTO";
+  pausaEmergencia?: boolean;
   segundosFinaisSniper?: number;
   regrasItens?: unknown[];
 }
@@ -146,6 +147,9 @@ export function SalaSimuladaModal({
         setEstado(demo.estado);
         setPortal(demo.portal);
         setOrigemSelecionada(ORIGEM_DEMO);
+        setModoDisputa("ABERTO");
+        setSegundosSniper(10);
+        setPausaEmergencia(false);
         if (certame) {
           setAvisoOrigem({
             tipo: "info",
@@ -158,13 +162,19 @@ export function SalaSimuladaModal({
       setEstado(criarEstadoSimulacao(itens));
       setPortal(certame.portal || "Compras.gov.br");
       setOrigemSelecionada(certame.id);
+      const pausaInicial = Boolean(certame.pausaEmergencia);
+      setPausaEmergencia(pausaInicial);
       if (certame.modoDisputaEdital === "ABERTO_FECHADO") {
         setModoDisputa("ABERTO_FECHADO");
-      } else if (certame.modoDisputaEdital === "ABERTO") {
+      } else if (certame.modoDisputaEdital === "FECHADO_ABERTO") {
+        setModoDisputa("FECHADO_ABERTO");
+      } else {
         setModoDisputa("ABERTO");
       }
       if (certame.segundosFinaisSniper && [5, 10, 15, 20].includes(certame.segundosFinaisSniper)) {
         setSegundosSniper(certame.segundosFinaisSniper);
+      } else {
+        setSegundosSniper(10);
       }
 
       const pisoMaior = listarItensPisoMaiorQueProposta(itens);
@@ -179,6 +189,13 @@ export function SalaSimuladaModal({
           setAvisoOrigem({
             tipo: "warning",
             texto: `Item(ns) ${semPiso.map((i) => i.numeroItem).join(", ")} sem Piso Seguro/Proposta na Calculadora: o robô ficará bloqueado neles por segurança.`,
+          });
+        }
+        if (pausaInicial) {
+          setNotificacao({
+            tipo: "warning",
+            texto:
+              "🛑 Disputa iniciada com Pausa de Emergência ativa na configuração do certame. Clique em 'Retomar Robô' para liberar os disparos nesta simulação.",
           });
         }
       }
@@ -461,6 +478,7 @@ export function SalaSimuladaModal({
               >
                 <SelectItem value="ABERTO" text="Aberto (prorrogação +15s nos 10s finais)" />
                 <SelectItem value="ABERTO_FECHADO" text="Aberto e Fechado (lance final sigiloso)" />
+                <SelectItem value="FECHADO_ABERTO" text="Fechado e Aberto (etapa aberta com prorrogação)" />
               </Select>
             </Column>
 
@@ -562,6 +580,7 @@ export function SalaSimuladaModal({
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
                       <Tag type={posicao.tipo} size="sm">{posicao.texto}</Tag>
+                      {!item.ativoNoRobo && <Tag type="cool-gray" size="sm">⏸️ Robô desativado</Tag>}
                       {semPiso && <Tag type="warm-gray" size="sm">⚠️ Sem Piso</Tag>}
                     </div>
                   </div>
