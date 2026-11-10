@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
@@ -166,7 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           isActive={isSideNavExpanded}
           isCollapsible
         />
-        <HeaderName href="/dashboard" prefix="">
+        <HeaderName as={Link} href="/dashboard" prefix="">
           <span>{APP_CONFIG.brandName}</span>
         </HeaderName>
 
@@ -256,6 +257,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     defaultExpanded={true}
                   >
                     <SideNavMenuItem
+                      as={Link}
                       href="/robo-de-lances"
                       isActive={
                         pathname === "/robo-de-lances" ||
@@ -277,6 +279,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       ) : null}
                     </SideNavMenuItem>
                     <SideNavMenuItem
+                      as={Link}
                       href="/inteligencia-precos"
                       isActive={
                         pathname === "/inteligencia-precos" ||
@@ -300,6 +303,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               return (
                 <SideNavLink
                   key={route.id}
+                  as={Link}
                   href={route.path}
                   renderIcon={IconComponent}
                   isActive={isActive}

@@ -1,4 +1,6 @@
 @use "@carbon/react";
+@use "@carbon/react/scss/themes";
+@use "@carbon/react/scss/theme";
 @import "@ibm/plex/css/ibm-plex.min.css";
 
 :root {
@@ -17,20 +19,31 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Blindagem contra FOUC e overscroll branco no Dark Mode */
+/* Blindagem contra FOUC e overscroll branco no Dark Mode (inclusive antes da hidratação React) */
 html[data-carbon-theme="g100"],
 html[data-carbon-theme="g100"] body,
-html[data-carbon-theme="g90"],
-html[data-carbon-theme="g90"] body {
+html[data-carbon-theme="g100"] .cds--app-theme-root.cds--white {
+  @include theme.theme(themes.$g100);
   background-color: var(--cds-background, #161616);
+  color: var(--cds-text-primary, #f4f4f4);
+  color-scheme: dark;
+}
+
+html[data-carbon-theme="g90"],
+html[data-carbon-theme="g90"] body,
+html[data-carbon-theme="g90"] .cds--app-theme-root.cds--white {
+  @include theme.theme(themes.$g90);
+  background-color: var(--cds-background, #262626);
   color: var(--cds-text-primary, #f4f4f4);
   color-scheme: dark;
 }
 
 html[data-carbon-theme="white"],
 html[data-carbon-theme="white"] body,
+html[data-carbon-theme="white"] .cds--app-theme-root.cds--white,
 html[data-carbon-theme="g10"],
-html[data-carbon-theme="g10"] body {
+html[data-carbon-theme="g10"] body,
+html[data-carbon-theme="g10"] .cds--app-theme-root.cds--g10 {
   background-color: var(--cds-background, #ffffff);
   color: var(--cds-text-primary, #161616);
   color-scheme: light;

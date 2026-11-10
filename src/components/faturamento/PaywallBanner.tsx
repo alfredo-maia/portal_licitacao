@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { InlineNotification } from "@carbon/react";
 
 export interface PaywallBannerProps {
@@ -43,7 +44,7 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
           lowContrast
         />
         <div style={{ marginTop: "0.5rem" }}>
-          <a
+          <Link
             href="/faturamento"
             style={{
               fontWeight: 600,
@@ -53,7 +54,7 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
             }}
           >
             Regularizar Pagamento (PIX / Cartão) &rarr;
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -69,7 +70,7 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
           lowContrast
         />
         <div style={{ marginTop: "0.5rem" }}>
-          <a
+          <Link
             href="/faturamento"
             style={{
               fontWeight: 600,
@@ -79,7 +80,7 @@ export function PaywallBanner({ initialStatus }: PaywallBannerProps) {
             }}
           >
             Reativar Assinatura Agora &rarr;
-          </a>
+          </Link>
         </div>
       </div>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Button,
   Column,
@@ -61,12 +62,6 @@ function formatBRL(valor: number): string {
     currency: "BRL",
   });
 }
-
-const navegarPara = (path: string) => {
-  if (typeof window !== "undefined") {
-    window.location.href = path;
-  }
-};
 
 export default function RoboDeLancesPage() {
   const [feedback, setFeedback] = useState<{
@@ -359,7 +354,7 @@ export default function RoboDeLancesPage() {
               >
                 Abra qualquer certame no Pipeline de Oportunidades, cadastre os itens e custos na aba 🧮 Calculadora e ative as regras do robô na aba ⚡ Disputa para monitoramento automático.
               </p>
-              <Button kind="primary" size="sm" onClick={() => navegarPara("/oportunidades")}>
+              <Button kind="primary" size="sm" as={Link} href="/oportunidades">
                 Ir para Oportunidades
               </Button>
             </div>
@@ -481,7 +476,8 @@ export default function RoboDeLancesPage() {
                             kind="tertiary"
                             size="sm"
                             renderIcon={Launch}
-                            onClick={() => navegarPara(`/oportunidades/${sala.id}?tab=disputa`)}
+                            as={Link}
+                            href={`/oportunidades/${sala.id}?tab=disputa`}
                           >
                             Abrir Sala
                           </Button>

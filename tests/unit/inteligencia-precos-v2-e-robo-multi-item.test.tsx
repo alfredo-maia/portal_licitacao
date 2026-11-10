@@ -271,8 +271,11 @@ describe("Página /robo-de-lances — Painel Central Conectado ao Tenant", () =>
     expect(screen.getByText(/4 de 4 item\(ns\)/i)).toBeInTheDocument();
     expect(screen.getByText("Compras.gov.br")).toBeInTheDocument();
 
-    // Botão Abrir Sala presente
-    expect(screen.getByRole("button", { name: /Abrir Sala/i })).toBeInTheDocument();
+    // Link SPA Abrir Sala presente (renderizado como Button as={Link} para navegação sem clarão/reload)
+    expect(screen.getByRole("link", { name: /Abrir Sala/i })).toHaveAttribute(
+      "href",
+      "/oportunidades/lic-123?tab=disputa",
+    );
   });
 });
 

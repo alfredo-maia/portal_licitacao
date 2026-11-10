@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -63,39 +64,42 @@ function getInitialTheme(): CarbonThemeToken {
   return DEFAULT_CARBON_THEME;
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<CarbonThemeToken>(() =>
-    getInitialTheme(),
-  );
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-  useEffect(() => {
+function aplicarTemaNoDocumento(target: CarbonThemeToken): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.carbonTheme = target;
+  document.documentElement.setAttribute("data-carbon-theme", target);
+  const isDk = target === "g90" || target === "g100";
+  document.documentElement.style.colorScheme = isDk ? "dark" : "light";
+  document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
+}
+
+function persistirTemaNoStorage(target: CarbonThemeToken): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, target);
+  } catch {
+    // Ignora erro de escrita em ambiente restrito
+  }
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  // Inicia no tema padrão para casar 100% com SSR sem hydration mismatch;
+  // o HTML já herda tokens g100/g90 via CSS antes da hidratação.
+  const [theme, setThemeState] = useState<CarbonThemeToken>(DEFAULT_CARBON_THEME);
+
+  useIsomorphicLayoutEffect(() => {
     const resolved = getInitialTheme();
     setThemeState(resolved);
-    if (typeof document !== "undefined") {
-      document.documentElement.dataset.carbonTheme = resolved;
-      document.documentElement.setAttribute("data-carbon-theme", resolved);
-      const isDk = resolved === "g90" || resolved === "g100";
-      document.documentElement.style.colorScheme = isDk ? "dark" : "light";
-      document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
-    }
+    aplicarTemaNoDocumento(resolved);
   }, []);
 
   const setTheme = useCallback((nextTheme: CarbonThemeToken) => {
     setThemeState(nextTheme);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
-      } catch {
-        // Ignora erro de escrita em ambiente restrito
-      }
-    }
-    if (typeof document !== "undefined") {
-      document.documentElement.dataset.carbonTheme = nextTheme;
-      document.documentElement.setAttribute("data-carbon-theme", nextTheme);
-      const isDk = nextTheme === "g90" || nextTheme === "g100";
-      document.documentElement.style.colorScheme = isDk ? "dark" : "light";
-      document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
-    }
+    persistirTemaNoStorage(nextTheme);
+    aplicarTemaNoDocumento(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -105,20 +109,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         ? DEFAULT_CARBON_THEME
         : DARK_CARBON_THEME;
 
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
-        } catch {
-          // Ignora erro de escrita em ambiente restrito
-        }
-      }
-      if (typeof document !== "undefined") {
-        document.documentElement.dataset.carbonTheme = nextTheme;
-        document.documentElement.setAttribute("data-carbon-theme", nextTheme);
-        const isDk = nextTheme === "g90" || nextTheme === "g100";
-        document.documentElement.style.colorScheme = isDk ? "dark" : "light";
-        document.documentElement.style.backgroundColor = isDk ? "#161616" : "#ffffff";
-      }
+      persistirTemaNoStorage(nextTheme);
+      aplicarTemaNoDocumento(nextTheme);
 
       return nextTheme;
     });
@@ -141,7 +133,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return (
     <ThemeContext.Provider value={value}>
       <GlobalTheme theme={theme}>
-        <Theme theme={theme}>{children}</Theme>
+        <Theme className="cds--app-theme-root" theme={theme}>
+          {children}
+        </Theme>
       </GlobalTheme>
     </ThemeContext.Provider>
   );

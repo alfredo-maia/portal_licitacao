@@ -139,6 +139,19 @@ export default function DashboardPage() {
   const [dados, setDados] = useState<DashboardData | null>(null);
   const [carregando, setCarregando] = useState(true);
 
+  const navegarTileSpa =
+    (destino: string) =>
+    (e: React.MouseEvent<HTMLAnchorElement> | React.KeyboardEvent<HTMLAnchorElement>) => {
+      if (
+        "metaKey" in e &&
+        (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || ("button" in e && e.button !== 0))
+      ) {
+        return;
+      }
+      e.preventDefault();
+      router.push(destino);
+    };
+
   useEffect(() => {
     let ativo = true;
     async function carregarDashboard() {
@@ -245,6 +258,7 @@ export default function DashboardPage() {
             <Column lg={4} md={4} sm={4} style={{ marginBottom: "1rem" }}>
               <ClickableTile
                 href="/oportunidades?periodo=mes"
+                onClick={navegarTileSpa("/oportunidades?periodo=mes")}
                 data-testid="kpi-card-recebidas"
                 style={{ height: "100%" }}
               >
@@ -275,6 +289,7 @@ export default function DashboardPage() {
             <Column lg={4} md={4} sm={4} style={{ marginBottom: "1rem" }}>
               <ClickableTile
                 href="/oportunidades?status=PENDENTE"
+                onClick={navegarTileSpa("/oportunidades?status=PENDENTE")}
                 data-testid="kpi-card-pendentes"
                 style={{ height: "100%" }}
               >
@@ -305,6 +320,7 @@ export default function DashboardPage() {
             <Column lg={4} md={4} sm={4} style={{ marginBottom: "1rem" }}>
               <ClickableTile
                 href="/minhas-licitacoes"
+                onClick={navegarTileSpa("/minhas-licitacoes")}
                 data-testid="kpi-card-precificacao"
                 style={{ height: "100%" }}
               >
@@ -335,6 +351,7 @@ export default function DashboardPage() {
             <Column lg={4} md={4} sm={4} style={{ marginBottom: "1rem" }}>
               <ClickableTile
                 href="/oportunidades?status=RECUSADA"
+                onClick={navegarTileSpa("/oportunidades?status=RECUSADA")}
                 data-testid="kpi-card-recusadas"
                 style={{ height: "100%" }}
               >
