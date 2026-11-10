@@ -318,7 +318,7 @@ export async function createTenantForUser(params: {
       cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
       endereco: input.endereco || "",
       cidade: input.cidade || "",
-      uf: input.uf || "GO",
+      uf: input.uf || "",
       representanteNome: userName || "",
     },
     newTenantId,
@@ -360,7 +360,7 @@ export async function createTenantForUser(params: {
         cnaesSecundarios: Array.isArray(input.cnaesSecundarios) ? input.cnaesSecundarios : [],
         endereco: input.endereco || "",
         cidade: input.cidade || "",
-        uf: input.uf || "GO",
+        uf: input.uf || "",
         representanteNome: userName || "",
       },
     }).catch(() => undefined);

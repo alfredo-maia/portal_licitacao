@@ -108,8 +108,8 @@ export default function ConfiguracoesPage() {
     razaoSocial: "",
     nomeFantasia: "",
     cnaePrincipal: "",
-    uf: "GO",
-    cidade: "Goiânia",
+    uf: "",
+    cidade: "",
     endereco: "",
   });
 
@@ -717,8 +717,8 @@ export default function ConfiguracoesPage() {
           razaoSocial: "",
           nomeFantasia: "",
           cnaePrincipal: "",
-          uf: "GO",
-          cidade: "Goiânia",
+          uf: "",
+          cidade: "",
           endereco: "",
         });
         setNotificacao({ tipo: "success", texto: "Novo CNPJ cadastrado com sucesso!" });
@@ -1752,11 +1752,12 @@ export default function ConfiguracoesPage() {
                     <Select
                       id="config-uf-unica-basico"
                       labelText="UF Monitorada (Plano Básico) *"
-                      value={(empresa.ufs && empresa.ufs[0]) || empresa.uf || "GO"}
+                      value={(empresa.ufs && empresa.ufs[0]) || empresa.uf || ""}
                       onChange={(e) => handleToggleUf(e.target.value)}
                       disabled={bloqueadoPlanoBasico30Dias}
                       helperText={bloqueadoPlanoBasico30Dias ? `Carência ativa até ${dataProximaLiberacao}` : "O Plano Básico monitora exatamente 1 UF"}
                     >
+                      <SelectItem value="" text="Selecione uma UF..." />
                       {ESTADOS_BRASIL.map((uf) => (
                         <SelectItem key={uf.sigla} value={uf.sigla} text={`${uf.sigla} — ${uf.nome}`} />
                       ))}
@@ -2123,7 +2124,7 @@ export default function ConfiguracoesPage() {
                 labelText="Cidade"
                 value={novoCnpjForm.cidade}
                 onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, cidade: e.target.value })}
-                placeholder="Goiânia"
+                placeholder="Cidade da sede"
               />
             </Column>
             <Column lg={4} md={2} sm={4}>
@@ -2132,7 +2133,7 @@ export default function ConfiguracoesPage() {
                 labelText="UF"
                 value={novoCnpjForm.uf}
                 onChange={(e) => setNovoCnpjForm({ ...novoCnpjForm, uf: e.target.value.toUpperCase().slice(0, 2) })}
-                placeholder="GO"
+                placeholder="UF"
               />
             </Column>
           </Grid>

@@ -53,8 +53,8 @@ describe("Sprint 5 [TDD RED] — Contratos e Regras de Negócio (Declarações &
       const parsed = declaracaoGerarInputSchema.parse(payloadValido);
       expect(parsed.tipo).toBe("ELABORACAO_INDEPENDENTE");
       expect(parsed.representanteCargo).toBe("Representante Legal");
-      expect(parsed.cidade).toBe("Goiânia");
-      expect(parsed.uf).toBe("GO");
+      expect(parsed.cidade).toBe("");
+      expect(parsed.uf).toBe("");
 
       // Payload sem CNPJ deve falhar
       expect(() =>

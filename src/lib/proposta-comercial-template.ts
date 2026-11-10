@@ -22,8 +22,8 @@ export function formatarValidadeDiasExtenso(dias: number): string {
 
 export function formatarDataExtensoProposta(
   dataStr?: string,
-  cidade = "Goiânia",
-  uf = "GO",
+  cidade = "",
+  uf = "",
 ): string {
   const data = dataStr ? new Date(dataStr.includes("T") ? dataStr : `${dataStr}T12:00:00`) : new Date();
   const meses = [
@@ -43,7 +43,10 @@ export function formatarDataExtensoProposta(
   const dia = data.getDate().toString().padStart(2, "0");
   const mes = meses[data.getMonth()];
   const ano = data.getFullYear();
-  return `${cidade} - ${uf}, ${dia} de ${mes} de ${ano}`;
+  const c = cidade.trim();
+  const u = uf.trim();
+  const local = c && u ? `${c} - ${u}` : c || u;
+  return local ? `${local}, ${dia} de ${mes} de ${ano}` : `${dia} de ${mes} de ${ano}`;
 }
 
 export interface GerarPropostaParams {
@@ -99,7 +102,9 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
   const cnpj = (empresa?.cnpj || "00.000.000/0001-00").trim();
   const enderecoCompleto = [
     empresa?.endereco,
-    empresa?.cidade && empresa?.uf ? `${empresa.cidade}/${empresa.uf}` : "",
+    empresa?.cidade && empresa?.uf
+      ? `${empresa.cidade}/${empresa.uf}`
+      : empresa?.cidade || empresa?.uf || "",
   ].filter(Boolean).join(" - ");
 
   const repNome = (empresa?.representanteNome || "Representante Legal").trim();
@@ -115,14 +120,14 @@ export function gerarConteudoPropostaComercial(params: GerarPropostaParams): {
 
   const dataExtenso = formatarDataExtensoProposta(
     cfg.dataEmissao || undefined,
-    empresa?.cidade || "Goiânia",
-    empresa?.uf || "GO",
+    empresa?.cidade || "",
+    empresa?.uf || "",
   );
 
   // 1. GERAÇÃO TEXTO PURO (.TXT / CLIPBOARD)
   const linhasTexto: string[] = [
     razaoSocial.toUpperCase(),
-    `CNPJ: ${cnpj} | ${enderecoCompleto}`,
+    enderecoCompleto ? `CNPJ: ${cnpj} | ${enderecoCompleto}` : `CNPJ: ${cnpj}`,
     "--------------------------------------------------------------------------------",
     `AO ILUSTRÍSSIMO PREGOEIRO E EQUIPE DE CONTRATAÇÃO`,
     `Órgão: ${orgaoNome.toUpperCase()}`,

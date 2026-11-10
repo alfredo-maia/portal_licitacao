@@ -140,8 +140,8 @@ export function gerarMinutaJuridica(
   const empresa = {
     razaoSocial: empresaInput?.razaoSocial?.trim() || "EMPRESA LICITANTE LTDA",
     cnpj: empresaInput?.cnpj?.trim() || "00.000.000/0001-00",
-    cidade: empresaInput?.cidade?.trim() || "Goiânia",
-    uf: empresaInput?.uf?.trim() || "GO",
+    cidade: empresaInput?.cidade?.trim() || "",
+    uf: empresaInput?.uf?.trim() || "",
     endereco: empresaInput?.endereco?.trim() || "",
     representanteNome: empresaInput?.representanteNome?.trim() || "Representante Legal",
     representanteCargo: empresaInput?.representanteCargo?.trim() || "Sócio-Administrador",
@@ -161,13 +161,37 @@ export function gerarMinutaJuridica(
       ? impugnacao.dataAberturaSessao.toLocaleDateString("pt-BR")
       : new Date(impugnacao.dataAberturaSessao).toLocaleDateString("pt-BR");
 
+  const localHifen =
+    empresa.cidade && empresa.uf
+      ? `${empresa.cidade} - ${empresa.uf}`
+      : empresa.cidade || empresa.uf || "";
+  const localBarra =
+    empresa.cidade && empresa.uf
+      ? `${empresa.cidade}/${empresa.uf}`
+      : empresa.cidade || empresa.uf || "";
+  const localBarraEspacado =
+    empresa.cidade && empresa.uf
+      ? `${empresa.cidade} / ${empresa.uf}`
+      : empresa.cidade || empresa.uf || "";
+  const sedePreambuloTexto = localHifen
+    ? `, com sede em ${localHifen}${empresa.endereco ? ` (${empresa.endereco})` : ""}`
+    : empresa.endereco
+      ? `, com sede em ${empresa.endereco}`
+      : "";
+  const sedePreambuloHtml = localBarra
+    ? `, com sede em ${localBarra}`
+    : empresa.endereco
+      ? `, com sede em ${empresa.endereco}`
+      : "";
+  const enderecoCabecalhoHtml = [empresa.endereco, localBarraEspacado].filter(Boolean).join(" - ");
+
   const minutaTexto = `
 ILUSTRÍSSIMO(A) SENHOR(A) PREGOEIRO(A) / AGENTE DE CONTRATAÇÃO
 ${(impugnacao.orgaoNome || "ÓRGÃO LICITANTE").toUpperCase()}
 PROCESSO / EDITAL: ${impugnacao.numeroEdital}
 DATA DA SESSÃO PÚBLICA: ${dataAberturaStr}
 
-${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}, com sede em ${empresa.cidade} - ${empresa.uf}${empresa.endereco ? ` (${empresa.endereco})` : ""}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente
+${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}${sedePreambuloTexto}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente
 
 IMPUGNAÇÃO AO EDITAL DE LICITAÇÃO
 
@@ -194,7 +218,7 @@ Requer-se, ainda, a suspensão do certame até o efetivo julgamento desta impugn
 Nestes termos,
 Pede Deferimento.
 
-${empresa.cidade} - ${empresa.uf}, ${dataHoje}.
+${localHifen ? `${localHifen}, ${dataHoje}.` : `${dataHoje}.`}
 
 ___________________________________________________
 ${empresa.razaoSocial}
@@ -226,7 +250,7 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
           ${empresa.razaoSocial}
         </h2>
         <p style="font-size: 9pt; margin: 2px 0 0 0; color: #525252;">
-          CNPJ: ${empresa.cnpj} • ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade} / ${empresa.uf}
+          CNPJ: ${empresa.cnpj}${enderecoCabecalhoHtml ? ` • ${enderecoCabecalhoHtml}` : ""}
         </p>
       </header>`
     : "";
@@ -243,7 +267,7 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
   </p>
 
   <p style="text-align: justify; text-indent: 1.25cm; margin-bottom: 8px;">
-    <strong>${empresa.razaoSocial}</strong>, pessoa jurídica de direito privado inscrita no CNPJ sob o nº <strong>${empresa.cnpj}</strong>, com sede em ${empresa.cidade}/${empresa.uf}, vem respeitosamente, com fundamento no Art. 164 da Lei Federal nº 14.133/2021, interpor
+    <strong>${empresa.razaoSocial}</strong>, pessoa jurídica de direito privado inscrita no CNPJ sob o nº <strong>${empresa.cnpj}</strong>${sedePreambuloHtml}, vem respeitosamente, com fundamento no Art. 164 da Lei Federal nº 14.133/2021, interpor
   </p>
 
   <h2 style="text-align: center; font-size: 12pt; margin: 12px 0; font-weight: bold;">IMPUGNAÇÃO AO EDITAL DE LICITAÇÃO</h2>
@@ -275,7 +299,7 @@ ${empresa.representanteNome ? `${empresa.representanteNome} - ${empresa.represen
 
   <div class="minuta-assinatura-bloco" style="page-break-inside: avoid !important; break-inside: avoid !important; margin-top: 18px; text-align: center;">
     <p style="text-align: right; margin-bottom: 24px; text-indent: 0; font-size: 10pt;">
-      ${empresa.cidade} - ${empresa.uf}, ${dataHoje}.
+      ${localHifen ? `${localHifen}, ${dataHoje}.` : `${dataHoje}.`}
     </p>
 
     <div style="border-top: 1px solid #000; display: inline-block; min-width: 280px; padding-top: 4px;">
@@ -299,8 +323,8 @@ export async function gerarPdfMinutaImpugnacao(params: {
   const empresa = {
     razaoSocial: empresaInput?.razaoSocial?.trim() || "EMPRESA LICITANTE LTDA",
     cnpj: empresaInput?.cnpj?.trim() || "00.000.000/0001-00",
-    cidade: empresaInput?.cidade?.trim() || "Goiânia",
-    uf: empresaInput?.uf?.trim() || "GO",
+    cidade: empresaInput?.cidade?.trim() || "",
+    uf: empresaInput?.uf?.trim() || "",
     endereco: empresaInput?.endereco?.trim() || "",
     representanteNome: empresaInput?.representanteNome?.trim() || "Representante Legal",
     representanteCargo: empresaInput?.representanteCargo?.trim() || "Sócio-Administrador",
@@ -308,6 +332,21 @@ export async function gerarPdfMinutaImpugnacao(params: {
     logoUrl: empresaInput?.logoUrl?.trim() || null,
     papelTimbradoUrl: empresaInput?.papelTimbradoUrl?.trim() || null,
   };
+
+  const localHifenPdf =
+    empresa.cidade && empresa.uf
+      ? `${empresa.cidade} - ${empresa.uf}`
+      : empresa.cidade || empresa.uf || "";
+  const localBarraPdf =
+    empresa.cidade && empresa.uf
+      ? `${empresa.cidade}/${empresa.uf}`
+      : empresa.cidade || empresa.uf || "";
+  const sedePreambuloPdf = localHifenPdf
+    ? `, com sede em ${localHifenPdf}${empresa.endereco ? ` (${empresa.endereco})` : ""}`
+    : empresa.endereco
+      ? `, com sede em ${empresa.endereco}`
+      : "";
+  const enderecoMetaPdf = [empresa.endereco, localBarraPdf].filter(Boolean).join(" - ");
 
   const dataAberturaStr =
     impugnacao.dataAberturaSessao instanceof Date
@@ -417,7 +456,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
       spacingAfter: 12,
     },
     {
-      texto: `${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}, com sede em ${empresa.cidade} - ${empresa.uf}${empresa.endereco ? ` (${empresa.endereco})` : ""}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente IMPUGNAÇÃO AO EDITAL, pelas razões fáticas e jurídicas que passa a expor:`,
+      texto: `${empresa.razaoSocial}, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${empresa.cnpj}${sedePreambuloPdf}, vem mui respeitosamente, perante Vossa Senhoria, com fulcro no Art. 164 da Lei Federal nº 14.133/2021, interpor a presente IMPUGNAÇÃO AO EDITAL, pelas razões fáticas e jurídicas que passa a expor:`,
       bold: false,
       size: 9.5,
       indent: 24,
@@ -510,7 +549,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
       spacingAfter: 4,
     },
     {
-      texto: `${empresa.cidade} - ${empresa.uf}, ${dataGeracao}.`,
+      texto: localHifenPdf ? `${localHifenPdf}, ${dataGeracao}.` : `${dataGeracao}.`,
       bold: false,
       size: 9,
       align: "right",
@@ -617,7 +656,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
         });
 
         const metaText = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          enderecoMetaPdf ? `CNPJ: ${empresa.cnpj} | ${enderecoMetaPdf}` : `CNPJ: ${empresa.cnpj}`,
           fontRegular,
         );
         const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
@@ -653,7 +692,7 @@ export async function gerarPdfMinutaImpugnacao(params: {
         });
 
         const metaText = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          enderecoMetaPdf ? `CNPJ: ${empresa.cnpj} | ${enderecoMetaPdf}` : `CNPJ: ${empresa.cnpj}`,
           fontRegular,
         );
         const metaW = fontRegular.widthOfTextAtSize(metaText, 8);

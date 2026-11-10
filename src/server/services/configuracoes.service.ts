@@ -414,7 +414,7 @@ export function normalizarEscopoPlano(params: NormalizarEscopoPlanoParams): {
   // 2. BASICO ativo: exatamente 1 Segmento e 1 UF
   if (plano === "BASICO") {
     const segmentoUnico = segmentos.length > 0 ? [segmentos[0]] : [];
-    const ufUnica = ufSede ? [ufSede] : ufs.length > 0 ? [ufs[0]] : ["GO"];
+    const ufUnica = ufSede ? [ufSede] : ufs.length > 0 ? [ufs[0]] : [];
 
     const excedeuSegmentos = segmentos.length > 1;
     const excedeuUfs = ufs.length > 1;
@@ -478,11 +478,11 @@ export async function obterConfiguracaoEmpresa(
           complemento: config.complemento || tenant?.complemento || "",
           bairro: config.bairro || tenant?.bairro || "",
           cidade: config.cidade || tenant?.cidade || "",
-          uf: config.uf || tenant?.uf || "GO",
+          uf: config.uf || tenant?.uf || "",
           cep: config.cep || tenant?.cep || "",
           segmentos: normalizarSegmentosEntrada(tenant?.segmentos || []),
           subsegmentos: tenant?.subsegmentos || [],
-          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
+          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : []),
           brasilInteiro: tenant?.brasilInteiro ?? true,
           preferenciasUpdatedAt: tenant?.preferenciasUpdatedAt ?? (config as any)?.preferenciasUpdatedAt ?? null,
           logoUrl: config.logoUrl || null,
@@ -511,11 +511,11 @@ export async function obterConfiguracaoEmpresa(
           complemento: memConfig.complemento || tenant?.complemento || "",
           bairro: memConfig.bairro || tenant?.bairro || "",
           cidade: memConfig.cidade || tenant?.cidade || "",
-          uf: memConfig.uf || tenant?.uf || "GO",
+          uf: memConfig.uf || tenant?.uf || "",
           cep: memConfig.cep || tenant?.cep || "",
           segmentos: normalizarSegmentosEntrada(tenant?.segmentos || []),
           subsegmentos: tenant?.subsegmentos || [],
-          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : ["GO"]),
+          ufs: tenant?.ufs || (tenant?.uf ? [tenant.uf] : []),
           brasilInteiro: tenant?.brasilInteiro ?? true,
           preferenciasUpdatedAt: tenant?.preferenciasUpdatedAt ?? (memConfig as any)?.preferenciasUpdatedAt ?? null,
         };
@@ -537,7 +537,7 @@ export async function obterConfiguracaoEmpresa(
           complemento: tenant.complemento || "",
           bairro: tenant.bairro || "",
           cidade: tenant.cidade || "",
-          uf: tenant.uf || (Array.isArray(tenant.ufs) ? tenant.ufs[0] : "") || "GO",
+          uf: tenant.uf || (Array.isArray(tenant.ufs) ? tenant.ufs[0] : "") || "",
           cep: tenant.cep || "",
           representanteNome: "",
           representanteCpf: "",
@@ -549,7 +549,7 @@ export async function obterConfiguracaoEmpresa(
           chavePix: tenant.cnpj,
           segmentos: normalizarSegmentosEntrada(tenant.segmentos || []),
           subsegmentos: tenant.subsegmentos || [],
-          ufs: tenant.ufs || (tenant.uf ? [tenant.uf] : ["GO"]),
+          ufs: tenant.ufs || (tenant.uf ? [tenant.uf] : []),
           brasilInteiro: tenant.brasilInteiro ?? true,
           preferenciasUpdatedAt: tenant.preferenciasUpdatedAt ?? null,
           logoUrl: null,
@@ -593,13 +593,13 @@ export async function obterConfiguracaoEmpresa(
       complemento: base?.complemento || (memTenant as any)?.complemento || "",
       bairro: base?.bairro || (memTenant as any)?.bairro || "",
       cidade: base?.cidade || memTenant?.cidade || "",
-      uf: base?.uf || memTenant?.uf || "GO",
+      uf: base?.uf || memTenant?.uf || "",
       cep: base?.cep || (memTenant as any)?.cep || "",
       logoUrl: base?.logoUrl ?? null,
       papelTimbradoUrl: base?.papelTimbradoUrl ?? null,
       segmentos: base?.segmentos || memTenant?.segmentos || [],
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
-      ufs: base?.ufs || memTenant?.ufs || ["GO"],
+      ufs: base?.ufs || memTenant?.ufs || [],
       brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
       preferenciasUpdatedAt: (base as any)?.preferenciasUpdatedAt || (memTenant as any)?.preferenciasUpdatedAt || null,
     };
@@ -623,13 +623,13 @@ export async function obterConfiguracaoEmpresa(
       complemento: base?.complemento || (memTenant as any)?.complemento || "",
       bairro: base?.bairro || (memTenant as any)?.bairro || "",
       cidade: base?.cidade || memTenant?.cidade || "",
-      uf: base?.uf || memTenant?.uf || "GO",
+      uf: base?.uf || memTenant?.uf || "",
       cep: base?.cep || (memTenant as any)?.cep || "",
       logoUrl: base?.logoUrl ?? null,
       papelTimbradoUrl: base?.papelTimbradoUrl ?? null,
       segmentos: base?.segmentos || memTenant?.segmentos || [],
       subsegmentos: base?.subsegmentos || memTenant?.subsegmentos || [],
-      ufs: base?.ufs || memTenant?.ufs || ["GO"],
+      ufs: base?.ufs || memTenant?.ufs || [],
       brasilInteiro: base?.brasilInteiro ?? memTenant?.brasilInteiro ?? true,
       preferenciasUpdatedAt: (base as any)?.preferenciasUpdatedAt || (memTenant as any)?.preferenciasUpdatedAt || null,
     };
@@ -763,7 +763,7 @@ export async function atualizarConfiguracaoEmpresa(
       const escopo = preservarPreferencias
         ? {
             segmentos: existingSegmentos,
-            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : [],
             brasilInteiro: existingBrasilInteiro,
           }
         : normalizarEscopoPlano({
@@ -980,7 +980,7 @@ export async function atualizarConfiguracaoEmpresa(
       const escopo = preservarPreferencias
         ? {
             segmentos: existingSegmentos,
-            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : [],
             brasilInteiro: existingBrasilInteiro,
           }
         : normalizarEscopoPlano({
@@ -1012,7 +1012,7 @@ export async function atualizarConfiguracaoEmpresa(
       ? preservarPreferencias
         ? {
             segmentos: existingSegmentos,
-            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : ["GO"],
+            ufs: existingUfs.length > 0 ? existingUfs : validado.uf ? [validado.uf] : [],
             brasilInteiro: existingBrasilInteiro,
           }
         : normalizarEscopoPlano({

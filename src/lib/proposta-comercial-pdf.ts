@@ -134,8 +134,8 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
   const empresa = {
     razaoSocial: (empresaInput?.razaoSocial || "EMPRESA LICITANTE LTDA").trim(),
     cnpj: (empresaInput?.cnpj || "00.000.000/0001-00").trim(),
-    cidade: (empresaInput?.cidade || "Goiânia").trim(),
-    uf: (empresaInput?.uf || "GO").trim(),
+    cidade: (empresaInput?.cidade || "").trim(),
+    uf: (empresaInput?.uf || "").trim(),
     endereco: (empresaInput?.endereco || "").trim(),
     representanteNome: (empresaInput?.representanteNome || "Representante Legal").trim(),
     representanteCargo: (empresaInput?.representanteCargo || "Sócio-Administrador").trim(),
@@ -275,8 +275,13 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
           color: rgb(0.1, 0.1, 0.1),
         });
 
+        const localEmpresa =
+          empresa.cidade && empresa.uf
+            ? `${empresa.cidade}/${empresa.uf}`
+            : empresa.cidade || empresa.uf || "";
+        const enderecoLocal = [empresa.endereco, localEmpresa].filter(Boolean).join(" - ");
         const metaText = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          enderecoLocal ? `CNPJ: ${empresa.cnpj} | ${enderecoLocal}` : `CNPJ: ${empresa.cnpj}`,
           fontRegular,
         );
         const metaW = fontRegular.widthOfTextAtSize(metaText, 8);
@@ -310,8 +315,13 @@ export async function gerarPdfPropostaComercial(params: GerarPropostaParams): Pr
           color: rgb(0.1, 0.1, 0.1),
         });
 
+        const localEmpresa =
+          empresa.cidade && empresa.uf
+            ? `${empresa.cidade}/${empresa.uf}`
+            : empresa.cidade || empresa.uf || "";
+        const enderecoLocal = [empresa.endereco, localEmpresa].filter(Boolean).join(" - ");
         const metaText = sanitizarTextoParaPdf(
-          `CNPJ: ${empresa.cnpj} | ${empresa.endereco ? `${empresa.endereco} - ` : ""}${empresa.cidade}/${empresa.uf}`,
+          enderecoLocal ? `CNPJ: ${empresa.cnpj} | ${enderecoLocal}` : `CNPJ: ${empresa.cnpj}`,
           fontRegular,
         );
         const metaW = fontRegular.widthOfTextAtSize(metaText, 8);

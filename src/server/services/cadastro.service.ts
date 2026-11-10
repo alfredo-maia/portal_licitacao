@@ -141,7 +141,7 @@ export async function realizarCadastroConta(
           representanteNome: nomeFinal,
           endereco: "",
           cidade: "",
-          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "GO",
+          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "",
           cep: "",
         },
       });
@@ -203,7 +203,7 @@ export async function realizarCadastroConta(
           representanteNome: nomeFinal,
           endereco: "",
           cidade: "",
-          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "GO",
+          uf: (input.ufs && input.ufs.length > 0) ? input.ufs[0] : "",
           cep: "",
           segmentos: input.segmentos,
           subsegmentos: input.subsegmentos,

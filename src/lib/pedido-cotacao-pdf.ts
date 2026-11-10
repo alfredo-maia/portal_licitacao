@@ -142,10 +142,13 @@ export async function gerarPdfPedidoCotacao(params: GerarPedidoCotacaoParams): P
     (cfg as { ocultarOrgaoEdital?: boolean }).ocultarOrgaoEdital ?? true;
   const razaoSocial = sanitizarTextoParaPdf(empresa?.razaoSocial || "EMPRESA SOLICITANTE LTDA", fontBold);
   const cnpj = sanitizarTextoParaPdf(empresa?.cnpj || "00.000.000/0001-00", fontRegular);
-  const localEntrega = sanitizarTextoParaPdf(
-    `${cfg.localEntregaCidade || empresa?.cidade || "Goiânia"}/${cfg.localEntregaUf || empresa?.uf || "GO"}`,
-    fontBold,
-  );
+  const cidadeEntrega = (cfg.localEntregaCidade || empresa?.cidade || "").trim();
+  const ufEntrega = (cfg.localEntregaUf || empresa?.uf || "").trim();
+  const localEntregaRaw =
+    cidadeEntrega && ufEntrega
+      ? `${cidadeEntrega}/${ufEntrega}`
+      : cidadeEntrega || ufEntrega || "Conforme edital";
+  const localEntrega = sanitizarTextoParaPdf(localEntregaRaw, fontBold);
   const prazoResposta = sanitizarTextoParaPdf(cfg.prazoResposta || "Até 3 dias úteis", fontBold);
   const frete = cfg.modalidadeFrete === "FOB" ? "FOB" : "CIF (Incluso no valor cotado até o destino)";
 

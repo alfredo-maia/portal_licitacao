@@ -89,8 +89,8 @@ export const declaracaoGerarInputSchema = z.object({
   representanteCpf: z.string().trim().min(11, "CPF do representante é obrigatório"),
   representanteRg: z.string().trim().optional(),
   representanteCargo: z.string().trim().default("Representante Legal"),
-  cidade: z.string().trim().default("Goiânia"),
-  uf: z.string().trim().default("GO"),
+  cidade: z.string().trim().default(""),
+  uf: z.string().trim().default(""),
   dataDeclaracao: z.string().trim().optional(),
 });
 

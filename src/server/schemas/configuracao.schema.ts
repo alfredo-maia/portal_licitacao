@@ -17,7 +17,7 @@ export const configuracaoEmpresaSchema = z.object({
   complemento: z.string().trim().max(100).optional().nullable(),
   bairro: z.string().trim().max(100).optional().nullable(),
   cidade: z.string().trim().max(100).optional().nullable().default(""),
-  uf: z.string().trim().max(2).optional().nullable().default("GO"),
+  uf: z.string().trim().max(2).optional().nullable().default(""),
   cep: z.string().trim().max(10).optional().nullable().default(""),
   representanteNome: z.string().trim().max(255).optional().nullable().default(""),
   representanteCpf: z.string().trim().max(14).optional().nullable().default(""),

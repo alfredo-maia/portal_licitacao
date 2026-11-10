@@ -44,7 +44,7 @@ export interface GerarPedidoCotacaoParams {
   geradoEm?: Date;
 }
 
-export function formatarDataExtenso(data = new Date(), cidade = "Goiânia", uf = "GO"): string {
+export function formatarDataExtenso(data = new Date(), cidade = "", uf = ""): string {
   const meses = [
     "janeiro",
     "fevereiro",
@@ -62,7 +62,10 @@ export function formatarDataExtenso(data = new Date(), cidade = "Goiânia", uf =
   const dia = String(data.getDate()).padStart(2, "0");
   const mes = meses[data.getMonth()];
   const ano = data.getFullYear();
-  return `${cidade} - ${uf}, ${dia} de ${mes} de ${ano}`;
+  const c = cidade.trim();
+  const u = uf.trim();
+  const local = c && u ? `${c} - ${u}` : c || u;
+  return local ? `${local}, ${dia} de ${mes} de ${ano}` : `${dia} de ${mes} de ${ano}`;
 }
 
 export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
@@ -80,8 +83,8 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
     telefoneFornecedor: configuracao?.telefoneFornecedor || "",
     prazoResposta: configuracao?.prazoResposta || "Até 3 dias úteis",
     modalidadeFrete: configuracao?.modalidadeFrete || "CIF",
-    localEntregaCidade: configuracao?.localEntregaCidade || empresa?.cidade || "Goiânia",
-    localEntregaUf: configuracao?.localEntregaUf || empresa?.uf || "GO",
+    localEntregaCidade: configuracao?.localEntregaCidade || empresa?.cidade || "",
+    localEntregaUf: configuracao?.localEntregaUf || empresa?.uf || "",
     condicoesPagamento: configuracao?.condicoesPagamento || "Conforme faturamento / entrega",
     prazoGarantia: configuracao?.prazoGarantia || "12 meses padrão de fábrica",
     observacoes: configuracao?.observacoes || "",
@@ -90,11 +93,16 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
 
   const razaoSocial = (empresa?.razaoSocial || "EMPRESA SOLICITANTE LTDA").trim();
   const cnpj = (empresa?.cnpj || "00.000.000/0001-00").trim();
-  const cidadeEmpresa = empresa?.cidade || "Goiânia";
-  const ufEmpresa = empresa?.uf || "GO";
+  const cidadeEmpresa = (empresa?.cidade || "").trim();
+  const ufEmpresa = (empresa?.uf || "").trim();
   const telefoneEmpresa = empresa?.telefone || empresa?.whatsapp || "";
   const emailEmpresa = empresa?.email || "";
-  const enderecoEmpresa = [empresa?.endereco, `${cidadeEmpresa}/${ufEmpresa}`].filter(Boolean).join(" - ");
+  const localEmpresa = cidadeEmpresa && ufEmpresa ? `${cidadeEmpresa}/${ufEmpresa}` : cidadeEmpresa || ufEmpresa;
+  const localEntregaStr =
+    cfg.localEntregaCidade && cfg.localEntregaUf
+      ? `${cfg.localEntregaCidade}/${cfg.localEntregaUf}`
+      : cfg.localEntregaCidade || cfg.localEntregaUf || "";
+  const enderecoEmpresa = [empresa?.endereco, localEmpresa].filter(Boolean).join(" - ");
 
   const tituloDocumento = "SOLICITAÇÃO DE COTAÇÃO DE PREÇOS (RFQ)";
 
@@ -104,7 +112,7 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
     `*Empresa Solicitante:* ${razaoSocial}`,
     `*CNPJ:* ${cnpj}`,
     cfg.fornecedorNome ? `*Destinatário:* ${cfg.fornecedorNome}` : "*Destinatário:* Ao Departamento Comercial",
-    `*Local de Entrega:* ${cfg.localEntregaCidade}/${cfg.localEntregaUf}`,
+    localEntregaStr ? `*Local de Entrega:* ${localEntregaStr}` : "",
     `*Modalidade de Frete:* ${cfg.modalidadeFrete === "CIF" ? "CIF (Incluso no valor cotado até o destino)" : "FOB"}`,
     `*Prazo Limite para Resposta:* ${cfg.prazoResposta}`,
     "",
@@ -143,13 +151,13 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
   // 2. GERADOR DE TEXTO PURO (.TXT)
   const linhasTexto: string[] = [
     razaoSocial.toUpperCase(),
-    `CNPJ: ${cnpj} | ${enderecoEmpresa}`,
+    `CNPJ: ${cnpj}${enderecoEmpresa ? ` | ${enderecoEmpresa}` : ""}`,
     emailEmpresa || telefoneEmpresa ? `Contato: ${[emailEmpresa, telefoneEmpresa].filter(Boolean).join(" • ")}` : "",
     "================================================================================",
     tituloDocumento,
     "================================================================================",
     cfg.fornecedorNome ? `Destinatário: ${cfg.fornecedorNome}` : "Destinatário: Ao Departamento Comercial",
-    `Local de Entrega: ${cfg.localEntregaCidade}/${cfg.localEntregaUf}`,
+    localEntregaStr ? `Local de Entrega: ${localEntregaStr}` : "",
     `Frete: ${cfg.modalidadeFrete === "CIF" ? "CIF (Incluso no valor cotado)" : "FOB"}`,
     `Prazo Limite para Resposta: ${cfg.prazoResposta}`,
     `Condições de Pagamento: ${cfg.condicoesPagamento}`,
@@ -245,8 +253,7 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
           </div>
           <div style="text-align: right; font-size: 8pt; color: #525252;">
             <strong>${razaoSocial}</strong><br/>
-            CNPJ: ${cnpj}<br/>
-            ${cidadeEmpresa}/${ufEmpresa}
+            CNPJ: ${cnpj}${localEmpresa ? `<br/>\n            ${localEmpresa}` : ""}
           </div>
         </div>
       </div>
@@ -261,7 +268,7 @@ export function gerarConteudoPedidoCotacao(params: GerarPedidoCotacaoParams): {
           </div>
           <div>
             <strong style="color: #525252; text-transform: uppercase; font-size: 7.5pt; display: block;">Local de Entrega:</strong>
-            <span style="font-weight: 600;">${cfg.localEntregaCidade}/${cfg.localEntregaUf}</span>
+            <span style="font-weight: 600;">${localEntregaStr || "Conforme edital"}</span>
             <div style="font-size: 8pt; color: #0043ce; font-weight: 600;">Frete: ${cfg.modalidadeFrete === "CIF" ? "CIF (Incluso até destino)" : "FOB"}</div>
           </div>
           <div>

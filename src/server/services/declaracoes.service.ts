@@ -7,7 +7,7 @@ import {
 } from "@/server/schemas/declaracao.schema";
 import { recordAuditLog } from "@/server/audit";
 
-export function formatarDataExtenso(dataStr?: string, cidade = "Goiânia", uf = "GO"): string {
+export function formatarDataExtenso(dataStr?: string, cidade = "", uf = ""): string {
   const data = dataStr ? new Date(dataStr) : new Date();
   const meses = [
     "janeiro",
@@ -26,7 +26,10 @@ export function formatarDataExtenso(dataStr?: string, cidade = "Goiânia", uf = 
   const dia = data.getDate().toString().padStart(2, "0");
   const mes = meses[data.getMonth()];
   const ano = data.getFullYear();
-  return `${cidade} - ${uf}, ${dia} de ${mes} de ${ano}`;
+  const c = cidade.trim();
+  const u = uf.trim();
+  const local = c && u ? `${c} - ${u}` : c || u;
+  return local ? `${local}, ${dia} de ${mes} de ${ano}` : `${dia} de ${mes} de ${ano}`;
 }
 
 export function obterTemplatesDeclaracoes(): typeof DECLARACAO_METADATA[DeclaracaoTipo][] {
