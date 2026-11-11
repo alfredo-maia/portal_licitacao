@@ -95,6 +95,7 @@ interface Dossie {
   patrimonioOperacional: {
     licitacoes: Array<{
       id: string;
+      tenantId?: string;
       tenantNome: string;
       licitacaoId: string;
       numeroEdital: string;
@@ -108,12 +109,54 @@ interface Dossie {
       total: number;
       vencidos: number;
       bytes: number;
-      lista: Array<{ id: string; nome: string; categoria: string; dataVencimento: string | null; vencido: boolean }>;
+      lista: Array<{
+        id: string;
+        tenantId?: string;
+        nome: string;
+        categoria: string;
+        dataVencimento: string | null;
+        vencido: boolean;
+      }>;
     };
     portais: number;
     impugnacoes: number;
     precosSalvos: number;
   };
+  porEmpresa?: Record<
+    string,
+    {
+      patrimonioOperacional: {
+        licitacoes: Array<{
+          id: string;
+          tenantId?: string;
+          tenantNome: string;
+          licitacaoId: string;
+          numeroEdital: string;
+          orgaoNome: string;
+          statusKanban: string;
+          valorEstimado: number;
+          dataAbertura: string | null;
+        }>;
+        kanbanPorColuna: Record<string, number>;
+        documentos: {
+          total: number;
+          vencidos: number;
+          bytes: number;
+          lista: Array<{
+            id: string;
+            tenantId?: string;
+            nome: string;
+            categoria: string;
+            dataVencimento: string | null;
+            vencido: boolean;
+          }>;
+        };
+        portais: number;
+        impugnacoes: number;
+        precosSalvos: number;
+      };
+    }
+  >;
   cotas: {
     maxCnpjs: number;
     maxUsers: number;
@@ -123,6 +166,40 @@ interface Dossie {
     storageUsadoMb: number;
     aiExtraQuotaMes: number;
     aiUsadasMes: number;
+  };
+  cotasPorEmpresa?: Record<
+    string,
+    {
+      maxCnpjs: number;
+      maxUsers: number;
+      storageBaseMb: number;
+      storageExtraQuotaMb: number;
+      storageTotalMb: number;
+      storageUsadoMb: number;
+      aiExtraQuotaMes: number;
+      aiUsadasMes: number;
+    }
+  >;
+  contaGlobal?: {
+    valorMensalidade: number;
+    diasRestantesTrial: number;
+    storageUsadoMb: number;
+    storageTotalMb: number;
+    aiUsadasMes: number;
+    aiExtraQuotaMes: number;
+    totalLicitacoes: number;
+    totalDocumentos: number;
+    totalPortais: number;
+  };
+  financeiro?: {
+    plano?: string;
+    billingStatus?: string;
+    valorMensalidade?: number;
+    trialFim?: string | null;
+    vencimentoAssinatura?: string | null;
+    ultimoPagamentoEm?: string | null;
+    cupomCodigo?: string | null;
+    affiliateId?: string | null;
   };
   notasInternasAdm: string | null;
   disputas: Array<{
@@ -162,6 +239,17 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   const { data, loading, erro, recarregar } = useAdminData<Dossie>(`/api/admin/clientes/${tenantId}`);
   const [fb, setFb] = useState<Feedback | null>(null);
   const [espelho, setEspelho] = useState<Record<string, unknown> | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(tenantId);
+
+  useEffect(() => {
+    setSelectedTenantId(data?.tenantId || tenantId);
+  }, [tenantId, data?.tenantId]);
+
+  const empresasLista = data?.empresas || [];
+  const activeTenantId = empresasLista.some((e) => e.id === selectedTenantId)
+    ? selectedTenantId
+    : data?.tenantId || tenantId;
+  const selectedEmpresa = empresasLista.find((e) => e.id === activeTenantId) || null;
 
   const patch = async (tipo: string, corpo: Record<string, unknown>, sucesso: string) => {
     const r = await adminFetch<{ error?: string; mensagem?: string }>(`/api/admin/clientes/${tenantId}`, {
@@ -178,7 +266,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   };
 
   const abrirEspelho = async () => {
-    const r = await adminFetch<Record<string, unknown>>(`/api/admin/clientes/${tenantId}?espelho=1`);
+    const r = await adminFetch<Record<string, unknown>>(`/api/admin/clientes/${activeTenantId}?espelho=1`);
     if (r.ok) setEspelho(r.data);
     else setFb({ kind: "error", texto: "Não foi possível espelhar a visão do cliente." });
   };
@@ -194,6 +282,23 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   }
 
   const { tenant, titular, onboarding, cotas, patrimonioOperacional: pat } = data;
+  const tituloEmpresa = selectedEmpresa?.nomeFantasia || selectedEmpresa?.razaoSocial || tenant.nomeFantasia || tenant.razaoSocial;
+  const descEmpresa = `${selectedEmpresa?.razaoSocial || tenant.razaoSocial} • ${selectedEmpresa?.cnpj || tenant.cnpj}`;
+  const planoAtivo = selectedEmpresa?.plano || tenant.plano;
+  const statusAtivo = selectedEmpresa?.billingStatus || tenant.billingStatus;
+  const ativoEmpresa = selectedEmpresa ? selectedEmpresa.ativo : tenant.ativo !== false;
+
+  const resumoGlobal = data.contaGlobal ?? {
+    valorMensalidade: tenant.valorMensalidade ?? 0,
+    diasRestantesTrial: tenant.diasRestantesTrial ?? 0,
+    storageUsadoMb: cotas.storageUsadoMb,
+    storageTotalMb: cotas.storageTotalMb,
+    aiUsadasMes: cotas.aiUsadasMes,
+    aiExtraQuotaMes: cotas.aiExtraQuotaMes,
+    totalLicitacoes: pat.licitacoes.length,
+    totalDocumentos: pat.documentos.total,
+    totalPortais: pat.portais,
+  };
 
   return (
     <div>
@@ -204,13 +309,13 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
       </div>
 
       <PageHeader
-        titulo={tenant.nomeFantasia || tenant.razaoSocial}
-        descricao={`${tenant.razaoSocial} • ${tenant.cnpj}`}
+        titulo={tituloEmpresa}
+        descricao={descEmpresa}
         acoes={
           <>
-            <StatusFinanceiroTag status={tenant.billingStatus} />
-            <Tag type="blue">{tenant.plano}</Tag>
-            {tenant.ativo === false ? <Tag type="red">Conta inativa</Tag> : null}
+            <StatusFinanceiroTag status={statusAtivo} />
+            <Tag type="blue">{planoAtivo}</Tag>
+            {!ativoEmpresa ? <Tag type="red">Conta inativa</Tag> : null}
             <Button kind="tertiary" renderIcon={View} onClick={abrirEspelho}>
               Espelhar visão do cliente
             </Button>
@@ -219,6 +324,79 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
       />
 
       <FeedbackBar feedback={fb} onClose={() => setFb(null)} />
+
+      {/* Seletor de CNPJs da Conta Principal no topo */}
+      {empresasLista.length > 0 && (
+        <div data-testid="cnpj-selector" style={{ marginBottom: "1.25rem" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--cds-text-secondary)" }}>
+              CNPJs da Conta ({empresasLista.length}) — Selecionado: {tituloEmpresa}
+            </span>
+            {empresasLista.length > 4 ? (
+              <div style={{ minWidth: "18rem" }}>
+                <Select
+                  id="c360-cnpj-select"
+                  labelText="Selecionar CNPJ"
+                  hideLabel
+                  size="sm"
+                  value={activeTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                >
+                  {empresasLista.map((emp) => (
+                    <SelectItem
+                      key={emp.id}
+                      value={emp.id}
+                      text={`${emp.nomeFantasia || emp.razaoSocial} — ${emp.cnpj}`}
+                    />
+                  ))}
+                </Select>
+              </div>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {empresasLista.map((emp) => {
+              const isSelected = emp.id === activeTenantId;
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  data-testid={`cnpj-card-${emp.id}`}
+                  onClick={() => setSelectedTenantId(emp.id)}
+                  style={{
+                    textAlign: "left",
+                    padding: "0.55rem 0.85rem",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    backgroundColor: isSelected ? "var(--cds-layer-selected-01)" : "var(--cds-layer-01)",
+                    border: isSelected
+                      ? "2px solid var(--cds-border-interactive)"
+                      : "1px solid var(--cds-border-subtle-01)",
+                    color: "var(--cds-text-primary)",
+                    minWidth: "13rem",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                    <strong style={{ fontSize: "0.85rem" }}>{emp.nomeFantasia || emp.razaoSocial}</strong>
+                    {isSelected ? <Tag type="cyan" size="sm">Ativo</Tag> : null}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
+                    {emp.cnpj}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Termômetro de configuração do Trial (7 marcos) */}
       <Tile style={{ marginBottom: "1.5rem" }}>
@@ -250,16 +428,16 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
             <ContaPrincipal dossie={data} patch={patch} />
           </TabPanel>
           <TabPanel>
-            <Empresas dossie={data} patch={patch} />
+            <Empresas dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
           <TabPanel>
-            <Usuarios dossie={data} patch={patch} />
+            <Usuarios dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
           <TabPanel>
-            <Patrimonio dossie={data} patch={patch} />
+            <Patrimonio dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
           <TabPanel>
-            <Cotas dossie={data} patch={patch} />
+            <Cotas dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -299,7 +477,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
 
       <Modal
         open={Boolean(espelho)}
-        modalHeading="Visão do cliente (somente leitura)"
+        modalHeading={`Visão do cliente (${tituloEmpresa} — somente leitura)`}
         passiveModal
         size="lg"
         onRequestClose={() => setEspelho(null)}
@@ -307,12 +485,53 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
         {espelho ? <EspelhoView espelho={espelho} /> : null}
       </Modal>
 
-      <KpiGrid>
-        <KpiTile rotulo="MENSALIDADE" valor={fmtBRL(tenant.valorMensalidade)} detalhe={`Teste: ${tenant.diasRestantesTrial} dia(s)`} />
-        <KpiTile rotulo="COFRE (R2)" valor={`${cotas.storageUsadoMb} MB`} detalhe={`de ${cotas.storageTotalMb} MB`} />
-        <KpiTile rotulo="IA NO MÊS" valor={fmtNum(cotas.aiUsadasMes)} detalhe={`Bônus ADM: +${cotas.aiExtraQuotaMes}`} />
-        <KpiTile rotulo="PATRIMÔNIO" valor={`${pat.licitacoes.length} licitações`} detalhe={`${pat.documentos.total} docs • ${pat.portais} portais`} />
-      </KpiGrid>
+      <Tile
+        data-testid="conta-global-resumo"
+        style={{
+          marginTop: "1.5rem",
+          padding: "0.85rem 1.25rem",
+          backgroundColor: "var(--cds-layer-01)",
+          borderTop: "2px solid var(--cds-border-subtle-01)",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+            gap: "1rem",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)", letterSpacing: "0.03rem" }}>MENSALIDADE</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600 }}>{fmtBRL(resumoGlobal.valorMensalidade)}</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)" }}>
+              Teste: {resumoGlobal.diasRestantesTrial} dia(s)
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)", letterSpacing: "0.03rem" }}>COFRE (R2)</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600 }}>{resumoGlobal.storageUsadoMb} MB</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)" }}>
+              de {resumoGlobal.storageTotalMb} MB
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)", letterSpacing: "0.03rem" }}>IA NO MÊS</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600 }}>{fmtNum(resumoGlobal.aiUsadasMes)}</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)" }}>
+              Bônus ADM: +{resumoGlobal.aiExtraQuotaMes}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)", letterSpacing: "0.03rem" }}>PATRIMÔNIO</div>
+            <div style={{ fontSize: "1rem", fontWeight: 600 }}>{resumoGlobal.totalLicitacoes} licitações</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)" }}>
+              {resumoGlobal.totalDocumentos} docs • {resumoGlobal.totalPortais} portais
+            </div>
+          </div>
+        </div>
+      </Tile>
       {titular ? null : <p style={{ color: "var(--cds-text-secondary)" }}>Este cliente ainda não possui titular vinculado.</p>}
     </div>
   );
@@ -364,9 +583,13 @@ function ContaPrincipal({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
       <p style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
         Último login: {fmtData(t.ultimoLoginEm)} • Versão de sessão: {t.sessionVersion}. Senhas nunca são exibidas ou editáveis.
       </p>
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <div
+        data-testid="conta-principal-acoes"
+        style={{ display: "flex", gap: "0.5rem", flexWrap: "nowrap", overflowX: "auto", alignItems: "center" }}
+      >
         <Button
           renderIcon={Edit}
+          style={{ whiteSpace: "nowrap", flexShrink: 0 }}
           onClick={() =>
             patch(
               "conta",
@@ -386,18 +609,18 @@ function ContaPrincipal({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
         >
           Salvar alterações
         </Button>
-        <Button kind="tertiary" onClick={() => patch("conta", { userId: t.id, dispararResetSenha: true }, "Link de redefinição de senha enviado ao cliente.")}>
+        <Button kind="tertiary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => patch("conta", { userId: t.id, dispararResetSenha: true }, "Link de redefinição de senha enviado ao cliente.")}>
           Enviar link de redefinição de senha
         </Button>
-        <Button kind="tertiary" onClick={() => patch("conta", { userId: t.id, forcarLogout: true }, "Sessões do cliente encerradas (logout forçado).")}>
+        <Button kind="tertiary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => patch("conta", { userId: t.id, forcarLogout: true }, "Sessões do cliente encerradas (logout forçado).")}>
           Forçar logout
         </Button>
         {t.ativo ? (
-          <Button kind="danger--tertiary" onClick={() => setConfirmar("inativar")}>
+          <Button kind="danger--tertiary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => setConfirmar("inativar")}>
             Inativar cliente
           </Button>
         ) : (
-          <Button kind="primary" onClick={() => setConfirmar("ativar")}>
+          <Button kind="primary" style={{ whiteSpace: "nowrap", flexShrink: 0 }} onClick={() => setConfirmar("ativar")}>
             Reativar cliente
           </Button>
         )}
@@ -427,8 +650,29 @@ function ContaPrincipal({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
 }
 
 /* ---------------------------- Aba 2 — Empresas ---------------------------- */
-function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
-  const vazio = { id: "", cnpj: "", razaoSocial: "", nomeFantasia: "", uf: "", cidade: "", plano: "BASICO", billingStatus: "TRIAL" };
+function Empresas({
+  dossie,
+  activeTenantId,
+  patch,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+  patch: PatchFn;
+}) {
+  const planoConta = dossie.financeiro?.plano || dossie.tenant?.plano || "BASICO";
+  const statusConta = dossie.financeiro?.billingStatus || dossie.tenant?.billingStatus || "TRIAL";
+  const vazio = {
+    id: "",
+    cnpj: "",
+    razaoSocial: "",
+    nomeFantasia: "",
+    uf: "",
+    cidade: "",
+    plano: planoConta,
+    billingStatus: statusConta,
+    originalPlano: planoConta,
+    originalBillingStatus: statusConta,
+  };
   const [edit, setEdit] = useState<typeof vazio | null>(null);
 
   return (
@@ -440,6 +684,7 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
       </div>
       <AdminTable
         titulo={`${dossie.empresas.length} CNPJ(s) do cliente`}
+        rowClassName={(id) => (id === activeTenantId ? "pncp-admin-row--active" : undefined)}
         colunas={[
           { key: "emp", header: "Empresa" },
           { key: "loc", header: "Local" },
@@ -451,7 +696,14 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
           id: e.id,
           emp: (
             <div>
-              <strong>{e.nomeFantasia || e.razaoSocial}</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                <strong>{e.nomeFantasia || e.razaoSocial}</strong>
+                {e.id === activeTenantId ? (
+                  <Tag type="cyan" size="sm">
+                    Visualizando
+                  </Tag>
+                ) : null}
+              </div>
               <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{e.cnpj}</div>
             </div>
           ),
@@ -478,6 +730,8 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
                   cidade: e.cidade || "",
                   plano: e.plano,
                   billingStatus: e.billingStatus,
+                  originalPlano: e.plano,
+                  originalBillingStatus: e.billingStatus,
                 })
               }
             >
@@ -495,6 +749,8 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
         onRequestClose={() => setEdit(null)}
         onRequestSubmit={async () => {
           if (!edit) return;
+          const planoMudou = !edit.id || edit.plano !== edit.originalPlano;
+          const statusMudou = !edit.id || edit.billingStatus !== edit.originalBillingStatus;
           const ok = await patch(
             "empresa",
             {
@@ -505,8 +761,8 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
               nomeFantasia: edit.nomeFantasia || null,
               uf: edit.uf || null,
               cidade: edit.cidade || null,
-              plano: edit.plano,
-              billingStatus: edit.billingStatus,
+              ...(planoMudou ? { plano: edit.plano } : {}),
+              ...(statusMudou ? { billingStatus: edit.billingStatus } : {}),
             },
             "Empresa salva.",
           );
@@ -540,10 +796,18 @@ function Empresas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
 }
 
 /* ---------------------------- Aba 3 — Usuários ---------------------------- */
-function Usuarios({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
+function Usuarios({
+  dossie,
+  activeTenantId,
+  patch,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+  patch: PatchFn;
+}) {
   const vazio = {
     userId: "",
-    tenantId: dossie.tenantId,
+    tenantId: activeTenantId,
     name: "",
     email: "",
     role: "ANALISTA_COMERCIAL",
@@ -653,9 +917,33 @@ function Usuarios({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
 }
 
 /* ---------------------------- Aba 4 — Licitações & Cofre ---------------------------- */
-function Patrimonio({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
-  const pat = dossie.patrimonioOperacional;
-  const [inj, setInj] = useState({ aberto: false, licitacaoId: "", statusKanban: "PENDENTE", tenantId: dossie.tenantId });
+function Patrimonio({
+  dossie,
+  activeTenantId,
+  patch,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+  patch: PatchFn;
+}) {
+  const patFromMap = dossie.porEmpresa?.[activeTenantId]?.patrimonioOperacional;
+  const pat: Dossie["patrimonioOperacional"] = patFromMap ?? {
+    ...dossie.patrimonioOperacional,
+    licitacoes: dossie.patrimonioOperacional.licitacoes.some((l) => l.tenantId)
+      ? dossie.patrimonioOperacional.licitacoes.filter((l) => !l.tenantId || l.tenantId === activeTenantId)
+      : dossie.patrimonioOperacional.licitacoes,
+    documentos: {
+      ...dossie.patrimonioOperacional.documentos,
+      lista: dossie.patrimonioOperacional.documentos.lista.some((d) => d.tenantId)
+        ? dossie.patrimonioOperacional.documentos.lista.filter((d) => !d.tenantId || d.tenantId === activeTenantId)
+        : dossie.patrimonioOperacional.documentos.lista,
+    },
+  };
+  const [inj, setInj] = useState({ aberto: false, licitacaoId: "", statusKanban: "PENDENTE", tenantId: activeTenantId });
+
+  useEffect(() => {
+    setInj((prev) => ({ ...prev, tenantId: activeTenantId }));
+  }, [activeTenantId]);
 
   return (
     <div style={{ paddingTop: "1rem" }}>
@@ -676,13 +964,15 @@ function Patrimonio({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
       </div>
 
       <div style={{ marginBottom: "1rem" }}>
-        <Button renderIcon={Add} onClick={() => setInj({ ...inj, aberto: true })}>
+        <Button renderIcon={Add} onClick={() => setInj({ ...inj, tenantId: activeTenantId, aberto: true })}>
           Injetar licitação no Kanban deste cliente
         </Button>
       </div>
 
       <AdminTable
         titulo="Licitações em que o cliente participa"
+        pageSize={5}
+        resetPageKey={activeTenantId}
         colunas={[
           { key: "edital", header: "Edital / Órgão" },
           { key: "empresa", header: "CNPJ" },
@@ -708,6 +998,8 @@ function Patrimonio({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
       <div style={{ marginTop: "1.5rem" }}>
         <AdminTable
           titulo="Cofre de documentos (R2)"
+          pageSize={5}
+          resetPageKey={activeTenantId}
           colunas={[
             { key: "nome", header: "Documento" },
             { key: "cat", header: "Categoria" },
@@ -763,8 +1055,16 @@ function Patrimonio({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
 }
 
 /* ---------------------------- Aba 5 — Recursos & Cotas ---------------------------- */
-function Cotas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
-  const c = dossie.cotas;
+function Cotas({
+  dossie,
+  activeTenantId,
+  patch,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+  patch: PatchFn;
+}) {
+  const c = dossie.cotasPorEmpresa?.[activeTenantId] ?? dossie.cotas;
   const [maxCnpjs, setMaxCnpjs] = useState(String(c.maxCnpjs));
   const [maxUsers, setMaxUsers] = useState(String(c.maxUsers));
   const [bonusIa, setBonusIa] = useState(String(c.aiExtraQuotaMes));
@@ -774,7 +1074,7 @@ function Cotas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
     setMaxCnpjs(String(c.maxCnpjs));
     setMaxUsers(String(c.maxUsers));
     setBonusIa(String(c.aiExtraQuotaMes));
-  }, [c.maxCnpjs, c.maxUsers, c.aiExtraQuotaMes]);
+  }, [activeTenantId, c.maxCnpjs, c.maxUsers, c.aiExtraQuotaMes]);
 
   return (
     <div style={{ paddingTop: "1rem", display: "grid", gap: "1.5rem", maxWidth: "52rem" }}>
@@ -793,17 +1093,17 @@ function Cotas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
           onClick={() =>
             patch(
               "cotas",
-              { maxCnpjs: Number(maxCnpjs), maxUsers: Number(maxUsers), aiExtraQuotaMes: Number(bonusIa) },
+              { tenantId: activeTenantId, maxCnpjs: Number(maxCnpjs), maxUsers: Number(maxUsers), aiExtraQuotaMes: Number(bonusIa) },
               "Limites do cliente atualizados.",
             )
           }
         >
           Salvar limites
         </Button>
-        <Button kind="tertiary" onClick={() => patch("cotas", { adicionarStorageMb: 1024 }, "+1 GB de Cofre concedido.")}>
+        <Button kind="tertiary" onClick={() => patch("cotas", { tenantId: activeTenantId, adicionarStorageMb: 1024 }, "+1 GB de Cofre concedido.")}>
           +1 GB de Cofre
         </Button>
-        <Button kind="tertiary" onClick={() => patch("cotas", { adicionarStorageMb: 2048 }, "+2 GB de Cofre concedidos.")}>
+        <Button kind="tertiary" onClick={() => patch("cotas", { tenantId: activeTenantId, adicionarStorageMb: 2048 }, "+2 GB de Cofre concedidos.")}>
           +2 GB de Cofre
         </Button>
       </div>
@@ -815,7 +1115,7 @@ function Cotas({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
           <Button
             kind="secondary"
             disabled={!licReset.trim()}
-            onClick={() => patch("cotas", { resetarTravaIaLicitacaoId: licReset.trim() }, "Trava silenciosa de IA zerada para a licitação.")}
+            onClick={() => patch("cotas", { tenantId: activeTenantId, resetarTravaIaLicitacaoId: licReset.trim() }, "Trava silenciosa de IA zerada para a licitação.")}
           >
             Resetar trava
           </Button>

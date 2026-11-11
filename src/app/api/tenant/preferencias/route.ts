@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_MACRO_SEGMENTOS } from "@/server/schemas/segmentos.schema";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
@@ -12,7 +17,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const userId = (session?.user as any)?.id || "";
+    const sessionUser = session?.user as SessionActorClaims | undefined;
+    if (isSuperAdminSessionUser(sessionUser)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
+    const userId = sessionUser?.id || "";
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();

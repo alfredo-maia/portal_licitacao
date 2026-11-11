@@ -2,23 +2,26 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { parseDataCivil } from "@/lib/date-utils";
 import { criarPortal, listarPortais } from "@/server/services/portais.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
-  if (!session?.user) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
 
-  const userId = (session.user as any)?.id || "";
+  const userId = guard.user.id;
   let cookieTenant: string | undefined;
   try {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const sessionTenant = guard.user.activeTenantId;
   const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
   const { searchParams } = new URL(request.url);
@@ -48,17 +51,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
-  if (!session?.user) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  }
-  const userId = (session.user as any)?.id || "usr_sistema";
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
+  const userId = guard.user.id;
 
   let cookieTenant: string | undefined;
   try {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const sessionTenant = guard.user.activeTenantId;
   const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
   try {

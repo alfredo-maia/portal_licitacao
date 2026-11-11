@@ -20,39 +20,74 @@ import {
 export { DIRECTORS_SEED };
 
 /**
- * Provisionamento idempotente dos 2 diretores no banco de dados (PRD §2.3 / sprint-0-spec §2.5):
- * 1. Vítor Henrique (vitorhenrique018@gmail.com) - DIRETORIA
+ * Provisionamento idempotente dos 2 administradores iniciais no banco de dados (PRD §2.3 / sprint-0-spec §2.5 / Issue #50):
+ * 1. Vítor Henrique (vitorhenrique018@gmail.com) - SUPERADMIN / SUPERADMIN_MASTER
  * 2. Alfredo Maia (alfredosouza100@gmail.com) - DIRETORIA
  */
 export async function seedDirectors(): Promise<readonly SeedDirectorContract[]> {
   const rawPassword =
     process.env.SEED_DIRECTOR_PASSWORD || DEFAULT_SEED_DIRECTOR_PASSWORD;
   const passwordHash = await bcrypt.hash(rawPassword, 10);
+  const configuredMasterPassword = process.env.SUPERADMIN_MASTER_PASSWORD;
+  const isProdRuntime = process.env.NODE_ENV === "production";
+  const superAdminRawPassword =
+    configuredMasterPassword || (!isProdRuntime ? "123456" : randomUUID());
+  const superAdminPasswordHash = await bcrypt.hash(superAdminRawPassword, 10);
 
   const provisioned: SeedDirectorContract[] = [];
 
   for (const director of DIRECTORS_SEED) {
     const validatedDirector = seedDirectorSchema.parse(director);
+    const isSuper =
+      validatedDirector.role === "SUPERADMIN" ||
+      Boolean(validatedDirector.isSuperAdmin);
+    const resolvedHash = isSuper ? superAdminPasswordHash : passwordHash;
     let userId = `seed_${randomUUID()}`;
 
     try {
-      const upserted = await prisma.user.upsert({
+      const existing = await prisma.user.findUnique({
         where: { email: validatedDirector.email },
-        update: {
-          name: validatedDirector.name,
-          passwordHash,
-          role: validatedDirector.role,
-          ativo: validatedDirector.ativo,
-        },
-        create: {
-          name: validatedDirector.name,
-          email: validatedDirector.email,
-          passwordHash,
-          role: validatedDirector.role,
-          ativo: validatedDirector.ativo,
-        },
       });
-      userId = upserted.id;
+      if (!existing) {
+        const created = await prisma.user.create({
+          data: {
+            name: validatedDirector.name,
+            email: validatedDirector.email,
+            passwordHash: resolvedHash,
+            role: validatedDirector.role,
+            isSuperAdmin: isSuper,
+            adminRole: validatedDirector.adminRole ?? null,
+            ativo: validatedDirector.ativo,
+          },
+        });
+        userId = created.id;
+      } else {
+        const updateData: {
+          name: string;
+          role: "DIRETORIA" | "SUPERADMIN";
+          isSuperAdmin: boolean;
+          adminRole: "SUPERADMIN_MASTER" | "ADMIN_OPERACIONAL" | "SUPORTE_N1" | null;
+          ativo: boolean;
+          passwordHash?: string;
+        } = {
+          name: validatedDirector.name,
+          role: validatedDirector.role,
+          isSuperAdmin: isSuper,
+          adminRole: validatedDirector.adminRole ?? null,
+          ativo: validatedDirector.ativo,
+        };
+        if (!isSuper || configuredMasterPassword || !isProdRuntime) {
+          updateData.passwordHash = resolvedHash;
+        }
+        const updated = await prisma.user.update({
+          where: { email: validatedDirector.email },
+          data: updateData,
+        });
+        userId = updated.id;
+      }
+      if (isSuper) {
+        await prisma.tenantUser.deleteMany({ where: { userId } }).catch(() => undefined);
+      }
     } catch {
       // Fallback resiliente caso o banco PostgreSQL não esteja ativo no ambiente de execução (ex.: CI)
     }
@@ -62,8 +97,14 @@ export async function seedDirectors(): Promise<readonly SeedDirectorContract[]> 
       name: validatedDirector.name,
       email: validatedDirector.email,
       role: validatedDirector.role,
+      isSuperAdmin: isSuper,
+      adminRole: validatedDirector.adminRole ?? null,
       ativo: validatedDirector.ativo,
-      passwordHash,
+      passwordHash: resolvedHash,
+      activeTenantId: isSuper ? null : undefined,
+      cnpj: isSuper ? null : undefined,
+      plano: isSuper ? null : undefined,
+      tenantRole: isSuper ? null : undefined,
     });
 
     provisioned.push(validatedDirector);

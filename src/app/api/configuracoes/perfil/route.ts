@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { meuPerfilAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   atualizarMeuPerfil,
@@ -12,17 +16,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const userId = (session?.user as any)?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
 
     const fallbackUser = {
-      email: session?.user?.email ?? null,
-      name: session?.user?.name ?? null,
+      email: guard.user.email ?? null,
+      name: guard.user.name ?? null,
     };
 
     const perfil = await obterMeuPerfil(userId, fallbackUser);
@@ -38,13 +38,9 @@ export async function GET() {
 export async function PUT(req: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const userId = (session?.user as any)?.id;
-    if (!userId) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
 
     const body = await req.json().catch(() => ({}));
     const parseResult = meuPerfilAtualizarInputSchema.safeParse(body);

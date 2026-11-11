@@ -5,6 +5,11 @@ import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
+import {
   criarOportunidadeManual,
   listOportunidadesPaginadas,
   OportunidadesServiceError,
@@ -23,6 +28,9 @@ export async function GET(request: Request) {
 
   try {
     const session = await getServerSession(authOptions).catch(() => null);
+    if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     const userId = (session?.user as any)?.id || "";
 
     let cookieTenant: string | undefined;
@@ -110,6 +118,9 @@ export async function POST(request: Request) {
       { ok: false, error: "UNAUTHORIZED" },
       { status: 401 },
     );
+  }
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   let body: unknown;

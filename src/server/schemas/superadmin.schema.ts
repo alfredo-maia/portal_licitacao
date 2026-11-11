@@ -201,6 +201,28 @@ export const SuperAdminTenantItemSchema = z.object({
   cupomCodigo: z.string().nullable().optional(),
   notasInternasAdm: z.string().nullable().optional(),
   onboarding: OnboardingChecklistSchema.optional(),
+  qtdCnpjs: z.number().int().min(1).optional().default(1),
+  cnpjsAdicionaisCount: z.number().int().min(0).optional().default(0),
+  cnpjsVinculados: z
+    .array(
+      z.object({
+        id: z.string(),
+        cnpj: z.string(),
+        razaoSocial: z.string(),
+        nomeFantasia: z.string().nullable().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+  subCnpjEncontrado: z
+    .object({
+      id: z.string(),
+      cnpj: z.string(),
+      razaoSocial: z.string(),
+    })
+    .nullable()
+    .optional()
+    .default(null),
 });
 
 export type SuperAdminTenantItem = z.input<typeof SuperAdminTenantItemSchema>;
@@ -476,6 +498,7 @@ export const AdminUpsertAdminUserSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2),
   email: z.string().email(),
+  telefone: z.string().nullable().optional(),
   password: z.string().min(6).optional(),
   adminRole: AdminRoleEnum.default("ADMIN_OPERACIONAL"),
   ativo: z.boolean().default(true),

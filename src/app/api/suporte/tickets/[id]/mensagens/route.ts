@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { can, type RbacUser } from "@/lib/rbac";
 import { responderTicketSuporteInputSchema } from "@/server/schemas/suporte.schema";
 import { adicionarMensagemTicketSuporte } from "@/server/services/suporte.service";
@@ -18,6 +22,9 @@ export async function POST(
     const user = session?.user as (RbacUser & { id?: string; activeTenantId?: string }) | undefined;
     if (!user?.id) {
       return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
 
     if (!can(user, "update", "suporte")) {

@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "@/config/brand";
+import type { TenantBillingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import {
@@ -10,7 +11,7 @@ import {
 } from "@/server/schemas/asaas.schema";
 import { PLAN_LIMITS, type PlanoAssinatura } from "@/server/schemas/tenant.schema";
 import { enviarEmailFaturamento } from "@/server/services/email.service";
-import { inMemoryTenants } from "@/server/services/tenant.service";
+import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
 import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 
 // Armazenamento em memória para idempotência e testes resilientes
@@ -286,6 +287,95 @@ export async function processarWebhookAsaas(
       }
     };
 
+    const propagarEstadoFinanceiroIrmaos = async (financialData: {
+      billingStatus: TenantBillingStatus;
+      trialFim?: Date | null;
+      vencimentoAssinatura?: Date | null;
+      ultimoPagamentoEm?: Date | null;
+      plano?: PlanoAssinatura;
+      maxCnpjs?: number;
+      maxUsers?: number;
+    }) => {
+      try {
+        const memTitular = inMemoryTenantUsers.find(
+          (tu) => tu.tenantId === tenantId && tu.role === "TITULAR" && tu.ativo,
+        );
+        let titularUserId = memTitular?.userId ?? null;
+        if (!titularUserId) {
+          try {
+            const dbTitular = await prisma.tenantUser.findFirst({
+              where: { tenantId: tenantId!, role: "TITULAR", ativo: true },
+              select: { userId: true },
+            });
+            titularUserId = dbTitular?.userId ?? null;
+          } catch {}
+        }
+        if (!titularUserId) return;
+
+        const siblingIds = new Set<string>();
+        for (const tu of inMemoryTenantUsers) {
+          if (tu.userId === titularUserId && tu.role === "TITULAR" && tu.ativo && tu.tenantId !== tenantId) {
+            siblingIds.add(tu.tenantId);
+          }
+        }
+        try {
+          const dbSibs = await prisma.tenantUser.findMany({
+            where: { userId: titularUserId, role: "TITULAR", ativo: true },
+            select: { tenantId: true },
+          });
+          for (const s of dbSibs) {
+            if (s.tenantId !== tenantId) siblingIds.add(s.tenantId);
+          }
+        } catch {}
+
+        for (const sibId of siblingIds) {
+          const memSib = inMemoryTenants.get(sibId);
+          const nextMaxCnpjs =
+            financialData.maxCnpjs !== undefined
+              ? Math.max(memSib?.maxCnpjs ?? 0, financialData.maxCnpjs)
+              : undefined;
+          const nextMaxUsers =
+            financialData.maxUsers !== undefined
+              ? Math.max(memSib?.maxUsers ?? 0, financialData.maxUsers)
+              : undefined;
+
+          if (memSib) {
+            memSib.billingStatus = financialData.billingStatus;
+            if (financialData.trialFim !== undefined) memSib.trialFim = financialData.trialFim;
+            if (financialData.vencimentoAssinatura !== undefined) {
+              memSib.vencimentoAssinatura = financialData.vencimentoAssinatura;
+            }
+            if (financialData.ultimoPagamentoEm !== undefined) {
+              memSib.ultimoPagamentoEm = financialData.ultimoPagamentoEm;
+            }
+            if (financialData.plano) memSib.plano = financialData.plano;
+            if (nextMaxCnpjs !== undefined) memSib.maxCnpjs = nextMaxCnpjs;
+            if (nextMaxUsers !== undefined) memSib.maxUsers = nextMaxUsers;
+            memSib.updatedAt = agora;
+          }
+
+          try {
+            await prisma.tenant.update({
+              where: { id: sibId },
+              data: {
+                billingStatus: financialData.billingStatus,
+                ...(financialData.trialFim !== undefined ? { trialFim: financialData.trialFim } : {}),
+                ...(financialData.vencimentoAssinatura !== undefined
+                  ? { vencimentoAssinatura: financialData.vencimentoAssinatura }
+                  : {}),
+                ...(financialData.ultimoPagamentoEm !== undefined
+                  ? { ultimoPagamentoEm: financialData.ultimoPagamentoEm }
+                  : {}),
+                ...(financialData.plano ? { plano: financialData.plano } : {}),
+                ...(nextMaxCnpjs !== undefined ? { maxCnpjs: nextMaxCnpjs } : {}),
+                ...(nextMaxUsers !== undefined ? { maxUsers: nextMaxUsers } : {}),
+              },
+            });
+          } catch {}
+        }
+      } catch {}
+    };
+
     try {
       if (
         payload.event === "PAYMENT_CONFIRMED" ||
@@ -296,6 +386,7 @@ export async function processarWebhookAsaas(
 
         const updateData: Record<string, any> = {
           billingStatus: "ATIVO",
+          trialFim: null,
           vencimentoAssinatura: novaDataVencimento,
           ultimoPagamentoEm: agora,
           asaasCustomerId: payload.payment?.customer || payload.subscription?.customer || undefined,
@@ -310,6 +401,7 @@ export async function processarWebhookAsaas(
 
         if (memTenant) {
           memTenant.billingStatus = "ATIVO";
+          memTenant.trialFim = null;
           memTenant.vencimentoAssinatura = novaDataVencimento;
           memTenant.ultimoPagamentoEm = agora;
           if (updateData.asaasCustomerId) memTenant.asaasCustomerId = updateData.asaasCustomerId;
@@ -325,6 +417,19 @@ export async function processarWebhookAsaas(
         }
 
         await persistirTenantUpdate(updateData);
+        await propagarEstadoFinanceiroIrmaos({
+          billingStatus: "ATIVO",
+          trialFim: null,
+          vencimentoAssinatura: novaDataVencimento,
+          ultimoPagamentoEm: agora,
+          ...(planoInferido
+            ? {
+                plano: planoInferido,
+                maxCnpjs: updateData.maxCnpjs,
+                maxUsers: updateData.maxUsers,
+              }
+            : {}),
+        });
 
         await recordAuditLog({
           usuarioId: "sistema_asaas",
@@ -356,6 +461,9 @@ export async function processarWebhookAsaas(
         await persistirTenantUpdate({
           billingStatus: "GRACE_PERIOD",
         });
+        await propagarEstadoFinanceiroIrmaos({
+          billingStatus: "GRACE_PERIOD",
+        });
 
         await recordAuditLog({
           usuarioId: "sistema_asaas",
@@ -382,6 +490,9 @@ export async function processarWebhookAsaas(
         }
 
         await persistirTenantUpdate({
+          billingStatus: "CANCELADO",
+        });
+        await propagarEstadoFinanceiroIrmaos({
           billingStatus: "CANCELADO",
         });
 
@@ -411,6 +522,9 @@ export async function processarWebhookAsaas(
         }
 
         await persistirTenantUpdate({
+          billingStatus: "BLOQUEADO",
+        });
+        await propagarEstadoFinanceiroIrmaos({
           billingStatus: "BLOQUEADO",
         });
       }

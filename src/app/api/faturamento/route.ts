@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import { calcularStatusFaturamento } from "@/server/schemas/asaas.schema";
 import { PLAN_STORAGE_QUOTAS_MB } from "@/server/schemas/storage-r2.schema";
@@ -10,12 +14,10 @@ import { PLAN_STORAGE_QUOTAS_MB } from "@/server/schemas/storage-r2.schema";
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions).catch(() => null);
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
 
-  if (!session?.user) {
-    return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  }
-
-  const activeTenantId = (session.user as any).activeTenantId;
+  const activeTenantId = guard.user.activeTenantId;
 
   if (!activeTenantId) {
     // Retorno de fallback para usuário sem tenant

@@ -175,4 +175,13 @@ html[data-carbon-theme="g10"] .cds--app-theme-root.cds--g10 {
   }
 }
 
+.pncp-admin-row--active > td {
+  background-color: var(--cds-layer-selected-01) !important;
+  font-weight: 500;
+}
+
+.pncp-admin-row--active > td:first-child {
+  box-shadow: inset 4px 0 0 0 var(--cds-border-interactive);
+}
+
 

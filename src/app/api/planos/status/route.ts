@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import { evaluateTenantAccess } from "@/lib/subscription-guard";
 import { inMemoryTenants, resolveUserActiveTenantId } from "@/server/services/tenant.service";
@@ -11,21 +15,17 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
 
-    const userId = (session.user as any)?.id || "";
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
 
-    const sessionTenant = (session.user as any)?.activeTenantId;
+    const sessionTenant = guard.user.activeTenantId;
     const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
     let tenantData: any = null;
@@ -40,7 +40,7 @@ export async function GET() {
       }
     }
 
-    const userEmail = session.user.email?.trim().toLowerCase() || "";
+    const userEmail = guard.user.email?.trim().toLowerCase() || "";
     const isEnterpriseAccount = userEmail === "opaonossopanificadora@gmail.com";
     const billingStatusEfetivo = isEnterpriseAccount
       ? "ATIVO"
@@ -52,7 +52,7 @@ export async function GET() {
         ? "ENTERPRISE"
         : isTrial
         ? "PRO"
-        : tenantData?.plano || (session.user as any)?.plano || "PRO",
+        : tenantData?.plano || guard.user.plano || "PRO",
       billingStatus: billingStatusEfetivo,
       trialFim:
         tenantData?.trialFim ||
@@ -79,7 +79,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       tenantId: tenantId || null,
-      cnpj: tenantData?.cnpj || (session.user as any)?.cnpj || null,
+      cnpj: tenantData?.cnpj || guard.user.cnpj || null,
       razaoSocial: tenantData?.razaoSocial || null,
       ...evaluation,
       maxCnpjs: tenantInfo.maxCnpjs,

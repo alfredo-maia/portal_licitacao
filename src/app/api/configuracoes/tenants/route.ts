@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import {
   createTenantForUser,
@@ -8,6 +13,7 @@ import {
   listTenantsForUser,
   PlanQuotaExceededError,
   TenantCollisionError,
+  UnauthorizedTenantActionError,
 } from "@/server/services/tenant.service";
 import { createTenantSchema } from "@/server/schemas/tenant.schema";
 import { cookies } from "next/headers";
@@ -17,12 +23,16 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const userId = (session?.user as any)?.id;
+    const sessionUser = session?.user as SessionActorClaims | undefined;
+    const userId = sessionUser?.id;
     if (!userId) {
       return NextResponse.json(
         { ok: false, error: "Não autorizado" },
         { status: 401 },
       );
+    }
+    if (isSuperAdminSessionUser(sessionUser)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
     const userEmail = session?.user?.email?.trim().toLowerCase() || "";
     const isEnterpriseAccount = userEmail === "opaonossopanificadora@gmail.com";
@@ -146,12 +156,16 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const userId = (session?.user as any)?.id;
+    const sessionUser = session?.user as SessionActorClaims | undefined;
+    const userId = sessionUser?.id;
     if (!userId) {
       return NextResponse.json(
         { ok: false, error: "Não autorizado" },
         { status: 401 },
       );
+    }
+    if (isSuperAdminSessionUser(sessionUser)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
 
     const body = await req.json().catch(() => ({}));
@@ -250,7 +264,7 @@ export async function POST(req: Request) {
         { status: error.statusCode },
       );
     }
-    if (error instanceof PlanQuotaExceededError) {
+    if (error instanceof PlanQuotaExceededError || error instanceof UnauthorizedTenantActionError) {
       return NextResponse.json(
         { ok: false, error: error.message },
         { status: error.statusCode },

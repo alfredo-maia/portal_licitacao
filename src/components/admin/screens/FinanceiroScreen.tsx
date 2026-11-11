@@ -18,6 +18,7 @@ import {
   Tabs,
   Tag,
   TextInput,
+  Tile,
 } from "@carbon/react";
 import { Add, CheckmarkOutline, Currency, Renew, Time } from "@carbon/icons-react";
 import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
@@ -124,15 +125,25 @@ export function FinanceiroScreen() {
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, "");
     return clientes.filter((c) => {
       if (filtro !== "TODOS" && c.billingStatus !== filtro) return false;
       if (!q) return true;
-      return (
+      const matchPrincipal =
         c.razaoSocial.toLowerCase().includes(q) ||
         (c.nomeFantasia || "").toLowerCase().includes(q) ||
         (c.titularEmail || "").toLowerCase().includes(q) ||
-        c.cnpj.includes(q)
+        (c.titularNome || "").toLowerCase().includes(q) ||
+        c.cnpj.includes(q) ||
+        (qDigits.length >= 4 && c.cnpj.replace(/\D/g, "").includes(qDigits));
+      const matchSub = c.cnpjsVinculados?.some(
+        (sub) =>
+          sub.razaoSocial.toLowerCase().includes(q) ||
+          (sub.nomeFantasia || "").toLowerCase().includes(q) ||
+          sub.cnpj.includes(q) ||
+          (qDigits.length >= 4 && sub.cnpj.replace(/\D/g, "").includes(qDigits)),
       );
+      return matchPrincipal || Boolean(matchSub);
     });
   }, [clientes, filtro, busca]);
 
@@ -227,15 +238,17 @@ export function FinanceiroScreen() {
             </div>
 
             <AdminTable
-              titulo={`${filtrados.length} assinatura(s)`}
+              titulo={`${filtrados.length} conta(s)`}
+              pageSize={10}
+              resetPageKey={`${filtro}|${busca}`}
               colunas={[
                 { key: "cliente", header: "Cliente / E-mail" },
+                { key: "qtdCnpjs", header: "Qtd de CNPJ" },
                 { key: "plano", header: "Plano" },
-                { key: "valor", header: "Mensalidade" },
                 { key: "status", header: "Status Financeiro" },
                 { key: "vencimento", header: "Vencimento / Trial" },
                 { key: "cupom", header: "Cupom" },
-                { key: "acoes", header: "Ações Rápidas" },
+                { key: "faturamento", header: "Faturamento" },
               ]}
               vazio={loading ? "Carregando..." : "Nenhum registro financeiro para este filtro."}
               linhas={filtrados.map((c) => ({
@@ -250,8 +263,19 @@ export function FinanceiroScreen() {
                     </div>
                   </div>
                 ),
-                plano: <Tag type="blue">{c.plano}</Tag>,
-                valor: fmtBRL(c.valorMensalidade),
+                qtdCnpjs: (
+                  <Tag type="cyan" size="sm">
+                    {c.qtdCnpjs ?? 1} CNPJ(s)
+                  </Tag>
+                ),
+                plano: (
+                  <div>
+                    <Tag type="blue">{c.plano}</Tag>
+                    <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
+                      {fmtBRL(c.valorMensalidade)}/mês
+                    </div>
+                  </div>
+                ),
                 status: (
                   <div>
                     <StatusFinanceiroTag status={c.billingStatus} />
@@ -266,54 +290,26 @@ export function FinanceiroScreen() {
                   </div>
                 ),
                 vencimento: c.billingStatus === "TRIAL" ? fmtDia(c.trialFim) : fmtDia(c.vencimentoAssinatura),
-                cupom: c.cupomCodigo ? <Tag type="purple">{c.cupomCodigo}</Tag> : "—",
-                acoes: (
-                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-                    <Button
-                      size="sm"
-                      kind="primary"
-                      renderIcon={CheckmarkOutline}
-                      onClick={() =>
-                        void executarAcao(
-                          { tenantId: c.id, action: "DAR_BAIXA_MANUAL" },
-                          `Baixa manual aplicada para ${c.razaoSocial}.`,
-                        )
-                      }
-                    >
-                      Dar baixa (+30d)
-                    </Button>
-                    <Button
-                      size="sm"
-                      kind="tertiary"
-                      renderIcon={Time}
-                      onClick={() =>
-                        void executarAcao(
-                          { tenantId: c.id, action: "PRORROGAR_TRIAL", diasExtrasTrial: 7 },
-                          `Trial estendido +7 dias para ${c.razaoSocial}.`,
-                        )
-                      }
-                    >
-                      +7d Trial
-                    </Button>
-                    <Button
-                      size="sm"
-                      kind="ghost"
-                      renderIcon={Currency}
-                      onClick={() =>
-                        setModalCliente({
-                          tenant: c,
-                          action: "ALTERAR_PLANO",
-                          plano: c.plano,
-                          billingStatus: c.billingStatus,
-                          diasExtrasTrial: "14",
-                          cupomCodigo: c.cupomCodigo || "",
-                          observacao: "",
-                        })
-                      }
-                    >
-                      Gerenciar
-                    </Button>
-                  </div>
+                cupom: c.cupomCodigo ? <Tag type="teal">{c.cupomCodigo}</Tag> : "—",
+                faturamento: (
+                  <Button
+                    size="sm"
+                    kind="tertiary"
+                    renderIcon={Currency}
+                    onClick={() =>
+                      setModalCliente({
+                        tenant: c,
+                        action: "ALTERAR_PLANO",
+                        plano: c.plano,
+                        billingStatus: c.billingStatus,
+                        diasExtrasTrial: "14",
+                        cupomCodigo: c.cupomCodigo || "",
+                        observacao: "",
+                      })
+                    }
+                  >
+                    Acessar Faturamento do cliente
+                  </Button>
                 ),
               }))}
             />
@@ -349,7 +345,7 @@ export function FinanceiroScreen() {
               ]}
               linhas={cupons.map((cp) => ({
                 id: cp.id,
-                codigo: <Tag type="purple">{cp.codigo}</Tag>,
+                codigo: <Tag type="teal">{cp.codigo}</Tag>,
                 descricao: cp.descricao || "—",
                 beneficios: `${cp.descontoPercentual}% OFF • +${cp.diasExtrasTrial} dias trial`,
                 usos: `${cp.usosAtuais}${cp.maxUsos ? ` / ${cp.maxUsos}` : ""}`,
@@ -381,7 +377,11 @@ export function FinanceiroScreen() {
 
       <Modal
         open={modalCliente !== null}
-        modalHeading={modalCliente ? `Gerenciar assinatura — ${modalCliente.tenant.razaoSocial}` : ""}
+        modalHeading={
+          modalCliente
+            ? `Faturamento da conta — ${modalCliente.tenant.nomeFantasia || modalCliente.tenant.razaoSocial}`
+            : ""
+        }
         primaryButtonText="Aplicar alteração"
         secondaryButtonText="Cancelar"
         onRequestClose={() => setModalCliente(null)}
@@ -404,16 +404,99 @@ export function FinanceiroScreen() {
       >
         {modalCliente ? (
           <div style={{ display: "grid", gap: "1rem" }}>
+            <Tile style={{ backgroundColor: "var(--cds-layer-02)", padding: "0.85rem 1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.75rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>CLIENTE / E-MAIL</div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>{modalCliente.tenant.titularNome || modalCliente.tenant.razaoSocial}</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{modalCliente.tenant.titularEmail || modalCliente.tenant.cnpj}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>CONTA & PLANO</div>
+                  <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>
+                    {modalCliente.tenant.plano} • {fmtBRL(modalCliente.tenant.valorMensalidade)}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                    {modalCliente.tenant.qtdCnpjs ?? 1} CNPJ(s) vinculado(s)
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>STATUS & VENCIMENTO</div>
+                  <div>
+                    <StatusFinanceiroTag status={modalCliente.tenant.billingStatus} />
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
+                    {modalCliente.tenant.billingStatus === "TRIAL"
+                      ? `Trial até ${fmtDia(modalCliente.tenant.trialFim)}`
+                      : `Vence em ${fmtDia(modalCliente.tenant.vencimentoAssinatura)}`}
+                  </div>
+                </div>
+              </div>
+            </Tile>
+
+            <Tile style={{ backgroundColor: "var(--cds-layer-02)", padding: "0.85rem 1rem" }}>
+              <div style={{ fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.4rem" }}>
+                Ações rápidas (aplicadas a todos os CNPJs da conta)
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                Registrar Pagamento Manual (Dar Baixa +30 dias): ativa a conta imediatamente, marca o status como Pagante e renova o vencimento por +30 dias (útil para pagamentos recebidos via PIX/TED fora do gateway automático).
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <Button
+                  size="sm"
+                  kind="tertiary"
+                  renderIcon={Time}
+                  onClick={async () => {
+                    const ok = await executarAcao(
+                      { tenantId: modalCliente.tenant.id, action: "PRORROGAR_TRIAL", diasExtrasTrial: 7 },
+                      `Trial estendido +7 dias para ${modalCliente.tenant.razaoSocial}.`,
+                    );
+                    if (ok) setModalCliente(null);
+                  }}
+                >
+                  +7d Trial
+                </Button>
+                <Button
+                  size="sm"
+                  kind="tertiary"
+                  renderIcon={Time}
+                  onClick={async () => {
+                    const ok = await executarAcao(
+                      { tenantId: modalCliente.tenant.id, action: "PRORROGAR_TRIAL", diasExtrasTrial: 14 },
+                      `Trial estendido +14 dias para ${modalCliente.tenant.razaoSocial}.`,
+                    );
+                    if (ok) setModalCliente(null);
+                  }}
+                >
+                  +14d Trial
+                </Button>
+                <Button
+                  size="sm"
+                  kind="primary"
+                  renderIcon={CheckmarkOutline}
+                  onClick={async () => {
+                    const ok = await executarAcao(
+                      { tenantId: modalCliente.tenant.id, action: "DAR_BAIXA_MANUAL" },
+                      `Baixa manual aplicada (+30d) para ${modalCliente.tenant.razaoSocial}.`,
+                    );
+                    if (ok) setModalCliente(null);
+                  }}
+                >
+                  Dar Baixa (+30d)
+                </Button>
+              </div>
+            </Tile>
+
             <Select
               id="fin-acao"
-              labelText="Ação financeira"
+              labelText="Ação detalhada de assinatura"
               value={modalCliente.action}
               onChange={(e) => setModalCliente({ ...modalCliente, action: e.target.value as typeof modalCliente.action })}
             >
               <SelectItem value="ALTERAR_PLANO" text="Trocar Plano (Básico / Pro / Enterprise)" />
               <SelectItem value="ALTERAR_STATUS" text="Alterar Status Financeiro manualmente" />
               <SelectItem value="DAR_BAIXA_MANUAL" text="Dar baixa manual (+30 dias)" />
-              <SelectItem value="PRORROGAR_TRIAL" text="Prorrogar Trial grátis" />
+              <SelectItem value="PRORROGAR_TRIAL" text="Prorrogar Trial grátis (valor customizado)" />
               <SelectItem value="APLICAR_CUPOM" text="Aplicar Cupom promocional" />
             </Select>
             {modalCliente.action === "ALTERAR_PLANO" ? (

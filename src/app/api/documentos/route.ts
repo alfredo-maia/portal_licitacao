@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { parseDataCivil } from "@/lib/date-utils";
 import { runWithAuditActorContext } from "@/server/audit";
 import {
@@ -30,10 +34,9 @@ interface SessionUserWithTenant {
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
-  const user = session?.user as SessionUserWithTenant | undefined;
-  if (!user?.id) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   let cookieTenant: string | undefined;
   try {
@@ -78,10 +81,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
-  const user = session?.user as SessionUserWithTenant | undefined;
-  if (!user?.id) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
   const userId = user.id;
   const userName = user.name ?? user.email ?? null;
 

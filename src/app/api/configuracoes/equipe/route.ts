@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
-import { prisma } from "@/lib/prisma";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { usuarioEquipeCriarInputSchema } from "@/server/schemas/configuracao.schema";
 import {
   criarMembroEquipe,
@@ -15,26 +18,22 @@ export const dynamic = "force-dynamic";
 export async function GET(_req?: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
-    const userId = (session.user as any)?.id || "";
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
       cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
     } catch {}
-    const sessionTenant = (session?.user as any)?.activeTenantId;
+    const sessionTenant = guard.user.activeTenantId;
     const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
     const currentUser = {
-      id: userId || null,
-      name: session.user.name ?? null,
-      email: session.user.email ?? null,
-      role: (session.user as any)?.role ?? "DIRETORIA",
+      id: userId,
+      name: guard.user.name ?? null,
+      email: guard.user.email ?? null,
+      role: guard.user.role ?? "DIRETORIA",
     };
 
     const resultado = await listarEquipe(tenantId, currentUser);
@@ -50,13 +49,9 @@ export async function GET(_req?: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
-    const userId = (session.user as any)?.id || "";
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();

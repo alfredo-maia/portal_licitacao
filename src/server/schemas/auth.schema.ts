@@ -13,6 +13,9 @@ export const authMethodSchema = z.enum([
 ]);
 export type AuthMethod = z.infer<typeof authMethodSchema>;
 
+export const authRealmSchema = z.enum(["admin", "client"]);
+export type AuthRealm = z.infer<typeof authRealmSchema>;
+
 export const loginCredentialsSchema = z.object({
   email: z.string().email("E-mail inválido").transform((v) => v.trim().toLowerCase()),
   password: z.string().min(6, "A senha deve possuir ao menos 6 caracteres"),
@@ -20,7 +23,8 @@ export const loginCredentialsSchema = z.object({
 
 export const requestOtpSchema = z.object({
   email: z.string().email("E-mail corporativo inválido").transform((v) => v.trim().toLowerCase()),
-  method: z.enum(["WHATSAPP_OTP", "EMAIL_OTP"]),
+  method: z.enum(["WHATSAPP_OTP", "EMAIL_OTP"]).default("EMAIL_OTP"),
+  realm: authRealmSchema.default("client"),
 });
 
 export const verifyOtpSchema = z.object({
@@ -31,7 +35,12 @@ export const verifyOtpSchema = z.object({
 export const seedDirectorSchema = z.object({
   name: z.string().min(1),
   email: z.string().email().transform((v) => v.trim().toLowerCase()),
-  role: z.literal("DIRETORIA"),
+  role: z.enum(["DIRETORIA", "SUPERADMIN"]),
+  isSuperAdmin: z.boolean().optional(),
+  adminRole: z
+    .enum(["SUPERADMIN_MASTER", "ADMIN_OPERACIONAL", "SUPORTE_N1"])
+    .nullable()
+    .optional(),
   ativo: z.literal(true),
 });
 

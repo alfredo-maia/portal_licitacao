@@ -340,6 +340,43 @@ export async function enviarEmailBoasVindas(params: {
   });
 }
 
+export async function enviarEmailCodigoOtp(params: {
+  nome?: string | null;
+  email: string;
+  codigo: string;
+  isAdmin?: boolean;
+  userId?: string | null;
+}): Promise<ResultadoEnvioEmail> {
+  const appUrl = resolverAppUrl();
+  const saudacao = params.nome?.trim() ? escapeHtml(params.nome.trim()) : "Usuário";
+  const titulo = params.isAdmin ? "Código de Acesso — Portal ADM" : "Código de Acesso";
+  const loginUrl = `${appUrl}${params.isAdmin ? "/admin/login" : "/login"}`;
+
+  const html = renderizarTemplateEmailCarbon({
+    titulo,
+    subtitulo: "Autenticação em 2 etapas por código temporário",
+    corpoHtml: `
+      <p>Olá, <strong>${saudacao}</strong>.</p>
+      <p>Utilize o código de 6 dígitos abaixo para acessar sua conta${params.isAdmin ? " administrativa" : ""}:</p>
+      <div style="margin: 16px 0; padding: 16px; background: #f4f4f4; border-left: 4px solid #0f62fe; font-size: 24px; font-weight: 700; letter-spacing: 0.2em; color: #161616;">
+        ${escapeHtml(params.codigo)}
+      </div>
+      <p>Este código é válido por <strong>10 minutos</strong> e não deve ser compartilhado.</p>
+    `,
+    ctaLabel: params.isAdmin ? "Acessar Portal ADM" : "Acessar Portal",
+    ctaUrl: loginUrl,
+    rodapeExtra: "Se você não solicitou este código, ignore este e-mail.",
+  });
+
+  return enviarEmailTransacional({
+    para: params.email,
+    assunto: `Código de acesso — ${APP_CONFIG.brandName}${params.isAdmin ? " (Portal ADM)" : ""}`,
+    html,
+    evento: "OTP_ACESSO",
+    userId: params.userId ?? null,
+  });
+}
+
 export async function enviarEmailRecuperacaoSenha(params: {
   nome?: string | null;
   email: string;

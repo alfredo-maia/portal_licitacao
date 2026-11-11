@@ -5,6 +5,11 @@ import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
+import {
   deliberarOportunidade,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
@@ -30,6 +35,9 @@ export async function POST(request: Request, context: RouteContext) {
       { ok: false, error: "UNAUTHORIZED" },
       { status: 401 },
     );
+  }
+  if (isSuperAdminSessionUser(user as unknown as SessionActorClaims)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   const { id } = await context.params;

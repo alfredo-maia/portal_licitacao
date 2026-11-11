@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { usuarioEquipeAtualizarInputSchema } from "@/server/schemas/configuracao.schema";
 import { atualizarMembroEquipe } from "@/server/services/configuracoes.service";
 import { getInMemoryUsuario } from "@/server/services/licitacoes-store";
@@ -17,13 +21,9 @@ export async function GET(
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
-    const userId = (session.user as any)?.id || "";
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
@@ -96,13 +96,9 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
-    const userId = (session.user as any)?.id || "";
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();

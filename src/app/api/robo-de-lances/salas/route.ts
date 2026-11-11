@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import {
   listOportunidades,
@@ -33,8 +38,11 @@ export const dynamic = "force-dynamic";
 async function resolverTenantAtivo(
   req: Request,
   bodyTenantId?: string,
-): Promise<{ tenantId: string | null; unauthorized: boolean }> {
+): Promise<{ tenantId: string | null; unauthorized: boolean; forbidden?: boolean }> {
   const session = await getServerSession(authOptions).catch(() => null);
+  if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+    return { tenantId: null, unauthorized: false, forbidden: true };
+  }
   let cookieTenant: string | undefined;
   try {
     const cookieStore = await cookies();
@@ -95,7 +103,10 @@ interface OportunidadeSalaView {
 
 export async function GET(req: Request) {
   try {
-    const { tenantId, unauthorized } = await resolverTenantAtivo(req);
+    const { tenantId, unauthorized, forbidden } = await resolverTenantAtivo(req);
+    if (forbidden) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     if (unauthorized) {
       return NextResponse.json(
         { ok: false, error: "Não autorizado", salas: [] },
@@ -271,7 +282,10 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { tenantId, unauthorized } = await resolverTenantAtivo(req);
+    const { tenantId, unauthorized, forbidden } = await resolverTenantAtivo(req);
+    if (forbidden) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     if (unauthorized) {
       return NextResponse.json(
         { ok: false, error: "Não autorizado" },

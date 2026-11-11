@@ -18,7 +18,7 @@ const FILTROS = [
   { id: "TODOS", label: "Todos" },
   { id: "ATIVO", label: "Pagantes" },
   { id: "TRIAL", label: "Teste grátis" },
-  { id: "ABANDONO_TRIAL", label: "Cadastrou e saiu" },
+  { id: "ABANDONO_TRIAL", label: "Pendente de configuração" },
   { id: "GRACE_PERIOD", label: "Carência" },
   { id: "BLOQUEADO", label: "Inadimplentes" },
   { id: "CANCELADO", label: "Cancelados" },
@@ -110,47 +110,74 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
           { key: "acoes", header: "" },
         ]}
         vazio={loading ? "Carregando..." : "Nenhum cliente encontrado para o filtro."}
-        linhas={itens.map((t) => ({
-          id: t.id,
-          empresa: (
-            <div>
-              <div style={{ fontWeight: 600 }}>{t.nomeFantasia || t.razaoSocial}</div>
-              <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.cnpj}</div>
-            </div>
-          ),
-          titular: (
-            <div>
-              <div>{t.titularNome || "—"}</div>
-              <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.titularEmail || "—"}</div>
-            </div>
-          ),
-          plano: <Tag type="blue">{t.plano}</Tag>,
-          status: (
-            <div>
-              <StatusFinanceiroTag status={t.billingStatus} />
-              {!t.ativo ? <Tag type="red">Inativo</Tag> : null}
-            </div>
-          ),
-          termometro: (
-            <div>
-              <EngajamentoTag status={t.onboarding?.statusEngajamento} />
-              <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem" }}>{t.onboarding?.score ?? 0}/7</span>
-            </div>
-          ),
-          uso: (
-            <span style={{ fontSize: "0.8rem" }}>
-              {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre} docs • {t.totalUsuarios} usuário(s)
-            </span>
-          ),
-          criado: fmtDia(t.criadoEm),
-          acoes: (
-            <Link href={`/admin/clientes/${t.id}`}>
-              <Button size="sm" kind="primary" as="span">
-                Abrir 360º
-              </Button>
-            </Link>
-          ),
-        }))}
+        linhas={itens.map((t) => {
+          const extras = Math.max(0, t.cnpjsAdicionaisCount ?? (t.qtdCnpjs ? t.qtdCnpjs - 1 : 0));
+          const sub = t.subCnpjEncontrado || null;
+          const alvo360Id = sub ? sub.id : t.id;
+          return {
+            id: t.id,
+            empresa: sub ? (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600 }}>{sub.razaoSocial}</span>
+                  {extras > 0 ? (
+                    <Tag type="cyan" size="sm">
+                      +{extras} CNPJ(s)
+                    </Tag>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{sub.cnpj}</div>
+                <div style={{ fontSize: "0.72rem", color: "var(--cds-text-helper)", marginTop: "0.15rem" }}>
+                  Pertencente à conta de {t.titularNome || t.titularEmail || "titular"} (CNPJ principal: {t.cnpj})
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600 }}>{t.nomeFantasia || t.razaoSocial}</span>
+                  {extras > 0 ? (
+                    <Tag type="cyan" size="sm">
+                      +{extras} CNPJ(s)
+                    </Tag>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.cnpj}</div>
+              </div>
+            ),
+            titular: (
+              <div>
+                <div>{t.titularNome || "—"}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.titularEmail || "—"}</div>
+              </div>
+            ),
+            plano: <Tag type="blue">{t.plano}</Tag>,
+            status: (
+              <div>
+                <StatusFinanceiroTag status={t.billingStatus} />
+                {!t.ativo ? <Tag type="red">Inativo</Tag> : null}
+              </div>
+            ),
+            termometro: (
+              <div>
+                <EngajamentoTag status={t.onboarding?.statusEngajamento} />
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem" }}>{t.onboarding?.score ?? 0}/7</span>
+              </div>
+            ),
+            uso: (
+              <span style={{ fontSize: "0.8rem" }}>
+                {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre} docs • {t.totalUsuarios} usuário(s)
+              </span>
+            ),
+            criado: fmtDia(t.criadoEm),
+            acoes: (
+              <Link href={`/admin/clientes/${alvo360Id}`}>
+                <Button size="sm" kind="primary" as="span">
+                  Abrir 360º
+                </Button>
+              </Link>
+            ),
+          };
+        })}
       />
     </div>
   );

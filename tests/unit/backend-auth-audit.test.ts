@@ -120,7 +120,13 @@ describe("Sprint 0 — Auth.js & Seed dos 2 Diretores (prisma/seed.ts & src/serv
     for (const director of DIRECTORS_SEED) {
       const parsed = seedDirectorSchema.safeParse(director);
       expect(parsed.success).toBe(true);
-      expect(director.role).toBe("DIRETORIA");
+      if (director.email === "vitorhenrique018@gmail.com") {
+        expect(director.role).toBe("SUPERADMIN");
+        expect(director.isSuperAdmin).toBe(true);
+        expect(director.adminRole).toBe("SUPERADMIN_MASTER");
+      } else {
+        expect(director.role).toBe("DIRETORIA");
+      }
       expect(director.ativo).toBe(true);
     }
   });
@@ -139,26 +145,40 @@ describe("Sprint 0 — Auth.js & Seed dos 2 Diretores (prisma/seed.ts & src/serv
     );
   });
 
-  it("deve autenticar credenciais válidas dos diretores via authorizeCredentials e rejeitar senha inválida", async () => {
+  it("deve autenticar credenciais válidas dos administradores/diretores via authorizeCredentials e rejeitar senha inválida", async () => {
     const testPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     process.env.SEED_DIRECTOR_PASSWORD = testPassword;
+    const masterPassword = process.env.SUPERADMIN_MASTER_PASSWORD || "123456";
 
     await seedDirectors();
 
     const authenticatedVitor = await authorizeCredentials({
       email: "vitorhenrique018@gmail.com",
-      password: testPassword,
+      password: masterPassword,
+      realm: "admin",
     });
 
     expect(authenticatedVitor).not.toBeNull();
     expect(authenticatedVitor?.email).toBe("vitorhenrique018@gmail.com");
-    expect(authenticatedVitor?.role).toBe("DIRETORIA");
+    expect(authenticatedVitor?.role).toBe("SUPERADMIN");
+    expect(authenticatedVitor?.isSuperAdmin).toBe(true);
+    expect(authenticatedVitor?.adminRole).toBe("SUPERADMIN_MASTER");
     expect(authenticatedVitor?.ativo).toBe(true);
+
+    const authenticatedAlfredo = await authorizeCredentials({
+      email: "alfredosouza100@gmail.com",
+      password: testPassword,
+      realm: "client",
+    });
+    expect(authenticatedAlfredo).not.toBeNull();
+    expect(authenticatedAlfredo?.email).toBe("alfredosouza100@gmail.com");
+    expect(authenticatedAlfredo?.role).toBe("DIRETORIA");
 
     const invalidPasswordResult = await authorizeCredentials({
       email: "vitorhenrique018@gmail.com",
       password: "SenhaIncorreta999",
+      realm: "admin",
     });
     expect(invalidPasswordResult).toBeNull();
 

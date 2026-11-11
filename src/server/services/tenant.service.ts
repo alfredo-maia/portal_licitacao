@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PlanoAssinatura as PrismaPlanoAssinatura, TenantBillingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cleanCnpj, formatCnpj, isValidCnpj } from "@/lib/validations/cnpj";
 import { validateCorporateEmail } from "@/lib/validations/email";
@@ -12,6 +13,7 @@ import {
 } from "@/server/schemas/tenant.schema";
 import { enviarEmailConviteEquipe } from "./email.service";
 import { updateInMemoryConfiguracaoEmpresa } from "./licitacoes-store";
+import { getInMemoryAuthUserByEmail } from "@/server/auth";
 
 export class TenantCollisionError extends Error {
   code = "CNPJ_ALREADY_REGISTERED" as const;
@@ -232,8 +234,40 @@ export async function createTenantForUser(params: {
   input: CreateTenantInput;
 }): Promise<InMemoryTenantRecord> {
   const { userId, userEmail, userName, input } = params;
+  const normalizedUserEmail = userEmail.trim().toLowerCase();
+  const inMemUser = normalizedUserEmail ? getInMemoryAuthUserByEmail(normalizedUserEmail) : undefined;
+  let dbUserIsSuper = false;
+  if (userId) {
+    try {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, role: true, isSuperAdmin: true, adminRole: true },
+      });
+      if (
+        dbUser &&
+        (dbUser.isSuperAdmin ||
+          dbUser.role === "SUPERADMIN" ||
+          Boolean(dbUser.adminRole) ||
+          dbUser.email.trim().toLowerCase() === "vitorhenrique018@gmail.com")
+      ) {
+        dbUserIsSuper = true;
+      }
+    } catch {}
+  }
+  if (
+    normalizedUserEmail === "vitorhenrique018@gmail.com" ||
+    inMemUser?.isSuperAdmin ||
+    inMemUser?.role === "SUPERADMIN" ||
+    Boolean(inMemUser?.adminRole) ||
+    dbUserIsSuper
+  ) {
+    throw new UnauthorizedTenantActionError(
+      "Contas administrativas do Portal ADM não podem criar CNPJs de cliente.",
+    );
+  }
+
   const isEnterpriseSpecialAccount =
-    userEmail.trim().toLowerCase() === "opaonossopanificadora@gmail.com";
+    normalizedUserEmail === "opaonossopanificadora@gmail.com";
   const userPlan: PlanoAssinatura = isEnterpriseSpecialAccount
     ? "ENTERPRISE"
     : params.userPlan ?? input.plano ?? "PRO";
@@ -267,33 +301,117 @@ export async function createTenantForUser(params: {
     if (error instanceof TenantCollisionError) throw error;
   }
 
-  // 2. Validação da cota de CNPJs do plano contratado (banco + memória)
-  const planLimits = PLAN_LIMITS[userPlan];
-  const memTenantsCount = inMemoryTenantUsers.filter(
-    (tu) => tu.userId === userId && tu.role === "TITULAR" && tu.ativo,
-  ).length;
+  // 2. Carrega CNPJs existentes do titular para herança de Trial/Plano/Status e validação de cota
+  interface ExistingOwnerTenantSnapshot {
+    id: string;
+    plano: PlanoAssinatura;
+    billingStatus?: string | null;
+    trialFim?: Date | null;
+    vencimentoAssinatura?: Date | null;
+    ultimoPagamentoEm?: Date | null;
+    cupomCodigo?: string | null;
+    affiliateId?: string | null;
+    maxCnpjs: number;
+    maxUsers: number;
+    criadoEm: Date;
+  }
+
+  const existingById = new Map<string, ExistingOwnerTenantSnapshot>();
+  let memTenantsCount = 0;
+  for (const tu of inMemoryTenantUsers) {
+    if (tu.userId === userId && tu.role === "TITULAR" && tu.ativo) {
+      memTenantsCount++;
+      const t = inMemoryTenants.get(tu.tenantId);
+      if (t) {
+        existingById.set(t.id, {
+          id: t.id,
+          plano: t.plano,
+          billingStatus: t.billingStatus ?? null,
+          trialFim: t.trialFim ?? null,
+          vencimentoAssinatura: t.vencimentoAssinatura ?? null,
+          ultimoPagamentoEm: t.ultimoPagamentoEm ?? null,
+          cupomCodigo: t.cupomCodigo ?? null,
+          affiliateId: t.affiliateId ?? null,
+          maxCnpjs: t.maxCnpjs,
+          maxUsers: t.maxUsers,
+          criadoEm: t.criadoEm,
+        });
+      }
+    }
+  }
+
   let dbTenantsCount = 0;
   try {
-    dbTenantsCount = await prisma.tenantUser.count({
+    const dbMemberships = await prisma.tenantUser.findMany({
       where: { userId, role: "TITULAR", ativo: true },
+      include: { tenant: true },
+      orderBy: { criadoEm: "asc" },
     });
+    dbTenantsCount = dbMemberships.length;
+    for (const m of dbMemberships) {
+      if (m.tenant && !existingById.has(m.tenant.id)) {
+        existingById.set(m.tenant.id, {
+          id: m.tenant.id,
+          plano: (m.tenant.plano as PlanoAssinatura) ?? userPlan,
+          billingStatus: m.tenant.billingStatus ?? null,
+          trialFim: m.tenant.trialFim ?? null,
+          vencimentoAssinatura: m.tenant.vencimentoAssinatura ?? null,
+          ultimoPagamentoEm: m.tenant.ultimoPagamentoEm ?? null,
+          cupomCodigo: m.tenant.cupomCodigo ?? null,
+          affiliateId: m.tenant.affiliateId ?? null,
+          maxCnpjs: m.tenant.maxCnpjs,
+          maxUsers: m.tenant.maxUsers,
+          criadoEm: m.tenant.criadoEm,
+        });
+      }
+    }
   } catch {
     dbTenantsCount = 0;
   }
-  const userTenantsCount = Math.max(memTenantsCount, dbTenantsCount);
 
-  if (userTenantsCount >= planLimits.maxCnpjs) {
+  const oldestExisting =
+    Array.from(existingById.values()).sort(
+      (a, b) => new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime(),
+    )[0] ?? null;
+
+  const effectivePlan: PlanoAssinatura = isEnterpriseSpecialAccount
+    ? "ENTERPRISE"
+    : oldestExisting?.plano ?? userPlan;
+  const planLimits = PLAN_LIMITS[effectivePlan];
+  const effectiveMaxCnpjs = Math.max(
+    planLimits.maxCnpjs,
+    oldestExisting?.maxCnpjs ?? 0,
+  );
+  const effectiveMaxUsers = Math.max(
+    planLimits.maxUsers,
+    oldestExisting?.maxUsers ?? 0,
+  );
+  const userTenantsCount = Math.max(
+    memTenantsCount,
+    dbTenantsCount,
+    existingById.size,
+  );
+
+  if (userTenantsCount >= effectiveMaxCnpjs) {
     throw new PlanQuotaExceededError(
-      `Seu plano ${userPlan} permite o cadastro de no máximo ${planLimits.maxCnpjs} CNPJ(s) ativo(s). Faça upgrade para adicionar novos CNPJs.`,
+      `Seu plano ${effectivePlan} permite o cadastro de no máximo ${effectiveMaxCnpjs} CNPJ(s) ativo(s). Faça upgrade para adicionar novos CNPJs.`,
     );
   }
 
   const newTenantId = `tenant_${randomUUID()}`;
   const now = new Date();
-  const billingStatusInicial = isEnterpriseSpecialAccount ? "ATIVO" : "TRIAL";
+  const billingStatusInicial = isEnterpriseSpecialAccount
+    ? "ATIVO"
+    : (oldestExisting?.billingStatus ?? "TRIAL");
   const trialFimInicial = isEnterpriseSpecialAccount
     ? null
-    : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    : oldestExisting
+      ? (oldestExisting.trialFim ?? null)
+      : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const vencimentoInicial = oldestExisting?.vencimentoAssinatura ?? null;
+  const ultimoPagamentoInicial = oldestExisting?.ultimoPagamentoEm ?? null;
+  const cupomInicial = oldestExisting?.cupomCodigo ?? null;
+  const affiliateInicial = oldestExisting?.affiliateId ?? null;
 
   const record: InMemoryTenantRecord = {
     id: newTenantId,
@@ -305,11 +423,15 @@ export async function createTenantForUser(params: {
     endereco: input.endereco ?? null,
     cidade: input.cidade ?? null,
     uf: input.uf ?? null,
-    plano: userPlan,
+    plano: effectivePlan,
     billingStatus: billingStatusInicial,
     trialFim: trialFimInicial,
-    maxCnpjs: planLimits.maxCnpjs,
-    maxUsers: planLimits.maxUsers,
+    vencimentoAssinatura: vencimentoInicial,
+    ultimoPagamentoEm: ultimoPagamentoInicial,
+    cupomCodigo: cupomInicial,
+    affiliateId: affiliateInicial,
+    maxCnpjs: effectiveMaxCnpjs,
+    maxUsers: effectiveMaxUsers,
     ativo: true,
     criadoEm: now,
     updatedAt: now,
@@ -355,11 +477,15 @@ export async function createTenantForUser(params: {
         endereco: input.endereco,
         cidade: input.cidade,
         uf: input.uf,
-        plano: userPlan,
-        billingStatus: billingStatusInicial,
+        plano: effectivePlan as PrismaPlanoAssinatura,
+        billingStatus: billingStatusInicial as TenantBillingStatus,
         trialFim: trialFimInicial,
-        maxCnpjs: planLimits.maxCnpjs,
-        maxUsers: planLimits.maxUsers,
+        vencimentoAssinatura: vencimentoInicial,
+        ultimoPagamentoEm: ultimoPagamentoInicial,
+        cupomCodigo: cupomInicial,
+        affiliateId: affiliateInicial,
+        maxCnpjs: effectiveMaxCnpjs,
+        maxUsers: effectiveMaxUsers,
         users: {
           create: {
             userId,

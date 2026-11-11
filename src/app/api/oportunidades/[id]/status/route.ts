@@ -5,6 +5,11 @@ import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
+import {
   atualizarKanbanStatus,
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
@@ -20,6 +25,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   const user = session?.user as RbacUser | undefined;
   if (!user) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (isSuperAdminSessionUser(user as unknown as SessionActorClaims)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   let body: unknown;

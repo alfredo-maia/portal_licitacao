@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import { listarCobrancasAssinaturaAsaas } from "@/server/services/asaas.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
@@ -11,13 +15,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await getServerSession(authOptions).catch(() => null);
-    const user = session?.user as
-      | { id?: string; activeTenantId?: string }
-      | undefined;
-
-    if (!user?.id) {
-      return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
-    }
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
+    const user = guard.user;
 
     let cookieTenant: string | undefined;
     try {

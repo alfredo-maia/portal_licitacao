@@ -1,22 +1,30 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { createTenantSchema } from "@/server/schemas/tenant.schema";
 import {
   createTenantForUser,
   listTenantsForUser,
   PlanQuotaExceededError,
   TenantCollisionError,
+  UnauthorizedTenantActionError,
 } from "@/server/services/tenant.service";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   const user = session?.user as
-    | { id?: string; email?: string; name?: string }
+    | { id?: string; email?: string; name?: string; role?: string; isSuperAdmin?: boolean; adminRole?: string | null }
     | undefined;
 
   if (!user?.id) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   try {
@@ -34,11 +42,22 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user as
-    | { id?: string; email?: string; name?: string; plano?: string }
+    | {
+        id?: string;
+        email?: string;
+        name?: string;
+        plano?: string;
+        role?: string;
+        isSuperAdmin?: boolean;
+        adminRole?: string | null;
+      }
     | undefined;
 
   if (!user?.id || !user?.email) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   try {
@@ -78,7 +97,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (error instanceof PlanQuotaExceededError) {
+    if (error instanceof PlanQuotaExceededError || error instanceof UnauthorizedTenantActionError) {
       return NextResponse.json(
         {
           ok: false,

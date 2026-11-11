@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { impugnacaoAtualizarInputSchema } from "@/server/schemas/impugnacao.schema";
 import {
   atualizarImpugnacao,
@@ -16,7 +22,10 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
@@ -49,7 +58,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await context.params;
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();
@@ -101,7 +113,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();

@@ -31,6 +31,7 @@ interface AdminUserItem {
   id: string;
   name: string;
   email: string;
+  telefone?: string | null;
   adminRole: string;
   ativo: boolean;
   ultimoLoginEm: string | null;
@@ -59,6 +60,7 @@ export function SistemaAdminScreen() {
     id?: string;
     name: string;
     email: string;
+    telefone: string;
     password: string;
     adminRole: "SUPERADMIN_MASTER" | "ADMIN_OPERACIONAL" | "SUPORTE_N1";
     ativo: boolean;
@@ -72,6 +74,7 @@ export function SistemaAdminScreen() {
         id: form.id || undefined,
         name: form.name,
         email: form.email,
+        telefone: form.telefone.trim() || null,
         password: form.password.trim() || undefined,
         adminRole: form.adminRole,
         ativo: form.ativo,
@@ -102,6 +105,7 @@ export function SistemaAdminScreen() {
                 setForm({
                   name: "",
                   email: "",
+                  telefone: "",
                   password: "",
                   adminRole: "ADMIN_OPERACIONAL",
                   ativo: true,
@@ -142,7 +146,10 @@ export function SistemaAdminScreen() {
                 nome: (
                   <div>
                     <strong>{u.name}</strong>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{u.email}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                      {u.email}
+                      {u.telefone ? ` • ${u.telefone}` : ""}
+                    </div>
                   </div>
                 ),
                 papel: (
@@ -162,6 +169,7 @@ export function SistemaAdminScreen() {
                         id: u.id,
                         name: u.name,
                         email: u.email,
+                        telefone: u.telefone || "",
                         password: "",
                         adminRole:
                           u.adminRole === "SUPORTE_N1" || u.adminRole === "ADMIN_OPERACIONAL"
@@ -193,7 +201,7 @@ export function SistemaAdminScreen() {
                 id: l.id,
                 quando: fmtData(l.ocorridoEm),
                 operador: l.usuarioNome || "SuperAdmin",
-                acao: <Tag type="purple">{l.acao}</Tag>,
+                acao: <Tag type="blue">{l.acao}</Tag>,
                 alvo: `${l.entidadeTipo} • ${l.entidadeId}`,
                 detalhes: (
                   <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
@@ -218,6 +226,13 @@ export function SistemaAdminScreen() {
           <div style={{ display: "grid", gap: "1rem" }}>
             <TextInput id="adm-nome" labelText="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <TextInput id="adm-email" labelText="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <TextInput
+              id="adm-tel"
+              labelText="Telefone / WhatsApp (para login via OTP)"
+              placeholder="62999990000"
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+            />
             <PasswordInput
               id="adm-pass"
               labelText={form.id ? "Nova senha (opcional — deixe em branco para manter)" : "Senha inicial (mín. 6 caracteres)"}

@@ -368,7 +368,13 @@ export async function obterPainelConsumoIaSuperAdmin() {
 function tenantCombinaPublico(
   publico: string,
   targetIds: string[],
-  item: { id: string; plano: string; billingStatus: string; onboarding?: OnboardingChecklist },
+  item: {
+    id: string;
+    plano: string;
+    billingStatus: string;
+    onboarding?: OnboardingChecklist;
+    cnpjsVinculados?: Array<{ id: string }>;
+  },
 ): boolean {
   switch (publico) {
     case "TODOS":
@@ -391,7 +397,10 @@ function tenantCombinaPublico(
     case "PLANO_ENTERPRISE":
       return item.plano === "ENTERPRISE";
     case "ESPECIFICO":
-      return targetIds.includes(item.id);
+      return (
+        targetIds.includes(item.id) ||
+        Boolean(item.cnpjsVinculados?.some((c) => targetIds.includes(c.id)))
+      );
     default:
       return false;
   }
@@ -432,7 +441,14 @@ export async function criarAvisoEmMassaSuperAdmin(rawInput: AdminCreateBroadcast
   if ((input.formato === "SINO" || input.formato === "AMBOS") && matchedTenants.length > 0) {
     try {
       const targetUserIds = new Set<string>();
-      const matchedIds = matchedTenants.map((t) => t.id);
+      const matchedIds = Array.from(
+        new Set(
+          matchedTenants.flatMap((t) => [
+            t.id,
+            ...(t.cnpjsVinculados?.map((c) => c.id) ?? []),
+          ]),
+        ),
+      );
       const dbUsers = await dbTry(() =>
         prisma.tenantUser.findMany({
           where: { tenantId: { in: matchedIds }, ativo: true },
@@ -540,7 +556,13 @@ export async function listarAvisosAtivosParaTenant(tenantId: string | null) {
   );
   if (ativos.length === 0) return [];
   const itens = await listarTenantsSuperAdmin();
-  const alvo = tenantId ? itens.find((t) => t.id === tenantId) : undefined;
+  const alvo = tenantId
+    ? itens.find(
+        (t) =>
+          t.id === tenantId ||
+          Boolean(t.cnpjsVinculados?.some((c) => c.id === tenantId)),
+      )
+    : undefined;
   return ativos
     .filter((a) =>
       alvo

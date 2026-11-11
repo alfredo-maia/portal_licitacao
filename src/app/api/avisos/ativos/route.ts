@@ -2,6 +2,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { listarAvisosAtivosParaTenant } from "@/server/services/superadmin.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
@@ -10,10 +15,11 @@ export const dynamic = "force-dynamic";
 /** Avisos em massa ativos para o CNPJ do usuário logado (banner de topo / sino). */
 export async function GET(req?: Request) {
   const session = await getServerSession(authOptions).catch(() => null);
-  const user = session?.user as
-    | { id?: string; activeTenantId?: string | null }
-    | undefined;
+  const user = session?.user as SessionActorClaims | undefined;
   if (!session?.user) return NextResponse.json({ avisos: [] });
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
+  }
   try {
     let cookieTenant: string | undefined;
     try {

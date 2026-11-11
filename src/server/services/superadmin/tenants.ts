@@ -13,6 +13,7 @@ import {
   type AdminUpsertEmpresaClienteInput,
   type AdminUpsertUsuarioClienteInput,
 } from "@/server/schemas/superadmin.schema";
+import { PLAN_LIMITS } from "@/server/schemas/tenant.schema";
 import {
   inMemoryCnpjDisputes,
   inMemoryTenants,
@@ -46,6 +47,7 @@ import {
   memoryTenantExtraQuota,
   onboardingDeRaw,
   registrarAuditoriaAdm,
+  statusEfetivo,
   tenantIdsDoUsuario,
   typedError,
   usuarioPublico,
@@ -53,6 +55,7 @@ import {
   type MemDispute,
   type MemUser,
   type RawTenant,
+  type TenantPatchPayload,
   type UsuarioPublico,
 } from "./shared";
 
@@ -206,25 +209,43 @@ export async function resolverDisputaCnpjSuperAdmin(
 export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) {
   let carregado = await carregarRawTenant(tenantIdOrUserId);
   if (!carregado) {
-    const tids = await tenantIdsDoUsuario(tenantIdOrUserId);
-    if (tids[0]) carregado = await carregarRawTenant(tids[0]);
+    let tids = await tenantIdsDoUsuario(tenantIdOrUserId, true);
+    if (tids.length === 0) {
+      tids = await tenantIdsDoUsuario(tenantIdOrUserId, false);
+    }
+    const candidates: Array<{ raw: RawTenant; origem: "db" | "mem" }> = [];
+    for (const tid of tids) {
+      const c = await carregarRawTenant(tid);
+      if (c) candidates.push(c);
+    }
+    candidates.sort((a, b) => {
+      const diff = new Date(a.raw.criadoEm).getTime() - new Date(b.raw.criadoEm).getTime();
+      return diff !== 0 ? diff : a.raw.id.localeCompare(b.raw.id);
+    });
+    if (candidates[0]) carregado = candidates[0];
   }
   if (!carregado) throw typedError("Cliente não encontrado.", 404);
 
   const raw = carregado.raw;
-  const titularMembro = raw.users.find((u) => u.role === "TITULAR") || raw.users[0];
+  const titularMembro =
+    raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false) ?? null;
   const titularId = titularMembro?.userId ?? null;
 
-  // Todos os CNPJs (tenants) pertencentes ao mesmo titular
+  // Apenas os CNPJs (tenants) pertencentes ao mesmo titular ativo (estrito apenasTitular = true)
   const empresasRaw: RawTenant[] = [raw];
   if (titularId) {
-    const tids = await tenantIdsDoUsuario(titularId);
+    const tids = await tenantIdsDoUsuario(titularId, true);
     for (const tid of tids) {
       if (tid === raw.id) continue;
       const outro = await carregarRawTenant(tid);
       if (outro) empresasRaw.push(outro.raw);
     }
   }
+  empresasRaw.sort((a, b) => {
+    const diff = new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime();
+    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+  });
+  const primaryRaw = empresasRaw[0] ?? raw;
   const tenantIds = empresasRaw.map((e) => e.id);
   const nomes = new Map(empresasRaw.map((e) => [e.id, e.nomeFantasia || e.razaoSocial]));
 
@@ -257,12 +278,19 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
   const usuarios = Array.from(usuariosMap.values());
   const titular = titularId ? usuariosMap.get(titularId) || null : null;
 
-  const [patrimonio, ia, affiliateNomes, todasDisputas] = await Promise.all([
+  const [patrimonio, porEmpEntries, ia, affiliateNomes, todasDisputas] = await Promise.all([
     carregarPatrimonio(tenantIds, nomes),
+    Promise.all(
+      empresasRaw.map(async (emp) => [
+        emp.id,
+        { patrimonioOperacional: await carregarPatrimonio([emp.id], nomes) },
+      ] as const),
+    ),
     agregarIaPorTenant(),
     listarAfiliadoNomesMap(),
     listarDisputasCnpjSuperAdmin(),
   ]);
+  const porEmpresa = Object.fromEntries(porEmpEntries);
 
   const usosIa = tenantIds.reduce((a, id) => a + (ia.get(id)?.usadas || 0), 0);
   const item = construirItemTenant(
@@ -270,6 +298,55 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
     ia.get(raw.id) || { usadas: 0, gastoDia: 0, gastoMes: 0 },
     affiliateNomes,
   );
+  const primaryItem =
+    primaryRaw.id === raw.id
+      ? item
+      : construirItemTenant(
+          primaryRaw,
+          ia.get(primaryRaw.id) || { usadas: 0, gastoDia: 0, gastoMes: 0 },
+          affiliateNomes,
+        );
+
+  const cotasPorEmpresa: Record<
+    string,
+    {
+      maxCnpjs: number;
+      maxUsers: number;
+      storageBaseMb: number;
+      storageExtraQuotaMb: number;
+      storageTotalMb: number;
+      storageUsadoMb: number;
+      aiExtraQuotaMes: number;
+      aiUsadasMes: number;
+    }
+  > = {};
+  for (const emp of empresasRaw) {
+    const empAi = ia.get(emp.id) || { usadas: 0, gastoDia: 0, gastoMes: 0 };
+    const empItem = construirItemTenant(emp, empAi, affiliateNomes);
+    cotasPorEmpresa[emp.id] = {
+      maxCnpjs: emp.maxCnpjs,
+      maxUsers: emp.maxUsers,
+      storageBaseMb: empItem.cotaBaseMb,
+      storageExtraQuotaMb: empItem.cotaExtraMb,
+      storageTotalMb: empItem.cotaTotalMb,
+      storageUsadoMb: empItem.espacoUsadoMb,
+      aiExtraQuotaMes: emp.aiExtraQuotaMes,
+      aiUsadasMes: empAi.usadas,
+    };
+  }
+  const cotasArr = Object.values(cotasPorEmpresa);
+  const contaGlobal = {
+    valorMensalidade: primaryItem.valorMensalidade,
+    diasRestantesTrial: primaryItem.diasRestantesTrial,
+    storageUsadoMb:
+      Math.round(cotasArr.reduce((acc, c) => acc + c.storageUsadoMb, 0) * 10) / 10,
+    storageTotalMb: cotasArr.reduce((acc, c) => acc + c.storageTotalMb, 0),
+    aiUsadasMes: usosIa,
+    aiExtraQuotaMes: cotasArr.reduce((acc, c) => acc + c.aiExtraQuotaMes, 0),
+    totalLicitacoes: patrimonio.licitacoes.length,
+    totalDocumentos: patrimonio.documentos.total,
+    totalPortais: patrimonio.portais,
+  };
 
   const onboarding = onboardingDeRaw(
     {
@@ -307,9 +384,12 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
     empresas: empresasRaw.map(empresaPublica),
     usuarios,
     patrimonioOperacional: patrimonio,
+    porEmpresa,
+    cotasPorEmpresa,
+    contaGlobal,
     cotas: {
-      maxCnpjs: raw.maxCnpjs,
-      maxUsers: raw.maxUsers,
+      maxCnpjs: Math.max(...empresasRaw.map((e) => e.maxCnpjs), raw.maxCnpjs),
+      maxUsers: Math.max(...empresasRaw.map((e) => e.maxUsers), raw.maxUsers),
       storageBaseMb: item.cotaBaseMb,
       storageExtraQuotaMb: item.cotaExtraMb,
       storageTotalMb: item.cotaTotalMb,
@@ -318,16 +398,16 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
       aiUsadasMes: usosIa,
     },
     financeiro: {
-      plano: raw.plano,
-      billingStatus: item.billingStatus,
-      valorMensalidade: item.valorMensalidade,
-      trialFim: raw.trialFim ?? null,
-      vencimentoAssinatura: raw.vencimentoAssinatura ?? null,
-      ultimoPagamentoEm: raw.ultimoPagamentoEm ?? null,
-      cupomCodigo: raw.cupomCodigo ?? null,
-      affiliateId: raw.affiliateId ?? null,
+      plano: primaryRaw.plano,
+      billingStatus: primaryItem.billingStatus,
+      valorMensalidade: primaryItem.valorMensalidade,
+      trialFim: primaryRaw.trialFim ?? null,
+      vencimentoAssinatura: primaryRaw.vencimentoAssinatura ?? null,
+      ultimoPagamentoEm: primaryRaw.ultimoPagamentoEm ?? null,
+      cupomCodigo: primaryRaw.cupomCodigo ?? null,
+      affiliateId: primaryRaw.affiliateId ?? null,
     },
-    notasInternasAdm: raw.notasInternasAdm ?? null,
+    notasInternasAdm: primaryRaw.notasInternasAdm ?? null,
     disputas,
   };
 }
@@ -348,6 +428,7 @@ export async function atualizarContaPrincipalSuperAdmin(
     throw typedError("Não é permitido alterar uma conta administrativa por esta rota.", 400);
   }
 
+  const antesUsuario = usuarioPublico(found.user);
   const emailAnterior = found.user.email.trim().toLowerCase();
   const emailNovo = input.email ? input.email.trim().toLowerCase() : undefined;
 
@@ -424,15 +505,29 @@ export async function atualizarContaPrincipalSuperAdmin(
     });
   }
 
-  // Ativação/inativação do cliente: replica nos tenants dos quais ele é TITULAR
-  const tenantsAfetados = await tenantIdsDoUsuario(input.userId, true);
+  // Ativação/inativação do cliente: replica nos tenants dos quais ele é TITULAR (ordenados deterministicamente pelo CNPJ primário)
+  const tenantsAfetadosRaw = await tenantIdsDoUsuario(input.userId, true);
+  const tenantsLoaded: RawTenant[] = [];
+  for (const tid of tenantsAfetadosRaw) {
+    const loaded = await carregarRawTenant(tid);
+    if (loaded) tenantsLoaded.push(loaded.raw);
+  }
+  tenantsLoaded.sort((a, b) => {
+    const diff = new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime();
+    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+  });
+  const tenantsAfetados =
+    tenantsLoaded.length > 0 ? tenantsLoaded.map((t) => t.id) : tenantsAfetadosRaw;
+  const primaryTenantBefore = tenantsLoaded[0] ?? null;
+  const primaryTenantId = tenantsAfetados[0] ?? null;
+
   if (input.ativo !== undefined) {
     for (const tid of tenantsAfetados) {
       await aplicarPatchTenant(tid, { ativo: input.ativo }).catch(() => undefined);
     }
   }
-  if (input.notasInternasAdm !== undefined && tenantsAfetados[0]) {
-    await aplicarPatchTenant(tenantsAfetados[0], {
+  if (input.notasInternasAdm !== undefined && primaryTenantId) {
+    await aplicarPatchTenant(primaryTenantId, {
       notasInternasAdm: input.notasInternasAdm,
     }).catch(() => undefined);
   }
@@ -464,8 +559,20 @@ export async function atualizarContaPrincipalSuperAdmin(
       campos: Object.keys(patchData),
       forcarLogout: Boolean(input.forcarLogout),
       resetSenhaDisparado,
+      ...(input.notasInternasAdm !== undefined
+        ? { notasInternasAdm: input.notasInternasAdm }
+        : {}),
+      ...(input.ativo !== undefined ? { ativo: usuario.ativo } : {}),
     },
-    tenantsAfetados[0] ?? null,
+    primaryTenantId,
+    {
+      name: antesUsuario.name,
+      email: antesUsuario.email,
+      ativo: antesUsuario.ativo,
+      cpf: antesUsuario.cpf,
+      telefone: antesUsuario.telefone,
+      notasInternasAdm: primaryTenantBefore?.notasInternasAdm ?? null,
+    },
   );
 
   return { ok: true, usuario, resetSenhaDisparado, tenantsAfetados };
@@ -553,20 +660,122 @@ export async function salvarEmpresaClienteSuperAdmin(
   let tenantId = input.tenantId;
   let criada = false;
   let cnpjNormalizado = input.cnpj.trim();
+  let antesEmpresa: Record<string, unknown> | undefined;
 
   if (tenantId) {
+    const atual = await carregarRawTenant(tenantId);
+    if (!atual) throw typedError("Cliente (Tenant) não encontrado.", 404);
+
+    const statusAnterior = statusEfetivo(atual.raw).status;
+    antesEmpresa = {
+      cnpj: atual.raw.cnpj,
+      razaoSocial: atual.raw.razaoSocial,
+      nomeFantasia: atual.raw.nomeFantasia ?? null,
+      plano: atual.raw.plano,
+      billingStatus: statusAnterior,
+      ativo: atual.raw.ativo,
+    };
+
+    const {
+      plano: planoReq,
+      billingStatus: statusReq,
+      trialFim: _tFim,
+      vencimentoAssinatura: _vAssin,
+      ultimoPagamentoEm: _uPag,
+      ...cadastralPatch
+    } = patch;
+
+    const planoChanged = Boolean(planoReq && planoReq !== atual.raw.plano);
+    const statusChanged = Boolean(statusReq && statusReq !== statusAnterior);
+
+    const financialPatch: TenantPatchPayload = {};
+    let planLimitsPatch: { maxCnpjs: number; maxUsers: number } | null = null;
+    if (planoChanged && planoReq) {
+      const lim = PLAN_LIMITS[planoReq];
+      planLimitsPatch = { maxCnpjs: lim.maxCnpjs, maxUsers: lim.maxUsers };
+      financialPatch.plano = planoReq;
+      financialPatch.maxCnpjs = Math.max(atual.raw.maxCnpjs, lim.maxCnpjs);
+      financialPatch.maxUsers = Math.max(atual.raw.maxUsers, lim.maxUsers);
+    }
+    if (statusChanged && statusReq) {
+      const datas = datasPorStatus(statusReq);
+      financialPatch.billingStatus = statusReq;
+      financialPatch.trialFim = datas.trialFim;
+      financialPatch.vencimentoAssinatura = datas.vencimentoAssinatura;
+      if (datas.ultimoPagamentoEm !== undefined) {
+        financialPatch.ultimoPagamentoEm = datas.ultimoPagamentoEm;
+      }
+    }
+
     const { raw } = await aplicarPatchTenant(tenantId, {
-      ...patch,
+      ...cadastralPatch,
+      ...financialPatch,
       cnpj: input.cnpj,
     });
     cnpjNormalizado = raw.cnpj;
+
+    if (planoChanged || statusChanged) {
+      const titularMembro = raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+      if (titularMembro?.userId) {
+        const siblingTids = await tenantIdsDoUsuario(titularMembro.userId, true);
+        for (const sibId of siblingTids) {
+          if (sibId === tenantId) continue;
+          const sibLoaded = await carregarRawTenant(sibId);
+          if (!sibLoaded) continue;
+          const sibPatch: TenantPatchPayload = { ...financialPatch };
+          if (planLimitsPatch) {
+            sibPatch.maxCnpjs = Math.max(sibLoaded.raw.maxCnpjs, planLimitsPatch.maxCnpjs);
+            sibPatch.maxUsers = Math.max(sibLoaded.raw.maxUsers, planLimitsPatch.maxUsers);
+          }
+          await aplicarPatchTenant(sibId, sibPatch).catch(() => undefined);
+        }
+      }
+    }
   } else {
     criada = true;
     cnpjNormalizado = await verificarCnpjDuplicado(input.cnpj);
     const owner = input.ownerUserId ? await carregarUsuario(input.ownerUserId) : null;
+
+    let oldestOwnerRaw: RawTenant | null = null;
+    if (input.ownerUserId) {
+      const ownerTids = await tenantIdsDoUsuario(input.ownerUserId, true);
+      const ownerLoaded: RawTenant[] = [];
+      for (const tid of ownerTids) {
+        const resRaw = await carregarRawTenant(tid);
+        if (resRaw) ownerLoaded.push(resRaw.raw);
+      }
+      ownerLoaded.sort((a, b) => {
+        const diff = new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime();
+        return diff !== 0 ? diff : a.id.localeCompare(b.id);
+      });
+      oldestOwnerRaw = ownerLoaded[0] ?? null;
+    }
+
     const datas = datasPorStatus(input.billingStatus ?? "TRIAL");
-    const planoFinal = (input.plano ?? "BASICO") as PlanoAssinatura;
-    const statusFinal = (input.billingStatus ?? "TRIAL") as TenantBillingStatus;
+    const calcOwner = oldestOwnerRaw ? statusEfetivo(oldestOwnerRaw) : null;
+    const planoFinal = (
+      oldestOwnerRaw ? oldestOwnerRaw.plano : (input.plano ?? "BASICO")
+    ) as PlanoAssinatura;
+    const statusFinal = (
+      calcOwner ? calcOwner.status : (input.billingStatus ?? "TRIAL")
+    ) as TenantBillingStatus;
+    const trialFimFinal = oldestOwnerRaw
+      ? (oldestOwnerRaw.trialFim ?? null)
+      : datas.trialFim;
+    const vencimentoFinal = oldestOwnerRaw
+      ? (oldestOwnerRaw.vencimentoAssinatura ?? null)
+      : datas.vencimentoAssinatura;
+    const ultimoPagamentoFinal = oldestOwnerRaw
+      ? (oldestOwnerRaw.ultimoPagamentoEm ?? null)
+      : (datas.ultimoPagamentoEm ?? null);
+    const maxCnpjsFinal = oldestOwnerRaw
+      ? oldestOwnerRaw.maxCnpjs
+      : PLAN_LIMITS[planoFinal].maxCnpjs;
+    const maxUsersFinal = oldestOwnerRaw
+      ? oldestOwnerRaw.maxUsers
+      : PLAN_LIMITS[planoFinal].maxUsers;
+    const cupomCodigoFinal = oldestOwnerRaw ? (oldestOwnerRaw.cupomCodigo ?? null) : null;
+    const affiliateIdFinal = oldestOwnerRaw ? (oldestOwnerRaw.affiliateId ?? null) : null;
 
     let criadoDbId: string | null = null;
     if (!input.ownerUserId || owner?.origem === "db") {
@@ -578,9 +787,13 @@ export async function salvarEmpresaClienteSuperAdmin(
             razaoSocial: input.razaoSocial,
             plano: planoFinal,
             billingStatus: statusFinal,
-            trialFim: datas.trialFim,
-            vencimentoAssinatura: datas.vencimentoAssinatura,
-            ultimoPagamentoEm: datas.ultimoPagamentoEm ?? null,
+            trialFim: trialFimFinal,
+            vencimentoAssinatura: vencimentoFinal,
+            ultimoPagamentoEm: ultimoPagamentoFinal,
+            maxCnpjs: maxCnpjsFinal,
+            maxUsers: maxUsersFinal,
+            cupomCodigo: cupomCodigoFinal,
+            affiliateId: affiliateIdFinal,
           },
           select: { id: true },
         });
@@ -619,19 +832,26 @@ export async function salvarEmpresaClienteSuperAdmin(
         uf: input.uf ?? null,
         plano: planoFinal,
         billingStatus: statusFinal,
-        trialFim: datas.trialFim,
-        vencimentoAssinatura: datas.vencimentoAssinatura,
-        ultimoPagamentoEm: datas.ultimoPagamentoEm ?? null,
+        trialFim: trialFimFinal,
+        vencimentoAssinatura: vencimentoFinal,
+        ultimoPagamentoEm: ultimoPagamentoFinal,
+        cupomCodigo: cupomCodigoFinal,
+        affiliateId: affiliateIdFinal,
         segmentos: input.segmentos ?? [],
         ufs: input.ufs ?? [],
         brasilInteiro: input.brasilInteiro ?? true,
-        maxCnpjs: 1,
-        maxUsers: 1,
+        maxCnpjs: maxCnpjsFinal,
+        maxUsers: maxUsersFinal,
         ativo: input.ativo ?? true,
         criadoEm: agora,
         updatedAt: agora,
       });
-      if (input.telefone) memTenantExtras.set(tenantId, { telefone: input.telefone });
+      memTenantExtras.set(tenantId, {
+        ...(input.telefone ? { telefone: input.telefone } : {}),
+        billingStatus: statusFinal,
+        cupomCodigo: cupomCodigoFinal,
+        affiliateId: affiliateIdFinal,
+      });
       if (owner) {
         inMemoryTenantUsers.push({
           id: `tu_${randomUUID()}`,
@@ -677,8 +897,15 @@ export async function salvarEmpresaClienteSuperAdmin(
     criada ? "CRIAR_EMPRESA_CLIENTE" : "EDITAR_EMPRESA_CLIENTE",
     "TENANT",
     tenantId!,
-    { cnpj: cnpjNormalizado, razaoSocial: input.razaoSocial },
+    {
+      cnpj: cnpjNormalizado,
+      razaoSocial: input.razaoSocial,
+      plano: final.raw.plano,
+      billingStatus: statusEfetivo(final.raw).status,
+      ativo: final.raw.ativo,
+    },
     tenantId,
+    antesEmpresa,
   );
 
   return { ok: true, empresa: empresaPublica(final.raw), criada };
@@ -780,6 +1007,18 @@ export async function salvarUsuarioClienteSuperAdmin(
     role: input.role as Role,
     ativo: input.ativo,
   };
+  const vinculoAnterior = existente
+    ? tenant.raw.users.find((u) => u.userId === existente!.user.id)
+    : undefined;
+  const antesUsuario = existente
+    ? {
+        name: existente.user.name,
+        email: existente.user.email,
+        role: String(existente.user.role),
+        ativo: existente.user.ativo !== false,
+        tenantRole: vinculoAnterior?.role ?? null,
+      }
+    : undefined;
   let usuario: UsuarioPublico;
   let criado = false;
 
@@ -907,6 +1146,7 @@ export async function salvarUsuarioClienteSuperAdmin(
       ativo: input.ativo,
     },
     input.tenantId,
+    antesUsuario,
   );
 
   return { ok: true, usuario: { ...usuario, tenantRole: input.tenantRole }, criado };
@@ -954,6 +1194,23 @@ export async function atualizarCotasClienteSuperAdmin(
     memT.maxUsers = maxUsers;
   }
 
+  // Sincroniza cotas globais de conta (maxCnpjs / maxUsers) nos demais CNPJs do mesmo TITULAR
+  const titularMembro = raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+  const tenantsSincronizados: string[] = [input.tenantId];
+  if (titularMembro?.userId && (input.maxCnpjs !== undefined || input.maxUsers !== undefined)) {
+    const siblingTids = await tenantIdsDoUsuario(titularMembro.userId, true);
+    for (const sibId of siblingTids) {
+      if (sibId === input.tenantId) continue;
+      await aplicarPatchTenant(sibId, { maxCnpjs, maxUsers }).catch(() => undefined);
+      const memSib = inMemoryTenants.get(sibId);
+      if (memSib) {
+        memSib.maxCnpjs = maxCnpjs;
+        memSib.maxUsers = maxUsers;
+      }
+      tenantsSincronizados.push(sibId);
+    }
+  }
+
   let travaIaResetada = false;
   if (input.resetarTravaIaLicitacaoId) {
     resetarLimiteSilenciosoLicitacao(input.resetarTravaIaLicitacaoId);
@@ -964,7 +1221,14 @@ export async function atualizarCotasClienteSuperAdmin(
     "ATUALIZAR_COTAS_CLIENTE",
     "TENANT",
     input.tenantId,
-    { maxCnpjs, maxUsers, storageExtraQuotaMb, aiExtraQuotaMes, travaIaResetada },
+    {
+      maxCnpjs,
+      maxUsers,
+      storageExtraQuotaMb,
+      aiExtraQuotaMes,
+      travaIaResetada,
+      tenantsSincronizados,
+    },
     input.tenantId,
     {
       maxCnpjs: raw.maxCnpjs,
@@ -1012,19 +1276,20 @@ export async function obterEspelhamentoClienteSuperAdmin(tenantId: string) {
   }
 
   const todas = Array.from(catalogoMap.values());
-  const filtradas = todas.filter((l) => {
-    const matchUf = raw.brasilInteiro || raw.ufs.length === 0 || raw.ufs.includes(l.uf);
-    const matchSeg =
-      raw.segmentos.length === 0 ||
-      !l.segmentoMacro ||
-      raw.segmentos.includes(l.segmentoMacro);
-    return matchUf && matchSeg;
-  });
-  const oportunidadesCatalogo = (filtradas.length > 0 ? filtradas : todas).slice(0, 50);
+  const configuracaoPendente = !raw.segmentos || raw.segmentos.length === 0;
+  const filtradas = configuracaoPendente
+    ? []
+    : todas.filter((l) => {
+        const matchUf = raw.brasilInteiro || raw.ufs.length === 0 || raw.ufs.includes(l.uf);
+        const matchSeg = !l.segmentoMacro || raw.segmentos.includes(l.segmentoMacro);
+        return matchUf && matchSeg;
+      });
+  const oportunidadesCatalogo = filtradas.slice(0, 50);
 
   return {
     ok: true,
     tenantId,
+    configuracaoPendente,
     empresa: empresaPublica(raw),
     licitacoesKanban: patrimonio.licitacoes,
     oportunidadesCatalogo,

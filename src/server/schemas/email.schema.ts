@@ -4,6 +4,7 @@ export const EmailCanalSchema = z.literal("EMAIL");
 
 export const EmailEventoEnum = z.enum([
   "BOAS_VINDAS",
+  "OTP_ACESSO",
   "RECUPERACAO_SENHA",
   "CONVITE_EQUIPE",
   "SUPORTE_PROTOCOLO",

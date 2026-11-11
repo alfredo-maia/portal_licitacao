@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   DataTable,
   InlineNotification,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -13,7 +14,9 @@ import {
   TableRow,
   Tag,
   Tile,
+  Tooltip,
 } from "@carbon/react";
+import { Information } from "@carbon/icons-react";
 
 export const fmtBRL = (v: number | null | undefined): string =>
   (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -37,7 +40,7 @@ export const fmtDia = (v: string | Date | null | undefined): string => {
     : d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 };
 
-type TagType = "green" | "cyan" | "warm-gray" | "red" | "blue" | "gray" | "purple" | "magenta";
+type TagType = "green" | "cyan" | "warm-gray" | "red" | "blue" | "gray" | "magenta" | "teal";
 
 const STATUS_TAG: Record<string, { type: TagType; label: string }> = {
   ATIVO: { type: "green", label: "Pagante" },
@@ -55,7 +58,33 @@ export function StatusFinanceiroTag({ status }: { status: string }) {
 export function EngajamentoTag({ status }: { status?: string }) {
   if (status === "ENGAJADO") return <Tag type="green">Engajado</Tag>;
   if (status === "EM_CONFIGURACAO") return <Tag type="blue">Em configuração</Tag>;
-  return <Tag type="magenta">Cadastrou e saiu</Tag>;
+  return <Tag type="magenta">Pendente de configuração</Tag>;
+}
+
+export function SiglaInfoTooltip({ texto }: { texto: string }) {
+  return (
+    <Tooltip align="top" label={texto}>
+      <button
+        type="button"
+        data-testid="kpi-info-icon"
+        aria-label={texto}
+        title={texto}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          marginLeft: "0.3rem",
+          cursor: "help",
+          display: "inline-flex",
+          alignItems: "center",
+          verticalAlign: "middle",
+          color: "var(--cds-icon-secondary, var(--cds-text-secondary))",
+        }}
+      >
+        <Information size={14} />
+      </button>
+    </Tooltip>
+  );
 }
 
 export function PageHeader({
@@ -96,16 +125,28 @@ export function KpiTile({
   valor,
   detalhe,
   cor,
+  infoTooltip,
 }: {
   rotulo: string;
   valor: ReactNode;
   detalhe?: ReactNode;
   cor?: string;
+  infoTooltip?: string;
 }) {
   return (
     <Tile style={{ minHeight: "120px", backgroundColor: "var(--cds-layer-01)", height: "100%" }}>
-      <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.75rem", letterSpacing: "0.02rem" }}>
-        {rotulo}
+      <div
+        style={{
+          color: "var(--cds-text-secondary)",
+          fontSize: "0.75rem",
+          letterSpacing: "0.02rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.2rem",
+        }}
+      >
+        <span>{rotulo}</span>
+        {infoTooltip ? <SiglaInfoTooltip texto={infoTooltip} /> : null}
       </div>
       <div style={{ fontSize: "1.6rem", fontWeight: 600, marginTop: "0.5rem", color: cor || "var(--cds-text-primary)" }}>
         {valor}
@@ -219,14 +260,41 @@ export function AdminTable({
   colunas,
   linhas,
   vazio = "Nenhum registro encontrado.",
+  rowClassName,
+  pageSize,
+  resetPageKey,
 }: {
   titulo?: string;
   descricao?: string;
   colunas: AdminColumn[];
   linhas: AdminRow[];
   vazio?: string;
+  rowClassName?: (id: string) => string | undefined;
+  pageSize?: number;
+  resetPageKey?: string | number;
 }) {
-  const rows = linhas.map((l) => ({ ...l, id: String(l.id) }));
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [resetPageKey]);
+
+  const effectiveSize = pageSize && pageSize > 0 ? pageSize : linhas.length || 1;
+  const totalPages = Math.max(1, Math.ceil(linhas.length / effectiveSize));
+  const paginaSegura = Math.min(page, totalPages);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const linhasVisiveis =
+    pageSize && pageSize > 0
+      ? linhas.slice((paginaSegura - 1) * pageSize, paginaSegura * pageSize)
+      : linhas;
+
+  const rows = linhasVisiveis.map((l) => ({ ...l, id: String(l.id) }));
   return (
     <DataTable rows={rows} headers={colunas}>
       {({ rows: rs, headers, getTableProps, getHeaderProps, getRowProps }) => (
@@ -250,7 +318,13 @@ export function AdminTable({
                 </TableRow>
               ) : (
                 rs.map((row) => (
-                  <TableRow {...getRowProps({ row })} key={row.id}>
+                  <TableRow
+                    {...getRowProps({
+                      row,
+                      className: rowClassName ? rowClassName(row.id) : undefined,
+                    })}
+                    key={row.id}
+                  >
                     {row.cells.map((cell) => (
                       <TableCell key={cell.id}>{cell.value}</TableCell>
                     ))}
@@ -259,6 +333,19 @@ export function AdminTable({
               )}
             </TableBody>
           </Table>
+          {pageSize && pageSize > 0 && linhas.length > pageSize ? (
+            <Pagination
+              backwardText="Página anterior"
+              forwardText="Próxima página"
+              itemsPerPageText="Itens por página:"
+              pageNumberText="Página"
+              page={paginaSegura}
+              pageSize={pageSize}
+              pageSizes={[pageSize]}
+              totalItems={linhas.length}
+              onChange={({ page: nextPage }) => setPage(nextPage)}
+            />
+          ) : null}
         </TableContainer>
       )}
     </DataTable>

@@ -28,6 +28,7 @@ import {
   memTenantExtras,
   registrarAuditoriaAdm,
   statusEfetivo,
+  tenantIdsDoUsuario,
   typedError,
   type MemAffiliate,
   type MemAffiliateCommission,
@@ -332,6 +333,24 @@ export async function executarAcaoFinanceiraSuperAdmin(
   const input = AdminFinanceiroActionSchema.parse(rawInput);
   const atual = await carregarRawTenant(input.tenantId);
   if (!atual) throw typedError("Cliente (Tenant) não encontrado.", 404);
+
+  const titular = atual.raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+  const siblingIdSet = new Set<string>([input.tenantId]);
+  if (titular?.userId) {
+    const ownerTids = await tenantIdsDoUsuario(titular.userId, true);
+    for (const tid of ownerTids) siblingIdSet.add(tid);
+  }
+  const siblings: Array<{ raw: RawTenant; origem: "db" | "mem" }> = [];
+  for (const tid of siblingIdSet) {
+    const loaded = await carregarRawTenant(tid);
+    if (loaded) siblings.push(loaded);
+  }
+  siblings.sort((a, b) => {
+    const diff = new Date(a.raw.criadoEm).getTime() - new Date(b.raw.criadoEm).getTime();
+    return diff !== 0 ? diff : a.raw.id.localeCompare(b.raw.id);
+  });
+  const primaryRaw = siblings[0]?.raw ?? atual.raw;
+
   const statusAnterior = statusEfetivo(atual.raw).status;
   const antes = {
     plano: atual.raw.plano,
@@ -339,11 +358,13 @@ export async function executarAcaoFinanceiraSuperAdmin(
   };
   const agora = Date.now();
   let patch: TenantPatchPayload = {};
+  let planLimitsPatch: { maxCnpjs: number; maxUsers: number } | null = null;
 
   switch (input.action) {
     case "ALTERAR_PLANO": {
       if (!input.plano) throw typedError("Informe o novo plano.", 400);
       const lim = PLAN_LIMITS[input.plano];
+      planLimitsPatch = { maxCnpjs: lim.maxCnpjs, maxUsers: lim.maxUsers };
       patch = {
         plano: input.plano as PlanoAssinatura,
         maxCnpjs: Math.max(atual.raw.maxCnpjs, lim.maxCnpjs),
@@ -438,10 +459,31 @@ export async function executarAcaoFinanceiraSuperAdmin(
     }
   }
 
-  const { raw } = await aplicarPatchTenant(input.tenantId, patch);
+  let updatedPrimaryOrTarget: RawTenant | null = null;
+  const updatedSiblings: RawTenant[] = [];
+  for (const sib of siblings) {
+    const siblingPatch: TenantPatchPayload = planLimitsPatch
+      ? {
+          ...patch,
+          maxCnpjs: Math.max(sib.raw.maxCnpjs, planLimitsPatch.maxCnpjs),
+          maxUsers: Math.max(sib.raw.maxUsers, planLimitsPatch.maxUsers),
+        }
+      : patch;
+    const patched = await aplicarPatchTenant(sib.raw.id, siblingPatch);
+    updatedSiblings.push(patched.raw);
+    if (sib.raw.id === input.tenantId) {
+      updatedPrimaryOrTarget = patched.raw;
+    }
+  }
+  const raw = updatedPrimaryOrTarget ?? updatedSiblings[0] ?? atual.raw;
 
-  if (input.action === "DAR_BAIXA_MANUAL" && raw.affiliateId) {
-    await gerarComissaoAfiliado(raw).catch(() => undefined);
+  if (input.action === "DAR_BAIXA_MANUAL") {
+    const rawComAfiliado =
+      updatedSiblings.find((s) => s.affiliateId) ??
+      (primaryRaw.affiliateId ? { ...raw, affiliateId: primaryRaw.affiliateId } : null);
+    if (rawComAfiliado) {
+      await gerarComissaoAfiliado(rawComAfiliado).catch(() => undefined);
+    }
   }
 
   const calc = statusEfetivo(raw);
@@ -449,7 +491,11 @@ export async function executarAcaoFinanceiraSuperAdmin(
     `FINANCEIRO_${input.action}`,
     "TENANT",
     input.tenantId,
-    { ...patch, observacao: input.observacao },
+    {
+      ...patch,
+      observacao: input.observacao,
+      tenantsSincronizados: updatedSiblings.map((s) => s.id),
+    },
     input.tenantId,
     antes,
   );

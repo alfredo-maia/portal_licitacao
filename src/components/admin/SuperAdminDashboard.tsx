@@ -6,31 +6,22 @@ import {
   Grid,
   Column,
   Tile,
-  DataTable,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeader,
-  TableBody,
-  TableCell,
-  TableContainer,
   Tag,
   Button,
-  Modal,
   InlineNotification,
-  ProgressBar,
 } from "@carbon/react";
-import {
-  Renew,
-  Add,
-  SendAlt,
-  CheckmarkOutline,
-  Enterprise,
-  CloudUpload,
-  Analytics,
-} from "@carbon/icons-react";
+import { SendAlt } from "@carbon/icons-react";
 import { SuperAdminMetrics, SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
-import { EngajamentoTag, KpiGrid, KpiTile, fmtBRL, fmtDia, fmtNum } from "./admin-ui";
+import {
+  AdminTable,
+  EngajamentoTag,
+  KpiGrid,
+  KpiTile,
+  SiglaInfoTooltip,
+  fmtBRL,
+  fmtDia,
+  fmtNum,
+} from "./admin-ui";
 
 interface SuperAdminDashboardProps {
   initialMetrics?: SuperAdminMetrics;
@@ -45,7 +36,6 @@ export function SuperAdminDashboard({
   const [tenants, setTenants] = useState<SuperAdminTenantItem[]>(initialTenants || []);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [expandingTenant, setExpandingTenant] = useState<string | null>(null);
 
   const carregarDados = async () => {
     setLoading(true);
@@ -68,31 +58,6 @@ export function SuperAdminDashboard({
       carregarDados();
     }
   }, []);
-
-  const handleExpandQuota = async (tenantId: string, adicionarMb: number) => {
-    setExpandingTenant(tenantId);
-    setFeedback(null);
-    try {
-      const res = await fetch("/api/admin/tenants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, adicionarMb }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setFeedback(data.mensagem || `Cota expandida com sucesso em +${adicionarMb} MB.`);
-        carregarDados();
-      } else {
-        setFeedback(`Erro ao expandir cota: ${data.error || "Falha na solicitação."}`);
-      }
-    } catch (err: unknown) {
-      setFeedback(
-        `Erro na requisição: ${err instanceof Error ? err.message : "Erro inesperado"}`,
-      );
-    } finally {
-      setExpandingTenant(null);
-    }
-  };
 
   const handleProcessarFilaWhatsApp = async () => {
     setLoading(true);
@@ -128,88 +93,10 @@ export function SuperAdminDashboard({
     }
   };
 
-  const headers = [
-    { key: "razaoSocial", header: "Empresa / CNPJ" },
-    { key: "plano", header: "Plano" },
-    { key: "billingStatus", header: "Status Faturamento" },
-    { key: "espaco", header: "Espaço R2 (Cofre)" },
-    { key: "volumeArrematado", header: "Volume Ganho (R$)" },
-    { key: "acoes", header: "Expansão de Cota (1 Clique)" },
-  ];
-
-  const rows = tenants.map((t) => ({
-    id: t.id,
-    razaoSocial: (
-      <div>
-        <div style={{ fontWeight: 600 }}>{t.razaoSocial}</div>
-        <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>{t.cnpj}</div>
-      </div>
-    ),
-    plano: <Tag type="blue">{t.plano}</Tag>,
-    billingStatus: (
-      <Tag
-        type={
-          t.billingStatus === "ATIVO"
-            ? "green"
-            : t.billingStatus === "TRIAL"
-            ? "cyan"
-            : t.billingStatus === "GRACE_PERIOD"
-            ? "warm-gray"
-            : "red"
-        }
-      >
-        {t.billingStatus}
-        {t.billingStatus === "TRIAL" ? ` (${t.diasRestantesTrial}d)` : ""}
-        {t.billingStatus === "GRACE_PERIOD" ? ` (${t.diasAtraso}d atraso)` : ""}
-      </Tag>
-    ),
-    espaco: (
-      <div style={{ minWidth: "140px" }}>
-        <div style={{ fontSize: "0.8rem", marginBottom: "4px" }}>
-          {t.espacoUsadoMb} MB de {t.cotaTotalMb} MB ({t.percentualUsado}%)
-        </div>
-        <ProgressBar
-          label="Uso de espaço R2"
-          value={t.percentualUsado}
-          max={100}
-          status={t.percentualUsado >= 90 ? "error" : "active"}
-          hideLabel
-        />
-      </div>
-    ),
-    volumeArrematado: (
-      <div>
-        <div style={{ fontWeight: 600, color: "var(--cds-support-success)" }}>
-          {t.volumeArrematado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-        </div>
-        <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
-          {t.totalContempladas} pregão(ões) arrematado(s)
-        </div>
-      </div>
-    ),
-    acoes: (
-      <div style={{ display: "flex", gap: "0.5rem" }}>
-        <Button
-          size="sm"
-          kind="tertiary"
-          renderIcon={Add}
-          disabled={expandingTenant === t.id}
-          onClick={() => handleExpandQuota(t.id, 1024)}
-        >
-          +1 GB
-        </Button>
-        <Button
-          size="sm"
-          kind="secondary"
-          renderIcon={Add}
-          disabled={expandingTenant === t.id}
-          onClick={() => handleExpandQuota(t.id, 2048)}
-        >
-          +2 GB
-        </Button>
-      </div>
-    ),
-  }));
+  const trialsRecentes = [...tenants]
+    .filter((t) => t.billingStatus === "TRIAL")
+    .sort((a, b) => new Date(b.criadoEm ?? 0).getTime() - new Date(a.criadoEm ?? 0).getTime())
+    .slice(0, 10);
 
   return (
     <div style={{ padding: "2rem", maxWidth: "1600px", margin: "0 auto" }}>
@@ -218,7 +105,7 @@ export function SuperAdminDashboard({
           Portal Administrativo (SuperAdmin)
         </h1>
         <p style={{ color: "var(--cds-text-secondary)" }}>
-          Backoffice Executivo — Gestão consolidada de empresas, faturamento Asaas, cotas Cloudflare R2 e WhatsApp anti-ban.
+          Backoffice Executivo — Gestão consolidada de contas, faturamento Asaas, armazenamento Cloudflare R2 e WhatsApp anti-ban.
         </p>
       </div>
 
@@ -237,8 +124,9 @@ export function SuperAdminDashboard({
       <Grid fullWidth style={{ marginBottom: "2rem" }}>
         <Column sm={4} md={4} lg={3}>
           <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              MRR ESTIMADO (MENSAL)
+            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+              <span>MRR ESTIMADO (MENSAL)</span>
+              <SiglaInfoTooltip texto="MRR (Monthly Recurring Revenue): Receita Recorrente Mensal estimada das contas pagantes e em carência." />
             </div>
             <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-support-success)" }}>
               {(metrics?.mrrEstimado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
@@ -265,8 +153,9 @@ export function SuperAdminDashboard({
 
         <Column sm={4} md={4} lg={3}>
           <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              ARMAZENAMENTO R2 (STREAMING)
+            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+              <span>ARMAZENAMENTO R2 (STREAMING)</span>
+              <SiglaInfoTooltip texto="R2 (Cloudflare R2): Armazenamento em nuvem de alta disponibilidade utilizado pelo Cofre de Documentos." />
             </div>
             <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
               {metrics?.r2StorageTotalMb || 0} MB
@@ -305,10 +194,11 @@ export function SuperAdminDashboard({
         </Column>
       </Grid>
 
-      {/* PULSO EXECUTIVO ESTENDIDO (Issue #49) */}
+      {/* PULSO EXECUTIVO ESTENDIDO (Issue #49 / #50) */}
       <KpiGrid>
         <KpiTile
           rotulo="ARR ESTIMADO (ANUAL)"
+          infoTooltip="ARR (Annual Recurring Revenue): Projeção anualizada da receita recorrente (MRR x 12)."
           valor={fmtBRL(metrics?.arrEstimado)}
           detalhe={`Receita em risco: ${fmtBRL(metrics?.receitaEmRisco)}`}
           cor="var(--cds-support-success)"
@@ -321,7 +211,7 @@ export function SuperAdminDashboard({
         <KpiTile
           rotulo="TESTE GRÁTIS"
           valor={fmtNum(metrics?.tenantsTrial)}
-          detalhe={`${fmtNum(metrics?.trialsEngajados)} engajados • ${fmtNum(metrics?.trialsAbandonados)} cadastraram e saíram`}
+          detalhe={`${fmtNum(metrics?.trialsEngajados)} engajados • ${fmtNum(metrics?.trialsAbandonados)} pendentes de configuração`}
         />
         <KpiTile
           rotulo="INADIMPLENTES / CARÊNCIA"
@@ -331,6 +221,7 @@ export function SuperAdminDashboard({
         />
         <KpiTile
           rotulo="GASTO DE IA (HOJE)"
+          infoTooltip="IA (Inteligência Artificial): Custo estimado de tokens consumidos nas análises de editais realizadas hoje."
           valor={fmtBRL(metrics?.gastoIaHojeBrl)}
           detalhe={`${fmtNum(metrics?.tokensIaHoje)} tokens • ${fmtNum(metrics?.chamadasIaHoje)} chamadas • mês ${fmtBRL(metrics?.gastoIaMesBrl)}`}
         />
@@ -341,6 +232,7 @@ export function SuperAdminDashboard({
         />
         <KpiTile
           rotulo="COLETA PNCP"
+          infoTooltip="PNCP (Portal Nacional de Contratações Públicas): Situação da última rotina de coleta automática de licitações."
           valor={metrics?.ultimaColetaStatus || "SEM_EXECUCOES"}
           detalhe={`Última: ${metrics?.ultimaColetaEm ? new Date(metrics.ultimaColetaEm).toLocaleString("pt-BR") : "—"}`}
         />
@@ -364,57 +256,56 @@ export function SuperAdminDashboard({
         </Tile>
       )}
 
-      {/* RADAR DE TRIAL: clientes em teste grátis e nível de configuração */}
-      {tenants.some((t) => t.billingStatus === "TRIAL") && (
-        <Tile style={{ marginBottom: "1.5rem" }}>
-          <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
-            Radar de Teste Grátis
-          </h3>
-          {tenants
-            .filter((t) => t.billingStatus === "TRIAL")
-            .slice(0, 8)
-            .map((t) => (
-              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderTop: "1px solid var(--cds-border-subtle-01)" }}>
-                <Link href={`/admin/clientes/${t.id}`}>{t.nomeFantasia || t.razaoSocial}</Link>
-                <span style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem" }}>{t.onboarding?.score ?? 0}/7 marcos • {t.diasRestantesTrial}d restantes</span>
-                  <EngajamentoTag status={t.onboarding?.statusEngajamento} />
-                </span>
+      {/* RADAR DE TRIAL: últimos 10 clientes cadastrados em teste grátis */}
+      <AdminTable
+        titulo="Radar de Teste Grátis"
+        descricao="Últimos 10 clientes cadastrados em período de teste grátis (agrupados pela conta principal)."
+        colunas={[
+          { key: "primeiroCnpj", header: "Primeiro CNPJ Cadastrado" },
+          { key: "cliente", header: "Nome do Cliente" },
+          { key: "marcos", header: "Marcos de Configuração" },
+          { key: "diasRestantes", header: "Dias Restantes" },
+          { key: "engajamento", header: "Engajamento / Configuração" },
+        ]}
+        vazio="Nenhum cliente em período de teste grátis no momento."
+        linhas={trialsRecentes.map((t) => {
+          const extras = Math.max(0, t.cnpjsAdicionaisCount ?? (t.qtdCnpjs ? t.qtdCnpjs - 1 : 0));
+          return {
+            id: t.id,
+            primeiroCnpj: (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                  <Link href={`/admin/clientes/${t.id}`} style={{ fontWeight: 600 }}>
+                    {t.nomeFantasia || t.razaoSocial}
+                  </Link>
+                  {extras > 0 ? (
+                    <Tag type="cyan" size="sm">
+                      +{extras} CNPJ(s)
+                    </Tag>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.cnpj}</div>
               </div>
-            ))}
-        </Tile>
-      )}
-
-      {/* TABELA DE GESTÃO DE TENANTS */}
-      <DataTable rows={rows} headers={headers}>
-        {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
-          <TableContainer
-            title="Clientes & Assinaturas (Multi-Tenant)"
-            description="Controle de cotas de armazenamento por CNPJ, dias restantes de trial e expansão imediata de espaço."
-          >
-            <Table {...getTableProps()}>
-              <TableHead>
-                <TableRow>
-                  {headers.map((header) => (
-                    <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                      {header.header}
-                    </TableHeader>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow {...getRowProps({ row })} key={row.id}>
-                    {row.cells.map((cell) => (
-                      <TableCell key={cell.id}>{cell.value}</TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </DataTable>
+            ),
+            cliente: (
+              <div>
+                <div>{t.titularNome || "—"}</div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.titularEmail || "—"}</div>
+              </div>
+            ),
+            marcos: `${t.onboarding?.score ?? 0}/7 marcos`,
+            diasRestantes: `${t.diasRestantesTrial}d restantes`,
+            engajamento: (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                <EngajamentoTag status={t.onboarding?.statusEngajamento} />
+                <Link href={`/admin/clientes/${t.id}`} style={{ fontSize: "0.8rem" }}>
+                  Abrir 360º
+                </Link>
+              </div>
+            ),
+          };
+        })}
+      />
     </div>
   );
 }

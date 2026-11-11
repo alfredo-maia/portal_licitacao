@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { listarEquipe } from "@/server/services/configuracoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
@@ -11,14 +15,10 @@ export async function GET() {
   let session: any = null;
   try {
     session = await getServerSession(authOptions).catch(() => null);
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Não autorizado" },
-        { status: 401 },
-      );
-    }
+    const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+    if (!guard.ok) return guard.response;
 
-    const userId = (session.user as any)?.id;
+    const userId = guard.user.id;
     let cookieTenant: string | undefined;
     try {
       const cookieStore = await cookies();

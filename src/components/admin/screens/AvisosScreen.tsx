@@ -123,7 +123,7 @@ export function AvisosScreen() {
             <Select id="av-pub" labelText="Público-alvo" value={form.publicoAlvo} onChange={(e) => setForm({ ...form, publicoAlvo: e.target.value })}>
               <SelectItem value="TODOS" text="Todos os clientes" />
               <SelectItem value="TRIAL" text="Todos em Teste Grátis" />
-              <SelectItem value="ABANDONO_TRIAL" text="Trials que cadastraram e saíram" />
+              <SelectItem value="ABANDONO_TRIAL" text="Trials pendentes de configuração" />
               <SelectItem value="PAGANTES" text="Clientes pagantes ativos" />
               <SelectItem value="INADIMPLENTES" text="Inadimplentes / Em carência" />
               <SelectItem value="PLANO_BASICO" text="Somente Plano Básico" />

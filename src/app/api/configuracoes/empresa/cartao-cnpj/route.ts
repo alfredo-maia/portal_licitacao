@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { can, type RbacUser } from "@/lib/rbac";
 import { recordAuditLog, runWithAuditActorContext } from "@/server/audit";
 import { importarCartaoCnpjModoSchema } from "@/server/schemas/cartao-cnpj.schema";
@@ -38,6 +42,9 @@ export async function POST(req: Request) {
       | undefined;
     if (!user?.id) {
       return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
     const userId = user.id;
     const userName = user.name ?? user.email ?? null;

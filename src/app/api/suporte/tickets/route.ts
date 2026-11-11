@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { can, type RbacUser } from "@/lib/rbac";
 import {
   criarTicketSuporteInputSchema,
@@ -21,6 +25,9 @@ export async function GET(req: Request) {
     const user = session?.user as (RbacUser & { id?: string; activeTenantId?: string }) | undefined;
     if (!user?.id) {
       return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
 
     if (!can(user, "read", "suporte")) {
@@ -69,6 +76,9 @@ export async function POST(req: Request) {
       | undefined;
     if (!user?.id) {
       return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
 
     if (!can(user, "create", "suporte")) {

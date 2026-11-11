@@ -1,14 +1,17 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
+import {
+  exigirClienteEmApi,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { listNotificacoes } from "@/server/services/notificacoes.service";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
-  const user = session?.user as { id?: string } | undefined;
-  if (!user?.id) {
-    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
+  if (!guard.ok) return guard.response;
+  const user = guard.user;
 
   const { searchParams } = new URL(request.url);
   const pageParam = searchParams.get("page");

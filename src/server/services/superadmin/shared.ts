@@ -879,7 +879,10 @@ export function construirItemTenant(
   const espacoUsadoMb = Math.round((raw.docBytes / (1024 * 1024)) * 10) / 10;
   const percentualUsado =
     cotaTotalMb > 0 ? Math.min(100, Math.round((espacoUsadoMb / cotaTotalMb) * 100)) : 0;
-  const titular = raw.users.find((u) => u.role === "TITULAR") || raw.users[0];
+  const titular =
+    raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false) ||
+    raw.users.find((u) => u.role === "TITULAR") ||
+    raw.users[0];
   const affiliateNome = raw.affiliateId
     ? affiliateNomesMap?.get(raw.affiliateId) ?? memAffiliates.get(raw.affiliateId)?.nome ?? null
     : null;
@@ -937,7 +940,9 @@ export async function listarTenantsSuperAdmin(filtros?: {
 }): Promise<SuperAdminTenantItem[]> {
   let raws = await carregarRawTenantsDb();
   if (!raws) {
-    garantirSementeDemo();
+    if (inMemoryTenants.size === 0) {
+      garantirSementeDemo();
+    }
     raws = Array.from(inMemoryTenants.values()).map(rawDeMemoria);
   } else {
     const ids = new Set(raws.map((r) => r.id));
@@ -951,41 +956,160 @@ export async function listarTenantsSuperAdmin(filtros?: {
     listarAfiliadoNomesMap(),
   ]);
 
-  let itens = raws.map((r) =>
-    construirItemTenant(
-      r,
-      ia.get(r.id) || { usadas: 0, gastoDia: 0, gastoMes: 0 },
-      affiliateNomes,
-    ),
-  );
+  const gruposMap = new Map<string, RawTenant[]>();
+  for (const r of raws) {
+    const titular = r.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+    const key = titular?.userId
+      ? `uid:${titular.userId}`
+      : titular?.email
+        ? `email:${titular.email.trim().toLowerCase()}`
+        : `tenant:${r.id}`;
+    const bucket = gruposMap.get(key) || [];
+    bucket.push(r);
+    gruposMap.set(key, bucket);
+  }
 
+  interface GroupedAccountEntry {
+    item: SuperAdminTenantItem;
+    members: RawTenant[];
+  }
+
+  const groupedEntries: GroupedAccountEntry[] = [];
+  for (const membersRaw of gruposMap.values()) {
+    const members = [...membersRaw].sort((a, b) => {
+      const diff = new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime();
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
+    const primary = members[0];
+    const baseItem = construirItemTenant(
+      primary,
+      ia.get(primary.id) || { usadas: 0, gastoDia: 0, gastoMes: 0 },
+      affiliateNomes,
+    );
+
+    const totalDocBytes = members.reduce((s, m) => s + m.docBytes, 0);
+    const espacoUsadoMb = Math.round((totalDocBytes / (1024 * 1024)) * 10) / 10;
+    const baseCotaPorEmpresa =
+      PLAN_STORAGE_QUOTAS_MB[primary.plano as keyof typeof PLAN_STORAGE_QUOTAS_MB] || 500;
+    const cotaBaseMb = baseCotaPorEmpresa * members.length;
+    const cotaExtraMb = members.reduce(
+      (s, m) => s + (m.storageExtraQuotaMb || memoryTenantExtraQuota.get(m.id) || 0),
+      0,
+    );
+    const cotaTotalMb = cotaBaseMb + cotaExtraMb;
+    const percentualUsado =
+      cotaTotalMb > 0 ? Math.min(100, Math.round((espacoUsadoMb / cotaTotalMb) * 100)) : 0;
+
+    const distinctUsers = new Set(members.flatMap((m) => m.users.map((u) => u.userId)));
+    const memberChecklists = members.map((m) =>
+      onboardingDeRaw(m, ia.get(m.id)?.usadas || 0),
+    );
+    const onboarding = calcularOnboardingChecklist({
+      cnpjCadastrado: memberChecklists.some((c) => c.cnpjCadastrado),
+      filtrosConfigurados: memberChecklists.some((c) => c.filtrosConfigurados),
+      empresaPreenchida: memberChecklists.some((c) => c.empresaPreenchida),
+      documentoCofreEnviado: memberChecklists.some((c) => c.documentoCofreEnviado),
+      licitacaoNoKanban: memberChecklists.some((c) => c.licitacaoNoKanban),
+      iaOuCalculadoraUsada: memberChecklists.some((c) => c.iaOuCalculadoraUsada),
+    });
+
+    const ultimaAtividadeMs = Math.max(
+      0,
+      ...members.map((m) => (m.ultimaAtividadeEm ? new Date(m.ultimaAtividadeEm).getTime() : 0)),
+    );
+
+    const item: SuperAdminTenantItem = {
+      ...baseItem,
+      qtdCnpjs: members.length,
+      cnpjsAdicionaisCount: Math.max(0, members.length - 1),
+      cnpjsVinculados: members.map((m) => ({
+        id: m.id,
+        cnpj: m.cnpj,
+        razaoSocial: m.razaoSocial,
+        nomeFantasia: m.nomeFantasia ?? null,
+      })),
+      subCnpjEncontrado: null,
+      cotaBaseMb,
+      cotaExtraMb,
+      cotaTotalMb,
+      espacoUsadoMb,
+      percentualUsado,
+      volumeArrematado:
+        Math.round(members.reduce((s, m) => s + m.valorContempladas, 0) * 100) / 100,
+      totalContempladas: members.reduce((s, m) => s + m.totalContempladas, 0),
+      maxCnpjs: Math.max(...members.map((m) => m.maxCnpjs)),
+      maxUsers: Math.max(...members.map((m) => m.maxUsers)),
+      totalUsuarios: distinctUsers.size,
+      totalLicitacoesKanban: members.reduce((s, m) => s + m.kanbanStatuses.length, 0),
+      totalDocumentosCofre: members.reduce((s, m) => s + m.docCount, 0),
+      aiExtraQuotaMes: members.reduce((s, m) => s + m.aiExtraQuotaMes, 0),
+      aiUsadasMes: members.reduce((s, m) => s + (ia.get(m.id)?.usadas || 0), 0),
+      gastoIaDiaBrl:
+        Math.round(members.reduce((s, m) => s + (ia.get(m.id)?.gastoDia || 0), 0) * 100) / 100,
+      gastoIaMesBrl:
+        Math.round(members.reduce((s, m) => s + (ia.get(m.id)?.gastoMes || 0), 0) * 100) / 100,
+      ultimaAtividadeEm: ultimaAtividadeMs > 0 ? new Date(ultimaAtividadeMs) : null,
+      onboarding,
+    };
+
+    groupedEntries.push({ item, members });
+  }
+
+  let filtered = groupedEntries;
   const filtro = filtros?.statusFiltro;
   if (filtro && filtro !== "TODOS") {
-    itens = itens.filter((i) => {
+    filtered = filtered.filter(({ item }) => {
       if (filtro === "ABANDONO_TRIAL") {
         return (
-          i.billingStatus === "TRIAL" &&
-          i.onboarding?.statusEngajamento === "CADASTROU_E_SAIU"
+          item.billingStatus === "TRIAL" &&
+          item.onboarding?.statusEngajamento === "CADASTROU_E_SAIU"
         );
       }
-      return i.billingStatus === filtro;
+      return item.billingStatus === filtro;
     });
   }
 
   const busca = filtros?.busca?.trim().toLowerCase();
   if (busca) {
     const buscaDigitos = busca.replace(/\D/g, "");
-    itens = itens.filter(
-      (i) =>
-        i.razaoSocial.toLowerCase().includes(busca) ||
-        (i.nomeFantasia || "").toLowerCase().includes(busca) ||
-        (i.titularEmail || "").toLowerCase().includes(busca) ||
-        (i.titularNome || "").toLowerCase().includes(busca) ||
-        (buscaDigitos.length >= 4 && i.cnpj.replace(/\D/g, "").includes(buscaDigitos)),
-    );
+    const matchesRaw = (r: RawTenant) =>
+      r.razaoSocial.toLowerCase().includes(busca) ||
+      (r.nomeFantasia || "").toLowerCase().includes(busca) ||
+      (buscaDigitos.length >= 4 && r.cnpj.replace(/\D/g, "").includes(buscaDigitos));
+
+    const matched: GroupedAccountEntry[] = [];
+    for (const entry of filtered) {
+      const { item, members } = entry;
+      const primary = members[0];
+      const matchesPrimary =
+        matchesRaw(primary) ||
+        (item.titularEmail || "").toLowerCase().includes(busca) ||
+        (item.titularNome || "").toLowerCase().includes(busca);
+      if (matchesPrimary) {
+        matched.push({ item: { ...item, subCnpjEncontrado: null }, members });
+        continue;
+      }
+      const subMatch = members.slice(1).find(matchesRaw);
+      if (subMatch) {
+        matched.push({
+          item: {
+            ...item,
+            subCnpjEncontrado: {
+              id: subMatch.id,
+              cnpj: subMatch.cnpj,
+              razaoSocial: subMatch.razaoSocial,
+            },
+          },
+          members,
+        });
+      }
+    }
+    filtered = matched;
   }
 
-  return itens;
+  return filtered
+    .map((e) => e.item)
+    .sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
 }
 
 export async function expandirCotaStorageTenant(rawInput: ExpansaoCotaStorageInput): Promise<{
@@ -1156,13 +1280,23 @@ export async function tenantIdsDoUsuario(
   const ids = new Set<string>();
   const rows = await dbTry(() =>
     prisma.tenantUser.findMany({
-      where: { userId, ...(apenasTitular ? { role: "TITULAR" } : {}) },
+      where: {
+        userId,
+        ativo: true,
+        ...(apenasTitular ? { role: "TITULAR" } : {}),
+      },
       select: { tenantId: true },
     }),
   );
   if (Array.isArray(rows)) for (const r of rows) ids.add(r.tenantId);
   for (const m of inMemoryTenantUsers) {
-    if (m.userId === userId && (!apenasTitular || m.role === "TITULAR")) ids.add(m.tenantId);
+    if (
+      m.userId === userId &&
+      m.ativo !== false &&
+      (!apenasTitular || m.role === "TITULAR")
+    ) {
+      ids.add(m.tenantId);
+    }
   }
   return Array.from(ids);
 }
@@ -1426,6 +1560,7 @@ export async function carregarPatrimonio(
       where: { tenantId: { in: tenantIds } },
       select: {
         id: true,
+        tenantId: true,
         nome: true,
         categoria: true,
         dataVencimento: true,
@@ -1437,6 +1572,7 @@ export async function carregarPatrimonio(
   );
   const documentosLista: Array<{
     id: string;
+    tenantId?: string;
     nome: string;
     categoria: string;
     dataVencimento: string | null;
@@ -1451,6 +1587,7 @@ export async function carregarPatrimonio(
     const venc = d.dataVencimento ? new Date(d.dataVencimento) : null;
     documentosLista.push({
       id: d.id,
+      ...(d.tenantId ? { tenantId: d.tenantId } : {}),
       nome: d.nome || "Documento",
       categoria: String(d.categoria ?? "OUTROS"),
       dataVencimento: venc ? venc.toISOString() : null,
@@ -1463,6 +1600,7 @@ export async function carregarPatrimonio(
     for (const d of docsDb) {
       pushDoc({
         id: d.id,
+        tenantId: d.tenantId,
         nome: d.nome,
         categoria: String(d.categoria),
         dataVencimento: d.dataVencimento,

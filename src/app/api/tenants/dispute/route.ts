@@ -1,17 +1,31 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { disputeClaimCnpjSchema } from "@/server/schemas/tenant.schema";
 import { disputeClaimCnpj } from "@/server/services/tenant.service";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user as
-    | { id?: string; email?: string; name?: string | null }
+    | {
+        id?: string;
+        email?: string;
+        name?: string | null;
+        role?: string;
+        isSuperAdmin?: boolean;
+        adminRole?: string | null;
+      }
     | undefined;
 
   if (!user?.id || !user?.email) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   try {

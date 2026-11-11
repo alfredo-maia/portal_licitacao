@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+  type SessionActorClaims,
+} from "@/server/auth/client-guard";
 import { declaracaoGerarInputSchema } from "@/server/schemas/declaracao.schema";
 import { gerarDeclaracao } from "@/server/services/declaracoes.service";
 
@@ -7,7 +13,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession().catch(() => null);
+    const session = await getServerSession(authOptions).catch(() => null);
+    if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
     const body = await req.json().catch(() => ({}));
     const parseResult = declaracaoGerarInputSchema.safeParse(body);
 

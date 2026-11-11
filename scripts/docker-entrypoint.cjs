@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { randomBytes } = require("node:crypto");
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
 
@@ -7,13 +8,17 @@ const DIRECTORS_SEED = [
   {
     name: "Vítor Henrique",
     email: "vitorhenrique018@gmail.com",
-    role: "DIRETORIA",
+    role: "SUPERADMIN",
+    isSuperAdmin: true,
+    adminRole: "SUPERADMIN_MASTER",
     ativo: true,
   },
   {
     name: "Alfredo Maia",
     email: "alfredosouza100@gmail.com",
     role: "DIRETORIA",
+    isSuperAdmin: false,
+    adminRole: null,
     ativo: true,
   },
 ];
@@ -823,10 +828,17 @@ async function bootstrapDatabase() {
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     const passwordHash = await bcrypt.hash(rawPassword, 10);
-    const superAdminPasswordHash = await bcrypt.hash(
-      process.env.SUPERADMIN_MASTER_PASSWORD || "123456",
-      10,
-    );
+    const configuredMasterPassword = process.env.SUPERADMIN_MASTER_PASSWORD;
+    const isProdRuntime = process.env.NODE_ENV === "production";
+    const superAdminRawPassword =
+      configuredMasterPassword ||
+      (!isProdRuntime ? "123456" : randomBytes(32).toString("hex"));
+    if (isProdRuntime && !configuredMasterPassword) {
+      console.warn(
+        "[entrypoint] SUPERADMIN_MASTER_PASSWORD não configurada em produção; mantendo hash existente ou gerando segredo aleatório.",
+      );
+    }
+    const superAdminPasswordHash = await bcrypt.hash(superAdminRawPassword, 10);
 
     for (const director of DIRECTORS_SEED) {
       const isVitorMaster =
@@ -849,19 +861,23 @@ async function bootstrapDatabase() {
         });
       } else if (
         isVitorMaster &&
-        existing.role !== "SUPERADMIN" &&
-        !existing.isSuperAdmin &&
-        !existing.adminRole
+        (existing.role !== "SUPERADMIN" ||
+          existing.isSuperAdmin !== true ||
+          existing.adminRole !== "SUPERADMIN_MASTER")
       ) {
-        // Migração única da conta seed legada (pre-Portal ADM) para SUPERADMIN_MASTER sem sobrescrever futuras alterações
+        // Garante que a conta ADM master nunca permaneça com papel de cliente em upgrades de ambiente,
+        // preservando o passwordHash existente quando SUPERADMIN_MASTER_PASSWORD estiver ausente em produção.
+        const upgradeData = {
+          role: "SUPERADMIN",
+          isSuperAdmin: true,
+          adminRole: "SUPERADMIN_MASTER",
+        };
+        if (configuredMasterPassword || !isProdRuntime) {
+          upgradeData.passwordHash = superAdminPasswordHash;
+        }
         await prisma.user.update({
           where: { id: existing.id },
-          data: {
-            passwordHash: superAdminPasswordHash,
-            role: "SUPERADMIN",
-            isSuperAdmin: true,
-            adminRole: "SUPERADMIN_MASTER",
-          },
+          data: upgradeData,
         });
       }
     }
@@ -885,6 +901,12 @@ async function bootstrapDatabase() {
         where: { email: director.email },
       });
       if (u) {
+        const isVitorMaster =
+          director.email.toLowerCase() === "vitorhenrique018@gmail.com";
+        if (isVitorMaster) {
+          await prisma.tenantUser.deleteMany({ where: { userId: u.id } }).catch(() => undefined);
+          continue;
+        }
         await prisma.tenantUser.upsert({
           where: {
             tenantId_userId: {

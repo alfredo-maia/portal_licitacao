@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { can, type RbacUser } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { PlanoCheckoutInputSchema } from "@/server/schemas/asaas.schema";
@@ -27,6 +31,9 @@ export async function POST(req: NextRequest) {
 
     if (!user?.id) {
       return NextResponse.json({ ok: false, error: "Não autorizado" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
     }
 
     if (!can(user, "approve_price", "saas")) {

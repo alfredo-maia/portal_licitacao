@@ -1,6 +1,10 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/server/auth";
+import {
+  isSuperAdminSessionUser,
+  respostaProibidaAdminEmRotaCliente,
+} from "@/server/auth/client-guard";
 import { inviteMemberSchema } from "@/server/schemas/tenant.schema";
 import {
   inviteTeamMember,
@@ -17,10 +21,15 @@ interface RouteParams {
 
 export async function POST(request: Request, { params }: RouteParams) {
   const session = await getServerSession(authOptions);
-  const user = session?.user as { id?: string } | undefined;
+  const user = session?.user as
+    | { id?: string; email?: string; role?: string; isSuperAdmin?: boolean; adminRole?: string | null }
+    | undefined;
 
   if (!user?.id) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (isSuperAdminSessionUser(user)) {
+    return respostaProibidaAdminEmRotaCliente();
   }
 
   const { id: tenantId } = await params;

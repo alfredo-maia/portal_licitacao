@@ -324,6 +324,7 @@ export async function salvarUsuarioAdminSuperAdmin(rawInput: AdminUpsertAdminUse
   const dados = {
     name: input.name,
     email,
+    ...(input.telefone !== undefined ? { telefone: input.telefone || null } : {}),
     role: Role.SUPERADMIN,
     isSuperAdmin: true,
     adminRole: input.adminRole,
@@ -451,7 +452,7 @@ export async function salvarUsuarioAdminSuperAdmin(rawInput: AdminUpsertAdminUse
 
   // Sincroniza cache de autenticação em memória quando relevante
   const authMem = getInMemoryAuthUserByEmail(email);
-  if (authMem || passwordHashGerado) {
+  if (authMem || passwordHashGerado || input.telefone !== undefined) {
     upsertInMemoryAuthUser({
       id: usuarioFinal.id,
       name: usuarioFinal.name,
@@ -465,6 +466,7 @@ export async function salvarUsuarioAdminSuperAdmin(rawInput: AdminUpsertAdminUse
         | "SUPORTE_N1",
       sessionVersion: usuarioFinal.sessionVersion,
       passwordHash: passwordHashGerado ?? authMem?.passwordHash ?? "",
+      telefone: usuarioFinal.telefone ?? null,
       activeTenantId: null,
       cnpj: null,
       plano: null,
