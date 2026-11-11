@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runWithAuditActorContext } from "@/server/audit";
 import { exigirAdmin, respostaErroAdmin } from "@/server/auth/admin-guard";
-import { AdminFinanceiroPostSchema } from "@/server/schemas/superadmin.schema";
+import {
+  AdminFinanceiroPostSchema,
+  AdminFinanceiroQuerySchema,
+} from "@/server/schemas/superadmin.schema";
 import {
   executarAcaoFinanceiraSuperAdmin,
   listarCuponsSuperAdmin,
+  listarHistoricoFaturasClienteSuperAdmin,
   listarTenantsSuperAdmin,
   salvarCupomSuperAdmin,
 } from "@/server/services/superadmin.service";
 
 export const dynamic = "force-dynamic";
 
-/** GET: carteira financeira (filtro `?status=`) + cupons. */
+/** GET: carteira financeira (filtro `?status=`) + cupons + histórico de faturas (`?faturasTenantId=`). */
 export async function GET(req: NextRequest) {
   const g = await exigirAdmin("financeiro");
   if (!g.ok) return g.response;
@@ -23,12 +27,21 @@ export async function GET(req: NextRequest) {
     },
     async () => {
       try {
-        const status = req.nextUrl.searchParams.get("status") || undefined;
-        const [clientes, cupons] = await Promise.all([
-          listarTenantsSuperAdmin({ statusFiltro: status }),
+        const query = AdminFinanceiroQuerySchema.parse({
+          status: req.nextUrl.searchParams.get("status")?.trim() || undefined,
+          faturasTenantId:
+            req.nextUrl.searchParams.get("faturasTenantId")?.trim() || undefined,
+        });
+        const [clientes, cupons, faturas] = await Promise.all([
+          listarTenantsSuperAdmin({ statusFiltro: query.status }),
           listarCuponsSuperAdmin(),
+          query.faturasTenantId
+            ? listarHistoricoFaturasClienteSuperAdmin(query.faturasTenantId)
+            : Promise.resolve(undefined),
         ]);
-        return NextResponse.json({ clientes, cupons });
+        return NextResponse.json(
+          faturas !== undefined ? { clientes, cupons, faturas } : { clientes, cupons },
+        );
       } catch (error) {
         return respostaErroAdmin(error, "financeiro");
       }

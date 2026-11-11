@@ -17,6 +17,7 @@ import {
   TextInput,
 } from "@carbon/react";
 import { Add, Edit, Renew } from "@carbon/icons-react";
+import { maskPhone, sanitizeEmail } from "@/lib/masks";
 import {
   AdminTable,
   FeedbackBar,
@@ -73,7 +74,7 @@ export function SistemaAdminScreen() {
       body: {
         id: form.id || undefined,
         name: form.name,
-        email: form.email,
+        email: sanitizeEmail(form.email),
         telefone: form.telefone.trim() || null,
         password: form.password.trim() || undefined,
         adminRole: form.adminRole,
@@ -225,13 +226,19 @@ export function SistemaAdminScreen() {
         {form ? (
           <div style={{ display: "grid", gap: "1rem" }}>
             <TextInput id="adm-nome" labelText="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <TextInput id="adm-email" labelText="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <TextInput
+              id="adm-email"
+              labelText="E-mail"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onBlur={() => setForm({ ...form, email: sanitizeEmail(form.email) })}
+            />
             <TextInput
               id="adm-tel"
               labelText="Telefone / WhatsApp (para login via OTP)"
-              placeholder="62999990000"
+              placeholder="(62) 99999-0000"
               value={form.telefone}
-              onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+              onChange={(e) => setForm({ ...form, telefone: maskPhone(e.target.value) })}
             />
             <PasswordInput
               id="adm-pass"

@@ -3,6 +3,7 @@ import { recordAuditLog, runWithAuditActorContext } from "@/server/audit";
 import { exigirAdmin, respostaErroAdmin } from "@/server/auth/admin-guard";
 import {
   AdminLicitacoesPostSchema,
+  AdminLicitacoesQuerySchema,
   AdminUpsertLicitacaoSchema,
 } from "@/server/schemas/superadmin.schema";
 import {
@@ -27,9 +28,11 @@ export async function GET(req: NextRequest) {
     },
     async () => {
       try {
-        const busca = req.nextUrl.searchParams.get("busca") || undefined;
+        const query = AdminLicitacoesQuerySchema.parse({
+          busca: req.nextUrl.searchParams.get("busca")?.trim() || undefined,
+        });
         const [licitacoes, execucoes] = await Promise.all([
-          listarLicitacoesGlobaisSuperAdmin(busca),
+          listarLicitacoesGlobaisSuperAdmin(query.busca),
           listarExecucoesPncpSuperAdmin(15),
         ]);
         return NextResponse.json({ licitacoes, execucoes });

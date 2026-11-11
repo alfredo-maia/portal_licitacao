@@ -14,8 +14,12 @@ import {
   obterConfigEvolutionApi,
   obterStatusInstanciaWhatsApp,
 } from "@/server/services/whatsapp.service";
-import { inMemoryTenantUsers } from "@/server/services/tenant.service";
-import { getInMemoryLeituraResumoPorChaves } from "@/server/services/licitacoes-store";
+import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
+import {
+  getInMemoryLicitacaoById,
+  getInMemoryLeituraResumoPorChaves,
+  listAllInMemoryTenantLicitacoes,
+} from "@/server/services/licitacoes-store";
 import { listarExecucoesIngestaoPncp } from "@/server/services/pncp-ingestao-diaria.service";
 import { listarAfiliadosSuperAdmin } from "./financeiro";
 import {
@@ -56,33 +60,132 @@ async function contarTicketsAbertos(): Promise<number> {
   }
 }
 
-async function listarUltimasVitorias(): Promise<
-  NonNullable<SuperAdminMetrics["ultimasVitorias"]>
-> {
+function periodoMesBrt(mes?: number, ano?: number): {
+  mes: number;
+  ano: number;
+  inicio: Date;
+  fim: Date;
+} {
+  const agora = new Date();
+  const [anoAtualStr, mesAtualStr] = agora
+    .toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+    .split("-");
+  const anoSel =
+    typeof ano === "number" && Number.isInteger(ano) && ano >= 2020 && ano <= 2100
+      ? ano
+      : Number(anoAtualStr);
+  const mesSel =
+    typeof mes === "number" && Number.isInteger(mes) && mes >= 1 && mes <= 12
+      ? mes
+      : Number(mesAtualStr);
+  // 00:00:00 America/Sao_Paulo (UTC-3 fixo) = 03:00:00Z
+  const inicio = new Date(Date.UTC(anoSel, mesSel - 1, 1, 3, 0, 0, 0));
+  const fim = new Date(Date.UTC(anoSel, mesSel, 1, 3, 0, 0, 0));
+  return { mes: mesSel, ano: anoSel, inicio, fim };
+}
+
+async function listarVitoriasContempladasDoMes(
+  inicio: Date,
+  fim: Date,
+): Promise<{
+  volumeTotal: number;
+  totalContempladas: number;
+  ultimasVitorias: NonNullable<SuperAdminMetrics["ultimasVitorias"]>;
+}> {
+  const mapa = new Map<
+    string,
+    {
+      id: string;
+      tenantId: string;
+      razaoSocial: string;
+      numeroEdital: string;
+      orgaoNome: string;
+      valorArrematado: number;
+      dataMs: number;
+      data: string;
+    }
+  >();
+
   const rows = await dbTry(() =>
     prisma.tenantLicitacao.findMany({
-      where: { statusKanban: "CONTEMPLADA" },
-      orderBy: { dataDecisao: "desc" },
-      take: 5,
+      where: {
+        statusKanban: "CONTEMPLADA",
+        OR: [
+          { dataDecisao: { gte: inicio, lt: fim } },
+          {
+            AND: [
+              { dataDecisao: null },
+              { atualizadoEm: { gte: inicio, lt: fim } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ dataDecisao: { sort: "desc", nulls: "last" } }, { atualizadoEm: "desc" }],
+      take: 2000,
       include: {
-        tenant: { select: { id: true, razaoSocial: true } },
+        tenant: { select: { id: true, razaoSocial: true, nomeFantasia: true } },
         licitacao: { select: { numeroEdital: true, orgaoNome: true, valorEstimado: true } },
       },
     }),
   );
-  if (!Array.isArray(rows)) return [];
-  return rows.map((r) => ({
-    id: r.id,
-    tenantId: r.tenantId,
-    razaoSocial: r.tenant?.razaoSocial || "—",
-    numeroEdital: r.licitacao?.numeroEdital || "—",
-    orgaoNome: r.licitacao?.orgaoNome || "—",
-    valorArrematado: r.valorHomologado || r.lanceMinimo || r.licitacao?.valorEstimado || 0,
-    data: new Date(r.dataDecisao || Date.now()).toISOString(),
-  }));
+
+  if (Array.isArray(rows)) {
+    for (const r of rows) {
+      const dt = new Date(r.dataDecisao || r.atualizadoEm || r.criadoEm);
+      const ms = dt.getTime();
+      if (ms < inicio.getTime() || ms >= fim.getTime()) continue;
+      const key = `${r.tenantId}__${r.licitacaoId}`;
+      mapa.set(key, {
+        id: r.id,
+        tenantId: r.tenantId,
+        razaoSocial: r.tenant?.nomeFantasia || r.tenant?.razaoSocial || "—",
+        numeroEdital: r.licitacao?.numeroEdital || "—",
+        orgaoNome: r.licitacao?.orgaoNome || "—",
+        valorArrematado:
+          r.valorHomologado || r.lanceMinimo || r.licitacao?.valorEstimado || 0,
+        dataMs: ms,
+        data: dt.toISOString(),
+      });
+    }
+  }
+
+  for (const tl of listAllInMemoryTenantLicitacoes()) {
+    if (tl.statusKanban !== "CONTEMPLADA") continue;
+    const key = `${tl.tenantId}__${tl.licitacaoId}`;
+    if (mapa.has(key)) continue;
+    const dt = new Date(tl.dataDecisao || Date.now());
+    const ms = dt.getTime();
+    if (ms < inicio.getTime() || ms >= fim.getTime()) continue;
+    const tMem = inMemoryTenants.get(tl.tenantId);
+    const licMem = getInMemoryLicitacaoById(tl.licitacaoId);
+    mapa.set(key, {
+      id: tl.id,
+      tenantId: tl.tenantId,
+      razaoSocial: tMem?.nomeFantasia || tMem?.razaoSocial || "—",
+      numeroEdital: licMem?.numeroEdital || "—",
+      orgaoNome: licMem?.orgaoNome || "—",
+      valorArrematado:
+        tl.valorHomologado || tl.lanceMinimo || licMem?.valorEstimado || 0,
+      dataMs: ms,
+      data: dt.toISOString(),
+    });
+  }
+
+  const ordenadas = Array.from(mapa.values()).sort((a, b) => b.dataMs - a.dataMs);
+  const volumeTotal = ordenadas.reduce((acc, item) => acc + item.valorArrematado, 0);
+  return {
+    volumeTotal: Math.round(volumeTotal * 100) / 100,
+    totalContempladas: ordenadas.length,
+    ultimasVitorias: ordenadas.slice(0, 5).map(({ dataMs: _ms, ...rest }) => rest),
+  };
 }
 
-export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
+export async function obterMetricasSuperAdmin(periodo?: {
+  mes?: number;
+  ano?: number;
+}): Promise<SuperAdminMetrics> {
+  const { mes: periodoMes, ano: periodoAno, inicio: inicioMesSel, fim: fimMesSel } =
+    periodoMesBrt(periodo?.mes, periodo?.ano);
   const whatsappStatus = await obterStatusInstanciaWhatsApp();
   const tenants = await listarTenantsSuperAdmin();
 
@@ -95,8 +198,6 @@ export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
   let cancelados = 0;
   let abandonados = 0;
   let engajados = 0;
-  let volume = 0;
-  let contempladas = 0;
   let r2 = 0;
   let novosHoje = 0;
   let novos7 = 0;
@@ -123,8 +224,6 @@ export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
     } else {
       cancelados++;
     }
-    volume += t.volumeArrematado;
-    contempladas += t.totalContempladas;
     r2 += t.espacoUsadoMb;
     const criado = new Date(t.criadoEm).getTime();
     if (criado >= dia) novosHoje++;
@@ -132,26 +231,31 @@ export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
     if (agora - criado <= 30 * DIA_MS) novos30++;
   }
 
-  const logsMes = await lerLogsIa(inicioDoMes());
+  const logsDesdeMaisAntigo = await lerLogsIa(
+    new Date(Math.min(inicioMesSel.getTime(), dia, inicioDoMes().getTime())),
+  );
   let gastoHoje = 0;
   let gastoMes = 0;
   let tokensHoje = 0;
   let chamadasHoje = 0;
-  for (const l of logsMes) {
+  for (const l of logsDesdeMaisAntigo) {
     const custo = Number(l.custoEstimadoBrl) || 0;
-    gastoMes += custo;
-    if (new Date(l.criadoEm).getTime() >= dia) {
+    const tMs = new Date(l.criadoEm).getTime();
+    if (tMs >= inicioMesSel.getTime() && tMs < fimMesSel.getTime()) {
+      gastoMes += custo;
+    }
+    if (tMs >= dia) {
       gastoHoje += custo;
       tokensHoje += Number(l.totalTokens) || 0;
       chamadasHoje++;
     }
   }
 
-  const [ticketsAbertos, comissoes, execucoes, ultimasVitorias] = await Promise.all([
+  const [ticketsAbertos, comissoes, execucoes, vitoriasMes] = await Promise.all([
     contarTicketsAbertos(),
     listarAfiliadosSuperAdmin().catch(() => null),
     listarExecucoesIngestaoPncp(1).catch(() => []),
-    listarUltimasVitorias(),
+    listarVitoriasContempladasDoMes(inicioMesSel, fimMesSel),
   ]);
 
   const comissoesPendentesBrl = (comissoes?.comissoes || [])
@@ -175,8 +279,8 @@ export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
     novosClientes30d: novos30,
     trialsAbandonados: abandonados,
     trialsEngajados: engajados,
-    totalVolumeArrematado: Math.round(volume * 100) / 100,
-    totalLicitacoesContempladas: contempladas,
+    totalVolumeArrematado: vitoriasMes.volumeTotal,
+    totalLicitacoesContempladas: vitoriasMes.totalContempladas,
     r2StorageTotalMb: Math.round(r2 * 10) / 10,
     whatsappFilaPendentes: whatsappStatus.filaTamanho,
     whatsappInstanciaConectada: whatsappStatus.instanciaConectada,
@@ -188,7 +292,9 @@ export async function obterMetricasSuperAdmin(): Promise<SuperAdminMetrics> {
     comissoesPendentesBrl: Math.round(comissoesPendentesBrl * 100) / 100,
     ultimaColetaStatus: ultima?.status || "SEM_EXECUCOES",
     ultimaColetaEm: ultima?.executadoEm ? new Date(ultima.executadoEm).toISOString() : null,
-    ultimasVitorias,
+    ultimasVitorias: vitoriasMes.ultimasVitorias,
+    periodoMes,
+    periodoAno,
   };
 }
 

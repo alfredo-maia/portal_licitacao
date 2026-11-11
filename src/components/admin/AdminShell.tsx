@@ -2,7 +2,7 @@
 
 import React, { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   Header,
@@ -27,6 +27,7 @@ import {
   Settings,
   Share,
   Switcher,
+  UserAvatar,
   UserMultiple,
   Bullhorn,
   Catalog,
@@ -36,6 +37,7 @@ import { APP_CONFIG } from "@/config/brand";
 import { adminPodeAcessar, type AdminArea } from "@/lib/rbac";
 import { ADMIN_ROUTES } from "@/server/schemas/superadmin.schema";
 import { useAppTheme } from "@/providers/theme-provider";
+import { AdminNotificationsBell } from "./AdminNotificationsBell";
 
 const ADMIN_ICONS: Record<string, CarbonIconType> = {
   dashboard: Dashboard,
@@ -62,6 +64,7 @@ export function AdminShell({
   adminRole?: string | null;
 }) {
   const pathname = usePathname() || "/admin";
+  const router = useRouter();
   const { isDark, toggleTheme } = useAppTheme();
   const [expandido, setExpandido] = useState(true);
 
@@ -102,6 +105,7 @@ export function AdminShell({
         </HeaderName>
 
         <HeaderGlobalBar>
+          <AdminNotificationsBell />
           <HeaderGlobalAction
             aria-label={isDark ? "Alternar para Tema Claro" : "Alternar para Tema Escuro"}
             data-testid="admin-theme-toggle"
@@ -109,7 +113,18 @@ export function AdminShell({
           >
             {isDark ? <Light size={20} /> : <Asleep size={20} />}
           </HeaderGlobalAction>
-          <HeaderGlobalAction aria-label="Sair do Portal ADM" onClick={sair}>
+          <HeaderGlobalAction
+            aria-label="Perfil ADM e Configurações"
+            data-testid="admin-profile-action"
+            onClick={() => router.push("/admin/sistema")}
+          >
+            <UserAvatar size={20} />
+          </HeaderGlobalAction>
+          <HeaderGlobalAction
+            aria-label="Sair do Portal ADM"
+            data-testid="admin-logout-btn"
+            onClick={sair}
+          >
             <Logout size={20} />
           </HeaderGlobalAction>
         </HeaderGlobalBar>

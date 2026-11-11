@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runWithAuditActorContext } from "@/server/audit";
 import { exigirAdmin, respostaErroAdmin } from "@/server/auth/admin-guard";
-import { ExpansaoCotaStorageSchema } from "@/server/schemas/superadmin.schema";
+import {
+  AdminTenantsQuerySchema,
+  ExpansaoCotaStorageSchema,
+} from "@/server/schemas/superadmin.schema";
 import {
   expandirCotaStorageTenant,
   listarTenantsSuperAdmin,
@@ -25,9 +28,13 @@ export async function GET(req: NextRequest) {
     async () => {
       try {
         const sp = req.nextUrl.searchParams;
+        const query = AdminTenantsQuerySchema.parse({
+          status: sp.get("status")?.trim() || undefined,
+          busca: sp.get("busca")?.trim() || undefined,
+        });
         const tenants = await listarTenantsSuperAdmin({
-          statusFiltro: sp.get("status") || undefined,
-          busca: sp.get("busca") || undefined,
+          statusFiltro: query.status,
+          busca: query.busca,
         });
         return NextResponse.json(tenants, { status: 200 });
       } catch (error) {

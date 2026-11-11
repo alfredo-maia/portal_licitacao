@@ -481,15 +481,16 @@ export async function obterStatusCotaAnaliseIA(
   // Soma cotas bônus concedidas pelo Portal ADM (aiExtraQuotaMes) para todos os CNPJs da conta
   const bonusPorTenant = new Map<string, number>();
   for (const tid of accountTenantIds) {
-    const memVal = memoryTenantExtraAiQuota.get(tid);
+    const hasMemVal = memoryTenantExtraAiQuota.has(tid);
     const inMemTenant = inMemoryTenants.get(tid) as
       | { aiExtraQuotaMes?: number }
       | undefined;
-    const tenantBonus = Math.max(
-      memVal ?? 0,
-      typeof inMemTenant?.aiExtraQuotaMes === "number" ? inMemTenant.aiExtraQuotaMes : 0,
-    );
-    bonusPorTenant.set(tid, tenantBonus);
+    const tenantBonus = hasMemVal
+      ? (memoryTenantExtraAiQuota.get(tid) ?? 0)
+      : typeof inMemTenant?.aiExtraQuotaMes === "number"
+        ? inMemTenant.aiExtraQuotaMes
+        : 0;
+    bonusPorTenant.set(tid, Math.max(0, tenantBonus));
   }
 
   if (accountTenantIds.size > 0) {
@@ -499,9 +500,9 @@ export async function obterStatusCotaAnaliseIA(
         select: { id: true, aiExtraQuotaMes: true },
       });
       for (const r of rows) {
-        const atual = bonusPorTenant.get(r.id) ?? 0;
-        const dbVal = typeof r.aiExtraQuotaMes === "number" ? r.aiExtraQuotaMes : 0;
-        bonusPorTenant.set(r.id, Math.max(atual, dbVal));
+        if (typeof r.aiExtraQuotaMes === "number") {
+          bonusPorTenant.set(r.id, Math.max(0, r.aiExtraQuotaMes));
+        }
       }
     } catch {
       // Silencioso se offline

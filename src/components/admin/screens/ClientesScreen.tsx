@@ -18,7 +18,9 @@ const FILTROS = [
   { id: "TODOS", label: "Todos" },
   { id: "ATIVO", label: "Pagantes" },
   { id: "TRIAL", label: "Teste grátis" },
+  { id: "EM_CONFIGURACAO", label: "Em configuração" },
   { id: "ABANDONO_TRIAL", label: "Pendente de configuração" },
+  { id: "ENGAJADO", label: "Engajados" },
   { id: "GRACE_PERIOD", label: "Carência" },
   { id: "BLOQUEADO", label: "Inadimplentes" },
   { id: "CANCELADO", label: "Cancelados" },
@@ -99,6 +101,8 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
 
       <AdminTable
         titulo={`${itens.length} cliente(s)`}
+        pageSize={10}
+        resetPageKey={`${filtro}|${busca}`}
         colunas={[
           { key: "empresa", header: "Empresa / CNPJ" },
           { key: "titular", header: "Titular" },
@@ -165,7 +169,7 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
             ),
             uso: (
               <span style={{ fontSize: "0.8rem" }}>
-                {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre} docs • {t.totalUsuarios} usuário(s)
+                {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre} docs • {t.totalUsuarios} usuário(s) • {t.aiUsadasMes ?? 0} IA/mês
               </span>
             ),
             criado: fmtDia(t.criadoEm),

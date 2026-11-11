@@ -16,6 +16,7 @@ import {
   TextInput,
 } from "@carbon/react";
 import { Add, CheckmarkOutline, Copy, Edit, Renew, UserFollow } from "@carbon/icons-react";
+import { maskCnpj, maskCpf, maskPhone, sanitizeEmail } from "@/lib/masks";
 import type { SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
   AdminTable,
@@ -116,7 +117,7 @@ export function AfiliadosScreen() {
         id: formAff.id || undefined,
         nome: formAff.nome,
         documento: formAff.documento || null,
-        email: formAff.email,
+        email: sanitizeEmail(formAff.email),
         telefone: formAff.telefone || null,
         chavePix: formAff.chavePix || null,
         codigo: formAff.codigo,
@@ -374,9 +375,28 @@ export function AfiliadosScreen() {
         {formAff ? (
           <div style={{ display: "grid", gap: "0.75rem" }}>
             <TextInput id="af-nome" labelText="Nome completo / Parceiro" value={formAff.nome} onChange={(e) => setFormAff({ ...formAff, nome: e.target.value })} />
-            <TextInput id="af-email" labelText="E-mail" value={formAff.email} onChange={(e) => setFormAff({ ...formAff, email: e.target.value })} />
-            <TextInput id="af-doc" labelText="CPF / CNPJ" value={formAff.documento} onChange={(e) => setFormAff({ ...formAff, documento: e.target.value })} />
-            <TextInput id="af-tel" labelText="Telefone / WhatsApp" value={formAff.telefone} onChange={(e) => setFormAff({ ...formAff, telefone: e.target.value })} />
+            <TextInput
+              id="af-email"
+              labelText="E-mail"
+              value={formAff.email}
+              onChange={(e) => setFormAff({ ...formAff, email: e.target.value })}
+              onBlur={() => setFormAff({ ...formAff, email: sanitizeEmail(formAff.email) })}
+            />
+            <TextInput
+              id="af-doc"
+              labelText="CPF / CNPJ"
+              value={formAff.documento}
+              onChange={(e) => {
+                const d = e.target.value.replace(/\D/g, "");
+                setFormAff({ ...formAff, documento: d.length <= 11 ? maskCpf(d) : maskCnpj(d) });
+              }}
+            />
+            <TextInput
+              id="af-tel"
+              labelText="Telefone / WhatsApp"
+              value={formAff.telefone}
+              onChange={(e) => setFormAff({ ...formAff, telefone: maskPhone(e.target.value) })}
+            />
             <TextInput id="af-pix" labelText="Chave PIX para repasse" value={formAff.chavePix} onChange={(e) => setFormAff({ ...formAff, chavePix: e.target.value })} />
             <TextInput id="af-cod" labelText="Código de indicação (?ref=CODIGO)" value={formAff.codigo} onChange={(e) => setFormAff({ ...formAff, codigo: e.target.value.toUpperCase() })} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>

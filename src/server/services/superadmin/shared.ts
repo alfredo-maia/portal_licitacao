@@ -33,6 +33,7 @@ import {
 import {
   getInMemoryConfiguracaoEmpresa,
   getInMemoryLicitacaoById,
+  listAllInMemoryAnalisesIA,
   listInMemoryDocumentos,
   listInMemoryImpugnacoes,
   listInMemoryPortais,
@@ -360,6 +361,10 @@ export async function lerSetting<T>(key: string, padrao: T): Promise<T> {
     }
   }
   return (memSettings.get(key) as T | undefined) ?? padrao;
+}
+
+export function resetMemSettings(): void {
+  memSettings.clear();
 }
 
 export async function gravarSetting(key: string, value: unknown): Promise<void> {
@@ -796,21 +801,25 @@ export function precoPorMilhaoUsd(model: string): { input: number; output: numbe
   return { input: 0.3, output: 2.5 };
 }
 
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
 export function inicioDoDia(ref = new Date()): Date {
-  const brt = new Date(ref.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-  brt.setHours(0, 0, 0, 0);
-  const diff =
-    ref.getTime() -
-    new Date(ref.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })).getTime();
-  return new Date(brt.getTime() + diff);
+  const shifted = new Date(ref.getTime() - BRT_OFFSET_MS);
+  return new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), 3, 0, 0, 0),
+  );
 }
 
 export function inicioDoMes(ref = new Date()): Date {
-  const d = inicioDoDia(ref);
-  const brtDia = Number(
-    d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).split("-")[2],
+  const shifted = new Date(ref.getTime() - BRT_OFFSET_MS);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1, 3, 0, 0, 0));
+}
+
+export function fimDoMes(ref = new Date()): Date {
+  const shifted = new Date(ref.getTime() - BRT_OFFSET_MS);
+  return new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1, 3, 0, 0, 0),
   );
-  return new Date(d.getTime() - (brtDia - 1) * DIA_MS);
 }
 
 export async function lerLogsIa(desde: Date): Promise<MemAiLog[]> {
@@ -833,18 +842,128 @@ export async function lerLogsIa(desde: Date): Promise<MemAiLog[]> {
 export async function agregarIaPorTenant(): Promise<
   Map<string, { usadas: number; gastoDia: number; gastoMes: number }>
 > {
-  const mapa = new Map<string, { usadas: number; gastoDia: number; gastoMes: number }>();
-  const logs = await lerLogsIa(inicioDoMes());
+  const mesInicio = inicioDoMes();
+  const mesFim = fimDoMes();
   const dia = inicioDoDia().getTime();
+  const logs = await lerLogsIa(mesInicio);
+
+  const logsPorTenant = new Map<
+    string,
+    { usadas: number; gastoDia: number; gastoMes: number }
+  >();
   for (const l of logs) {
     if (!l.tenantId) continue;
-    const cur = mapa.get(l.tenantId) || { usadas: 0, gastoDia: 0, gastoMes: 0 };
+    const ms = new Date(l.criadoEm).getTime();
+    if (ms >= mesFim.getTime()) continue;
+    const cur = logsPorTenant.get(l.tenantId) || { usadas: 0, gastoDia: 0, gastoMes: 0 };
     if (l.status !== "ERRO") cur.usadas++;
     const custo = Number(l.custoEstimadoBrl) || 0;
     cur.gastoMes += custo;
-    if (new Date(l.criadoEm).getTime() >= dia) cur.gastoDia += custo;
-    mapa.set(l.tenantId, cur);
+    if (ms >= dia) cur.gastoDia += custo;
+    logsPorTenant.set(l.tenantId, cur);
   }
+
+  // Mapa fallback userId -> tenantId (TITULAR mais antigo/primário preferencial) para análises sem tenantId
+  const userBestTenant = new Map<
+    string,
+    { tenantId: string; isTitular: boolean; rankMs: number }
+  >();
+  const atualizarMelhorTenant = (
+    userId: string,
+    tenantId: string,
+    isTitular: boolean,
+    rankMs: number,
+  ) => {
+    const cur = userBestTenant.get(userId);
+    if (
+      !cur ||
+      (isTitular && !cur.isTitular) ||
+      (isTitular === cur.isTitular && rankMs < cur.rankMs)
+    ) {
+      userBestTenant.set(userId, { tenantId, isTitular, rankMs });
+    }
+  };
+
+  for (const m of inMemoryTenantUsers) {
+    if (m.ativo === false) continue;
+    const tenantCriado = inMemoryTenants.get(m.tenantId)?.criadoEm;
+    const rankMs = tenantCriado
+      ? new Date(tenantCriado).getTime()
+      : new Date(m.criadoEm).getTime();
+    atualizarMelhorTenant(m.userId, m.tenantId, m.role === "TITULAR", rankMs);
+  }
+  const dbTenantUsers = await dbTry(() =>
+    prisma.tenantUser.findMany({
+      where: { ativo: true },
+      select: { userId: true, tenantId: true, role: true, criadoEm: true },
+      orderBy: { criadoEm: "asc" },
+    }),
+  );
+  if (Array.isArray(dbTenantUsers)) {
+    for (const m of dbTenantUsers) {
+      const rankMs = m.criadoEm ? new Date(m.criadoEm).getTime() : Number.MAX_SAFE_INTEGER;
+      atualizarMelhorTenant(m.userId, m.tenantId, m.role === "TITULAR", rankMs);
+    }
+  }
+  const userToTenant = new Map<string, string>();
+  for (const [uid, info] of userBestTenant) {
+    userToTenant.set(uid, info.tenantId);
+  }
+
+  // Fonte oficial da cota mensal de IA do cliente: AnaliseStatusParticipacao (memória + DB, sem erro)
+  const analisesVistas = new Map<
+    string,
+    { tenantId: string | null; executadoPorId: string | null }
+  >();
+  const dbAnalises = await dbTry(() =>
+    prisma.analiseStatusParticipacao.findMany({
+      where: {
+        status: { not: "ERRO" },
+        criadoEm: { gte: mesInicio, lt: mesFim },
+      },
+      select: { id: true, tenantId: true, executadoPorId: true },
+      take: 20000,
+    }),
+  );
+  if (Array.isArray(dbAnalises)) {
+    for (const a of dbAnalises) {
+      analisesVistas.set(String(a.id), {
+        tenantId: a.tenantId ?? null,
+        executadoPorId: a.executadoPorId ?? null,
+      });
+    }
+  }
+  for (const m of listAllInMemoryAnalisesIA()) {
+    if (!m || m.status === "ERRO") continue;
+    const dt = m.criadoEm ? new Date(m.criadoEm) : null;
+    if (!dt || dt.getTime() < mesInicio.getTime() || dt.getTime() >= mesFim.getTime()) continue;
+    if (!analisesVistas.has(String(m.id))) {
+      analisesVistas.set(String(m.id), {
+        tenantId: m.tenantId ?? null,
+        executadoPorId: m.executadoPorId ?? null,
+      });
+    }
+  }
+
+  const analisesPorTenant = new Map<string, number>();
+  for (const a of analisesVistas.values()) {
+    const tid = a.tenantId || (a.executadoPorId ? userToTenant.get(a.executadoPorId) : undefined);
+    if (!tid) continue;
+    analisesPorTenant.set(tid, (analisesPorTenant.get(tid) || 0) + 1);
+  }
+
+  const mapa = new Map<string, { usadas: number; gastoDia: number; gastoMes: number }>();
+  const allTids = new Set<string>([...logsPorTenant.keys(), ...analisesPorTenant.keys()]);
+  for (const tid of allTids) {
+    const logInfo = logsPorTenant.get(tid) || { usadas: 0, gastoDia: 0, gastoMes: 0 };
+    const analisesCount = analisesPorTenant.get(tid) || 0;
+    mapa.set(tid, {
+      usadas: analisesCount,
+      gastoDia: logInfo.gastoDia,
+      gastoMes: logInfo.gastoMes,
+    });
+  }
+
   return mapa;
 }
 
@@ -991,10 +1110,10 @@ export async function listarTenantsSuperAdmin(filtros?: {
     const espacoUsadoMb = Math.round((totalDocBytes / (1024 * 1024)) * 10) / 10;
     const baseCotaPorEmpresa =
       PLAN_STORAGE_QUOTAS_MB[primary.plano as keyof typeof PLAN_STORAGE_QUOTAS_MB] || 500;
-    const cotaBaseMb = baseCotaPorEmpresa * members.length;
-    const cotaExtraMb = members.reduce(
-      (s, m) => s + (m.storageExtraQuotaMb || memoryTenantExtraQuota.get(m.id) || 0),
+    const cotaBaseMb = baseCotaPorEmpresa;
+    const cotaExtraMb = Math.max(
       0,
+      ...members.map((m) => m.storageExtraQuotaMb || memoryTenantExtraQuota.get(m.id) || 0),
     );
     const cotaTotalMb = cotaBaseMb + cotaExtraMb;
     const percentualUsado =
@@ -1064,6 +1183,12 @@ export async function listarTenantsSuperAdmin(filtros?: {
           item.billingStatus === "TRIAL" &&
           item.onboarding?.statusEngajamento === "CADASTROU_E_SAIU"
         );
+      }
+      if (filtro === "EM_CONFIGURACAO") {
+        return item.onboarding?.statusEngajamento === "EM_CONFIGURACAO";
+      }
+      if (filtro === "ENGAJADO") {
+        return item.onboarding?.statusEngajamento === "ENGAJADO";
       }
       return item.billingStatus === filtro;
     });

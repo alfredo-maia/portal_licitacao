@@ -610,6 +610,7 @@ function OportunidadesDetalheContent({
 
   // Aba 4: Modal Raio-X IA
   const [modalIAOpen, setModalIAOpen] = React.useState(false);
+  const [confirmarReanaliseIAOpen, setConfirmarReanaliseIAOpen] = React.useState(false);
   const [notasEstrategicas, setNotasEstrategicas] = React.useState("");
   const [salvandoAnalise, setSalvandoAnalise] = React.useState(false);
 
@@ -2825,6 +2826,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
   const repositorios = oportunidade.repositoriosSimilares || [];
   const arquivos = oportunidade.arquivos || [];
   const analises = oportunidade.analisesIA || [];
+  const analisesValidasCount = analises.filter((a) => a.status !== "ERRO").length;
 
   return (
     <ModulePageShell routePath={`/oportunidades/${id}`}>
@@ -2903,11 +2905,11 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 kind="tertiary"
                 size="sm"
                 renderIcon={Bot}
-                onClick={() => setModalIAOpen(true)}
+                onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
+                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
               </Button>
             </div>
           ) : (
@@ -2931,11 +2933,11 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 kind="tertiary"
                 size="sm"
                 renderIcon={Bot}
-                onClick={() => setModalIAOpen(true)}
+                onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
                 data-testid="btn-open-verificar-participacao"
                 style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
               >
-                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
+                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
               </Button>
               {statusPipelineMsg && (
                 <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
@@ -3519,10 +3521,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   kind="tertiary"
                   size="md"
                   renderIcon={Bot}
-                  onClick={() => setModalIAOpen(true)}
+                  onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
                   data-testid="btn-executar-analise-ia"
                 >
-                  Executar Nova Análise com IA ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : `${analises.length}/10`})
+                  Executar Nova Análise com IA ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
                 </Button>
               </div>
 
@@ -6842,10 +6844,33 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
         </div>
       </Modal>
 
-      {/* Modal Raio-X com IA: Edital, ATA, Habilitação e Prazos (Issue #37) */}
+      {/* Modal de Alerta: Reanálise com IA Consome 1 Crédito Mensal (Issue #51) */}
       <Modal
-        open={modalIAOpen}
-        modalHeading="⚡ Raio-X de Edital & ATA com Inteligência Artificial"
+        open={confirmarReanaliseIAOpen}
+        modalHeading="Esta licitação já possui análise de IA realizada"
+        primaryButtonText="Sim, consumir cota e continuar"
+        secondaryButtonText="Cancelar"
+        onRequestClose={() => setConfirmarReanaliseIAOpen(false)}
+        onRequestSubmit={() => {
+          setConfirmarReanaliseIAOpen(false);
+          setModalIAOpen(true);
+        }}
+        size="sm"
+        data-testid="modal-confirmar-reanalise-ia"
+      >
+        <p style={{ fontSize: "0.875rem", color: "var(--cds-text-primary)", lineHeight: 1.5, marginBottom: "0.75rem" }}>
+          Esta licitação já possui {analisesValidasCount} análise(s) de Inteligência Artificial salva(s) na aba &ldquo;Histórico Análise IA&rdquo;.
+        </p>
+        <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", lineHeight: 1.5 }}>
+          Executar uma nova análise consumirá <strong>1 crédito da cota mensal de IA</strong> da sua conta. Deseja realmente continuar?
+        </p>
+      </Modal>
+
+      {/* Modal Raio-X com IA: Edital, ATA, Habilitação e Prazos (Issue #37) */}
+      <div style={modalIAOpen ? undefined : { display: "none" }}>
+        <Modal
+          open={modalIAOpen}
+          modalHeading="⚡ Raio-X de Edital & ATA com Inteligência Artificial"
         primaryButtonText={
           iniciandoAnaliseIA
             ? "Processando..."
@@ -6972,7 +6997,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             disabled={Boolean(cotaIA?.atingiuLimite) || iniciandoAnaliseIA}
           />
         </div>
-      </Modal>
+        </Modal>
+      </div>
 
       {/* Modal: Nova Anotação da Licitação (Issue #36) */}
       <Modal

@@ -88,7 +88,8 @@ describe("Sprint SaaS 4 — Frontend SuperAdmin & Paywall", () => {
     expect(screen.getByText("Nome do Cliente")).toBeInTheDocument();
     expect(screen.getByText("Marcos de Configuração")).toBeInTheDocument();
     expect(screen.getByText("Dias Restantes")).toBeInTheDocument();
-    expect(screen.getByText("Engajamento / Configuração")).toBeInTheDocument();
+    expect(screen.getByText("Engajamento")).toBeInTheDocument();
+    expect(screen.getByText("Configuração")).toBeInTheDocument();
     expect(screen.getByText("Grupo Maia")).toBeInTheDocument();
     expect(screen.getByText("+1 CNPJ(s)")).toBeInTheDocument();
     expect(screen.queryByText("Clientes & Assinaturas (Multi-Tenant)")).not.toBeInTheDocument();

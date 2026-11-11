@@ -261,7 +261,8 @@ export function AdminTable({
   linhas,
   vazio = "Nenhum registro encontrado.",
   rowClassName,
-  pageSize,
+  pageSize = 10,
+  pageSizes,
   resetPageKey,
 }: {
   titulo?: string;
@@ -271,15 +272,21 @@ export function AdminTable({
   vazio?: string;
   rowClassName?: (id: string) => string | undefined;
   pageSize?: number;
+  pageSizes?: number[];
   resetPageKey?: string | number;
 }) {
   const [page, setPage] = useState(1);
+  const [currentSize, setCurrentSize] = useState(pageSize);
+
+  useEffect(() => {
+    setCurrentSize(pageSize);
+  }, [pageSize]);
 
   useEffect(() => {
     setPage(1);
   }, [resetPageKey]);
 
-  const effectiveSize = pageSize && pageSize > 0 ? pageSize : linhas.length || 1;
+  const effectiveSize = currentSize > 0 ? currentSize : linhas.length || 1;
   const totalPages = Math.max(1, Math.ceil(linhas.length / effectiveSize));
   const paginaSegura = Math.min(page, totalPages);
 
@@ -290,9 +297,19 @@ export function AdminTable({
   }, [page, totalPages]);
 
   const linhasVisiveis =
-    pageSize && pageSize > 0
-      ? linhas.slice((paginaSegura - 1) * pageSize, paginaSegura * pageSize)
+    currentSize > 0
+      ? linhas.slice((paginaSegura - 1) * currentSize, paginaSegura * currentSize)
       : linhas;
+
+  const baseSizes =
+    pageSizes && pageSizes.length > 0
+      ? pageSizes
+      : pageSize === 5
+        ? [5, 10, 20]
+        : [10, 20, 50];
+  const resolvedPageSizes = baseSizes.includes(currentSize)
+    ? baseSizes
+    : [currentSize, ...baseSizes].sort((a, b) => a - b);
 
   const rows = linhasVisiveis.map((l) => ({ ...l, id: String(l.id) }));
   return (
@@ -333,17 +350,24 @@ export function AdminTable({
               )}
             </TableBody>
           </Table>
-          {pageSize && pageSize > 0 && linhas.length > pageSize ? (
+          {currentSize > 0 && linhas.length > 0 ? (
             <Pagination
               backwardText="Página anterior"
               forwardText="Próxima página"
               itemsPerPageText="Itens por página:"
               pageNumberText="Página"
               page={paginaSegura}
-              pageSize={pageSize}
-              pageSizes={[pageSize]}
+              pageSize={currentSize}
+              pageSizes={resolvedPageSizes}
               totalItems={linhas.length}
-              onChange={({ page: nextPage }) => setPage(nextPage)}
+              onChange={({ page: nextPage, pageSize: nextSize }) => {
+                if (typeof nextSize === "number" && nextSize !== currentSize) {
+                  setCurrentSize(nextSize);
+                  setPage(1);
+                } else {
+                  setPage(nextPage);
+                }
+              }}
             />
           ) : null}
         </TableContainer>

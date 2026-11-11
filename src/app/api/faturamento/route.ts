@@ -54,14 +54,58 @@ export async function GET(req: NextRequest) {
       ultimoPagamentoEm: tenant.ultimoPagamentoEm,
     });
 
-    const cotaBaseMb =
+    // Consolida armazenamento R2 em todos os CNPJs ativos do mesmo Titular (evita multiplicação por CNPJ)
+    let cotaBaseMb =
       PLAN_STORAGE_QUOTAS_MB[tenant.plano as keyof typeof PLAN_STORAGE_QUOTAS_MB] || 500;
-    const cotaTotalMb = cotaBaseMb + (tenant.storageExtraQuotaMb || 0);
+    let cotaExtraMb = tenant.storageExtraQuotaMb || 0;
+    let espacoBytes = tenant.documentos.reduce(
+      (acc, d) => acc + (d.arquivoTamanho || 0),
+      0,
+    );
 
-    let espacoBytes = 0;
-    for (const d of tenant.documentos) {
-      if (d.arquivoTamanho) espacoBytes += d.arquivoTamanho;
+    try {
+      const titularLink = await prisma.tenantUser.findFirst({
+        where: { tenantId: tenant.id, role: "TITULAR", ativo: true },
+        select: { userId: true },
+      });
+      if (titularLink?.userId) {
+        const ownerLinks = await prisma.tenantUser.findMany({
+          where: { userId: titularLink.userId, role: "TITULAR", ativo: true },
+          select: { tenantId: true },
+        });
+        const siblingIds = Array.from(new Set(ownerLinks.map((l) => l.tenantId)));
+        if (siblingIds.length > 1) {
+          const siblingTenants = await prisma.tenant.findMany({
+            where: { id: { in: siblingIds } },
+            include: {
+              documentos: { select: { arquivoTamanho: true } },
+            },
+            orderBy: { criadoEm: "asc" },
+          });
+          if (siblingTenants.length > 0) {
+            const primary = siblingTenants[0];
+            cotaBaseMb =
+              PLAN_STORAGE_QUOTAS_MB[
+                primary.plano as keyof typeof PLAN_STORAGE_QUOTAS_MB
+              ] || cotaBaseMb;
+            cotaExtraMb = Math.max(
+              0,
+              ...siblingTenants.map((s) => s.storageExtraQuotaMb || 0),
+            );
+            espacoBytes = siblingTenants.reduce(
+              (acc, s) =>
+                acc +
+                s.documentos.reduce((ds, d) => ds + (d.arquivoTamanho || 0), 0),
+              0,
+            );
+          }
+        }
+      }
+    } catch {
+      // Fallback seguro para tenant único caso relação auxiliar não esteja disponível
     }
+
+    const cotaTotalMb = cotaBaseMb + cotaExtraMb;
     const espacoUsadoMb = Math.round((espacoBytes / (1024 * 1024)) * 10) / 10;
 
     return NextResponse.json({
@@ -76,7 +120,7 @@ export async function GET(req: NextRequest) {
       vencimentoAssinatura: tenant.vencimentoAssinatura,
       asaasCustomerId: tenant.asaasCustomerId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Faturamento API Error]:", error);
     return NextResponse.json(
       { error: "Erro ao obter informações de faturamento" },

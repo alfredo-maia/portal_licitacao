@@ -6,6 +6,7 @@ import { cleanCnpj, formatCnpj } from "@/lib/validations/cnpj";
 import { recordAuditLog } from "@/server/audit";
 import { CadastroInput, cadastroContaSchema } from "@/server/schemas/cadastro.schema";
 import { enviarEmailBoasVindas } from "@/server/services/email.service";
+import { criarNotificacaoAdmin } from "@/server/services/superadmin/notificacoes";
 import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import { upsertInMemoryAuthUser } from "@/server/auth";
 import { inMemoryTenants, inMemoryTenantUsers } from "@/server/services/tenant.service";
@@ -377,6 +378,18 @@ export async function realizarCadastroConta(
   } catch {
     // Ignora falha de WhatsApp no cadastro
   }
+
+  // Notificação automática para o Portal ADM: novo cadastro Trial (1º CNPJ da conta)
+  await criarNotificacaoAdmin({
+    categoria: "NOVO_CLIENTE_TRIAL",
+    titulo: `Novo cliente em Teste Grátis: ${input.razaoSocial}`,
+    descricao: `Cadastro inicial de ${nomeFinal} (${normalizedEmail}) • ${diasTrial} dias de trial.`,
+    severidade: "INFO",
+    tenantId,
+    linkDestino: `/admin/clientes/${tenantId}`,
+    atorNome: nomeFinal,
+    metadados: { cnpj: input.cnpj, email: normalizedEmail, diasTrial },
+  }).catch(() => undefined);
 
   return {
     ok: true,

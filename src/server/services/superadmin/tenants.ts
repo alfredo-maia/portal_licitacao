@@ -14,6 +14,7 @@ import {
   type AdminUpsertUsuarioClienteInput,
 } from "@/server/schemas/superadmin.schema";
 import { PLAN_LIMITS } from "@/server/schemas/tenant.schema";
+import { PLAN_STORAGE_QUOTAS_MB } from "@/server/schemas/storage-r2.schema";
 import {
   inMemoryCnpjDisputes,
   inMemoryTenants,
@@ -278,18 +279,21 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
   const usuarios = Array.from(usuariosMap.values());
   const titular = titularId ? usuariosMap.get(titularId) || null : null;
 
-  const [patrimonio, porEmpEntries, ia, affiliateNomes, todasDisputas] = await Promise.all([
+  const [patrimonio, ia, affiliateNomes, todasDisputas] = await Promise.all([
     carregarPatrimonio(tenantIds, nomes),
-    Promise.all(
-      empresasRaw.map(async (emp) => [
-        emp.id,
-        { patrimonioOperacional: await carregarPatrimonio([emp.id], nomes) },
-      ] as const),
-    ),
     agregarIaPorTenant(),
     listarAfiliadoNomesMap(),
     listarDisputasCnpjSuperAdmin(),
   ]);
+  const porEmpEntries = await Promise.all(
+    empresasRaw.map(async (emp) => [
+      emp.id,
+      {
+        patrimonioOperacional: await carregarPatrimonio([emp.id], nomes),
+        onboarding: onboardingDeRaw(emp, ia.get(emp.id)?.usadas || 0),
+      },
+    ] as const),
+  );
   const porEmpresa = Object.fromEntries(porEmpEntries);
 
   const usosIa = tenantIds.reduce((a, id) => a + (ia.get(id)?.usadas || 0), 0);
@@ -335,14 +339,24 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
     };
   }
   const cotasArr = Object.values(cotasPorEmpresa);
+  const unifiedStorageBaseMb =
+    PLAN_STORAGE_QUOTAS_MB[primaryRaw.plano as keyof typeof PLAN_STORAGE_QUOTAS_MB] || 500;
+  const unifiedStorageExtraMb = Math.max(
+    0,
+    ...empresasRaw.map((e) => e.storageExtraQuotaMb || memoryTenantExtraQuota.get(e.id) || 0),
+  );
+  const unifiedStorageTotalMb = unifiedStorageBaseMb + unifiedStorageExtraMb;
+  const unifiedStorageUsadoMb =
+    Math.round(cotasArr.reduce((acc, c) => acc + c.storageUsadoMb, 0) * 10) / 10;
+  const unifiedAiExtraQuotaMes = cotasArr.reduce((acc, c) => acc + c.aiExtraQuotaMes, 0);
+
   const contaGlobal = {
     valorMensalidade: primaryItem.valorMensalidade,
     diasRestantesTrial: primaryItem.diasRestantesTrial,
-    storageUsadoMb:
-      Math.round(cotasArr.reduce((acc, c) => acc + c.storageUsadoMb, 0) * 10) / 10,
-    storageTotalMb: cotasArr.reduce((acc, c) => acc + c.storageTotalMb, 0),
+    storageUsadoMb: unifiedStorageUsadoMb,
+    storageTotalMb: unifiedStorageTotalMb,
     aiUsadasMes: usosIa,
-    aiExtraQuotaMes: cotasArr.reduce((acc, c) => acc + c.aiExtraQuotaMes, 0),
+    aiExtraQuotaMes: unifiedAiExtraQuotaMes,
     totalLicitacoes: patrimonio.licitacoes.length,
     totalDocumentos: patrimonio.documentos.total,
     totalPortais: patrimonio.portais,
@@ -390,11 +404,11 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
     cotas: {
       maxCnpjs: Math.max(...empresasRaw.map((e) => e.maxCnpjs), raw.maxCnpjs),
       maxUsers: Math.max(...empresasRaw.map((e) => e.maxUsers), raw.maxUsers),
-      storageBaseMb: item.cotaBaseMb,
-      storageExtraQuotaMb: item.cotaExtraMb,
-      storageTotalMb: item.cotaTotalMb,
-      storageUsadoMb: item.espacoUsadoMb,
-      aiExtraQuotaMes: raw.aiExtraQuotaMes,
+      storageBaseMb: unifiedStorageBaseMb,
+      storageExtraQuotaMb: unifiedStorageExtraMb,
+      storageTotalMb: unifiedStorageTotalMb,
+      storageUsadoMb: unifiedStorageUsadoMb,
+      aiExtraQuotaMes: unifiedAiExtraQuotaMes,
       aiUsadasMes: usosIa,
     },
     financeiro: {
@@ -1168,47 +1182,74 @@ export async function atualizarCotasClienteSuperAdmin(
   if (!atual) throw typedError("Cliente (Tenant) não encontrado.", 404);
   const raw = atual.raw;
 
+  // Carrega todos os CNPJs vinculados ao mesmo TITULAR para manter cotas unificadas da conta
+  const titularMembro = raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+  const siblingSet = new Set<string>([input.tenantId]);
+  if (titularMembro?.userId) {
+    const siblingTids = await tenantIdsDoUsuario(titularMembro.userId, true);
+    for (const s of siblingTids) siblingSet.add(s);
+  }
+  const siblingRaws: RawTenant[] = [raw];
+  for (const sibId of siblingSet) {
+    if (sibId === input.tenantId) continue;
+    const loaded = await carregarRawTenant(sibId);
+    if (loaded) siblingRaws.push(loaded.raw);
+  }
+  siblingRaws.sort((a, b) => {
+    const diff = new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime();
+    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+  });
+  const primaryId = siblingRaws[0]?.id ?? input.tenantId;
+
+  const currentAccountStorageExtra = Math.max(
+    0,
+    ...siblingRaws.map(
+      (s) => s.storageExtraQuotaMb || memoryTenantExtraQuota.get(s.id) || 0,
+    ),
+  );
+  const currentAccountAiExtra = siblingRaws.reduce(
+    (acc, s) => acc + (s.aiExtraQuotaMes || 0),
+    0,
+  );
+
   const maxCnpjs = input.maxCnpjs ?? raw.maxCnpjs;
   const maxUsers = input.maxUsers ?? raw.maxUsers;
   const storageExtraQuotaMb = Math.max(
     0,
-    input.storageExtraQuotaMb ?? raw.storageExtraQuotaMb + (input.adicionarStorageMb ?? 0),
+    input.storageExtraQuotaMb ?? currentAccountStorageExtra + (input.adicionarStorageMb ?? 0),
   );
   const aiExtraQuotaMes = Math.max(
     0,
-    input.aiExtraQuotaMes ?? raw.aiExtraQuotaMes + (input.adicionarAiQuota ?? 0),
+    input.aiExtraQuotaMes ?? currentAccountAiExtra + (input.adicionarAiQuota ?? 0),
   );
 
-  await aplicarPatchTenant(input.tenantId, {
-    maxCnpjs,
-    maxUsers,
-    storageExtraQuotaMb,
-    aiExtraQuotaMes,
-  });
+  const tenantsSincronizados: string[] = [];
+  for (const sib of siblingRaws) {
+    const aiQuotaForSib = sib.id === primaryId ? aiExtraQuotaMes : 0;
+    await aplicarPatchTenant(sib.id, {
+      maxCnpjs,
+      maxUsers,
+      storageExtraQuotaMb,
+      aiExtraQuotaMes: aiQuotaForSib,
+    }).catch(() => undefined);
 
-  memoryTenantExtraQuota.set(input.tenantId, storageExtraQuotaMb);
-  setMemoryTenantExtraAiQuota(input.tenantId, aiExtraQuotaMes);
-  const memT = inMemoryTenants.get(input.tenantId);
-  if (memT) {
-    memT.maxCnpjs = maxCnpjs;
-    memT.maxUsers = maxUsers;
-  }
-
-  // Sincroniza cotas globais de conta (maxCnpjs / maxUsers) nos demais CNPJs do mesmo TITULAR
-  const titularMembro = raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
-  const tenantsSincronizados: string[] = [input.tenantId];
-  if (titularMembro?.userId && (input.maxCnpjs !== undefined || input.maxUsers !== undefined)) {
-    const siblingTids = await tenantIdsDoUsuario(titularMembro.userId, true);
-    for (const sibId of siblingTids) {
-      if (sibId === input.tenantId) continue;
-      await aplicarPatchTenant(sibId, { maxCnpjs, maxUsers }).catch(() => undefined);
-      const memSib = inMemoryTenants.get(sibId);
-      if (memSib) {
-        memSib.maxCnpjs = maxCnpjs;
-        memSib.maxUsers = maxUsers;
-      }
-      tenantsSincronizados.push(sibId);
+    memoryTenantExtraQuota.set(sib.id, storageExtraQuotaMb);
+    setMemoryTenantExtraAiQuota(sib.id, aiQuotaForSib);
+    const extras = memTenantExtras.get(sib.id) || {};
+    extras.storageExtraQuotaMb = storageExtraQuotaMb;
+    extras.aiExtraQuotaMes = aiQuotaForSib;
+    memTenantExtras.set(sib.id, extras);
+    const memSib = inMemoryTenants.get(sib.id) as
+      | (typeof inMemoryTenants extends Map<string, infer T> ? T : never) & {
+          aiExtraQuotaMes?: number;
+        }
+      | undefined;
+    if (memSib) {
+      memSib.maxCnpjs = maxCnpjs;
+      memSib.maxUsers = maxUsers;
+      memSib.aiExtraQuotaMes = aiQuotaForSib;
     }
+    tenantsSincronizados.push(sib.id);
   }
 
   let travaIaResetada = false;
@@ -1233,8 +1274,8 @@ export async function atualizarCotasClienteSuperAdmin(
     {
       maxCnpjs: raw.maxCnpjs,
       maxUsers: raw.maxUsers,
-      storageExtraQuotaMb: raw.storageExtraQuotaMb,
-      aiExtraQuotaMes: raw.aiExtraQuotaMes,
+      storageExtraQuotaMb: currentAccountStorageExtra,
+      aiExtraQuotaMes: currentAccountAiExtra,
     },
   );
 

@@ -8,9 +8,11 @@ import {
   Tile,
   Tag,
   Button,
+  Select,
+  SelectItem,
   InlineNotification,
 } from "@carbon/react";
-import { SendAlt } from "@carbon/icons-react";
+import { Renew } from "@carbon/icons-react";
 import { SuperAdminMetrics, SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
   AdminTable,
@@ -28,24 +30,52 @@ interface SuperAdminDashboardProps {
   initialTenants?: SuperAdminTenantItem[];
 }
 
+const MESES_ANO = [
+  { value: "1", label: "Janeiro" },
+  { value: "2", label: "Fevereiro" },
+  { value: "3", label: "Março" },
+  { value: "4", label: "Abril" },
+  { value: "5", label: "Maio" },
+  { value: "6", label: "Junho" },
+  { value: "7", label: "Julho" },
+  { value: "8", label: "Agosto" },
+  { value: "9", label: "Setembro" },
+  { value: "10", label: "Outubro" },
+  { value: "11", label: "Novembro" },
+  { value: "12", label: "Dezembro" },
+];
+
 export function SuperAdminDashboard({
   initialMetrics,
   initialTenants,
 }: SuperAdminDashboardProps) {
+  const hoje = new Date();
+  const [mes, setMes] = useState<string>(
+    String(initialMetrics?.periodoMes ?? hoje.getMonth() + 1),
+  );
+  const [ano, setAno] = useState<string>(
+    String(initialMetrics?.periodoAno ?? hoje.getFullYear()),
+  );
   const [metrics, setMetrics] = useState<SuperAdminMetrics | null>(initialMetrics || null);
   const [tenants, setTenants] = useState<SuperAdminTenantItem[]>(initialTenants || []);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const carregarDados = async () => {
+  const anoBase = hoje.getFullYear();
+  const anosDisponiveis = Array.from(
+    new Set([anoBase - 2, anoBase - 1, anoBase, anoBase + 1, Number(ano)].filter(Boolean)),
+  ).sort((a, b) => a - b);
+
+  const carregarDados = async (mesParam = mes, anoParam = ano) => {
     setLoading(true);
     try {
+      const qs = new URLSearchParams({ mes: mesParam, ano: anoParam }).toString();
       const [resMetrics, resTenants] = await Promise.all([
-        fetch("/api/admin/metricas").then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/admin/metricas?${qs}`).then((r) => (r.ok ? r.json() : null)),
         fetch("/api/admin/tenants").then((r) => (r.ok ? r.json() : [])),
       ]);
       if (resMetrics) setMetrics(resMetrics);
-      if (resTenants) setTenants(resTenants);
+      if (Array.isArray(resTenants)) setTenants(resTenants);
     } catch {
       // fallback
     } finally {
@@ -55,43 +85,10 @@ export function SuperAdminDashboard({
 
   useEffect(() => {
     if (!initialMetrics || !initialTenants) {
-      carregarDados();
+      void carregarDados();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleProcessarFilaWhatsApp = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "processar_fila", limite: 20 }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        processados?: unknown[];
-        motivoBloqueio?: "FORA_DA_JANELA" | "LIMITE_DIARIO_ATINGIDO" | null;
-        error?: string;
-      };
-      if (res.ok) {
-        if (data.motivoBloqueio === "FORA_DA_JANELA") {
-          setFeedback("Envio pausado: fora da janela permitida no horário de Brasília (BRT).");
-        } else if (data.motivoBloqueio === "LIMITE_DIARIO_ATINGIDO") {
-          setFeedback("Envio pausado: limite diário de warm-up atingido.");
-        } else {
-          setFeedback(
-            `Fila processada com sucesso: ${data.processados?.length || 0} mensagens enviadas com jitter humano.`,
-          );
-          carregarDados();
-        }
-      } else {
-        setFeedback(data.error || "Erro ao processar fila do WhatsApp.");
-      }
-    } catch {
-      setFeedback("Erro ao processar fila do WhatsApp.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const trialsRecentes = [...tenants]
     .filter((t) => t.billingStatus === "TRIAL")
@@ -100,13 +97,65 @@ export function SuperAdminDashboard({
 
   return (
     <div style={{ padding: "2rem", maxWidth: "1600px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "2rem" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-          Portal Administrativo (SuperAdmin)
-        </h1>
-        <p style={{ color: "var(--cds-text-secondary)" }}>
-          Backoffice Executivo — Gestão consolidada de contas, faturamento Asaas, armazenamento Cloudflare R2 e WhatsApp anti-ban.
-        </p>
+      <div
+        style={{
+          marginBottom: "2rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+            Portal Administrativo (SuperAdmin)
+          </h1>
+          <p style={{ color: "var(--cds-text-secondary)" }}>
+            Backoffice Executivo — Gestão consolidada de contas, faturamento Asaas, armazenamento Cloudflare R2 e WhatsApp anti-ban.
+          </p>
+        </div>
+
+        <div
+          data-testid="dashboard-periodo-filtro"
+          style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}
+        >
+          <div style={{ minWidth: "9rem" }}>
+            <Select
+              id="dash-mes"
+              size="sm"
+              labelText="Mês"
+              value={mes}
+              onChange={(e) => setMes(e.target.value)}
+            >
+              {MESES_ANO.map((m) => (
+                <SelectItem key={m.value} value={m.value} text={m.label} />
+              ))}
+            </Select>
+          </div>
+          <div style={{ minWidth: "6.5rem" }}>
+            <Select
+              id="dash-ano"
+              size="sm"
+              labelText="Ano"
+              value={ano}
+              onChange={(e) => setAno(e.target.value)}
+            >
+              {anosDisponiveis.map((y) => (
+                <SelectItem key={y} value={String(y)} text={String(y)} />
+              ))}
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            kind="tertiary"
+            renderIcon={Renew}
+            disabled={loading}
+            onClick={() => void carregarDados(mes, ano)}
+          >
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {feedback && (
@@ -140,13 +189,13 @@ export function SuperAdminDashboard({
         <Column sm={4} md={4} lg={3}>
           <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
             <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              VOLUME ARREMATADO
+              VOLUME ARREMATADO MENSAL
             </div>
             <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
               {(metrics?.totalVolumeArrematado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
             </div>
             <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-text-secondary)" }}>
-              {metrics?.totalLicitacoesContempladas || 0} certames arrematados
+              Soma ganha pelos clientes no mês ({metrics?.totalLicitacoesContempladas || 0} certames contemplados)
             </div>
           </Tile>
         </Column>
@@ -178,17 +227,6 @@ export function SuperAdminDashboard({
               <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
                 {metrics?.whatsappFilaPendentes || 0} na fila
               </span>
-            </div>
-            <div style={{ marginTop: "0.75rem" }}>
-              <Button
-                size="sm"
-                kind="ghost"
-                renderIcon={SendAlt}
-                onClick={handleProcessarFilaWhatsApp}
-                disabled={loading}
-              >
-                Disparar com Jitter
-              </Button>
             </div>
           </Tile>
         </Column>
@@ -260,12 +298,14 @@ export function SuperAdminDashboard({
       <AdminTable
         titulo="Radar de Teste Grátis"
         descricao="Últimos 10 clientes cadastrados em período de teste grátis (agrupados pela conta principal)."
+        pageSize={10}
         colunas={[
           { key: "primeiroCnpj", header: "Primeiro CNPJ Cadastrado" },
           { key: "cliente", header: "Nome do Cliente" },
           { key: "marcos", header: "Marcos de Configuração" },
           { key: "diasRestantes", header: "Dias Restantes" },
-          { key: "engajamento", header: "Engajamento / Configuração" },
+          { key: "engajamento", header: "Engajamento" },
+          { key: "configuracao", header: "Configuração" },
         ]}
         vazio="Nenhum cliente em período de teste grátis no momento."
         linhas={trialsRecentes.map((t) => {
@@ -295,9 +335,12 @@ export function SuperAdminDashboard({
             ),
             marcos: `${t.onboarding?.score ?? 0}/7 marcos`,
             diasRestantes: `${t.diasRestantesTrial}d restantes`,
-            engajamento: (
+            engajamento: <EngajamentoTag status={t.onboarding?.statusEngajamento} />,
+            configuracao: (
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                <EngajamentoTag status={t.onboarding?.statusEngajamento} />
+                <span style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
+                  {t.onboarding?.percentual ?? 0}% concluído
+                </span>
                 <Link href={`/admin/clientes/${t.id}`} style={{ fontSize: "0.8rem" }}>
                   Abrir 360º
                 </Link>

@@ -18,7 +18,8 @@ import {
   TextInput,
   Tile,
 } from "@carbon/react";
-import { ArrowLeft, Add, Edit, View } from "@carbon/icons-react";
+import { ArrowLeft, Add, Edit } from "@carbon/icons-react";
+import { maskCnpj, maskCpf, maskPhone, sanitizeEmail } from "@/lib/masks";
 import {
   AdminTable,
   EngajamentoTag,
@@ -125,6 +126,11 @@ interface Dossie {
   porEmpresa?: Record<
     string,
     {
+      onboarding?: Record<string, boolean | number | string> & {
+        score: number;
+        percentual: number;
+        statusEngajamento: string;
+      };
       patrimonioOperacional: {
         licitacoes: Array<{
           id: string;
@@ -238,7 +244,6 @@ const STATUS_KANBAN = [
 export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   const { data, loading, erro, recarregar } = useAdminData<Dossie>(`/api/admin/clientes/${tenantId}`);
   const [fb, setFb] = useState<Feedback | null>(null);
-  const [espelho, setEspelho] = useState<Record<string, unknown> | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<string>(tenantId);
 
   useEffect(() => {
@@ -265,12 +270,6 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
     return r.ok;
   };
 
-  const abrirEspelho = async () => {
-    const r = await adminFetch<Record<string, unknown>>(`/api/admin/clientes/${activeTenantId}?espelho=1`);
-    if (r.ok) setEspelho(r.data);
-    else setFb({ kind: "error", texto: "Não foi possível espelhar a visão do cliente." });
-  };
-
   if (loading && !data) return <p>Carregando dossiê do cliente...</p>;
   if (erro || !data) {
     return (
@@ -282,6 +281,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   }
 
   const { tenant, titular, onboarding, cotas, patrimonioOperacional: pat } = data;
+  const activeOnboarding = data.porEmpresa?.[activeTenantId]?.onboarding ?? onboarding;
   const tituloEmpresa = selectedEmpresa?.nomeFantasia || selectedEmpresa?.razaoSocial || tenant.nomeFantasia || tenant.razaoSocial;
   const descEmpresa = `${selectedEmpresa?.razaoSocial || tenant.razaoSocial} • ${selectedEmpresa?.cnpj || tenant.cnpj}`;
   const planoAtivo = selectedEmpresa?.plano || tenant.plano;
@@ -316,9 +316,6 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
             <StatusFinanceiroTag status={statusAtivo} />
             <Tag type="blue">{planoAtivo}</Tag>
             {!ativoEmpresa ? <Tag type="red">Conta inativa</Tag> : null}
-            <Button kind="tertiary" renderIcon={View} onClick={abrirEspelho}>
-              Espelhar visão do cliente
-            </Button>
           </>
         }
       />
@@ -398,18 +395,18 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {/* Termômetro de configuração do Trial (7 marcos) */}
+      {/* Termômetro de configuração do Trial (7 marcos) — Individual por CNPJ selecionado */}
       <Tile style={{ marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: 600 }}>
-            Termômetro de configuração — {onboarding.score}/7 ({onboarding.percentual}%)
+            Termômetro de configuração — {activeOnboarding.score}/7 ({activeOnboarding.percentual}%)
           </h3>
-          <EngajamentoTag status={onboarding.statusEngajamento} />
+          <EngajamentoTag status={activeOnboarding.statusEngajamento} />
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
           {MARCOS.map((m) => (
-            <Tag key={m.chave} type={onboarding[m.chave] ? "green" : "gray"}>
-              {onboarding[m.chave] ? "✓" : "○"} {m.rotulo}
+            <Tag key={m.chave} type={activeOnboarding[m.chave] ? "green" : "gray"}>
+              {activeOnboarding[m.chave] ? "✓" : "○"} {m.rotulo}
             </Tag>
           ))}
         </div>
@@ -446,6 +443,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
         <div style={{ marginTop: "2rem" }}>
           <AdminTable
             titulo="Disputas de titularidade de CNPJ"
+            pageSize={5}
             colunas={[
               { key: "cnpj", header: "CNPJ" },
               { key: "req", header: "Requerente" },
@@ -474,16 +472,6 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
           />
         </div>
       )}
-
-      <Modal
-        open={Boolean(espelho)}
-        modalHeading={`Visão do cliente (${tituloEmpresa} — somente leitura)`}
-        passiveModal
-        size="lg"
-        onRequestClose={() => setEspelho(null)}
-      >
-        {espelho ? <EspelhoView espelho={espelho} /> : null}
-      </Modal>
 
       <Tile
         data-testid="conta-global-resumo"
@@ -566,18 +554,28 @@ function ContaPrincipal({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
   }, [t?.id, t?.name, t?.email, t?.cpf, t?.telefone, t?.cidade, t?.uf, t?.ativo, t?.sessionVersion, dossie.notasInternasAdm]);
 
   if (!t) return <Tile>Sem titular vinculado.</Tile>;
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    let val = e.target.value;
+    if (k === "cpf") val = maskCpf(val);
+    else if (k === "telefone") val = maskPhone(val);
+    setForm((f) => ({ ...f, [k]: val }));
+  };
 
   return (
     <div style={{ display: "grid", gap: "1rem", maxWidth: "52rem", paddingTop: "1rem" }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
         <TextInput id="c-nome" labelText="Nome do titular" value={form.name} onChange={set("name")} />
-        <TextInput id="c-email" labelText="E-mail de acesso" value={form.email} onChange={set("email")} />
+        <TextInput
+          id="c-email"
+          labelText="E-mail de acesso"
+          value={form.email}
+          onChange={set("email")}
+          onBlur={() => setForm((f) => ({ ...f, email: sanitizeEmail(f.email) }))}
+        />
         <TextInput id="c-cpf" labelText="CPF" value={form.cpf} onChange={set("cpf")} />
         <TextInput id="c-tel" labelText="Telefone / WhatsApp" value={form.telefone} onChange={set("telefone")} />
         <TextInput id="c-cidade" labelText="Cidade" value={form.cidade} onChange={set("cidade")} />
-        <TextInput id="c-uf" labelText="UF" maxLength={2} value={form.uf} onChange={set("uf")} />
+        <TextInput id="c-uf" labelText="UF" maxLength={2} value={form.uf} onChange={(e) => setForm((f) => ({ ...f, uf: e.target.value.toUpperCase() }))} />
       </div>
       <TextArea id="c-notas" labelText="Notas internas (visíveis só para a equipe ADM)" value={form.notas} onChange={set("notas")} rows={3} />
       <p style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>
@@ -596,7 +594,7 @@ function ContaPrincipal({ dossie, patch }: { dossie: Dossie; patch: PatchFn }) {
               {
                 userId: t.id,
                 name: form.name,
-                email: form.email,
+                email: sanitizeEmail(form.email),
                 cpf: form.cpf || null,
                 telefone: form.telefone || null,
                 cidade: form.cidade || null,
@@ -684,6 +682,7 @@ function Empresas({
       </div>
       <AdminTable
         titulo={`${dossie.empresas.length} CNPJ(s) do cliente`}
+        pageSize={5}
         rowClassName={(id) => (id === activeTenantId ? "pncp-admin-row--active" : undefined)}
         colunas={[
           { key: "emp", header: "Empresa" },
@@ -771,7 +770,7 @@ function Empresas({
       >
         {edit ? (
           <div style={{ display: "grid", gap: "1rem" }}>
-            <TextInput id="e-cnpj" labelText="CNPJ" value={edit.cnpj} onChange={(e) => setEdit({ ...edit, cnpj: e.target.value })} />
+            <TextInput id="e-cnpj" labelText="CNPJ" value={edit.cnpj} onChange={(e) => setEdit({ ...edit, cnpj: maskCnpj(e.target.value) })} />
             <TextInput id="e-razao" labelText="Razão social" value={edit.razaoSocial} onChange={(e) => setEdit({ ...edit, razaoSocial: e.target.value })} />
             <TextInput id="e-fantasia" labelText="Nome fantasia" value={edit.nomeFantasia} onChange={(e) => setEdit({ ...edit, nomeFantasia: e.target.value })} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 5rem", gap: "1rem" }}>
@@ -825,6 +824,7 @@ function Usuarios({
       </div>
       <AdminTable
         titulo={`${dossie.usuarios.length} usuário(s) — senhas nunca são exibidas`}
+        pageSize={5}
         colunas={[
           { key: "nome", header: "Usuário" },
           { key: "perfil", header: "Perfil" },
@@ -883,7 +883,7 @@ function Usuarios({
           if (!edit) return;
           const ok = await patch(
             "usuario",
-            { ...edit, userId: edit.userId || undefined },
+            { ...edit, email: sanitizeEmail(edit.email), userId: edit.userId || undefined },
             "Usuário salvo. O link de definição de senha é enviado por e-mail.",
           );
           if (ok) setEdit(null);
@@ -892,7 +892,13 @@ function Usuarios({
         {edit ? (
           <div style={{ display: "grid", gap: "1rem" }}>
             <TextInput id="u-nome" labelText="Nome" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-            <TextInput id="u-email" labelText="E-mail" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
+            <TextInput
+              id="u-email"
+              labelText="E-mail"
+              value={edit.email}
+              onChange={(e) => setEdit({ ...edit, email: e.target.value })}
+              onBlur={() => setEdit({ ...edit, email: sanitizeEmail(edit.email) })}
+            />
             <Select id="u-empresa" labelText="Empresa (CNPJ)" value={edit.tenantId} onChange={(e) => setEdit({ ...edit, tenantId: e.target.value })}>
               {dossie.empresas.map((emp) => (
                 <SelectItem key={emp.id} value={emp.id} text={`${emp.nomeFantasia || emp.razaoSocial} — ${emp.cnpj}`} />
@@ -1037,7 +1043,13 @@ function Patrimonio({
         }}
       >
         <div style={{ display: "grid", gap: "1rem" }}>
-          <TextInput id="i-lic" labelText="ID da licitação (veja em Licitações & PNCP)" value={inj.licitacaoId} onChange={(e) => setInj({ ...inj, licitacaoId: e.target.value })} />
+          <TextInput
+            id="i-lic"
+            labelText="ID, idPncp ou Link completo do PNCP"
+            placeholder="Ex.: https://pncp.gov.br/app/editais/00394460000141/2026/1 ou id interno"
+            value={inj.licitacaoId}
+            onChange={(e) => setInj({ ...inj, licitacaoId: e.target.value })}
+          />
           <Select id="i-empresa" labelText="CNPJ de destino" value={inj.tenantId} onChange={(e) => setInj({ ...inj, tenantId: e.target.value })}>
             {dossie.empresas.map((emp) => (
               <SelectItem key={emp.id} value={emp.id} text={`${emp.nomeFantasia || emp.razaoSocial} — ${emp.cnpj}`} />
@@ -1064,47 +1076,50 @@ function Cotas({
   activeTenantId: string;
   patch: PatchFn;
 }) {
-  const c = dossie.cotasPorEmpresa?.[activeTenantId] ?? dossie.cotas;
+  const c = dossie.cotas;
   const [maxCnpjs, setMaxCnpjs] = useState(String(c.maxCnpjs));
   const [maxUsers, setMaxUsers] = useState(String(c.maxUsers));
   const [bonusIa, setBonusIa] = useState(String(c.aiExtraQuotaMes));
+  const [bonusStorageMb, setBonusStorageMb] = useState(String(c.storageExtraQuotaMb));
   const [licReset, setLicReset] = useState("");
 
   useEffect(() => {
     setMaxCnpjs(String(c.maxCnpjs));
     setMaxUsers(String(c.maxUsers));
     setBonusIa(String(c.aiExtraQuotaMes));
-  }, [activeTenantId, c.maxCnpjs, c.maxUsers, c.aiExtraQuotaMes]);
+    setBonusStorageMb(String(c.storageExtraQuotaMb));
+  }, [activeTenantId, c.maxCnpjs, c.maxUsers, c.aiExtraQuotaMes, c.storageExtraQuotaMb]);
 
   return (
-    <div style={{ paddingTop: "1rem", display: "grid", gap: "1.5rem", maxWidth: "52rem" }}>
+    <div style={{ paddingTop: "1rem", display: "grid", gap: "1.5rem", maxWidth: "56rem" }}>
       <KpiGrid>
-        <KpiTile rotulo="COFRE R2" valor={`${c.storageUsadoMb} / ${c.storageTotalMb} MB`} detalhe={`Base ${c.storageBaseMb} MB + extra ${c.storageExtraQuotaMb} MB`} />
-        <KpiTile rotulo="ANÁLISES DE IA (MÊS)" valor={fmtNum(c.aiUsadasMes)} detalhe={`Bônus concedido: +${c.aiExtraQuotaMes}`} />
+        <KpiTile rotulo="COFRE R2" valor={`${c.storageUsadoMb} / ${c.storageTotalMb} MB`} detalhe={`Base ${c.storageBaseMb} MB + extra ${c.storageExtraQuotaMb} MB (conta unificada)`} />
+        <KpiTile rotulo="ANÁLISES DE IA (MÊS)" valor={fmtNum(c.aiUsadasMes)} detalhe={`Bônus concedido: +${c.aiExtraQuotaMes} (todos os CNPJs)`} />
       </KpiGrid>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "1rem" }}>
         <TextInput id="q-cnpjs" labelText="Máximo de CNPJs" type="number" value={maxCnpjs} onChange={(e) => setMaxCnpjs(e.target.value)} />
         <TextInput id="q-users" labelText="Máximo de usuários" type="number" value={maxUsers} onChange={(e) => setMaxUsers(e.target.value)} />
-        <TextInput id="q-ia" labelText="Bônus mensal de análises de IA" type="number" value={bonusIa} onChange={(e) => setBonusIa(e.target.value)} />
+        <TextInput id="q-ia" labelText="Bônus mensal de análises de IA" type="number" min={0} value={bonusIa} onChange={(e) => setBonusIa(e.target.value)} />
+        <TextInput id="q-storage" labelText="Bônus de Cofre R2 (MB)" type="number" min={0} value={bonusStorageMb} onChange={(e) => setBonusStorageMb(e.target.value)} />
       </div>
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
         <Button
           onClick={() =>
             patch(
               "cotas",
-              { tenantId: activeTenantId, maxCnpjs: Number(maxCnpjs), maxUsers: Number(maxUsers), aiExtraQuotaMes: Number(bonusIa) },
+              {
+                tenantId: activeTenantId,
+                maxCnpjs: Number(maxCnpjs),
+                maxUsers: Number(maxUsers),
+                aiExtraQuotaMes: Math.max(0, Number(bonusIa) || 0),
+                storageExtraQuotaMb: Math.max(0, Number(bonusStorageMb) || 0),
+              },
               "Limites do cliente atualizados.",
             )
           }
         >
           Salvar limites
-        </Button>
-        <Button kind="tertiary" onClick={() => patch("cotas", { tenantId: activeTenantId, adicionarStorageMb: 1024 }, "+1 GB de Cofre concedido.")}>
-          +1 GB de Cofre
-        </Button>
-        <Button kind="tertiary" onClick={() => patch("cotas", { tenantId: activeTenantId, adicionarStorageMb: 2048 }, "+2 GB de Cofre concedidos.")}>
-          +2 GB de Cofre
         </Button>
       </div>
 
@@ -1121,35 +1136,6 @@ function Cotas({
           </Button>
         </div>
       </Tile>
-    </div>
-  );
-}
-
-/* ---------------------------- Espelho (visão do cliente) ---------------------------- */
-function EspelhoView({ espelho }: { espelho: Record<string, unknown> }) {
-  const kanban = (espelho.licitacoesKanban as Array<{ id: string; numeroEdital: string; orgaoNome: string; statusKanban: string }>) || [];
-  const porColuna = (espelho.kanbanPorColuna as Record<string, number>) || {};
-  return (
-    <div>
-      <p style={{ color: "var(--cds-text-secondary)", marginBottom: "1rem" }}>
-        Modo espelho: exibe exatamente o patrimônio que o cliente enxerga, sem permitir alterações e sem iniciar sessão como ele.
-      </p>
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-        {Object.entries(porColuna).map(([col, n]) => (
-          <Tag key={col} type="cool-gray">
-            {col.replace(/_/g, " ")}: {n}
-          </Tag>
-        ))}
-      </div>
-      {kanban.length === 0 ? (
-        <p>O cliente ainda não possui licitações no Kanban.</p>
-      ) : (
-        kanban.map((k) => (
-          <div key={k.id} style={{ padding: "0.4rem 0", borderTop: "1px solid var(--cds-border-subtle-01)" }}>
-            <strong>{k.numeroEdital}</strong> — {k.orgaoNome} <Tag type="blue">{k.statusKanban.replace(/_/g, " ")}</Tag>
-          </div>
-        ))
-      )}
     </div>
   );
 }

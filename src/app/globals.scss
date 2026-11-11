@@ -184,4 +184,15 @@ html[data-carbon-theme="g10"] .cds--app-theme-root.cds--g10 {
   box-shadow: inset 4px 0 0 0 var(--cds-border-interactive);
 }
 
+[data-testid="admin-carbon-shell"] {
+  .cds--side-nav__item {
+    margin-bottom: 0.25rem;
+  }
+
+  .cds--side-nav__link {
+    min-height: 2.85rem;
+    padding-block: 0.75rem;
+  }
+}
+
 

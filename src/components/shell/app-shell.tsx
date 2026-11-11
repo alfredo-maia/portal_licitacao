@@ -152,7 +152,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const trialDias =
     typeof subStatus?.diasRestantesTrial === "number"
-      ? Math.max(0, Math.min(14, subStatus.diasRestantesTrial))
+      ? Math.max(0, subStatus.diasRestantesTrial)
       : 14;
   const trialSeverity: "safe" | "warning" | "danger" =
     trialDias >= 6 ? "safe" : trialDias >= 1 ? "warning" : "danger";

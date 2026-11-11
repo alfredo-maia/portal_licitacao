@@ -135,6 +135,8 @@ export const SuperAdminMetricsSchema = z.object({
   comissoesPendentesBrl: z.number().nonnegative().optional().default(0),
   ultimaColetaStatus: z.string().optional().default("CONCLUIDO"),
   ultimaColetaEm: z.string().nullable().optional(),
+  periodoMes: z.number().int().min(1).max(12).optional(),
+  periodoAno: z.number().int().min(2020).max(2100).optional(),
   ultimasVitorias: z
     .array(
       z.object({
@@ -321,7 +323,40 @@ export type AdminUpdateCotasClienteInput = z.infer<
    Financeiro, Planos & Cupons (/admin/financeiro)
 ========================================================================= */
 
-export const AdminFinanceiroActionSchema = z.object({
+export const TenantInvoicePaymentMethodEnum = z.enum(["PIX", "BOLETO", "CARTAO"]);
+export type TenantInvoicePaymentMethod = z.infer<typeof TenantInvoicePaymentMethodEnum>;
+
+export const TenantInvoiceRecordSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  empresaNome: z.string(),
+  acao: z.enum([
+    "DAR_BAIXA_MANUAL",
+    "PRORROGAR_TRIAL",
+    "ALTERAR_PLANO",
+    "ALTERAR_STATUS",
+    "APLICAR_CUPOM",
+  ]),
+  plano: z.string(),
+  statusAnterior: z.string(),
+  statusNovo: z.string(),
+  valorPago: z.number().nonnegative().nullable().optional().default(null),
+  metodoPagamento: TenantInvoicePaymentMethodEnum.nullable().optional().default(null),
+  comprovanteDataUrl: z.string().nullable().optional().default(null),
+  comprovanteNome: z.string().nullable().optional().default(null),
+  comprovanteMimeType: z.string().nullable().optional().default(null),
+  diasExtrasTrial: z.number().int().nullable().optional().default(null),
+  cupomCodigo: z.string().nullable().optional().default(null),
+  observacao: z.string().nullable().optional().default(null),
+  operadorId: z.string().nullable().optional().default(null),
+  operadorNome: z.string().nullable().optional().default(null),
+  criadoEm: z.string(),
+});
+export type TenantInvoiceRecord = z.infer<typeof TenantInvoiceRecordSchema>;
+
+export const ALLOWED_TRIAL_EXTENSION_DAYS = [7, 14, 21] as const;
+
+const AdminFinanceiroActionBaseSchema = z.object({
   tenantId: z.string().min(1),
   action: z.enum([
     "ALTERAR_PLANO",
@@ -338,10 +373,176 @@ export const AdminFinanceiroActionSchema = z.object({
   novoVencimento: z.string().optional(),
   cupomCodigo: z.string().optional(),
   observacao: z.string().optional(),
+  metodoPagamento: TenantInvoicePaymentMethodEnum.optional(),
+  valorPago: z.number().nonnegative().nullable().optional(),
+  comprovanteDataUrl: z
+    .string()
+    .max(8_000_000, "Comprovante excede o tamanho máximo permitido (aprox. 5 MB).")
+    .nullable()
+    .optional(),
+  comprovanteNome: z.string().max(255).nullable().optional(),
+  comprovanteMimeType: z.string().max(120).nullable().optional(),
 });
+
+function normalizarMimeComprovante(mime: string): string {
+  const lower = mime.trim().toLowerCase();
+  return lower === "image/jpg" ? "image/jpeg" : lower;
+}
+
+function validarMagicBytesComprovante(mime: string, bytes: Uint8Array): boolean {
+  if (mime === "image/png") {
+    const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return bytes.length >= 8 && sig.every((b, i) => bytes[i] === b);
+  }
+  if (mime === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mime === "image/webp") {
+    return (
+      bytes.length >= 12 &&
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    );
+  }
+  if (mime === "application/pdf") {
+    return (
+      bytes.length >= 5 &&
+      bytes[0] === 0x25 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x44 &&
+      bytes[3] === 0x46 &&
+      bytes[4] === 0x2d
+    );
+  }
+  return false;
+}
+
+function refinarAcaoFinanceira(
+  val: z.infer<typeof AdminFinanceiroActionBaseSchema>,
+  ctx: z.RefinementCtx,
+) {
+  if (
+    val.action === "PRORROGAR_TRIAL" &&
+    val.diasExtrasTrial !== undefined &&
+    !ALLOWED_TRIAL_EXTENSION_DAYS.includes(
+      val.diasExtrasTrial as (typeof ALLOWED_TRIAL_EXTENSION_DAYS)[number],
+    )
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Prorrogação de Trial permitida apenas em 7, 14 ou 21 dias (máximo).",
+      path: ["diasExtrasTrial"],
+    });
+  }
+  if (val.comprovanteDataUrl) {
+    const match =
+      /^data:(image\/png|image\/jpe?g|image\/webp|application\/pdf);base64,([A-Za-z0-9+/=\s]+)$/i.exec(
+        val.comprovanteDataUrl,
+      );
+    if (!match) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Formato de comprovante inválido. Envie uma imagem (PNG/JPG/WEBP) ou PDF.",
+        path: ["comprovanteDataUrl"],
+      });
+      return;
+    }
+
+    const mimeDataUrl = normalizarMimeComprovante(match[1]);
+    if (val.comprovanteMimeType) {
+      const mimeDeclarado = normalizarMimeComprovante(val.comprovanteMimeType);
+      if (mimeDeclarado !== mimeDataUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Tipo MIME do comprovante diverge do conteúdo enviado.",
+          path: ["comprovanteMimeType"],
+        });
+        return;
+      }
+    }
+
+    const b64Clean = match[2].replace(/\s+/g, "");
+    if (!b64Clean || b64Clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64Clean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Conteúdo Base64 do comprovante inválido.",
+        path: ["comprovanteDataUrl"],
+      });
+      return;
+    }
+
+    try {
+      const rawHead = atob(b64Clean.slice(0, 16));
+      const bytes = new Uint8Array(rawHead.length);
+      for (let i = 0; i < rawHead.length; i++) {
+        bytes[i] = rawHead.charCodeAt(i);
+      }
+      if (!validarMagicBytesComprovante(mimeDataUrl, bytes)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Assinatura binária do comprovante não corresponde a PNG/JPG/WEBP ou PDF válido.",
+          path: ["comprovanteDataUrl"],
+        });
+      }
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Não foi possível decodificar o comprovante enviado.",
+        path: ["comprovanteDataUrl"],
+      });
+    }
+  }
+}
+
+export const AdminFinanceiroActionSchema =
+  AdminFinanceiroActionBaseSchema.superRefine(refinarAcaoFinanceira);
 export type AdminFinanceiroActionInput = z.infer<
   typeof AdminFinanceiroActionSchema
 >;
+
+/* =========================================================================
+   Central de Notificações do Portal ADM (/admin/notificacoes)
+========================================================================= */
+
+export const AdminNotificationCategoryEnum = z.enum([
+  "NOVO_CLIENTE_TRIAL",
+  "CHAMADO_SUPORTE",
+  "ACAO_FATURAMENTO_ADM",
+]);
+export type AdminNotificationCategory = z.infer<typeof AdminNotificationCategoryEnum>;
+
+export const AdminNotificationItemSchema = z.object({
+  id: z.string(),
+  categoria: AdminNotificationCategoryEnum,
+  titulo: z.string(),
+  descricao: z.string(),
+  severidade: z.enum(["INFO", "ATENCAO", "CRITICA"]),
+  somenteMaster: z.boolean().default(false),
+  tenantId: z.string().nullable().optional().default(null),
+  linkDestino: z.string().nullable().optional().default(null),
+  atorNome: z.string().nullable().optional().default(null),
+  metadados: z.record(z.string(), z.unknown()).optional(),
+  lidaPor: z.array(z.string()).optional().default([]),
+  criadaEm: z.string(),
+});
+export type AdminNotificationItem = z.infer<typeof AdminNotificationItemSchema>;
+
+export const AdminNotificationsPatchSchema = z.discriminatedUnion("acao", [
+  z.object({
+    acao: z.literal("marcar_lida"),
+    id: z.string().min(1),
+  }),
+  z.object({
+    acao: z.literal("marcar_todas"),
+  }),
+]);
+export type AdminNotificationsPatchInput = z.infer<typeof AdminNotificationsPatchSchema>;
 
 export const AdminUpsertCouponSchema = z.object({
   id: z.string().optional(),
@@ -459,6 +660,24 @@ export type RegistrarAiUsageInput = z.infer<typeof RegistrarAiUsageInputSchema>;
    Catálogo Global & Injeção Manual de Licitações (/admin/licitacoes)
 ========================================================================= */
 
+export const AdminLicitacaoKanbanStatusEnum = z.enum([
+  "PENDENTE",
+  "ACEITA",
+  "RECUSADA",
+  "ANALISE_TECNICA",
+  "ANALISE_FINANCEIRA",
+  "REVISAO_PROPOSTA",
+  "ENVIADA",
+  "EM_DISPUTA",
+  "AGUARDANDO_RESULTADO",
+  "CONTEMPLADA",
+  "IMPUGNADA",
+  "NAO_CONTEMPLADA_PRECO",
+  "NAO_CONTEMPLADA_DOCUMENTACAO",
+  "NAO_CONTEMPLADA_DESISTENCIA",
+  "REVOGADA_ANULADA",
+]);
+
 export const AdminUpsertLicitacaoSchema = z.object({
   id: z.string().optional(),
   idPncp: z.string().optional(),
@@ -479,14 +698,14 @@ export const AdminUpsertLicitacaoSchema = z.object({
   linkSistemaOrigem: z.string().nullable().optional(),
   parecerIA: z.enum(["GO", "AVALIAR", "NO_GO"]).default("AVALIAR"),
   injetarParaTenantId: z.string().nullable().optional(),
-  statusKanbanInicial: z.string().default("PENDENTE"),
+  statusKanbanInicial: AdminLicitacaoKanbanStatusEnum.default("PENDENTE"),
 });
 export type AdminUpsertLicitacaoInput = z.infer<typeof AdminUpsertLicitacaoSchema>;
 
 export const AdminInjetarLicitacaoKanbanSchema = z.object({
   licitacaoId: z.string().min(1),
   tenantId: z.string().min(1),
-  statusKanban: z.string().default("PENDENTE"),
+  statusKanban: AdminLicitacaoKanbanStatusEnum.default("PENDENTE"),
   notas: z.string().optional(),
 });
 
@@ -532,10 +751,16 @@ export const AdminClientesPatchSchema = z.discriminatedUnion("tipo", [
 ]);
 export type AdminClientesPatchInput = z.infer<typeof AdminClientesPatchSchema>;
 
-export const AdminFinanceiroPostSchema = z.discriminatedUnion("tipo", [
-  AdminUpsertCouponSchema.extend({ tipo: z.literal("cupom") }),
-  AdminFinanceiroActionSchema.extend({ tipo: z.literal("acao") }),
-]);
+export const AdminFinanceiroPostSchema = z
+  .discriminatedUnion("tipo", [
+    AdminUpsertCouponSchema.extend({ tipo: z.literal("cupom") }),
+    AdminFinanceiroActionBaseSchema.extend({ tipo: z.literal("acao") }),
+  ])
+  .superRefine((val, ctx) => {
+    if (val.tipo === "acao") {
+      refinarAcaoFinanceira(val, ctx);
+    }
+  });
 export type AdminFinanceiroPostInput = z.infer<typeof AdminFinanceiroPostSchema>;
 
 export const AdminAfiliadosPostSchema = z.discriminatedUnion("tipo", [
@@ -670,6 +895,33 @@ export const AdminWhatsAppPostSchema = z.preprocess(
   ]),
 );
 export type AdminWhatsAppPostInput = z.infer<typeof AdminWhatsAppPostSchema>;
+
+export const AdminMetricasQuerySchema = z.object({
+  mes: z.coerce.number().int().min(1).max(12).optional(),
+  ano: z.coerce.number().int().min(2020).max(2100).optional(),
+});
+
+export const AdminNotificacoesQuerySchema = z.object({
+  categoria: z
+    .enum(["TODAS", "NOVO_CLIENTE_TRIAL", "CHAMADO_SUPORTE", "ACAO_FATURAMENTO_ADM"])
+    .optional(),
+  naoLidas: z.enum(["true", "false", "1", "0"]).optional(),
+  limite: z.coerce.number().int().min(1).max(300).optional(),
+});
+
+export const AdminFinanceiroQuerySchema = z.object({
+  status: z.string().trim().max(40).optional(),
+  faturasTenantId: z.string().trim().min(1).max(120).optional(),
+});
+
+export const AdminTenantsQuerySchema = z.object({
+  status: z.string().trim().max(40).optional(),
+  busca: z.string().trim().max(120).optional(),
+});
+
+export const AdminLicitacoesQuerySchema = z.object({
+  busca: z.string().trim().max(160).optional(),
+});
 
 export const AdminLicitacoesPostSchema = z.discriminatedUnion("acao", [
   AdminUpsertLicitacaoSchema.extend({ acao: z.literal("salvar") }),

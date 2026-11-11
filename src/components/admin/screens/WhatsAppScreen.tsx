@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Button, Tab, TabList, TabPanel, TabPanels, Tabs, Tag, TextInput, Tile } from "@carbon/react";
 import { QrCode, Renew, SendAlt } from "@carbon/icons-react";
+import { maskPhone } from "@/lib/masks";
 import {
   AdminTable,
   FeedbackBar,
@@ -236,7 +237,7 @@ export function WhatsAppScreen() {
         <Tile>
           <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>Disparo de Teste</h3>
           <div style={{ display: "grid", gap: "0.75rem" }}>
-            <TextInput id="wa-teste-tel" labelText="Telefone destino (DDD + número)" placeholder="62999990000" value={testeTel} onChange={(e) => setTesteTel(e.target.value)} />
+            <TextInput id="wa-teste-tel" labelText="Telefone destino (DDD + número)" placeholder="(62) 99999-0000" value={testeTel} onChange={(e) => setTesteTel(maskPhone(e.target.value))} />
             <TextInput id="wa-teste-msg" labelText="Mensagem" value={testeMsg} onChange={(e) => setTesteMsg(e.target.value)} />
             <Button kind="tertiary" renderIcon={SendAlt} disabled={!testeTel.trim()} onClick={() => void enviarTeste()}>
               Enfileirar mensagem de teste

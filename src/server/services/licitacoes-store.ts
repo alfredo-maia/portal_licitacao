@@ -406,6 +406,10 @@ export function setInMemoryTenantLicitacao(
 export function listInMemoryTenantLicitacoes(tenantId: string): TenantLicitacaoRecord[] {
   return Array.from(tenantLicitacoesStore.values()).filter((tl) => tl.tenantId === tenantId);
 }
+
+export function listAllInMemoryTenantLicitacoes(): TenantLicitacaoRecord[] {
+  return Array.from(tenantLicitacoesStore.values());
+}
 let licitacaoEquipeStore: Map<string, { responsavelId: string | null; atribuidoIds: string[] }> = new Map();
 let licitacaoArquivosStore: Map<string, any[]> = new Map();
 let licitacaoRepositoriosStore: Map<string, any[]> = new Map();

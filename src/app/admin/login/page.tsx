@@ -6,6 +6,7 @@ import { signIn, signOut } from "next-auth/react";
 import { Button, Form, InlineNotification, PasswordInput, Stack, TextInput, Tile } from "@carbon/react";
 import { Chat, Email, Login, Password } from "@carbon/icons-react";
 import { APP_CONFIG } from "@/config/brand";
+import { sanitizeEmail } from "@/lib/masks";
 
 type AdminLoginMode = "PASSWORD" | "EMAIL_OTP" | "WHATSAPP_OTP";
 
@@ -33,7 +34,7 @@ export default function AdminLoginPage() {
   const solicitarOtp = async (method: "EMAIL_OTP" | "WHATSAPP_OTP") => {
     setErro(null);
     setAviso(null);
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = sanitizeEmail(email);
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setErro("Informe o e-mail da conta administrativa antes de solicitar o código.");
       return;
@@ -71,7 +72,7 @@ export default function AdminLoginPage() {
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = sanitizeEmail(email);
 
     if (mode === "PASSWORD") {
       if (!normalizedEmail.includes("@") || !password) {
@@ -158,6 +159,7 @@ export default function AdminLoginPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmail((prev) => sanitizeEmail(prev))}
             />
 
             {mode === "PASSWORD" ? (

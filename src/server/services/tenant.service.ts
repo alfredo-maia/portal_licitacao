@@ -513,6 +513,28 @@ export async function createTenantForUser(params: {
     // Fallback gracioso para ambiente sem container PostgreSQL
   }
 
+  // Dispara notificação no Portal ADM apenas na criação do 1º CNPJ em Trial da conta
+  if (!oldestExisting && existingById.size === 0 && billingStatusInicial === "TRIAL") {
+    await import("@/server/services/superadmin/notificacoes")
+      .then((mod) => {
+        const criarNotif =
+          mod.criarNotificacaoAdmin ??
+          (mod as { default?: { criarNotificacaoAdmin?: typeof mod.criarNotificacaoAdmin } })
+            .default?.criarNotificacaoAdmin;
+        return criarNotif?.({
+          categoria: "NOVO_CLIENTE_TRIAL",
+          titulo: `Novo cliente em Teste Grátis: ${input.razaoSocial}`,
+          descricao: `Conta criada por ${userName || userEmail} (${userEmail}) • CNPJ ${formatCnpj(cleanedCnpj)}.`,
+          severidade: "INFO",
+          tenantId: newTenantId,
+          linkDestino: `/admin/clientes/${newTenantId}`,
+          atorNome: userName || userEmail,
+          metadados: { cnpj: cleanedCnpj, email: userEmail, plano: effectivePlan },
+        });
+      })
+      .catch(() => undefined);
+  }
+
   return record;
 }
 

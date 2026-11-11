@@ -4,6 +4,7 @@ import { APP_CONFIG } from "@/config/brand";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import { enviarEmailProtocoloSuporte } from "@/server/services/email.service";
+import { criarNotificacaoAdmin } from "@/server/services/superadmin/notificacoes";
 import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import {
   criarTicketSuporteInputSchema,
@@ -305,6 +306,22 @@ export async function criarTicketSuporte(
     }).catch(() => undefined);
   }
 
+  await criarNotificacaoAdmin({
+    categoria: "CHAMADO_SUPORTE",
+    titulo: `Novo chamado de suporte ${ticketFinal.protocolo}: ${ticketFinal.assunto}`,
+    descricao: `Aberto por ${autorNome} • Categoria ${ticketFinal.categoria} • Urgência ${ticketFinal.urgencia}.`,
+    severidade:
+      ticketFinal.urgencia === "CRITICA"
+        ? "CRITICA"
+        : ticketFinal.urgencia === "ALTA"
+          ? "ATENCAO"
+          : "INFO",
+    tenantId: actor.tenantId ?? null,
+    linkDestino: "/admin/suporte",
+    atorNome: autorNome,
+    metadados: { ticketId: ticketFinal.id, protocolo: ticketFinal.protocolo },
+  }).catch(() => undefined);
+
   return ticketFinal;
 }
 
@@ -526,6 +543,17 @@ export async function adicionarMensagemTicketSuporte(
         userId: actor.id ?? null,
       }).catch(() => undefined);
     }
+
+    await criarNotificacaoAdmin({
+      categoria: "CHAMADO_SUPORTE",
+      titulo: `Nova mensagem no chamado ${existente.protocolo}`,
+      descricao: `${autorNome} respondeu em "${existente.assunto}": ${input.mensagem.slice(0, 140)}`,
+      severidade: "INFO",
+      tenantId: existente.tenantId,
+      linkDestino: "/admin/suporte",
+      atorNome: autorNome,
+      metadados: { ticketId: existente.id, protocolo: existente.protocolo },
+    }).catch(() => undefined);
   }
 
   return atualizado;

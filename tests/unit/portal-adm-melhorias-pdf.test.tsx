@@ -1490,14 +1490,10 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       await waitFor(() => expect(screen.getByText("EDITAL-EMP1")).toBeInTheDocument());
       expect(screen.queryByText("EDITAL-EMP2-1")).not.toBeInTheDocument();
 
-      // Espelhar visão do cliente consulta o CNPJ selecionado (tnt_c360_1)
-      fireEvent.click(screen.getByRole("button", { name: /Espelhar visão do cliente/i }));
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledWith(
-          "/api/admin/clientes/tnt_c360_1?espelho=1",
-          expect.any(Object),
-        ),
-      );
+      // Botão "Espelhar visão do cliente" removido conforme Issue #51 Frente 4
+      expect(
+        screen.queryByRole("button", { name: /Espelhar visão do cliente/i }),
+      ).not.toBeInTheDocument();
 
       // Aba 2 destaca o CNPJ selecionado (tnt_c360_1) com Visualizando
       fireEvent.click(screen.getByRole("tab", { name: /2 · Empresas/i }));
@@ -1574,16 +1570,22 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       });
       expect(btnsFaturamento).toHaveLength(10);
 
-      // Abre o Modal unificado e verifica explicação clara de Dar Baixa (+30 dias)
-      fireEvent.click(btnsFaturamento[0]);
+      // Abre o Modal unificado para o cliente TRIAL (btnsFaturamento[1]) -> Ações rápidas com +7d/+14d Trial (sem Dar Baixa rápido)
+      fireEvent.click(btnsFaturamento[1]);
       await waitFor(() =>
         expect(
-          screen.getByText(/Registrar Pagamento Manual \(Dar Baixa \+30 dias\)/i),
+          screen.getByText(/Estenda rapidamente o período de avaliação gratuita/i),
         ).toBeInTheDocument(),
       );
       expect(screen.getByRole("button", { name: /\+7d Trial/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /\+14d Trial/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Dar Baixa \(\+30d\)/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Dar Baixa \(\+30d\)/i })).not.toBeInTheDocument();
+
+      // A ação "Dar baixa manual (+30 dias)" fica disponível no seletor detalhado com comprovante/método
+      fireEvent.change(screen.getByLabelText(/Ação detalhada de assinatura/i), {
+        target: { value: "DAR_BAIXA_MANUAL" },
+      });
+      expect(screen.getByLabelText(/Forma de pagamento/i)).toBeInTheDocument();
 
       const finSrc = fs.readFileSync(
         path.resolve(process.cwd(), "src/components/admin/screens/FinanceiroScreen.tsx"),

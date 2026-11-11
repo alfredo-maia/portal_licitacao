@@ -17,6 +17,7 @@ import {
   TextInput,
 } from "@carbon/react";
 import { Add, CloudDownload, Renew, TrashCan } from "@carbon/icons-react";
+import { maskCnpj } from "@/lib/masks";
 import type { SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
   AdminTable,
@@ -262,6 +263,9 @@ export function LicitacoesAdminScreen() {
             </div>
             <AdminTable
               titulo="Licitações no catálogo global"
+              pageSize={10}
+              pageSizes={[10, 20, 50]}
+              resetPageKey={busca}
               colunas={[
                 { key: "edital", header: "Edital / Órgão" },
                 { key: "local", header: "UF / Município" },
@@ -366,7 +370,10 @@ export function LicitacoesAdminScreen() {
               <TextInput id="lic-num" labelText="Número do edital" value={modalManual.numeroEdital} onChange={(e) => setModalManual({ ...modalManual, numeroEdital: e.target.value })} />
               <TextInput id="lic-uf" labelText="UF" maxLength={2} value={modalManual.uf} onChange={(e) => setModalManual({ ...modalManual, uf: e.target.value.toUpperCase() })} />
             </div>
-            <TextInput id="lic-orgao" labelText="Órgão comprador" value={modalManual.orgaoNome} onChange={(e) => setModalManual({ ...modalManual, orgaoNome: e.target.value })} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <TextInput id="lic-orgao" labelText="Órgão comprador" value={modalManual.orgaoNome} onChange={(e) => setModalManual({ ...modalManual, orgaoNome: e.target.value })} />
+              <TextInput id="lic-cnpj" labelText="CNPJ do órgão" value={modalManual.orgaoCnpj} onChange={(e) => setModalManual({ ...modalManual, orgaoCnpj: maskCnpj(e.target.value) })} />
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
               <TextInput id="lic-mun" labelText="Município" value={modalManual.municipio} onChange={(e) => setModalManual({ ...modalManual, municipio: e.target.value })} />
               <TextInput id="lic-mod" labelText="Modalidade" value={modalManual.modalidade} onChange={(e) => setModalManual({ ...modalManual, modalidade: e.target.value })} />

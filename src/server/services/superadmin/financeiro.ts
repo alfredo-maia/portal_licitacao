@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PlanoAssinatura, TenantBillingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getAuditActorContext } from "@/server/audit";
 import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import {
   AdminFinanceiroActionSchema,
@@ -8,12 +9,15 @@ import {
   AdminUpsertAffiliateSchema,
   AdminUpsertCouponSchema,
   AdminVincularAffiliateSchema,
+  TenantInvoiceRecordSchema,
   type AdminFinanceiroActionInput,
   type AdminUpsertAffiliateInput,
   type AdminUpsertCouponInput,
+  type TenantInvoiceRecord,
 } from "@/server/schemas/superadmin.schema";
 import { PLAN_LIMITS } from "@/server/schemas/tenant.schema";
 import { inMemoryTenants } from "@/server/services/tenant.service";
+import { criarNotificacaoAdmin } from "./notificacoes";
 import {
   DIA_MS,
   VALOR_PLANO,
@@ -22,6 +26,8 @@ import {
   datasPorStatus,
   dbTry,
   getPrismaErrorCode,
+  gravarSetting,
+  lerSetting,
   memAffiliates,
   memCommissions,
   memCoupons,
@@ -324,8 +330,40 @@ export async function atualizarStatusComissaoAfiliadoSuperAdmin(rawInput: {
 }
 
 /* =========================================================================
-   Ações Financeiras em Clientes
+   Ações Financeiras em Clientes & Histórico de Faturas / Controle de Fraude
 ========================================================================= */
+
+const ADMIN_FATURAS_SETTING_KEY = "admin_faturas_historico";
+const MAX_FATURAS_RETIDAS = 250;
+let faturasWriteQueue: Promise<unknown> = Promise.resolve();
+
+function withFaturasWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  const exec = faturasWriteQueue.catch(() => undefined).then(fn);
+  faturasWriteQueue = exec;
+  return exec;
+}
+
+export async function listarHistoricoFaturasClienteSuperAdmin(
+  tenantId: string,
+  extraTenantIds?: string[],
+): Promise<TenantInvoiceRecord[]> {
+  const bruto = await lerSetting<TenantInvoiceRecord[]>(ADMIN_FATURAS_SETTING_KEY, []);
+  const todas = Array.isArray(bruto) ? bruto : [];
+
+  const contaIds = new Set<string>([tenantId, ...(extraTenantIds ?? [])]);
+  const loaded = await carregarRawTenant(tenantId);
+  if (loaded) {
+    const titular = loaded.raw.users.find((u) => u.role === "TITULAR" && u.ativo !== false);
+    if (titular?.userId) {
+      const sibs = await tenantIdsDoUsuario(titular.userId, true);
+      for (const s of sibs) contaIds.add(s);
+    }
+  }
+
+  return todas
+    .filter((f) => contaIds.has(f.tenantId))
+    .sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
+}
 
 export async function executarAcaoFinanceiraSuperAdmin(
   rawInput: AdminFinanceiroActionInput,
@@ -400,6 +438,7 @@ export async function executarAcaoFinanceiraSuperAdmin(
       const dias = input.diasExtrasTrial ?? 7;
       const base = Math.max(
         agora,
+        primaryRaw.trialFim ? new Date(primaryRaw.trialFim).getTime() : 0,
         atual.raw.trialFim ? new Date(atual.raw.trialFim).getTime() : 0,
       );
       patch = { billingStatus: "TRIAL", trialFim: new Date(base + dias * DIA_MS) };
@@ -487,12 +526,86 @@ export async function executarAcaoFinanceiraSuperAdmin(
   }
 
   const calc = statusEfetivo(raw);
+  const actor = getAuditActorContext();
+  const operadorNome = actor?.usuarioNome || "SuperAdmin Backoffice";
+  const empresaRotulo = primaryRaw.nomeFantasia || primaryRaw.razaoSocial;
+  const valorPadrao = VALOR_PLANO[raw.plano] ?? ASAAS_PLAN_PRICES_BRL.PRO;
+
+  const faturaRegistrada = TenantInvoiceRecordSchema.parse({
+    id: `fat_${randomUUID()}`,
+    tenantId: primaryRaw.id,
+    empresaNome: empresaRotulo,
+    acao: input.action,
+    plano: raw.plano,
+    statusAnterior,
+    statusNovo: calc.status,
+    valorPago:
+      input.action === "DAR_BAIXA_MANUAL"
+        ? (input.valorPago ?? valorPadrao)
+        : (input.valorPago ?? null),
+    metodoPagamento:
+      input.metodoPagamento ??
+      (input.action === "DAR_BAIXA_MANUAL" ? "PIX" : null),
+    comprovanteDataUrl: input.comprovanteDataUrl ?? null,
+    comprovanteNome: input.comprovanteNome ?? null,
+    comprovanteMimeType: input.comprovanteMimeType ?? null,
+    diasExtrasTrial:
+      input.action === "PRORROGAR_TRIAL" ? (input.diasExtrasTrial ?? 7) : null,
+    cupomCodigo: input.cupomCodigo?.trim().toUpperCase() || null,
+    observacao: input.observacao?.trim() || null,
+    operadorId: actor?.usuarioId ?? null,
+    operadorNome,
+    criadoEm: new Date().toISOString(),
+  });
+
+  await withFaturasWriteLock(async () => {
+    const histAtual = await lerSetting<TenantInvoiceRecord[]>(ADMIN_FATURAS_SETTING_KEY, []);
+    const histProximo = [
+      faturaRegistrada,
+      ...(Array.isArray(histAtual) ? histAtual : []),
+    ].slice(0, MAX_FATURAS_RETIDAS);
+    await gravarSetting(ADMIN_FATURAS_SETTING_KEY, histProximo);
+  });
+
+  const resumoAcao: Record<string, string> = {
+    DAR_BAIXA_MANUAL: `Baixa manual (${faturaRegistrada.metodoPagamento || "PIX"} · R$ ${(faturaRegistrada.valorPago ?? 0).toFixed(2)})`,
+    PRORROGAR_TRIAL: `Prorrogação de Trial (+${faturaRegistrada.diasExtrasTrial ?? 7} dias)`,
+    ALTERAR_PLANO: `Alteração de plano para ${raw.plano}`,
+    ALTERAR_STATUS: `Alteração manual de status (${statusAnterior} → ${calc.status})`,
+    APLICAR_CUPOM: `Aplicação manual de cupom ${faturaRegistrada.cupomCodigo || ""}`,
+  };
+
+  await criarNotificacaoAdmin({
+    categoria: "ACAO_FATURAMENTO_ADM",
+    somenteMaster: true,
+    severidade:
+      input.action === "DAR_BAIXA_MANUAL" || input.action === "ALTERAR_STATUS"
+        ? "CRITICA"
+        : "ATENCAO",
+    titulo: `Auditoria Financeira ADM: ${empresaRotulo} — ${resumoAcao[input.action] || input.action}`,
+    descricao: `${operadorNome} executou ${resumoAcao[input.action] || input.action} em ${empresaRotulo}.${faturaRegistrada.observacao ? ` Obs: ${faturaRegistrada.observacao}` : ""}`,
+    tenantId: primaryRaw.id,
+    linkDestino: "/admin/financeiro",
+    atorNome: operadorNome,
+    metadados: {
+      faturaId: faturaRegistrada.id,
+      acao: input.action,
+      metodoPagamento: faturaRegistrada.metodoPagamento,
+      valorPago: faturaRegistrada.valorPago,
+      statusAnterior,
+      statusNovo: calc.status,
+    },
+  }).catch(() => undefined);
+
   await registrarAuditoriaAdm(
     `FINANCEIRO_${input.action}`,
     "TENANT",
     input.tenantId,
     {
       ...patch,
+      faturaId: faturaRegistrada.id,
+      metodoPagamento: faturaRegistrada.metodoPagamento,
+      valorPago: faturaRegistrada.valorPago,
       observacao: input.observacao,
       tenantsSincronizados: updatedSiblings.map((s) => s.id),
     },
@@ -502,6 +615,7 @@ export async function executarAcaoFinanceiraSuperAdmin(
 
   return {
     ok: true,
+    fatura: faturaRegistrada,
     tenant: {
       id: raw.id,
       razaoSocial: raw.razaoSocial,

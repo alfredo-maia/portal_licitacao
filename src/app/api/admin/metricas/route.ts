@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runWithAuditActorContext } from "@/server/audit";
 import { exigirAdmin, respostaErroAdmin } from "@/server/auth/admin-guard";
+import { AdminMetricasQuerySchema } from "@/server/schemas/superadmin.schema";
 import { obterMetricasSuperAdmin } from "@/server/services/superadmin.service";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,12 @@ export async function GET(req?: Request) {
     },
     async () => {
       try {
-        return NextResponse.json(await obterMetricasSuperAdmin(), { status: 200 });
+        const url = req?.url ? new URL(req.url) : null;
+        const query = AdminMetricasQuerySchema.parse({
+          mes: url?.searchParams.get("mes")?.trim() || undefined,
+          ano: url?.searchParams.get("ano")?.trim() || undefined,
+        });
+        return NextResponse.json(await obterMetricasSuperAdmin(query), { status: 200 });
       } catch (error) {
         return respostaErroAdmin(error, "metricas");
       }

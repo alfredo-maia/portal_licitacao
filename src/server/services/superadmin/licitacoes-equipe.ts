@@ -18,7 +18,10 @@ import {
   updateInMemoryLicitacao,
   type NovaLicitacaoData,
 } from "@/server/services/licitacoes-store";
+import { normalizarModalidade } from "@/server/schemas/modalidades.schema";
+import { detectarPortalDisputaPorTextoEUrl } from "@/lib/regras-disputa-edital";
 import { listarExecucoesIngestaoPncp } from "@/server/services/pncp-ingestao-diaria.service";
+import { buscarESincronizarArquivosEditalPncp } from "@/server/services/oportunidades.service";
 import {
   MASTER_EMAIL,
   carregarRawTenant,
@@ -55,7 +58,7 @@ export async function listarLicitacoesGlobaisSuperAdmin(busca?: string) {
           }
         : undefined,
       orderBy: { createdAt: "desc" },
-      take: 100,
+      take: 500,
     }),
   );
   if (Array.isArray(rows)) for (const r of rows) out.set(r.id, r);
@@ -71,7 +74,125 @@ export async function listarLicitacoesGlobaisSuperAdmin(busca?: string) {
     }
     out.set(l.id, l);
   }
-  return Array.from(out.values()).slice(0, 100).map(licitacaoResumo);
+  return Array.from(out.values()).slice(0, 500).map(licitacaoResumo);
+}
+
+interface PncpCoordsParsed {
+  cnpj: string;
+  ano: string;
+  seq: string;
+  paddedIdPncp: string;
+  shortIdPncp: string;
+  linkWeb: string;
+}
+
+function extrairReferenciasLicitacaoInput(rawRef: string): {
+  rawKey: string;
+  internalIdCandidate: string | null;
+  coords: PncpCoordsParsed | null;
+  pncpCandidates: string[];
+} {
+  const rawKey = rawRef.trim();
+  const oppMatch = rawKey.match(/\/oportunidades\/([^/?#]+)/i);
+  const internalIdCandidate = oppMatch ? decodeURIComponent(oppMatch[1]) : null;
+
+  let cnpj: string | null = null;
+  let ano: string | null = null;
+  let seqNum: number | null = null;
+
+  const urlMatch = rawKey.match(
+    /(?:editais|orgaos)\/(\d{14})\/(?:compras\/)?(\d{4})\/(\d+)/i,
+  );
+  if (urlMatch) {
+    cnpj = urlMatch[1];
+    ano = urlMatch[2];
+    seqNum = parseInt(urlMatch[3], 10);
+  } else {
+    const codeMatch = rawKey.match(/^(\d{14})-(\d+)-(\d+)\/(\d{4})$/);
+    if (codeMatch) {
+      cnpj = codeMatch[1];
+      seqNum = parseInt(codeMatch[3], 10);
+      ano = codeMatch[4];
+    }
+  }
+
+  let coords: PncpCoordsParsed | null = null;
+  const pncpCandidates = new Set<string>([rawKey]);
+  if (internalIdCandidate) pncpCandidates.add(internalIdCandidate);
+
+  if (cnpj && ano && seqNum !== null && Number.isFinite(seqNum) && seqNum > 0) {
+    const seq = String(seqNum);
+    const padded = seq.padStart(6, "0");
+    const paddedIdPncp = `${cnpj}-1-${padded}/${ano}`;
+    const shortIdPncp = `${cnpj}-1-${seq}/${ano}`;
+    const linkWeb = `https://pncp.gov.br/app/editais/${cnpj}/${ano}/${seq}`;
+    coords = { cnpj, ano, seq, paddedIdPncp, shortIdPncp, linkWeb };
+    pncpCandidates.add(paddedIdPncp);
+    pncpCandidates.add(shortIdPncp);
+    pncpCandidates.add(linkWeb);
+  }
+
+  return {
+    rawKey,
+    internalIdCandidate,
+    coords,
+    pncpCandidates: Array.from(pncpCandidates),
+  };
+}
+
+interface PncpApiCompraPayload {
+  numeroControlePNCP?: string | null;
+  numeroCompra?: string | number | null;
+  anoCompra?: number | null;
+  modalidadeId?: number | null;
+  modalidadeNome?: string | null;
+  objetoCompra?: string | null;
+  informacaoComplementar?: string | null;
+  valorTotalEstimado?: number | null;
+  dataAberturaProposta?: string | null;
+  dataEncerramentoProposta?: string | null;
+  dataPublicacaoPncp?: string | null;
+  dataAtualizacao?: string | null;
+  srp?: boolean | null;
+  linkSistemaOrigem?: string | null;
+  linkProcessoEletronico?: string | null;
+  usuarioNome?: string | null;
+  orgaoEntidade?: {
+    cnpj?: string | null;
+    razaoSocial?: string | null;
+    esferaId?: string | null;
+    poderId?: string | null;
+  } | null;
+  unidadeOrgao?: {
+    ufSigla?: string | null;
+    municipioNome?: string | null;
+    nomeUnidade?: string | null;
+  } | null;
+}
+
+async function consultarCompraPncpPorCoordenadas(
+  coords: PncpCoordsParsed,
+): Promise<PncpApiCompraPayload | null> {
+  const urls = [
+    `https://pncp.gov.br/api/consulta/v1/orgaos/${coords.cnpj}/compras/${coords.ano}/${coords.seq}`,
+    `https://pncp.gov.br/pncp-api/v1/orgaos/${coords.cnpj}/compras/${coords.ano}/${coords.seq}`,
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as PncpApiCompraPayload | null;
+      if (json && typeof json === "object" && (json.objetoCompra || json.numeroControlePNCP || json.orgaoEntidade)) {
+        return json;
+      }
+    } catch {
+      // tenta próximo endpoint oficial
+    }
+  }
+  return null;
 }
 
 export async function injetarLicitacaoNoKanbanClienteSuperAdmin(rawInput: {
@@ -84,18 +205,205 @@ export async function injetarLicitacaoNoKanbanClienteSuperAdmin(rawInput: {
   const tenant = await carregarRawTenant(input.tenantId);
   if (!tenant) throw typedError("Cliente (Tenant) não encontrado.", 404);
 
-  if (memLicitacoesExcluidas.has(input.licitacaoId)) {
+  const refs = extrairReferenciasLicitacaoInput(input.licitacaoId);
+  if (
+    memLicitacoesExcluidas.has(refs.rawKey) ||
+    (refs.internalIdCandidate && memLicitacoesExcluidas.has(refs.internalIdCandidate))
+  ) {
     throw typedError("Licitação não encontrada.", 404);
   }
+
+  const orConditions = [
+    { id: refs.rawKey },
+    ...(refs.internalIdCandidate ? [{ id: refs.internalIdCandidate }] : []),
+    { idPncp: { in: refs.pncpCandidates } },
+    { numeroControlePNCP: { in: refs.pncpCandidates } },
+    ...(refs.coords ? [{ linkPncp: refs.coords.linkWeb }] : []),
+  ];
+
   const licitacaoDb = await dbTry(() =>
-    prisma.licitacao.findUnique({
-      where: { id: input.licitacaoId },
+    prisma.licitacao.findFirst({
+      where: { OR: orConditions },
       select: { id: true },
     }),
   );
-  const licitacaoMem = getInMemoryLicitacaoById(input.licitacaoId);
-  if (!licitacaoDb && !licitacaoMem) {
+
+  let licitacaoMem =
+    getInMemoryLicitacaoById(refs.rawKey) ||
+    (refs.internalIdCandidate ? getInMemoryLicitacaoById(refs.internalIdCandidate) : null) ||
+    listInMemoryLicitacoes().find(
+      (l) =>
+        refs.pncpCandidates.includes(l.id) ||
+        refs.pncpCandidates.includes(l.idPncp) ||
+        (l.numeroControlePNCP ? refs.pncpCandidates.includes(l.numeroControlePNCP) : false) ||
+        (l.linkPncp ? refs.pncpCandidates.includes(l.linkPncp) : false),
+    ) ||
+    null;
+
+  let resolvedLicitacaoId = licitacaoDb?.id ?? licitacaoMem?.id ?? null;
+  if (resolvedLicitacaoId && memLicitacoesExcluidas.has(resolvedLicitacaoId)) {
     throw typedError("Licitação não encontrada.", 404);
+  }
+
+  let hidratadaPncp = false;
+  if (!resolvedLicitacaoId && refs.coords) {
+    const payload = await consultarCompraPncpPorCoordenadas(refs.coords);
+    if (!payload) {
+      throw typedError(
+        "Licitação não encontrada no catálogo local nem na API oficial do PNCP.",
+        404,
+      );
+    }
+
+    const numeroControle =
+      payload.numeroControlePNCP?.trim() || refs.coords.paddedIdPncp;
+    const anoCompra = payload.anoCompra ?? Number(refs.coords.ano);
+    const numCompra = payload.numeroCompra
+      ? String(payload.numeroCompra)
+      : refs.coords.seq;
+    const numeroEdital = `${numCompra}/${anoCompra}`;
+    const normMod = normalizarModalidade(
+      payload.modalidadeId ?? payload.modalidadeNome ?? 6,
+    );
+    const resumoCompleto =
+      (payload.objetoCompra || payload.informacaoComplementar || "").trim() ||
+      `Contratação PNCP ${numeroEdital}`;
+    const miniResumo =
+      resumoCompleto.length > 140
+        ? `${resumoCompleto.slice(0, 137).trim()}...`
+        : resumoCompleto;
+
+    const parseDt = (v?: string | null, fb?: Date) => {
+      if (v) {
+        const d = new Date(v);
+        if (!Number.isNaN(d.getTime())) return d;
+      }
+      return fb ?? new Date(Date.now() + 7 * 86400000);
+    };
+    const dataPub = payload.dataPublicacaoPncp
+      ? parseDt(payload.dataPublicacaoPncp)
+      : new Date();
+    const dataEnc = payload.dataEncerramentoProposta
+      ? parseDt(payload.dataEncerramentoProposta)
+      : null;
+    const dataAbertura = parseDt(
+      payload.dataAberturaProposta || payload.dataEncerramentoProposta || payload.dataPublicacaoPncp,
+    );
+    const portalDetectado =
+      detectarPortalDisputaPorTextoEUrl({
+        linkSistemaOrigem: payload.linkSistemaOrigem ?? null,
+        linkProcessoEletronico: payload.linkProcessoEletronico ?? null,
+        usuarioNome: payload.usuarioNome ?? null,
+        portalAtual: null,
+      }).portal || "PNCP";
+
+    const orgaoCnpj =
+      (payload.orgaoEntidade?.cnpj || refs.coords.cnpj).replace(/\D/g, "") ||
+      refs.coords.cnpj;
+    const orgaoNome =
+      payload.orgaoEntidade?.razaoSocial?.trim() ||
+      payload.unidadeOrgao?.nomeUnidade?.trim() ||
+      `Órgão CNPJ ${orgaoCnpj}`;
+    const uf =
+      (payload.unidadeOrgao?.ufSigla || "GO").trim().toUpperCase().slice(0, 2) ||
+      "GO";
+    const isPresencial =
+      normMod.codigo === 4 ||
+      normMod.codigo === 7 ||
+      /presencial/i.test(`${payload.modalidadeNome || ""} ${resumoCompleto}`);
+
+    const dadosCriacao = {
+      idPncp: numeroControle,
+      numeroEdital,
+      orgaoNome,
+      orgaoCnpj,
+      uf: uf.length === 2 ? uf : "GO",
+      municipio: payload.unidadeOrgao?.municipioNome ?? null,
+      esfera: payload.orgaoEntidade?.esferaId ?? null,
+      poder: payload.orgaoEntidade?.poderId ?? null,
+      modalidade: normMod.nome,
+      modalidadeCodigo: normMod.codigo,
+      numeroControlePNCP: numeroControle,
+      portalDisputa: portalDetectado,
+      miniResumo,
+      resumo: resumoCompleto,
+      valorEstimado: Math.max(0, Number(payload.valorTotalEstimado ?? 0)),
+      dataAbertura,
+      dataEncerramentoProposta: dataEnc ?? dataAbertura,
+      dataPublicacaoPncp: dataPub,
+      dataUltimaAtualizacao: payload.dataAtualizacao
+        ? parseDt(payload.dataAtualizacao)
+        : new Date(),
+      loteUnico: payload.srp !== true,
+      precoPorLote: payload.srp === true,
+      isPresencial,
+      linkPncp: refs.coords.linkWeb,
+      linkSistemaOrigem:
+        payload.linkSistemaOrigem || payload.linkProcessoEletronico || null,
+      parecerIA: ParecerIA.AVALIAR,
+      status: LicitacaoStatus.PENDENTE,
+    };
+
+    let criadaDb: { id: string } | null = null;
+    try {
+      criadaDb = await prisma.licitacao.create({
+        data: dadosCriacao,
+        select: { id: true },
+      });
+    } catch (err: unknown) {
+      if (getPrismaErrorCode(err) === "P2002") {
+        const existente = await prisma.licitacao
+          .findFirst({
+            where: {
+              OR: [
+                { idPncp: numeroControle },
+                { numeroControlePNCP: numeroControle },
+                { linkPncp: refs.coords.linkWeb },
+              ],
+            },
+            select: { id: true },
+          })
+          .catch(() => null);
+        if (existente) {
+          criadaDb = existente;
+        } else {
+          throw typedError("Conflito de unicidade ao registrar licitação do PNCP.", 409);
+        }
+      } else {
+        // Fallback offline para testes/modo sem Postgres
+        criadaDb = null;
+      }
+    }
+    if (criadaDb) {
+      resolvedLicitacaoId = criadaDb.id;
+    } else {
+      const memCriada = insertInMemoryLicitacao({
+        ...dadosCriacao,
+        segmentoMacro: null,
+        subcategorias: null,
+        justificativaIA: null,
+        tipoSistemaCodigo: null,
+        atestadosExigidos: null,
+        motivoRecusa: null,
+        quantidadeLotes: 1,
+        distanciaGoianiaKm: null,
+        hashCritico: null,
+        valorArrematado: null,
+        responsavelId: null,
+      });
+      resolvedLicitacaoId = memCriada.id;
+      licitacaoMem = memCriada;
+    }
+    hidratadaPncp = true;
+  }
+
+  if (!resolvedLicitacaoId) {
+    throw typedError("Licitação não encontrada.", 404);
+  }
+
+  // Hidrata anexos/arquivos do PNCP com fallback seguro caso o endpoint de anexos oscile
+  if (hidratadaPncp || refs.coords) {
+    await buscarESincronizarArquivosEditalPncp(resolvedLicitacaoId).catch(() => undefined);
   }
 
   const validStatuses = Object.values(LicitacaoStatus) as string[];
@@ -108,20 +416,20 @@ export async function injetarLicitacaoNoKanbanClienteSuperAdmin(rawInput: {
       where: {
         tenantId_licitacaoId: {
           tenantId: input.tenantId,
-          licitacaoId: input.licitacaoId,
+          licitacaoId: resolvedLicitacaoId!,
         },
       },
       update: { statusKanban: status, notas: input.notas ?? null },
       create: {
         tenantId: input.tenantId,
-        licitacaoId: input.licitacaoId,
+        licitacaoId: resolvedLicitacaoId!,
         statusKanban: status,
         notas: input.notas ?? null,
       },
     }),
   );
   if (!salvo) {
-    setInMemoryTenantLicitacao(input.tenantId, input.licitacaoId, {
+    setInMemoryTenantLicitacao(input.tenantId, resolvedLicitacaoId, {
       statusKanban: status,
       notas: input.notas ?? null,
     });
@@ -130,15 +438,20 @@ export async function injetarLicitacaoNoKanbanClienteSuperAdmin(rawInput: {
   await registrarAuditoriaAdm(
     "INJETAR_LICITACAO_KANBAN",
     "TENANT_LICITACAO",
-    `${input.tenantId}__${input.licitacaoId}`,
-    { statusKanban: status },
+    `${input.tenantId}__${resolvedLicitacaoId}`,
+    {
+      statusKanban: status,
+      hidratadaPncp,
+      referenciaOriginal: refs.rawKey,
+    },
     input.tenantId,
   );
   return {
     ok: true,
     tenantId: input.tenantId,
-    licitacaoId: input.licitacaoId,
+    licitacaoId: resolvedLicitacaoId,
     statusKanban: status,
+    hidratadaPncp,
   };
 }
 

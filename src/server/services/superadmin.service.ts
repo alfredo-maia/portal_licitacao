@@ -32,10 +32,19 @@ export {
   executarAcaoFinanceiraSuperAdmin,
   listarAfiliadosSuperAdmin,
   listarCuponsSuperAdmin,
+  listarHistoricoFaturasClienteSuperAdmin,
   salvarAfiliadoSuperAdmin,
   salvarCupomSuperAdmin,
   vincularClienteAfiliadoSuperAdmin,
 } from "./superadmin/financeiro";
+
+export {
+  criarNotificacaoAdmin,
+  listarNotificacoesAdminSuperAdmin,
+  marcarNotificacaoAdminLidaSuperAdmin,
+  marcarTodasNotificacoesAdminLidasSuperAdmin,
+  type AdminNotificationView,
+} from "./superadmin/notificacoes";
 
 export {
   atualizarConfigWhatsAppSuperAdmin,

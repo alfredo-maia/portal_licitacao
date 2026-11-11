@@ -12,7 +12,8 @@ export type AdminArea =
   | "whatsapp"
   | "ia"
   | "licitacoes"
-  | "sistema";
+  | "sistema"
+  | "notificacoes";
 
 export const ADMIN_ESCRITA_POR_PAPEL: Readonly<Record<AdminRole, readonly AdminArea[]>> = {
   SUPERADMIN_MASTER: [
@@ -26,6 +27,7 @@ export const ADMIN_ESCRITA_POR_PAPEL: Readonly<Record<AdminRole, readonly AdminA
     "ia",
     "licitacoes",
     "sistema",
+    "notificacoes",
   ],
   ADMIN_OPERACIONAL: [
     "dashboard",
@@ -37,8 +39,9 @@ export const ADMIN_ESCRITA_POR_PAPEL: Readonly<Record<AdminRole, readonly AdminA
     "whatsapp",
     "ia",
     "licitacoes",
+    "notificacoes",
   ],
-  SUPORTE_N1: ["suporte"],
+  SUPORTE_N1: ["suporte", "notificacoes"],
 };
 
 export const ADMIN_LEITURA_SUPORTE_N1: readonly AdminArea[] = [
@@ -46,6 +49,7 @@ export const ADMIN_LEITURA_SUPORTE_N1: readonly AdminArea[] = [
   "clientes",
   "suporte",
   "licitacoes",
+  "notificacoes",
 ];
 
 /**
