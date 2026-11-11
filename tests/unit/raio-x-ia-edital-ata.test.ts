@@ -3,6 +3,7 @@ import type { RbacUser } from "@/lib/rbac";
 import {
   itemDisputaEditalSchema,
   relatorioParticipacaoSchema,
+  type RelatorioParticipacao,
 } from "@/server/schemas/analise-ia.schema";
 import {
   aguardarProcessamentoAnaliseIA,
@@ -233,13 +234,15 @@ describe("Issue #37 — Raio-X de Edital & ATA com Inteligência Artificial", ()
 
       const concluido = await aguardarProcessamentoAnaliseIA(inicio.analiseId);
       expect(concluido).toBeTruthy();
+      if (!concluido) throw new Error("Análise não concluída.");
       expect(concluido.status).toBe("CONCLUIDO");
       expect(["APTO", "APTO_COM_RESSALVAS"]).toContain(concluido.parecer);
-      expect(concluido.relatorioJson?.habilitacao).toBeDefined();
-      expect(concluido.relatorioJson?.cronograma).toBeDefined();
-      expect(concluido.relatorioJson?.itens).toBeDefined();
-      expect(concluido.relatorioJson?.riscos).toBeDefined();
-      expect(concluido.relatorioJson?.swot).toBeDefined();
+      const relatorioJson = concluido.relatorioJson as Partial<RelatorioParticipacao> | null;
+      expect(relatorioJson?.habilitacao).toBeDefined();
+      expect(relatorioJson?.cronograma).toBeDefined();
+      expect(relatorioJson?.itens).toBeDefined();
+      expect(relatorioJson?.riscos).toBeDefined();
+      expect(relatorioJson?.swot).toBeDefined();
     });
 
     it("busca e baixa os editais do PNCP automaticamente caso o dossiê esteja sem arquivos e prossegue", async () => {

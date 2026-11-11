@@ -13,7 +13,56 @@ import {
   type DocumentoLidoResumo,
   type PlanilhaExtraida,
 } from "./leitor-documentos-certame.service";
-import { chamarLlmJsonMultimodal } from "./llm-multimodal.service";
+import {
+  chamarLlmJsonMultimodal,
+  type LlmTelemetryContext,
+} from "./llm-multimodal.service";
+
+export interface RawItemExtracao {
+  numeroItem?: unknown;
+  lote?: unknown;
+  descricao?: unknown;
+  descricaoDetalhada?: unknown;
+  especificacao?: unknown;
+  especificacaoDetalhada?: unknown;
+  quantidade?: unknown;
+  unidadeMedida?: unknown;
+  unidade?: unknown;
+  valorUnitarioEstimado?: unknown;
+  valorUnitario?: unknown;
+  valorTotalEstimado?: unknown;
+  valorTotal?: unknown;
+  marcaExigidaOuReferencia?: unknown;
+  marca?: unknown;
+  exigeAmostra?: unknown;
+}
+
+export interface OportunidadeExtracaoInput {
+  id: string;
+  idPncp?: string | null;
+  orgaoCnpj?: string | null;
+  numeroEdital?: string | null;
+  orgaoNome?: string | null;
+  portalDisputa?: string | null;
+  linkSistemaOrigem?: string | null;
+  linkPncp?: string | null;
+  resumo?: string | null;
+  miniResumo?: string | null;
+  valorEstimado?: number | null;
+  itens?: unknown[] | null;
+  calculadoraDados?: {
+    regrasDisputaDetectadas?: Partial<RegrasDisputaDetectadas> | null;
+  } | null;
+  analisesIA?: Array<{
+    status?: string | null;
+    relatorioJson?: unknown;
+  }> | null;
+}
+
+function asRawItem(val: unknown): RawItemExtracao | null {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return null;
+  return val as RawItemExtracao;
+}
 
 export type OrigemItensCertame = "PNCP" | "EDITAL_ANEXOS" | "IA" | "HISTORICO";
 
@@ -118,10 +167,12 @@ function normalizarUnidade(raw?: unknown): string {
 }
 
 function normalizarItemExtraido(
-  raw: any,
+  rawInput: unknown,
   idx: number,
 ): ItemDisputaEdital | null {
-  const descricao = String(raw?.descricao || raw?.especificacao || "").trim();
+  const raw = asRawItem(rawInput);
+  if (!raw) return null;
+  const descricao = String(raw.descricao || raw.especificacao || "").trim();
   if (!descricao || descricao.length < 2) return null;
 
   const numeroParsed =
@@ -410,23 +461,30 @@ export async function buscarItensPaginadosPncp(params: {
       });
       if (!res?.ok) break;
 
-      const data = await res.json();
-      const list: any[] = Array.isArray(data)
+      const data: unknown = await res.json();
+      const dataObj =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : null;
+      const list: unknown[] = Array.isArray(data)
         ? data
-        : Array.isArray(data?.data)
-          ? data.data
-          : Array.isArray(data?.itens)
-            ? data.itens
+        : Array.isArray(dataObj?.data)
+          ? dataObj.data
+          : Array.isArray(dataObj?.itens)
+            ? dataObj.itens
             : [];
 
       if (list.length === 0) break;
 
       for (let i = 0; i < list.length; i++) {
-        const it = list[i];
+        const it = asRawItem(list[i]) ?? {};
         const norm = normalizarItemExtraido(
           {
             numeroItem: it.numeroItem ?? todos.length + 1,
-            lote: it.numeroLote || it.lote || 1,
+            lote:
+              it && typeof it === "object" && "numeroLote" in it
+                ? (it as Record<string, unknown>).numeroLote || it.lote || 1
+                : it.lote || 1,
             descricao: it.descricao || `Item ${it.numeroItem || todos.length + 1}`,
             especificacaoDetalhada: it.descricaoDetalhada || it.especificacao || it.descricao,
             quantidade: it.quantidade ?? 1,
@@ -473,10 +531,11 @@ function deduplicarEOrdenarItens(itens: ItemDisputaEdital[]): ItemDisputaEdital[
  * 3) Extração multimodal via IA com substituição explícita de cabeçalhos genéricos de lote.
  */
 export async function extrairItensCertameCompleto(
-  oportunidade: any,
+  oportunidade: OportunidadeExtracaoInput,
   options?: {
     forcarVarreduraDocumentos?: boolean;
     leituraPrevia?: Awaited<ReturnType<typeof lerDocumentosCertame>>;
+    telemetryContext?: Partial<LlmTelemetryContext>;
   },
 ): Promise<ResultadoExtracaoItensCertame> {
   const avisos: string[] = [];
@@ -572,6 +631,11 @@ export async function extrairItensCertameCompleto(
         inlineParts: leitura.anexosBinariosMultimodais,
         timeoutMs: process.env.VITEST === "true" ? 4000 : 150000,
         maxOutputTokens: 32768,
+        telemetryContext: {
+          ...(options?.telemetryContext ?? {}),
+          feature: "EXTRACAO_ITENS",
+          licitacaoId: oportunidade?.id ?? null,
+        },
       });
 
       if (respLlm?.data?.regrasDisputa && typeof respLlm.data.regrasDisputa === "object") {
@@ -723,23 +787,30 @@ export async function extrairItensCertameCompleto(
 
   // 4) Fallback: análise IA concluída anterior no histórico da licitação
   if (Array.isArray(oportunidade.analisesIA)) {
+    interface AnaliseRelatorioComItens {
+      itens?: { lista?: unknown[] | null } | null;
+      itensDisputa?: unknown[] | null;
+      listaItens?: unknown[] | null;
+    }
+    const extrairRawItensAnalise = (relJson: unknown): unknown[] => {
+      if (!relJson || typeof relJson !== "object" || Array.isArray(relJson)) return [];
+      const r = relJson as AnaliseRelatorioComItens;
+      if (Array.isArray(r.itens?.lista) && r.itens.lista.length > 0) return r.itens.lista;
+      if (Array.isArray(r.itensDisputa) && r.itensDisputa.length > 0) return r.itensDisputa;
+      if (Array.isArray(r.listaItens) && r.listaItens.length > 0) return r.listaItens;
+      return [];
+    };
+
     const analiseValida = oportunidade.analisesIA.find(
-      (a: any) =>
-        a.status === "CONCLUIDO" &&
-        (a.relatorioJson?.itens?.lista?.length > 0 ||
-          a.relatorioJson?.itensDisputa?.length > 0 ||
-          a.relatorioJson?.listaItens?.length > 0),
+      (a) =>
+        a.status === "CONCLUIDO" && extrairRawItensAnalise(a.relatorioJson).length > 0,
     );
 
     if (analiseValida) {
-      const rawItens =
-        analiseValida.relatorioJson?.itens?.lista ||
-        analiseValida.relatorioJson?.itensDisputa ||
-        analiseValida.relatorioJson?.listaItens ||
-        [];
+      const rawItens = extrairRawItensAnalise(analiseValida.relatorioJson);
 
       const extraidos = rawItens
-        .map((it: any, idx: number) => normalizarItemExtraido(it, idx))
+        .map((it, idx) => normalizarItemExtraido(it, idx))
         .filter((it: ItemDisputaEdital | null): it is ItemDisputaEdital => Boolean(it));
 
       if (extraidos.length > 0) {
@@ -757,7 +828,7 @@ export async function extrairItensCertameCompleto(
 
   // 5) Fallback: itens já salvos na própria oportunidade
   if (Array.isArray(oportunidade.itens) && oportunidade.itens.length > 0) {
-    const salvos = (oportunidade.itens as any[])
+    const salvos = oportunidade.itens
       .map((it, idx) => normalizarItemExtraido(it, idx))
       .filter((it): it is ItemDisputaEdital => Boolean(it));
 

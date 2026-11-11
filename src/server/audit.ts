@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -17,15 +18,22 @@ export interface AuditActorContext {
   ip?: string | null;
 }
 
-let currentAuditActor: AuditActorContext | null = null;
+const auditActorStorage = new AsyncLocalStorage<AuditActorContext | null>();
 const inMemoryAuditLogs: AuditLogRecord[] = [];
 
+export function runWithAuditActorContext<T>(
+  context: AuditActorContext | null,
+  fn: () => T,
+): T {
+  return auditActorStorage.run(context, fn);
+}
+
 export function setAuditActorContext(context: AuditActorContext | null): void {
-  currentAuditActor = context;
+  auditActorStorage.enterWith(context);
 }
 
 export function getAuditActorContext(): AuditActorContext | null {
-  return currentAuditActor;
+  return auditActorStorage.getStore() ?? null;
 }
 
 export function getInMemoryAuditLogs(): readonly AuditLogRecord[] {
@@ -41,7 +49,7 @@ export async function recordAuditLog(
   input: AuditLogInput,
 ): Promise<AuditLogRecord> {
   const parsed = auditLogInputSchema.parse(input);
-  const actor = currentAuditActor;
+  const actor = auditActorStorage.getStore() ?? null;
 
   const usuarioId = parsed.usuarioId ?? actor?.usuarioId ?? null;
   const usuarioNome = parsed.usuarioNome ?? actor?.usuarioNome ?? null;

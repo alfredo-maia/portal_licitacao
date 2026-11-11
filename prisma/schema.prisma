@@ -50,6 +50,7 @@ enum NotificacaoTipo {
   N9_MENCAO_NOTA
   N10_MOVIMENTACAO_LICITACAO
   N11_RELATORIO_IA_PRONTO
+  N12_AVISO_SISTEMA
 }
 
 enum NotificacaoSeveridade {
@@ -110,6 +111,10 @@ model User {
   role                       Role                       @default(OPERADOR)
   ativo                      Boolean                    @default(true)
   isSuperAdmin               Boolean                    @default(false)
+  adminRole                  String?
+  ultimoLoginEm              DateTime?
+  ultimoIp                   String?
+  sessionVersion             Int                        @default(1)
   cpf                        String?
   telefone                   String?
   cep                        String?
@@ -583,6 +588,11 @@ model Tenant {
   plano               PlanoAssinatura     @default(BASICO)
   billingStatus       TenantBillingStatus @default(TRIAL)
   storageExtraQuotaMb Int                 @default(0)
+  aiExtraQuotaMes     Int                 @default(0)
+  ultimaAtividadeEm   DateTime?
+  affiliateId         String?
+  cupomCodigo         String?
+  notasInternasAdm    String?             @db.Text
   asaasCustomerId     String?
   asaasSubscriptionId String?
   vencimentoAssinatura DateTime?
@@ -867,6 +877,146 @@ model PasswordResetToken {
   @@index([expiresAt])
   @@map("password_reset_token")
 }
+
+// Issue #49 — Portal ADM ("Deus ex Machina"): Afiliados, Comissões, Cupons, Telemetria IA, Avisos em Massa e Disputas CNPJ
+model Affiliate {
+  id                   String                @id @default(cuid())
+  nome                 String
+  documento            String?
+  email                String
+  telefone             String?
+  chavePix             String?
+  codigo               String                @unique
+  percentualComissao   Float                 @default(20.0)
+  tipoComissao         String                @default("RECORRENTE")
+  descontoIndicadosPct Float                 @default(0.0)
+  diasExtrasTrial      Int                   @default(0)
+  ativo                Boolean               @default(true)
+  observacoes          String?               @db.Text
+  criadoEm             DateTime              @default(now())
+  atualizadoEm         DateTime              @updatedAt
+
+  comissoes            AffiliateCommission[]
+
+  @@index([codigo])
+  @@index([ativo])
+  @@map("affiliate")
+}
+
+model AffiliateCommission {
+  id                 String    @id @default(cuid())
+  affiliateId        String
+  tenantId           String?
+  tenantNome         String?
+  competenciaMes     String
+  valorBasePlano     Float
+  percentualAplicado Float
+  valorComissao      Float
+  status             String    @default("PENDENTE")
+  pagoEm             DateTime?
+  comprovanteObs     String?   @db.Text
+  criadoEm           DateTime  @default(now())
+
+  affiliate          Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, competenciaMes])
+  @@index([status])
+  @@map("affiliate_commission")
+}
+
+model Coupon {
+  id                 String    @id @default(cuid())
+  codigo             String    @unique
+  descricao          String?
+  descontoPercentual Float     @default(0.0)
+  diasExtrasTrial    Int       @default(0)
+  affiliateId        String?
+  maxUsos            Int?
+  usosAtuais         Int       @default(0)
+  ativo              Boolean   @default(true)
+  expiraEm           DateTime?
+  criadoEm           DateTime  @default(now())
+
+  @@index([codigo])
+  @@index([ativo])
+  @@map("coupon")
+}
+
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  tenantId         String?
+  userId           String?
+  usuarioNome      String?
+  empresaNome      String?
+  licitacaoId      String?
+  feature          String   @default("GERAL")
+  provider         String   @default("LLM_GEMINI")
+  model            String   @default("gemini-2.5-flash")
+  promptTokens     Int      @default(0)
+  outputTokens     Int      @default(0)
+  totalTokens      Int      @default(0)
+  custoEstimadoUsd Float    @default(0.0)
+  custoEstimadoBrl Float    @default(0.0)
+  duracaoMs        Int      @default(0)
+  status           String   @default("SUCESSO")
+  erro             String?  @db.Text
+  criadoEm         DateTime @default(now())
+
+  @@index([tenantId, criadoEm])
+  @@index([userId, criadoEm])
+  @@index([feature, criadoEm])
+  @@index([criadoEm])
+  @@map("ai_usage_log")
+}
+
+model SystemBroadcast {
+  id                 String    @id @default(cuid())
+  titulo             String
+  mensagem           String    @db.Text
+  severidade         String    @default("INFO")
+  formato            String    @default("AMBOS")
+  publicoAlvo        String    @default("TODOS")
+  targetIds          String[]  @default([])
+  linkDestino        String?
+  ativo              Boolean   @default(true)
+  expiraEm           DateTime?
+  criadoPorId        String?
+  criadoPorNome      String?
+  totalDestinatarios Int       @default(0)
+  criadoEm           DateTime  @default(now())
+
+  @@index([ativo, expiraEm])
+  @@index([criadoEm])
+  @@map("system_broadcast")
+}
+
+model CnpjDispute {
+  id              String    @id @default(cuid())
+  cnpj            String
+  tenantAtualId   String?
+  requerenteUserId String?
+  requerenteNome  String
+  requerenteEmail String
+  motivo          String    @db.Text
+  metodo          String    @default("SUPORTE_DOCUMENTAL")
+  status          String    @default("PENDENTE")
+  decididoPorNome String?
+  decididoEm      DateTime?
+  criadoEm        DateTime  @default(now())
+
+  @@index([cnpj])
+  @@index([status])
+  @@map("cnpj_dispute")
+}
+
+model AdminSetting {
+  key          String   @id
+  value        Json
+  atualizadoEm DateTime @updatedAt
+
+  @@map("admin_setting")
+}
+
 
 
 

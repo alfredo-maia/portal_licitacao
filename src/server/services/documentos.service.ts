@@ -1,3 +1,4 @@
+import type { Documento, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
 import { extrairDiaCivil } from "@/lib/date-utils";
@@ -9,6 +10,9 @@ import {
   type DocumentoListQuery,
   type DocumentoListResponse,
   type DocumentoDetalheResponse,
+  documentoCategoriaSchema,
+  documentoStatusSchema,
+  documentoValidacaoStatusSchema,
   documentoCriarInputSchema,
   documentoAtualizarInputSchema,
   documentoNovaVersaoInputSchema,
@@ -28,6 +32,31 @@ import {
   carregarBufferDocumentoCofre,
   inspecionarArquivoDocumentoCofre,
 } from "./inspecao-documento-cofre.service";
+import type { LlmTelemetryContext } from "./llm-multimodal.service";
+
+type DocumentoSourceRecord = Omit<
+  Partial<Documento>,
+  | "categoria"
+  | "status"
+  | "validacaoStatus"
+  | "dataEmissao"
+  | "dataVencimento"
+  | "validadoEm"
+  | "criadoEm"
+  | "atualizadoEm"
+> & {
+  id: string;
+  nome: string;
+  categoria: string;
+  status: string;
+  validacaoStatus?: string | null;
+  dataEmissao?: Date | string | null;
+  dataVencimento?: Date | string | null;
+  validadoEm?: Date | string | null;
+  criadoEm: Date | string;
+  atualizadoEm: Date | string;
+  tenantId?: string | null;
+};
 
 export function calcularStatusValidade(
   dataVencimento: Date | null,
@@ -54,20 +83,23 @@ export function calcularStatusValidade(
   };
 }
 
-function mapToDocumentoItem(doc: any): DocumentoItem {
+function mapToDocumentoItem(doc: DocumentoSourceRecord): DocumentoItem {
   const dataVenc = doc.dataVencimento ? new Date(doc.dataVencimento) : null;
   const statusVal = calcularStatusValidade(dataVenc, Boolean(doc.semValidade));
   const possuiAnexo = Boolean(doc.arquivoUrl && String(doc.arquivoUrl).trim());
-  const validacaoStatus = possuiAnexo
+  const rawValidacaoStatus = possuiAnexo
     ? (doc.validacaoStatus && doc.validacaoStatus !== "PENDENTE_ANEXO"
         ? doc.validacaoStatus
         : "NAO_VERIFICADO")
     : "PENDENTE_ANEXO";
+  const parsedCategoria = documentoCategoriaSchema.safeParse(doc.categoria);
+  const parsedStatus = documentoStatusSchema.safeParse(doc.status);
+  const parsedValidacao = documentoValidacaoStatusSchema.safeParse(rawValidacaoStatus);
 
   return {
     id: doc.id,
     nome: doc.nome,
-    categoria: doc.categoria as any,
+    categoria: parsedCategoria.success ? parsedCategoria.data : "OUTROS",
     tipo: doc.tipo ?? null,
     orgaoEmissor: doc.orgaoEmissor ?? null,
     semValidade: Boolean(doc.semValidade),
@@ -79,13 +111,13 @@ function mapToDocumentoItem(doc: any): DocumentoItem {
     mimeType: doc.mimeType ?? null,
     versao: doc.versao || 1,
     documentoPaiId: doc.documentoPaiId ?? null,
-    status: doc.status as any,
+    status: parsedStatus.success ? parsedStatus.data : "ATIVO",
     criadoPorId: doc.criadoPorId ?? null,
     criadoEm: new Date(doc.criadoEm),
     atualizadoEm: new Date(doc.atualizadoEm),
     ...statusVal,
     possuiAnexo,
-    validacaoStatus: validacaoStatus as any,
+    validacaoStatus: parsedValidacao.success ? parsedValidacao.data : "NAO_VERIFICADO",
     validacaoResumo: possuiAnexo
       ? (doc.validacaoResumo ?? null)
       : (doc.validacaoResumo || "Salvo apenas como rascunho/metadados sem arquivo anexado em /documentacao."),
@@ -119,10 +151,10 @@ async function garantirColunasValidacaoDocumento(): Promise<void> {
   }
 }
 
-function filterInMemoryDocs(query: DocumentoListQuery): any[] {
-  let memoria = listInMemoryDocumentos();
+function filterInMemoryDocs(query: DocumentoListQuery): DocumentoSourceRecord[] {
+  let memoria = listInMemoryDocumentos() as DocumentoSourceRecord[];
   if (query.tenantId) {
-    memoria = memoria.filter((d) => (d as any).tenantId === query.tenantId);
+    memoria = memoria.filter((d) => d.tenantId === query.tenantId);
   }
   if (query.categoria) {
     memoria = memoria.filter((d) => d.categoria === query.categoria);
@@ -159,7 +191,7 @@ export async function listarDocumentos(
   await garantirColunasValidacaoDocumento();
 
   try {
-    const where: any = {};
+    const where: Prisma.DocumentoWhereInput = {};
     if (query.tenantId) {
       where.tenantId = query.tenantId;
     }
@@ -190,7 +222,7 @@ export async function listarDocumentos(
       }),
     ]);
 
-    const mergedMap = new Map<string, any>();
+    const mergedMap = new Map<string, DocumentoSourceRecord>();
     for (const d of docsDb) {
       mergedMap.set(d.id, d);
     }
@@ -337,7 +369,7 @@ export async function criarDocumento(
   };
 
   try {
-    let doc: any;
+    let doc: Documento;
     try {
       doc = await prisma.documento.create({
         data: {
@@ -609,7 +641,7 @@ export async function atualizarDocumento(
         status: doc.status,
         semValidade: doc.semValidade,
         dataVencimento: doc.dataVencimento,
-        tenantId: (doc as any).tenantId || null,
+        tenantId: doc.tenantId || null,
       }).catch(() => undefined);
 
       return mapToDocumentoItem(doc);
@@ -641,6 +673,7 @@ export async function revalidarAnexoDocumento(
   id: string,
   tenantId?: string | null,
   usuarioId?: string,
+  telemetryContext?: Partial<LlmTelemetryContext>,
 ): Promise<DocumentoItem | null> {
   const detalhe = await obterDocumento(id, tenantId);
   if (!detalhe?.documento) return null;
@@ -686,6 +719,12 @@ export async function revalidarAnexoDocumento(
     dataVencimentoInformada: doc.dataVencimento,
     semValidade: doc.semValidade,
     tenantCnpj: empresa?.cnpj,
+    telemetryContext: {
+      tenantId: tenantId ?? null,
+      userId: usuarioId ?? null,
+      empresaNome: empresa?.razaoSocial ?? null,
+      ...(telemetryContext ?? {}),
+    },
   });
 
   return atualizarDocumento(
@@ -763,7 +802,7 @@ export async function buscarDocumentosVencendoNoMes(
   const fimMes = new Date(Date.UTC(ano, mes, 1, 2, 59, 59, 999)); // 23:59:59 BRT
 
   try {
-    const where: any = {
+    const where: Prisma.DocumentoWhereInput = {
       status: "ATIVO",
       semValidade: false,
       dataVencimento: {
@@ -792,9 +831,9 @@ export async function buscarDocumentosVencendoNoMes(
       };
     });
   } catch {
-    const memoria = listInMemoryDocumentos();
+    const memoria = listInMemoryDocumentos() as DocumentoSourceRecord[];
     const docsFiltrados = memoria.filter((d) => {
-      if (tenantId && (d as any).tenantId !== tenantId) return false;
+      if (tenantId && d.tenantId !== tenantId) return false;
       if (d.status !== "ATIVO" || d.semValidade || !d.dataVencimento) return false;
       const t = new Date(d.dataVencimento).getTime();
       return t >= inicioMes.getTime() && t <= fimMes.getTime();

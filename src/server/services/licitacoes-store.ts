@@ -323,6 +323,28 @@ export function marcarTodasInMemoryNotificacoesLidas(usuarioId: string): number 
   return count;
 }
 
+export function getInMemoryLeituraResumoPorChaves(
+  chaves: string[],
+): Map<string, { entregues: number; lidas: number }> {
+  const resumo = new Map<string, { entregues: number; lidas: number }>();
+  const notifIdPorChave = new Map<string, string>();
+  for (const ch of chaves) {
+    const nid = notificacaoPorChaveStore.get(ch);
+    if (nid) {
+      notifIdPorChave.set(nid, ch);
+      resumo.set(ch, { entregues: 0, lidas: 0 });
+    }
+  }
+  for (const dest of destinatariosStore.values()) {
+    const chave = notifIdPorChave.get(dest.notificacaoId);
+    if (!chave) continue;
+    const item = resumo.get(chave)!;
+    item.entregues += 1;
+    if (dest.lidaEm !== null) item.lidas += 1;
+  }
+  return resumo;
+}
+
 let portaisStore: Map<string, any> = new Map();
 let documentosStore: Map<string, any> = new Map();
 let impugnacoesStore: Map<string, any> = new Map();

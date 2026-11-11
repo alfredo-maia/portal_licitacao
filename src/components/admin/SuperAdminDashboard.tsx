@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Grid,
   Column,
@@ -29,6 +30,7 @@ import {
   Analytics,
 } from "@carbon/icons-react";
 import { SuperAdminMetrics, SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
+import { EngajamentoTag, KpiGrid, KpiTile, fmtBRL, fmtDia, fmtNum } from "./admin-ui";
 
 interface SuperAdminDashboardProps {
   initialMetrics?: SuperAdminMetrics;
@@ -81,10 +83,12 @@ export function SuperAdminDashboard({
         setFeedback(data.mensagem || `Cota expandida com sucesso em +${adicionarMb} MB.`);
         carregarDados();
       } else {
-        setFeedback(`Erro ao expandir cota: ${data.error}`);
+        setFeedback(`Erro ao expandir cota: ${data.error || "Falha na solicitação."}`);
       }
-    } catch (err: any) {
-      setFeedback(`Erro na requisição: ${err.message}`);
+    } catch (err: unknown) {
+      setFeedback(
+        `Erro na requisição: ${err instanceof Error ? err.message : "Erro inesperado"}`,
+      );
     } finally {
       setExpandingTenant(null);
     }
@@ -96,12 +100,26 @@ export function SuperAdminDashboard({
       const res = await fetch("/api/admin/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "processar_fila", limite: 20 }),
+        body: JSON.stringify({ acao: "processar_fila", limite: 20 }),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as {
+        processados?: unknown[];
+        motivoBloqueio?: "FORA_DA_JANELA" | "LIMITE_DIARIO_ATINGIDO" | null;
+        error?: string;
+      };
       if (res.ok) {
-        setFeedback(`Fila processada com sucesso: ${data.processados?.length || 0} mensagens enviadas com jitter humano.`);
-        carregarDados();
+        if (data.motivoBloqueio === "FORA_DA_JANELA") {
+          setFeedback("Envio pausado: fora da janela permitida no horário de Brasília (BRT).");
+        } else if (data.motivoBloqueio === "LIMITE_DIARIO_ATINGIDO") {
+          setFeedback("Envio pausado: limite diário de warm-up atingido.");
+        } else {
+          setFeedback(
+            `Fila processada com sucesso: ${data.processados?.length || 0} mensagens enviadas com jitter humano.`,
+          );
+          carregarDados();
+        }
+      } else {
+        setFeedback(data.error || "Erro ao processar fila do WhatsApp.");
       }
     } catch {
       setFeedback("Erro ao processar fila do WhatsApp.");
@@ -286,6 +304,86 @@ export function SuperAdminDashboard({
           </Tile>
         </Column>
       </Grid>
+
+      {/* PULSO EXECUTIVO ESTENDIDO (Issue #49) */}
+      <KpiGrid>
+        <KpiTile
+          rotulo="ARR ESTIMADO (ANUAL)"
+          valor={fmtBRL(metrics?.arrEstimado)}
+          detalhe={`Receita em risco: ${fmtBRL(metrics?.receitaEmRisco)}`}
+          cor="var(--cds-support-success)"
+        />
+        <KpiTile
+          rotulo="NOVOS CLIENTES"
+          valor={`${fmtNum(metrics?.novosClientesHoje)} hoje`}
+          detalhe={`${fmtNum(metrics?.novosClientes7d)} em 7 dias • ${fmtNum(metrics?.novosClientes30d)} em 30 dias`}
+        />
+        <KpiTile
+          rotulo="TESTE GRÁTIS"
+          valor={fmtNum(metrics?.tenantsTrial)}
+          detalhe={`${fmtNum(metrics?.trialsEngajados)} engajados • ${fmtNum(metrics?.trialsAbandonados)} cadastraram e saíram`}
+        />
+        <KpiTile
+          rotulo="INADIMPLENTES / CARÊNCIA"
+          valor={`${fmtNum(metrics?.tenantsBloqueados)} / ${fmtNum(metrics?.tenantsGracePeriod)}`}
+          detalhe={`${fmtNum(metrics?.tenantsCancelados)} cancelado(s)`}
+          cor="var(--cds-support-error)"
+        />
+        <KpiTile
+          rotulo="GASTO DE IA (HOJE)"
+          valor={fmtBRL(metrics?.gastoIaHojeBrl)}
+          detalhe={`${fmtNum(metrics?.tokensIaHoje)} tokens • ${fmtNum(metrics?.chamadasIaHoje)} chamadas • mês ${fmtBRL(metrics?.gastoIaMesBrl)}`}
+        />
+        <KpiTile
+          rotulo="SUPORTE & AFILIADOS"
+          valor={`${fmtNum(metrics?.ticketsAbertos)} ticket(s) abertos`}
+          detalhe={`Comissões pendentes: ${fmtBRL(metrics?.comissoesPendentesBrl)}`}
+        />
+        <KpiTile
+          rotulo="COLETA PNCP"
+          valor={metrics?.ultimaColetaStatus || "SEM_EXECUCOES"}
+          detalhe={`Última: ${metrics?.ultimaColetaEm ? new Date(metrics.ultimaColetaEm).toLocaleString("pt-BR") : "—"}`}
+        />
+      </KpiGrid>
+
+      {(metrics?.ultimasVitorias?.length ?? 0) > 0 && (
+        <Tile style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+            Vitórias recentes dos clientes (CONTEMPLADA)
+          </h3>
+          {metrics!.ultimasVitorias!.map((v) => (
+            <div key={v.id} style={{ display: "flex", justifyContent: "space-between", padding: "0.4rem 0", borderTop: "1px solid var(--cds-border-subtle-01)" }}>
+              <span>
+                <strong>{v.razaoSocial}</strong> — {v.numeroEdital} ({v.orgaoNome})
+              </span>
+              <span style={{ color: "var(--cds-support-success)", fontWeight: 600 }}>
+                {fmtBRL(v.valorArrematado)} • {fmtDia(v.data)}
+              </span>
+            </div>
+          ))}
+        </Tile>
+      )}
+
+      {/* RADAR DE TRIAL: clientes em teste grátis e nível de configuração */}
+      {tenants.some((t) => t.billingStatus === "TRIAL") && (
+        <Tile style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+            Radar de Teste Grátis
+          </h3>
+          {tenants
+            .filter((t) => t.billingStatus === "TRIAL")
+            .slice(0, 8)
+            .map((t) => (
+              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.4rem 0", borderTop: "1px solid var(--cds-border-subtle-01)" }}>
+                <Link href={`/admin/clientes/${t.id}`}>{t.nomeFantasia || t.razaoSocial}</Link>
+                <span style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.8rem" }}>{t.onboarding?.score ?? 0}/7 marcos • {t.diasRestantesTrial}d restantes</span>
+                  <EngajamentoTag status={t.onboarding?.statusEngajamento} />
+                </span>
+              </div>
+            ))}
+        </Tile>
+      )}
 
       {/* TABELA DE GESTÃO DE TENANTS */}
       <DataTable rows={rows} headers={headers}>

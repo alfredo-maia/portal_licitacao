@@ -1,5 +1,80 @@
 export type Role = "SUPERADMIN" | "DIRETORIA" | "ANALISTA_COMERCIAL" | "OPERADOR";
 
+export type AdminRole = "SUPERADMIN_MASTER" | "ADMIN_OPERACIONAL" | "SUPORTE_N1";
+
+export type AdminArea =
+  | "dashboard"
+  | "clientes"
+  | "financeiro"
+  | "afiliados"
+  | "suporte"
+  | "avisos"
+  | "whatsapp"
+  | "ia"
+  | "licitacoes"
+  | "sistema";
+
+export const ADMIN_ESCRITA_POR_PAPEL: Readonly<Record<AdminRole, readonly AdminArea[]>> = {
+  SUPERADMIN_MASTER: [
+    "dashboard",
+    "clientes",
+    "financeiro",
+    "afiliados",
+    "suporte",
+    "avisos",
+    "whatsapp",
+    "ia",
+    "licitacoes",
+    "sistema",
+  ],
+  ADMIN_OPERACIONAL: [
+    "dashboard",
+    "clientes",
+    "financeiro",
+    "afiliados",
+    "suporte",
+    "avisos",
+    "whatsapp",
+    "ia",
+    "licitacoes",
+  ],
+  SUPORTE_N1: ["suporte"],
+};
+
+export const ADMIN_LEITURA_SUPORTE_N1: readonly AdminArea[] = [
+  "dashboard",
+  "clientes",
+  "suporte",
+  "licitacoes",
+];
+
+/**
+ * Matriz granular de autorização para rotas e páginas do Portal ADM (fail-closed):
+ * requer papel explícito em `ADMIN_ESCRITA_POR_PAPEL`.
+ */
+export function adminPodeAcessar(
+  adminRole: string | null | undefined,
+  area: AdminArea,
+  modo: "ler" | "escrever" = "ler",
+): boolean {
+  if (!adminRole) return false;
+  if (
+    adminRole !== "SUPERADMIN_MASTER" &&
+    adminRole !== "ADMIN_OPERACIONAL" &&
+    adminRole !== "SUPORTE_N1"
+  ) {
+    return false;
+  }
+  const papel: AdminRole = adminRole;
+  if (modo === "escrever") {
+    return ADMIN_ESCRITA_POR_PAPEL[papel].includes(area);
+  }
+  if (papel === "SUPORTE_N1") {
+    return ADMIN_LEITURA_SUPORTE_N1.includes(area);
+  }
+  return true;
+}
+
 export type RbacAction =
   | "view"
   | "read"
@@ -37,6 +112,7 @@ export type RbacResource =
   | "equipe"
   | "suporte"
   | "admin"
+  | `admin:${AdminArea}`
   | "superadmin"
   | "saas";
 
@@ -47,6 +123,9 @@ export interface RbacUser {
   role: Role | string;
   ativo?: boolean;
   isSuperAdmin?: boolean;
+  adminRole?: string | null;
+  tenantRole?: string | null;
+  activeTenantId?: string | null;
 }
 
 /**
@@ -133,7 +212,17 @@ export function can(
     return false;
   }
 
-  // SuperAdmin tem acesso irrestrito
+  // Autorização granular do Portal ADM ("admin:<area>") com fail-closed por adminRole
+  if (typeof resource === "string" && resource.startsWith("admin:")) {
+    if (!(user.role === "SUPERADMIN" || user.isSuperAdmin === true)) {
+      return false;
+    }
+    const area = resource.slice("admin:".length) as AdminArea;
+    const modo = action === "superadmin:manage" ? "escrever" : "ler";
+    return adminPodeAcessar(user.adminRole ?? null, area, modo);
+  }
+
+  // SuperAdmin tem acesso irrestrito aos módulos gerais do sistema
   if (user.role === "SUPERADMIN" || user.isSuperAdmin === true) {
     return true;
   }
@@ -147,7 +236,7 @@ export function can(
   }
 
   let role = user.role as Role;
-  if ((role as string) === "TITULAR" || (user as any).tenantRole === "TITULAR" || (role as string) === "ADMINISTRADOR") {
+  if ((role as string) === "TITULAR" || user.tenantRole === "TITULAR" || (role as string) === "ADMINISTRADOR") {
     role = "DIRETORIA";
   }
 

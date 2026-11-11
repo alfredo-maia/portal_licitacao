@@ -4,6 +4,15 @@ export interface LlmInlinePart {
   label?: string;
 }
 
+export interface LlmTelemetryContext {
+  tenantId?: string | null;
+  userId?: string | null;
+  usuarioNome?: string | null;
+  empresaNome?: string | null;
+  licitacaoId?: string | null;
+  feature?: string;
+}
+
 export interface LlmJsonCallInput {
   systemPrompt: string;
   userPrompt: string;
@@ -11,12 +20,74 @@ export interface LlmJsonCallInput {
   timeoutMs?: number;
   temperature?: number;
   maxOutputTokens?: number;
+  telemetryContext?: LlmTelemetryContext;
 }
 
-export interface LlmJsonCallResult<T = any> {
+export interface LlmJsonCallResult<T = unknown> {
   data: T;
   provider: "LLM_GEMINI" | "LLM_OPENAI";
   model: string;
+  promptTokens?: number;
+  outputTokens?: number;
+  duracaoMs?: number;
+}
+
+export interface LlmTelemetryEvent {
+  provider: "LLM_GEMINI" | "LLM_OPENAI";
+  model: string;
+  promptTokens: number;
+  outputTokens: number;
+  duracaoMs: number;
+  feature: string;
+  status?: "SUCESSO" | "ERRO";
+  erro?: string | null;
+  tenantId?: string | null;
+  userId?: string | null;
+  usuarioNome?: string | null;
+  empresaNome?: string | null;
+  licitacaoId?: string | null;
+}
+
+type LlmTelemetryHook = (event: LlmTelemetryEvent) => void | Promise<void>;
+
+/**
+ * Hook padrão: registra todo consumo real de IA na telemetria do Portal ADM (`AiUsageLog`),
+ * de forma não-bloqueante e sem criar dependência circular (import dinâmico).
+ */
+const defaultLlmTelemetryHook: LlmTelemetryHook = async (event) => {
+  const { registrarConsumoIaSuperAdmin } = await import("./superadmin.service");
+  const { getAuditActorContext } = await import("@/server/audit");
+  const actor = getAuditActorContext();
+  await registrarConsumoIaSuperAdmin({
+    tenantId: event.tenantId ?? actor?.tenantId ?? null,
+    userId: event.userId ?? actor?.usuarioId ?? null,
+    usuarioNome: event.usuarioNome ?? actor?.usuarioNome ?? null,
+    empresaNome: event.empresaNome ?? null,
+    licitacaoId: event.licitacaoId ?? null,
+    feature: event.feature,
+    provider: event.provider,
+    model: event.model,
+    promptTokens: event.promptTokens,
+    outputTokens: event.outputTokens,
+    duracaoMs: event.duracaoMs,
+    status: event.status ?? "SUCESSO",
+    erro: event.erro ?? null,
+  });
+};
+
+let globalLlmTelemetryHook: LlmTelemetryHook | null = defaultLlmTelemetryHook;
+
+export function registerLlmTelemetryHook(hook: LlmTelemetryHook): void {
+  globalLlmTelemetryHook = hook;
+}
+
+function emitirTelemetriaLlm(event: LlmTelemetryEvent): void {
+  if (!globalLlmTelemetryHook) return;
+  try {
+    Promise.resolve(globalLlmTelemetryHook(event)).catch(() => undefined);
+  } catch {
+    // telemetria nunca bloqueia chamadas de IA
+  }
 }
 
 function limparMarkdownJson(raw: string): string {
@@ -28,7 +99,7 @@ function limparMarkdownJson(raw: string): string {
   return trimmed;
 }
 
-export function parseJsonFromLlmText<T = any>(rawText: string): T | null {
+export function parseJsonFromLlmText<T = unknown>(rawText: string): T | null {
   if (!rawText || typeof rawText !== "string") return null;
   const cleaned = limparMarkdownJson(rawText);
 
@@ -64,10 +135,45 @@ function buildGeminiModelPool(): string[] {
     "gemini-2.5-flash-lite",
     "gemini-2.0-flash",
   ];
-  const candidates = envModel && !/gemini-3\.[15]/i.test(envModel)
-    ? [envModel, ...defaults]
-    : defaults;
+  const candidates =
+    envModel && !/gemini-3\.[15]/i.test(envModel) ? [envModel, ...defaults] : defaults;
   return Array.from(new Set(candidates.filter(Boolean)));
+}
+
+type GeminiRequestPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+interface GeminiCandidatePart {
+  text?: string;
+}
+
+interface GeminiApiResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiCandidatePart[];
+    };
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+  };
+}
+
+type OpenAiUserContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+interface OpenAiApiResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
 }
 
 async function chamarGeminiJson<T>(
@@ -76,7 +182,7 @@ async function chamarGeminiJson<T>(
   timeoutMs: number,
 ): Promise<LlmJsonCallResult<T> | null> {
   const models = buildGeminiModelPool();
-  const parts: Array<Record<string, any>> = [
+  const parts: GeminiRequestPart[] = [
     {
       text: `${input.systemPrompt}\n\n${input.userPrompt}`,
     },
@@ -95,7 +201,10 @@ async function chamarGeminiJson<T>(
     });
   }
 
+  const feature = input.telemetryContext?.feature || "RAIO_X_EDITAL";
+
   for (const model of models) {
+    const startMs = Date.now();
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -114,20 +223,115 @@ async function chamarGeminiJson<T>(
         },
       );
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        emitirTelemetriaLlm({
+          provider: "LLM_GEMINI",
+          model,
+          promptTokens: 0,
+          outputTokens: 0,
+          duracaoMs: Date.now() - startMs,
+          feature,
+          status: "ERRO",
+          erro: `HTTP ${res.status}`,
+          tenantId: input.telemetryContext?.tenantId,
+          userId: input.telemetryContext?.userId,
+          usuarioNome: input.telemetryContext?.usuarioNome,
+          empresaNome: input.telemetryContext?.empresaNome,
+          licitacaoId: input.telemetryContext?.licitacaoId,
+        });
+        continue;
+      }
 
-      const json: any = await res.json();
-      const candidateParts = json?.candidates?.[0]?.content?.parts;
+      const json = (await res.json()) as GeminiApiResponse;
+      const candidateParts = json.candidates?.[0]?.content?.parts;
       const text = Array.isArray(candidateParts)
-        ? candidateParts.map((p: any) => p?.text || "").join("\n").trim()
-        : json?.candidates?.[0]?.content?.parts?.[0]?.text;
+        ? candidateParts.map((p) => p.text || "").join("\n").trim()
+        : undefined;
 
-      if (!text) continue;
+      if (!text) {
+        emitirTelemetriaLlm({
+          provider: "LLM_GEMINI",
+          model,
+          promptTokens: Number(json.usageMetadata?.promptTokenCount) || 0,
+          outputTokens: 0,
+          duracaoMs: Date.now() - startMs,
+          feature,
+          status: "ERRO",
+          erro: "Resposta vazia do modelo Gemini",
+          tenantId: input.telemetryContext?.tenantId,
+          userId: input.telemetryContext?.userId,
+          usuarioNome: input.telemetryContext?.usuarioNome,
+          empresaNome: input.telemetryContext?.empresaNome,
+          licitacaoId: input.telemetryContext?.licitacaoId,
+        });
+        continue;
+      }
+
+      const promptTokens =
+        Number(json.usageMetadata?.promptTokenCount) ||
+        Math.ceil((input.systemPrompt.length + input.userPrompt.length) / 4);
+      const outputTokens =
+        Number(json.usageMetadata?.candidatesTokenCount) || Math.ceil(text.length / 4);
+      const duracaoMs = Date.now() - startMs;
+
       const parsed = parseJsonFromLlmText<T>(text);
       if (parsed !== null) {
-        return { data: parsed, provider: "LLM_GEMINI", model };
+        emitirTelemetriaLlm({
+          provider: "LLM_GEMINI",
+          model,
+          promptTokens,
+          outputTokens,
+          duracaoMs,
+          feature,
+          status: "SUCESSO",
+          tenantId: input.telemetryContext?.tenantId,
+          userId: input.telemetryContext?.userId,
+          usuarioNome: input.telemetryContext?.usuarioNome,
+          empresaNome: input.telemetryContext?.empresaNome,
+          licitacaoId: input.telemetryContext?.licitacaoId,
+        });
+        return {
+          data: parsed,
+          provider: "LLM_GEMINI",
+          model,
+          promptTokens,
+          outputTokens,
+          duracaoMs,
+        };
       }
-    } catch {
+
+      emitirTelemetriaLlm({
+        provider: "LLM_GEMINI",
+        model,
+        promptTokens,
+        outputTokens,
+        duracaoMs,
+        feature,
+        status: "ERRO",
+        erro: "JSON inválido retornado pelo modelo Gemini",
+        tenantId: input.telemetryContext?.tenantId,
+        userId: input.telemetryContext?.userId,
+        usuarioNome: input.telemetryContext?.usuarioNome,
+        empresaNome: input.telemetryContext?.empresaNome,
+        licitacaoId: input.telemetryContext?.licitacaoId,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro na requisição Gemini";
+      emitirTelemetriaLlm({
+        provider: "LLM_GEMINI",
+        model,
+        promptTokens: 0,
+        outputTokens: 0,
+        duracaoMs: Date.now() - startMs,
+        feature,
+        status: "ERRO",
+        erro: msg,
+        tenantId: input.telemetryContext?.tenantId,
+        userId: input.telemetryContext?.userId,
+        usuarioNome: input.telemetryContext?.usuarioNome,
+        empresaNome: input.telemetryContext?.empresaNome,
+        licitacaoId: input.telemetryContext?.licitacaoId,
+      });
       continue;
     }
   }
@@ -141,7 +345,7 @@ async function chamarOpenAiJson<T>(
   timeoutMs: number,
 ): Promise<LlmJsonCallResult<T> | null> {
   const model = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
-  const userContent: Array<Record<string, any>> = [
+  const userContent: OpenAiUserContentPart[] = [
     { type: "text", text: input.userPrompt },
   ];
 
@@ -156,6 +360,8 @@ async function chamarOpenAiJson<T>(
     }
   }
 
+  const feature = input.telemetryContext?.feature || "RAIO_X_EDITAL";
+  const startMs = Date.now();
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -178,17 +384,111 @@ async function chamarOpenAiJson<T>(
       signal: AbortSignal.timeout(timeoutMs),
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      emitirTelemetriaLlm({
+        provider: "LLM_OPENAI",
+        model,
+        promptTokens: 0,
+        outputTokens: 0,
+        duracaoMs: Date.now() - startMs,
+        feature,
+        status: "ERRO",
+        erro: `HTTP ${res.status}`,
+        tenantId: input.telemetryContext?.tenantId,
+        userId: input.telemetryContext?.userId,
+        usuarioNome: input.telemetryContext?.usuarioNome,
+        empresaNome: input.telemetryContext?.empresaNome,
+        licitacaoId: input.telemetryContext?.licitacaoId,
+      });
+      return null;
+    }
 
-    const json: any = await res.json();
-    const content = json?.choices?.[0]?.message?.content;
-    if (!content) return null;
+    const json = (await res.json()) as OpenAiApiResponse;
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) {
+      emitirTelemetriaLlm({
+        provider: "LLM_OPENAI",
+        model,
+        promptTokens: Number(json.usage?.prompt_tokens) || 0,
+        outputTokens: 0,
+        duracaoMs: Date.now() - startMs,
+        feature,
+        status: "ERRO",
+        erro: "Resposta vazia do modelo OpenAI",
+        tenantId: input.telemetryContext?.tenantId,
+        userId: input.telemetryContext?.userId,
+        usuarioNome: input.telemetryContext?.usuarioNome,
+        empresaNome: input.telemetryContext?.empresaNome,
+        licitacaoId: input.telemetryContext?.licitacaoId,
+      });
+      return null;
+    }
+
+    const promptTokens =
+      Number(json.usage?.prompt_tokens) ||
+      Math.ceil((input.systemPrompt.length + input.userPrompt.length) / 4);
+    const outputTokens =
+      Number(json.usage?.completion_tokens) || Math.ceil(content.length / 4);
+    const duracaoMs = Date.now() - startMs;
 
     const parsed = parseJsonFromLlmText<T>(content);
     if (parsed !== null) {
-      return { data: parsed, provider: "LLM_OPENAI", model };
+      emitirTelemetriaLlm({
+        provider: "LLM_OPENAI",
+        model,
+        promptTokens,
+        outputTokens,
+        duracaoMs,
+        feature,
+        status: "SUCESSO",
+        tenantId: input.telemetryContext?.tenantId,
+        userId: input.telemetryContext?.userId,
+        usuarioNome: input.telemetryContext?.usuarioNome,
+        empresaNome: input.telemetryContext?.empresaNome,
+        licitacaoId: input.telemetryContext?.licitacaoId,
+      });
+      return {
+        data: parsed,
+        provider: "LLM_OPENAI",
+        model,
+        promptTokens,
+        outputTokens,
+        duracaoMs,
+      };
     }
-  } catch {
+
+    emitirTelemetriaLlm({
+      provider: "LLM_OPENAI",
+      model,
+      promptTokens,
+      outputTokens,
+      duracaoMs,
+      feature,
+      status: "ERRO",
+      erro: "JSON inválido retornado pelo modelo OpenAI",
+      tenantId: input.telemetryContext?.tenantId,
+      userId: input.telemetryContext?.userId,
+      usuarioNome: input.telemetryContext?.usuarioNome,
+      empresaNome: input.telemetryContext?.empresaNome,
+      licitacaoId: input.telemetryContext?.licitacaoId,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro na requisição OpenAI";
+    emitirTelemetriaLlm({
+      provider: "LLM_OPENAI",
+      model,
+      promptTokens: 0,
+      outputTokens: 0,
+      duracaoMs: Date.now() - startMs,
+      feature,
+      status: "ERRO",
+      erro: msg,
+      tenantId: input.telemetryContext?.tenantId,
+      userId: input.telemetryContext?.userId,
+      usuarioNome: input.telemetryContext?.usuarioNome,
+      empresaNome: input.telemetryContext?.empresaNome,
+      licitacaoId: input.telemetryContext?.licitacaoId,
+    });
     return null;
   }
 
@@ -199,7 +499,7 @@ async function chamarOpenAiJson<T>(
  * Cliente unificado de IA (Gemini multimodal prioritário quando há PDFs/imagens ou GEMINI_API_KEY,
  * com fallback automático para OpenAI quando configurado).
  */
-export async function chamarLlmJsonMultimodal<T = any>(
+export async function chamarLlmJsonMultimodal<T = unknown>(
   input: LlmJsonCallInput,
 ): Promise<LlmJsonCallResult<T> | null> {
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
@@ -233,4 +533,3 @@ export async function chamarLlmJsonMultimodal<T = any>(
 
   return null;
 }
-

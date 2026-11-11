@@ -54,17 +54,24 @@ export default function CadastroPage() {
   const [buscaSegmento, setBuscaSegmento] = useState("");
   const [brasilInteiro, setBrasilInteiro] = useState(true);
   const [ufsSelecionadas, setUfsSelecionadas] = useState<string[]>([]);
+  const [affiliateCodigo, setAffiliateCodigo] = useState("");
+  const [cupomCodigo, setCupomCodigo] = useState("");
 
   // Erros e estados de loading
   const [errosEtapa1, setErrosEtapa1] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Ao acessar a tela de cadastro, limpa resquícios de sessões anteriores
+  // Ao acessar a tela de cadastro, limpa resquícios de sessões anteriores e captura ?ref= / ?cupom=
   useEffect(() => {
     if (typeof window !== "undefined") {
       document.cookie = "portal_licitacao_active_tenant=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       sessionStorage.removeItem("portal_licitacao_tenant_switched");
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref")?.trim();
+      const cupom = params.get("cupom")?.trim();
+      if (ref) setAffiliateCodigo(ref.toUpperCase());
+      if (cupom) setCupomCodigo(cupom.toUpperCase());
     }
   }, []);
 
@@ -185,6 +192,8 @@ export default function CadastroPage() {
           subsegmentos: subsegmentosSelecionados,
           ufs: brasilInteiro ? [] : ufsSelecionadas,
           brasilInteiro,
+          affiliateCodigo: affiliateCodigo || undefined,
+          cupomCodigo: cupomCodigo || undefined,
         }),
       });
 

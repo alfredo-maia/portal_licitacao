@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { WhatsAppStatus, type WhatsAppMensagem } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   calcWhatsAppJitterSeconds,
@@ -7,12 +8,86 @@ import {
   WhatsAppEnvioInput,
   WhatsAppEnvioSchema,
   WhatsAppFilaItem,
+  WhatsAppFilaItemSchema,
 } from "@/server/schemas/whatsapp.schema";
 import { registrarDeliveryLog } from "@/server/services/email.service";
 
-// Armazenamento em memória para fila e opt-outs (testes, fallback e alta velocidade)
+// Armamento/fila em memória para testes, fallback e alta velocidade
 const memoryWhatsAppQueue: WhatsAppFilaItem[] = [];
 const memoryOptOutNumbers = new Set<string>();
+
+export function resetInMemoryWhatsAppStoreForTesting(): void {
+  memoryWhatsAppQueue.length = 0;
+  memoryOptOutNumbers.clear();
+}
+
+function inicioDoDiaBrt(agora = new Date()): Date {
+  const brtDate = agora.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  return new Date(`${brtDate}T00:00:00-03:00`);
+}
+
+function horaAtualBrt(agora = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(agora);
+}
+
+function estaNaJanelaEnvio(atual: string, inicio: string, fim: string): boolean {
+  if (inicio <= fim) {
+    return atual >= inicio && atual <= fim;
+  }
+  return atual >= inicio || atual <= fim;
+}
+
+async function obterConfigWhatsAppDinamica() {
+  try {
+    const mod = await import("@/server/services/superadmin/operacional");
+    return await mod.obterConfigWhatsAppSuperAdmin();
+  } catch {
+    return {
+      minDelaySegundos: 4,
+      maxDelaySegundos: 9,
+      limiteDiarioWarmup: 200,
+      janelaInicio: "08:00",
+      janelaFim: "20:00",
+    };
+  }
+}
+
+function toWhatsAppPrismaStatus(status: WhatsAppFilaItem["status"]): WhatsAppStatus {
+  switch (status) {
+    case "ENVIANDO":
+      return WhatsAppStatus.ENVIANDO;
+    case "ENVIADO":
+      return WhatsAppStatus.ENVIADO;
+    case "FALHA":
+      return WhatsAppStatus.FALHA;
+    case "PAUSADO_OPT_OUT":
+      return WhatsAppStatus.PAUSADO_OPT_OUT;
+    default:
+      return WhatsAppStatus.PENDENTE;
+  }
+}
+
+function dbRowToFilaItem(row: WhatsAppMensagem): WhatsAppFilaItem {
+  const parsedStatus = WhatsAppFilaItemSchema.shape.status.safeParse(row.status);
+  return {
+    id: row.id,
+    destinatario: row.destinatario,
+    mensagem: row.mensagem,
+    tipo: row.tipo,
+    status: parsedStatus.success ? parsedStatus.data : "PENDENTE",
+    tentativas: row.tentativas,
+    erro: row.erro,
+    jitterSegundos: Math.max(1, row.jitterSegundos || 4),
+    agendadoPara: new Date(row.agendadoPara),
+    enviadoEm: row.enviadoEm ? new Date(row.enviadoEm) : null,
+    criadoEm: new Date(row.criadoEm),
+  };
+}
 
 export interface EvolutionConfig {
   url: string | null;
@@ -234,8 +309,9 @@ export async function enviarTextoEvolutionApi(params: {
       destinatario: sanitizado,
       providerMessageId,
     };
-  } catch (err: any) {
-    const erroMsg = err?.message || "Erro de rede ao comunicar com Evolution API";
+  } catch (err: unknown) {
+    const erroMsg =
+      err instanceof Error ? err.message : "Erro de rede ao comunicar com Evolution API";
     await registrarDeliveryLog({
       canal: "WHATSAPP",
       evento,
@@ -263,9 +339,15 @@ export async function enfileirarMensagemWhatsApp(
   input: WhatsAppEnvioInput,
 ): Promise<WhatsAppFilaItem> {
   const parsed = WhatsAppEnvioSchema.parse(input);
-  const estaBloqueado = await verificarNumeroBloqueadoOptOut(parsed.destinatario);
+  const [estaBloqueado, wppConfig] = await Promise.all([
+    verificarNumeroBloqueadoOptOut(parsed.destinatario),
+    obterConfigWhatsAppDinamica(),
+  ]);
 
-  const jitterSegundos = calcWhatsAppJitterSeconds(4, 9);
+  const jitterSegundos = calcWhatsAppJitterSeconds(
+    wppConfig.minDelaySegundos,
+    wppConfig.maxDelaySegundos,
+  );
   const mensagemFormatada = formatarMensagemWhatsAppComOptOut(parsed.mensagem);
   const agora = new Date();
 
@@ -292,7 +374,7 @@ export async function enfileirarMensagemWhatsApp(
         destinatario: item.destinatario,
         mensagem: item.mensagem,
         tipo: item.tipo,
-        status: item.status as any,
+        status: toWhatsAppPrismaStatus(item.status),
         jitterSegundos: item.jitterSegundos,
         agendadoPara: item.agendadoPara,
       },
@@ -388,20 +470,129 @@ export async function enviarNotificacaoWhatsApp(params: {
 export async function processarFilaWhatsAppComJitter(params?: {
   limite?: number;
   simularDelay?: boolean;
+  respeitarJanela?: boolean;
+  referencia?: Date;
 }): Promise<{
   processados: WhatsAppFilaItem[];
   totalPendentes: number;
+  restantesHoje: number;
+  motivoBloqueio?: "FORA_DA_JANELA" | "LIMITE_DIARIO_ATINGIDO" | null;
 }> {
   const limite = params?.limite || 10;
-  const pendentes = memoryWhatsAppQueue.filter(
-    (item) => item.status === "PENDENTE" && item.agendadoPara <= new Date(),
+  const agora = params?.referencia ?? new Date();
+  const inicioDia = inicioDoDiaBrt(agora);
+  const wppConfig = await obterConfigWhatsAppDinamica();
+
+  const pendentesMap = new Map<string, WhatsAppFilaItem>();
+  try {
+    const dbPendentes = await prisma.whatsAppMensagem.findMany({
+      where: {
+        status: WhatsAppStatus.PENDENTE,
+        agendadoPara: { lte: agora },
+      },
+      orderBy: { agendadoPara: "asc" },
+      take: Math.max(limite * 2, 50),
+    });
+    for (const row of dbPendentes) {
+      pendentesMap.set(row.id, dbRowToFilaItem(row));
+    }
+  } catch {
+    // fallback em memória
+  }
+
+  for (const item of memoryWhatsAppQueue) {
+    if (item.status === "PENDENTE" && new Date(item.agendadoPara) <= agora) {
+      pendentesMap.set(item.id, item);
+    } else if (item.status !== "PENDENTE") {
+      // Estado mais recente em memória prevalece sobre snapshot antigo de banco mockado
+      pendentesMap.delete(item.id);
+    }
+  }
+
+  const pendentes = Array.from(pendentesMap.values()).sort(
+    (a, b) => new Date(a.agendadoPara).getTime() - new Date(b.agendadoPara).getTime(),
   );
 
-  const aProcessar = pendentes.slice(0, limite);
+  const contarPendentesTotais = async (): Promise<number> => {
+    const idsPendentes = new Set<string>();
+    try {
+      const rows = await prisma.whatsAppMensagem.findMany({
+        where: { status: WhatsAppStatus.PENDENTE },
+        select: { id: true },
+      });
+      for (const r of rows) idsPendentes.add(r.id);
+    } catch {}
+    for (const item of memoryWhatsAppQueue) {
+      if (item.status === "PENDENTE") idsPendentes.add(item.id);
+      else idsPendentes.delete(item.id);
+    }
+    return idsPendentes.size;
+  };
+
+  const deveChecarJanela = params?.respeitarJanela === true || process.env.VITEST !== "true";
+  if (deveChecarJanela) {
+    const horaAtual = horaAtualBrt(agora);
+    if (!estaNaJanelaEnvio(horaAtual, wppConfig.janelaInicio, wppConfig.janelaFim)) {
+      return {
+        processados: [],
+        totalPendentes: await contarPendentesTotais(),
+        restantesHoje: 0,
+        motivoBloqueio: "FORA_DA_JANELA",
+      };
+    }
+  }
+
+  const idsEnviadosHoje = new Set<string>();
+  try {
+    const enviadosDb = await prisma.whatsAppMensagem.findMany({
+      where: {
+        status: WhatsAppStatus.ENVIADO,
+        enviadoEm: { gte: inicioDia },
+      },
+      select: { id: true },
+    });
+    for (const r of enviadosDb) idsEnviadosHoje.add(r.id);
+  } catch {}
+  for (const item of memoryWhatsAppQueue) {
+    if (item.status === "ENVIADO" && item.enviadoEm && new Date(item.enviadoEm) >= inicioDia) {
+      idsEnviadosHoje.add(item.id);
+    }
+  }
+
+  const restantesHoje = Math.max(0, wppConfig.limiteDiarioWarmup - idsEnviadosHoje.size);
+  if (restantesHoje <= 0) {
+    return {
+      processados: [],
+      totalPendentes: await contarPendentesTotais(),
+      restantesHoje: 0,
+      motivoBloqueio: "LIMITE_DIARIO_ATINGIDO",
+    };
+  }
+
+  const aProcessar = pendentes.slice(0, Math.min(limite, restantesHoje));
   const processados: WhatsAppFilaItem[] = [];
   const cfg = obterConfigEvolutionApi();
+  let enviadosNesteLote = 0;
 
   for (const item of aProcessar) {
+    const estaBloqueado = await verificarNumeroBloqueadoOptOut(item.destinatario);
+    if (estaBloqueado) {
+      item.status = "PAUSADO_OPT_OUT";
+      item.erro = "Número bloqueado por solicitação de opt-out";
+      processados.push(item);
+
+      try {
+        await prisma.whatsAppMensagem.update({
+          where: { id: item.id },
+          data: {
+            status: WhatsAppStatus.PAUSADO_OPT_OUT,
+            erro: item.erro,
+          },
+        });
+      } catch {}
+      continue;
+    }
+
     if (params?.simularDelay) {
       await new Promise((r) => setTimeout(r, item.jitterSegundos * 1000));
     }
@@ -418,6 +609,7 @@ export async function processarFilaWhatsAppComJitter(params?: {
       if (res.ok) {
         item.status = "ENVIADO";
         item.enviadoEm = new Date();
+        enviadosNesteLote++;
       } else if (res.status === "PAUSADO_OPT_OUT") {
         item.status = "PAUSADO_OPT_OUT";
         item.erro = res.erro || null;
@@ -426,8 +618,10 @@ export async function processarFilaWhatsAppComJitter(params?: {
         item.erro = res.erro || null;
       }
     } else {
+      item.tentativas += 1;
       item.status = "ENVIADO";
       item.enviadoEm = new Date();
+      enviadosNesteLote++;
     }
 
     processados.push(item);
@@ -436,7 +630,7 @@ export async function processarFilaWhatsAppComJitter(params?: {
       await prisma.whatsAppMensagem.update({
         where: { id: item.id },
         data: {
-          status: item.status as any,
+          status: toWhatsAppPrismaStatus(item.status),
           tentativas: item.tentativas,
           erro: item.erro,
           enviadoEm: item.enviadoEm,
@@ -447,11 +641,11 @@ export async function processarFilaWhatsAppComJitter(params?: {
     }
   }
 
-  const totalPendentes = memoryWhatsAppQueue.filter((i) => i.status === "PENDENTE").length;
-
   return {
     processados,
-    totalPendentes,
+    totalPendentes: await contarPendentesTotais(),
+    restantesHoje: Math.max(0, restantesHoje - enviadosNesteLote),
+    motivoBloqueio: null,
   };
 }
 
@@ -501,4 +695,85 @@ export async function obterStatusInstanciaWhatsApp(): Promise<{
     totalOptOuts: memoryOptOutNumbers.size,
     provedorConfigurado: cfg.configurado,
   };
+}
+
+/**
+ * Lista a fila de mensagens recentes (memória + Postgres) para o Portal ADM.
+ */
+export async function listarFilaWhatsApp(limite = 50): Promise<
+  Array<{
+    id: string;
+    destinatario: string;
+    mensagem: string;
+    tipo: string;
+    status: string;
+    tentativas: number;
+    erro: string | null;
+    criadoEm: Date;
+    enviadoEm: Date | null;
+  }>
+> {
+  type WhatsAppFilaRow = WhatsAppMensagem | WhatsAppFilaItem;
+  const out = new Map<string, WhatsAppFilaRow>();
+  try {
+    const rows = await prisma.whatsAppMensagem.findMany({
+      orderBy: { criadoEm: "desc" },
+      take: limite,
+    });
+    for (const r of rows) out.set(r.id, r);
+  } catch {
+    // fallback em memória
+  }
+  for (const m of memoryWhatsAppQueue) if (!out.has(m.id)) out.set(m.id, m);
+  return Array.from(out.values())
+    .sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime())
+    .slice(0, limite)
+    .map((m) => ({
+      id: m.id,
+      destinatario: m.destinatario,
+      mensagem: m.mensagem,
+      tipo: m.tipo,
+      status: String(m.status),
+      tentativas: m.tentativas ?? 0,
+      erro: m.erro ?? null,
+      criadoEm: m.criadoEm,
+      enviadoEm: m.enviadoEm ?? null,
+    }));
+}
+
+/**
+ * Lista telefones em opt-out (lista de bloqueio) para o Portal ADM.
+ */
+export async function listarOptOutsWhatsApp(): Promise<
+  Array<{ telefone: string; motivo: string | null; criadoEm: Date | null }>
+> {
+  const out = new Map<string, { telefone: string; motivo: string | null; criadoEm: Date | null }>();
+  try {
+    const rows = await prisma.whatsAppOptOut.findMany({ orderBy: { criadoEm: "desc" } });
+    for (const r of rows) {
+      out.set(r.telefone, { telefone: r.telefone, motivo: r.motivo, criadoEm: r.criadoEm });
+    }
+  } catch {
+    // fallback em memória
+  }
+  for (const tel of memoryOptOutNumbers) {
+    if (!out.has(tel)) out.set(tel, { telefone: tel, motivo: null, criadoEm: null });
+  }
+  return Array.from(out.values());
+}
+
+/**
+ * Remove um telefone da lista de opt-out (reativa recebimento de mensagens).
+ */
+export async function removerOptOutWhatsApp(
+  telefone: string,
+): Promise<{ ok: boolean; telefone: string }> {
+  const sanitizado = sanitizarTelefoneBR(telefone);
+  memoryOptOutNumbers.delete(sanitizado);
+  try {
+    await prisma.whatsAppOptOut.delete({ where: { telefone: sanitizado } });
+  } catch {
+    // inexistente ou banco offline
+  }
+  return { ok: true, telefone: sanitizado };
 }

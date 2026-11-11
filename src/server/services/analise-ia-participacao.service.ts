@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { RbacUser } from "@/lib/rbac";
 import { recordAuditLog } from "@/server/audit";
+import type { ConfiguracaoEmpresa } from "@/server/schemas/configuracao.schema";
+import type { DocumentoItem } from "@/server/schemas/documento.schema";
+import type { PortalItem } from "@/server/schemas/portal.schema";
 import {
   type CotaMensalAnaliseIA,
   type ItemDisputaEdital,
@@ -40,6 +44,8 @@ import { lerDocumentosCertame } from "./leitor-documentos-certame.service";
 import {
   extrairItensCertameCompleto,
   pareceCabecalhoDeLoteOuObjeto,
+  type OportunidadeExtracaoInput,
+  type RawItemExtracao,
 } from "./extracao-itens-certame.service";
 import {
   extrairRegrasDisputaDeTextoEdital,
@@ -50,7 +56,52 @@ import type { RegrasDisputaDetectadas } from "@/server/schemas/proposta-calculad
 import {
   chamarLlmJsonMultimodal,
   type LlmInlinePart,
+  type LlmTelemetryContext,
 } from "./llm-multimodal.service";
+
+export interface AnaliseIAParticipacaoRecord {
+  id: string;
+  licitacaoId: string;
+  tenantId: string | null;
+  status: string;
+  origem: string | null;
+  parecer: string | null;
+  scriptPrompt: string;
+  relatorioTexto: string;
+  impedimentos: unknown;
+  viabilidade: unknown;
+  custos: unknown;
+  precoSugerido: unknown;
+  relatorioJson: unknown;
+  pdfBase64: string | null;
+  pdfNome: string | null;
+  erroMensagem: string | null;
+  concluidoEm: Date | null;
+  executadoPorId: string | null;
+  criadoEm: Date;
+}
+
+export interface OportunidadeAnaliseDossie extends OportunidadeExtracaoInput {
+  numeroEdital: string;
+  orgaoNome: string;
+  modalidade: string;
+  uf: string;
+  municipio?: string | null;
+  dataAbertura: Date | string;
+  segmentoMacro?: string | null;
+  tipoSistemaCodigo?: string | null;
+  portalDisputa?: string | null;
+  linkSistemaOrigem?: string | null;
+  linkPncp?: string | null;
+  atestadosExigidos?: unknown;
+  isPresencial?: boolean | null;
+  arquivos?: Array<{ nome?: string | null }> | null;
+}
+
+export interface AnaliseHibridaActorMeta {
+  userId?: string | null;
+  usuarioNome?: string | null;
+}
 
 export class AnaliseIAParticipacaoError extends Error {
   readonly code: string;
@@ -71,8 +122,31 @@ export class AnaliseIAParticipacaoError extends Error {
   }
 }
 
-const pendingBackgroundJobs = new Map<string, Promise<any>>();
+const pendingBackgroundJobs = new Map<string, Promise<AnaliseIAParticipacaoRecord | null>>();
 const contadorIaLicitacaoMap = new Map<string, number>();
+export const memoryTenantExtraAiQuota = new Map<string, number>();
+
+export function setMemoryTenantExtraAiQuota(tenantId: string, extra: number): void {
+  memoryTenantExtraAiQuota.set(tenantId, Math.max(0, Math.floor(extra)));
+}
+
+export function getMemoryTenantExtraAiQuota(tenantId: string): number {
+  return memoryTenantExtraAiQuota.get(tenantId) || 0;
+}
+
+export function resetarLimiteSilenciosoLicitacao(
+  licitacaoId: string,
+  accountKey?: string,
+): void {
+  if (accountKey) {
+    contadorIaLicitacaoMap.delete(`${accountKey}:${licitacaoId}`);
+  }
+  for (const k of Array.from(contadorIaLicitacaoMap.keys())) {
+    if (k.endsWith(`:${licitacaoId}`)) {
+      contadorIaLicitacaoMap.delete(k);
+    }
+  }
+}
 
 /**
  * Trava silenciosa anti-abuso de IA por licitação (Máximo 5 execuções de IA por licitação).
@@ -124,7 +198,7 @@ export async function isLicitacaoDesbloqueadaParaIa(
   try {
     const tArray = Array.from(accountTenantIds).filter(Boolean);
     const uArray = Array.from(candidateUserIds).filter(Boolean);
-    const orConditions: any[] = [];
+    const orConditions: Prisma.AnaliseStatusParticipacaoWhereInput[] = [];
     if (tArray.length > 0) orConditions.push({ tenantId: { in: tArray } });
     if (uArray.length > 0) orConditions.push({ executadoPorId: { in: uArray } });
 
@@ -370,7 +444,7 @@ export async function obterStatusCotaAnaliseIA(
     const tArray = Array.from(accountTenantIds).filter(Boolean);
     const uArray = Array.from(candidateUserIds).filter(Boolean);
 
-    const orConditions: any[] = [];
+    const orConditions: Prisma.AnaliseStatusParticipacaoWhereInput[] = [];
     if (tArray.length > 0) {
       orConditions.push({ tenantId: { in: tArray } });
     }
@@ -398,11 +472,61 @@ export async function obterStatusCotaAnaliseIA(
     // Em modo offline/teste usa apenas memória
   }
 
-  return calcularCotaAnaliseIA({
+  const baseCota = calcularCotaAnaliseIA({
     plano,
     usadas: idsContabilizados.size,
     referencia,
   });
+
+  // Soma cotas bônus concedidas pelo Portal ADM (aiExtraQuotaMes) para todos os CNPJs da conta
+  const bonusPorTenant = new Map<string, number>();
+  for (const tid of accountTenantIds) {
+    const memVal = memoryTenantExtraAiQuota.get(tid);
+    const inMemTenant = inMemoryTenants.get(tid) as
+      | { aiExtraQuotaMes?: number }
+      | undefined;
+    const tenantBonus = Math.max(
+      memVal ?? 0,
+      typeof inMemTenant?.aiExtraQuotaMes === "number" ? inMemTenant.aiExtraQuotaMes : 0,
+    );
+    bonusPorTenant.set(tid, tenantBonus);
+  }
+
+  if (accountTenantIds.size > 0) {
+    try {
+      const rows = await prisma.tenant.findMany({
+        where: { id: { in: Array.from(accountTenantIds) } },
+        select: { id: true, aiExtraQuotaMes: true },
+      });
+      for (const r of rows) {
+        const atual = bonusPorTenant.get(r.id) ?? 0;
+        const dbVal = typeof r.aiExtraQuotaMes === "number" ? r.aiExtraQuotaMes : 0;
+        bonusPorTenant.set(r.id, Math.max(atual, dbVal));
+      }
+    } catch {
+      // Silencioso se offline
+    }
+  }
+
+  let bonusExtra = 0;
+  for (const val of bonusPorTenant.values()) {
+    bonusExtra += val;
+  }
+
+  if (bonusExtra > 0) {
+    const novoLimite = baseCota.limite + bonusExtra;
+    const atingiuLimite = baseCota.usadas >= novoLimite;
+    return {
+      ...baseCota,
+      limite: novoLimite,
+      restantes: Math.max(0, novoLimite - baseCota.usadas),
+      atingiuLimite,
+      acaoSugerida: atingiuLimite ? baseCota.acaoSugerida : null,
+      mensagemBloqueio: atingiuLimite ? baseCota.mensagemBloqueio : null,
+    };
+  }
+
+  return baseCota;
 }
 
 /* =========================================================================
@@ -453,7 +577,7 @@ export function gerarPdfRelatorioParticipacao(params: {
   modalidade: string;
   uf: string;
   municipio?: string | null;
-  valorEstimado: number;
+  valorEstimado?: number | null;
   dataAbertura: Date | string;
   empresaNome: string;
   empresaCnpj: string;
@@ -799,10 +923,7 @@ export function gerarPdfRelatorioParticipacao(params: {
    Motor Híbrido de Cruzamento Multi-Segmento + LLM (OpenAI / Gemini)
 ========================================================================= */
 
-async function tentarEnriquecerComLLM(
-  promptContexto: string,
-  inlineParts?: LlmInlinePart[],
-): Promise<{
+interface LlmEnriquecimentoResposta {
   resumoExecutivo?: string;
   habilitacao?: Partial<RelatorioParticipacao["habilitacao"]>;
   cronograma?: Partial<RelatorioParticipacao["cronograma"]>;
@@ -823,7 +944,13 @@ async function tentarEnriquecerComLLM(
   observacoesCustos?: string;
   regrasDisputa?: Partial<RegrasDisputaDetectadas>;
   _llmProvider?: "LLM_GEMINI" | "LLM_OPENAI";
-} | null> {
+}
+
+async function tentarEnriquecerComLLM(
+  promptContexto: string,
+  inlineParts?: LlmInlinePart[],
+  telemetryMeta?: Partial<LlmTelemetryContext>,
+): Promise<LlmEnriquecimentoResposta | null> {
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   const geminiKey = process.env.GEMINI_API_KEY?.trim();
 
@@ -916,13 +1043,22 @@ async function tentarEnriquecerComLLM(
     "}";
 
   const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
-  const resp = await chamarLlmJsonMultimodal<any>({
+  const resp = await chamarLlmJsonMultimodal<LlmEnriquecimentoResposta>({
     systemPrompt,
     userPrompt: `Analise integralmente os dados e documentos do certame e da empresa e gere o Raio-X em JSON:\n\n${promptContexto}`,
     inlineParts,
     timeoutMs: isTest ? 4000 : 150000,
     temperature: 0.2,
     maxOutputTokens: 32768,
+    telemetryContext: {
+      ...telemetryMeta,
+      feature: telemetryMeta?.feature ?? "RAIO_X_EDITAL",
+      tenantId: telemetryMeta?.tenantId ?? null,
+      userId: telemetryMeta?.userId ?? null,
+      usuarioNome: telemetryMeta?.usuarioNome ?? null,
+      licitacaoId: telemetryMeta?.licitacaoId ?? null,
+      empresaNome: telemetryMeta?.empresaNome ?? null,
+    },
   });
 
   if (!resp?.data || typeof resp.data !== "object") {
@@ -1088,13 +1224,61 @@ export function avaliarCompatibilidadeCnaesComEdital(params: {
   };
 }
 
+function converterRawItemParaItemDisputa(
+  it: RawItemExtracao,
+  idx: number,
+  fallbackMarca: string | null,
+): ItemDisputaEdital {
+  const numRaw = Number(it.numeroItem);
+  const loteRaw = it.lote != null ? Number(it.lote) : 1;
+  const descricao =
+    typeof it.descricao === "string" && it.descricao.trim()
+      ? it.descricao
+      : `Item ${idx + 1}`;
+  const especificacao =
+    typeof it.especificacao === "string" && it.especificacao.trim()
+      ? it.especificacao
+      : typeof it.especificacaoDetalhada === "string" && it.especificacaoDetalhada.trim()
+        ? it.especificacaoDetalhada
+        : descricao;
+  const unidade =
+    typeof it.unidadeMedida === "string" && it.unidadeMedida.trim()
+      ? it.unidadeMedida
+      : "UN";
+  const valorUnit =
+    it.valorUnitario != null && it.valorUnitario !== "" && Number.isFinite(Number(it.valorUnitario))
+      ? Number(it.valorUnitario)
+      : null;
+  const valorTot =
+    it.valorTotal != null && it.valorTotal !== "" && Number.isFinite(Number(it.valorTotal))
+      ? Number(it.valorTotal)
+      : null;
+  const marca =
+    typeof it.marca === "string" && it.marca.trim()
+      ? it.marca
+      : fallbackMarca;
+
+  return {
+    numeroItem: Number.isFinite(numRaw) && numRaw > 0 ? Math.floor(numRaw) : idx + 1,
+    lote: Number.isFinite(loteRaw) && loteRaw > 0 ? Math.floor(loteRaw) : 1,
+    descricao,
+    especificacaoDetalhada: especificacao,
+    quantidade: Number(it.quantidade) || 1,
+    unidadeMedida: unidade,
+    valorUnitarioEstimado: valorUnit,
+    valorTotalEstimado: valorTot,
+    marcaExigidaOuReferencia: marca,
+  };
+}
+
 export async function construirRelatorioParticipacaoHibrido(
   licitacaoId: string,
   input: SolicitarAnaliseInput,
   tenantId?: string | null,
+  actorMeta?: AnaliseHibridaActorMeta,
 ): Promise<{
-  oportunidade: any;
-  empresa: any;
+  oportunidade: OportunidadeAnaliseDossie;
+  empresa: ConfiguracaoEmpresa;
   relatorio: RelatorioParticipacao;
   relatorioTexto: string;
   impedimentosTexto: string;
@@ -1103,21 +1287,24 @@ export async function construirRelatorioParticipacaoHibrido(
   precoSugerido: number;
   origemLLM?: "LLM_GEMINI" | "LLM_OPENAI" | "IA_HIBRIDA";
 }> {
-  const oportunidade = await getOportunidadeById(licitacaoId, tenantId);
+  const oportunidade = (await getOportunidadeById(
+    licitacaoId,
+    tenantId,
+  )) as OportunidadeAnaliseDossie;
 
-  let empresa: any;
+  let empresa: ConfiguracaoEmpresa;
   try {
     empresa = await obterConfiguracaoEmpresa(tenantId);
   } catch {
-    empresa = getInMemoryConfiguracaoEmpresa(tenantId);
+    empresa = getInMemoryConfiguracaoEmpresa(tenantId) as ConfiguracaoEmpresa;
   }
 
   const [docsResp, portaisResp, leituraCertame] = await Promise.all([
     listarDocumentos({ tenantId: tenantId || undefined, pageSize: 100 }).catch(
-      () => ({ documentos: [] as any[] }),
+      () => ({ documentos: [] as DocumentoItem[] }),
     ),
     listarPortais({ tenantId: tenantId || undefined, pageSize: 100 }).catch(
-      () => ({ portais: [] as any[] }),
+      () => ({ portais: [] as PortalItem[] }),
     ),
     lerDocumentosCertame(oportunidade.id || licitacaoId, {
       sincronizarPncpSeVazio: false,
@@ -1125,8 +1312,8 @@ export async function construirRelatorioParticipacaoHibrido(
     }).catch(() => null),
   ]);
 
-  const documentos = docsResp.documentos || [];
-  const portais = portaisResp.portais || [];
+  const documentos: DocumentoItem[] = docsResp.documentos || [];
+  const portais: PortalItem[] = portaisResp.portais || [];
 
   // 1. Identificação do Segmento do Edital vs Segmento da Empresa
   const macroCodigo = (oportunidade.segmentoMacro || "OUTROS") as MacroSegmento;
@@ -1199,9 +1386,9 @@ export async function construirRelatorioParticipacaoHibrido(
     },
   ];
 
-  const docPossuiAnexo = (d: any): boolean =>
+  const docPossuiAnexo = (d: DocumentoItem): boolean =>
     Boolean(d.possuiAnexo ?? (d.arquivoUrl && String(d.arquivoUrl).trim().length > 0));
-  const docValidacaoStatus = (d: any): string =>
+  const docValidacaoStatus = (d: DocumentoItem): string =>
     String(d.validacaoStatus || (docPossuiAnexo(d) ? "NAO_VERIFICADO" : "PENDENTE_ANEXO"));
 
   const checklistDocumental: RelatorioParticipacao["checklistDocumental"] = [];
@@ -1212,7 +1399,7 @@ export async function construirRelatorioParticipacaoHibrido(
   let qtdDocsDivergentes = 0;
   const docsInspecionadosIds = new Set<string>();
 
-  const registrarDocNoChecklist = (d: any, categoriaCodigo: string) => {
+  const registrarDocNoChecklist = (d: DocumentoItem, categoriaCodigo: string) => {
     if (d.id) docsInspecionadosIds.add(String(d.id));
     const possuiAnexo = docPossuiAnexo(d);
     const valStatus = docValidacaoStatus(d);
@@ -1279,7 +1466,7 @@ export async function construirRelatorioParticipacaoHibrido(
 
   for (const cat of categoriasEssenciais) {
     const docsDaCat = documentos.filter(
-      (d: any) => cat.codigos.includes(String(d.categoria)) && d.status === "ATIVO",
+      (d) => cat.codigos.includes(String(d.categoria)) && d.status === "ATIVO",
     );
     if (docsDaCat.length === 0) {
       qtdCategoriasAusentes++;
@@ -1306,7 +1493,7 @@ export async function construirRelatorioParticipacaoHibrido(
   // 3. Cruzamento do Portal de Disputa (/portais)
   const nomePortalEdital = oportunidade.portalDisputa || "Compras.gov.br / PNCP";
   const portalMatch = portais.find(
-    (p: any) =>
+    (p) =>
       p.nome.toLowerCase().includes(nomePortalEdital.toLowerCase()) ||
       nomePortalEdital.toLowerCase().includes(p.nome.toLowerCase()),
   );
@@ -1354,13 +1541,13 @@ export async function construirRelatorioParticipacaoHibrido(
     ? oportunidade.atestadosExigidos
     : [];
   const docsTecnicosAtivos = documentos.filter(
-    (d: any) => d.categoria === "QUALIFICACAO_TECNICA" && d.status === "ATIVO" && !d.vencido,
+    (d) => d.categoria === "QUALIFICACAO_TECNICA" && d.status === "ATIVO" && !d.vencido,
   );
   const temDocQualificacaoTecnica = docsTecnicosAtivos.some(
-    (d: any) => docPossuiAnexo(d) && docValidacaoStatus(d) !== "DIVERGENTE",
+    (d) => docPossuiAnexo(d) && docValidacaoStatus(d) !== "DIVERGENTE",
   );
   const temDocTecnicoSemAnexo =
-    !temDocQualificacaoTecnica && docsTecnicosAtivos.some((d: any) => !docPossuiAnexo(d));
+    !temDocQualificacaoTecnica && docsTecnicosAtivos.some((d) => !docPossuiAnexo(d));
 
   const exigenciasTecnicas: RelatorioParticipacao["exigenciasTecnicas"] = [];
   if (atestadosEdital.length > 0) {
@@ -1519,10 +1706,15 @@ export async function construirRelatorioParticipacaoHibrido(
   }
 
   const objetoCertameTexto = String(oportunidade.resumo || oportunidade.miniResumo || "");
+  const rawItensOportunidade: RawItemExtracao[] = Array.isArray(oportunidade.itens)
+    ? oportunidade.itens.filter(
+        (it): it is RawItemExtracao => Boolean(it && typeof it === "object"),
+      )
+    : [];
+  const fallbackMarca = Array.from(marcasDetectadas)[0] || null;
   const itensSalvosParecemGenericos =
-    !Array.isArray(oportunidade.itens) ||
-    oportunidade.itens.length === 0 ||
-    (oportunidade.itens as any[]).some((it) =>
+    rawItensOportunidade.length === 0 ||
+    rawItensOportunidade.some((it) =>
       pareceCabecalhoDeLoteOuObjeto(
         String(it?.descricao || ""),
         Number(it?.quantidade || 1),
@@ -1534,24 +1726,21 @@ export async function construirRelatorioParticipacaoHibrido(
   let listaItensBase: ItemDisputaEdital[] = [];
   let regrasDisputaExtracao: RegrasDisputaDetectadas | null = null;
   if (!itensSalvosParecemGenericos && (leituraCertame?.documentosLidos.length ?? 0) === 0) {
-    for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
-      listaItensBase.push({
-        numeroItem: it.numeroItem ?? idx + 1,
-        lote: it.lote ?? 1,
-        descricao: it.descricao || `Item ${idx + 1}`,
-        especificacaoDetalhada: it.especificacao || it.descricao,
-        quantidade: Number(it.quantidade) || 1,
-        unidadeMedida: it.unidadeMedida || "UN",
-        valorUnitarioEstimado: it.valorUnitario ? Number(it.valorUnitario) : null,
-        valorTotalEstimado: it.valorTotal ? Number(it.valorTotal) : null,
-        marcaExigidaOuReferencia: it.marca || Array.from(marcasDetectadas)[0] || null,
-      });
+    for (const [idx, it] of rawItensOportunidade.entries()) {
+      listaItensBase.push(converterRawItemParaItemDisputa(it, idx, fallbackMarca));
     }
   } else {
     try {
       const extracaoCompleta = await extrairItensCertameCompleto(oportunidade, {
         forcarVarreduraDocumentos: (leituraCertame?.documentosLidos.length ?? 0) > 0,
         leituraPrevia: leituraCertame ?? undefined,
+        telemetryContext: {
+          tenantId: tenantId ?? null,
+          userId: actorMeta?.userId ?? null,
+          usuarioNome: actorMeta?.usuarioNome ?? null,
+          empresaNome: empresa?.razaoSocial ?? empresa?.nomeFantasia ?? null,
+          licitacaoId: oportunidade.id || licitacaoId,
+        },
       });
       if (extracaoCompleta.regrasDisputaDetectadas) {
         regrasDisputaExtracao = extracaoCompleta.regrasDisputaDetectadas;
@@ -1560,7 +1749,7 @@ export async function construirRelatorioParticipacaoHibrido(
         listaItensBase = extracaoCompleta.itens.map((it) => ({
           ...it,
           marcaExigidaOuReferencia:
-            it.marcaExigidaOuReferencia || Array.from(marcasDetectadas)[0] || null,
+            it.marcaExigidaOuReferencia || fallbackMarca,
         }));
       }
     } catch {
@@ -1569,19 +1758,9 @@ export async function construirRelatorioParticipacaoHibrido(
   }
 
   if (listaItensBase.length === 0) {
-    if (Array.isArray(oportunidade.itens) && oportunidade.itens.length > 0) {
-      for (const [idx, it] of (oportunidade.itens as any[]).entries()) {
-        listaItensBase.push({
-          numeroItem: it.numeroItem ?? idx + 1,
-          lote: it.lote ?? 1,
-          descricao: it.descricao || `Item ${idx + 1}`,
-          especificacaoDetalhada: it.especificacao || it.descricao,
-          quantidade: Number(it.quantidade) || 1,
-          unidadeMedida: it.unidadeMedida || "UN",
-          valorUnitarioEstimado: it.valorUnitario ? Number(it.valorUnitario) : null,
-          valorTotalEstimado: it.valorTotal ? Number(it.valorTotal) : null,
-          marcaExigidaOuReferencia: it.marca || Array.from(marcasDetectadas)[0] || null,
-        });
+    if (rawItensOportunidade.length > 0) {
+      for (const [idx, it] of rawItensOportunidade.entries()) {
+        listaItensBase.push(converterRawItemParaItemDisputa(it, idx, fallbackMarca));
       }
     } else {
       listaItensBase.push({
@@ -1591,25 +1770,25 @@ export async function construirRelatorioParticipacaoHibrido(
           oportunidade.resumo ||
           oportunidade.miniResumo ||
           "Fornecimento de bens e serviços conforme edital",
-        especificacaoDetalhada: oportunidade.resumo,
+        especificacaoDetalhada: oportunidade.resumo || undefined,
         quantidade: 1,
         unidadeMedida: "UN/LOTE",
         valorUnitarioEstimado: valorEstimado,
         valorTotalEstimado: valorEstimado,
-        marcaExigidaOuReferencia: Array.from(marcasDetectadas)[0] || null,
+        marcaExigidaOuReferencia: fallbackMarca,
       });
     }
   }
 
   // Montagem objetiva das certidões do banco (/documentacao) com diagnóstico real dos anexos
-  const docsAtivos = documentos.filter((d: any) => d.status === "ATIVO");
+  const docsAtivos = documentos.filter((d) => d.status === "ATIVO");
   const certidoesRegulares = docsAtivos
-    .filter((d: any) => {
+    .filter((d) => {
       const possuiAnexo = docPossuiAnexo(d);
       const valStatus = docValidacaoStatus(d);
       return !d.vencido && possuiAnexo && valStatus !== "DIVERGENTE";
     })
-    .map((d: any) => {
+    .map((d) => {
       const suffix =
         d.validacaoStatus === "VALIDADO"
           ? " [Anexo validado ✓]"
@@ -1621,24 +1800,24 @@ export async function construirRelatorioParticipacaoHibrido(
 
   const certidoesVencidasOuPendentes = [
     ...docsAtivos
-      .filter((d: any) => d.vencido)
-      .map((d: any) => {
+      .filter((d) => d.vencido)
+      .map((d) => {
         const possuiAnexo = docPossuiAnexo(d);
         return `${d.nome} (Vencido há ${Math.abs(d.diasParaVencer ?? 1)} dia(s)${possuiAnexo ? "" : " e sem anexo"})`;
       }),
     ...docsAtivos
-      .filter((d: any) => !d.vencido && !docPossuiAnexo(d))
+      .filter((d) => !d.vencido && !docPossuiAnexo(d))
       .map(
-        (d: any) =>
+        (d) =>
           `${d.nome} (${d.categoria}) — Pendente de anexo em /documentacao (cadastrado sem PDF/imagem)`,
       ),
     ...docsAtivos
       .filter(
-        (d: any) =>
+        (d) =>
           !d.vencido && docPossuiAnexo(d) && docValidacaoStatus(d) === "DIVERGENTE",
       )
       .map(
-        (d: any) =>
+        (d) =>
           `${d.nome} (${d.categoria}) — Divergência no anexo enviado: ${d.validacaoResumo || "verifique o PDF/imagem em /documentacao"}`,
       ),
     ...checklistDocumental
@@ -1659,7 +1838,7 @@ export async function construirRelatorioParticipacaoHibrido(
       objeto: oportunidade.resumo,
       valorEstimado,
       isPresencial: oportunidade.isPresencial,
-      arquivosEdital: (oportunidade.arquivos || []).map((a: any) => a.nome),
+      arquivosEdital: (oportunidade.arquivos || []).map((a) => a.nome),
       documentosLidosCertame: (leituraCertame?.documentosLidos || []).map((d) => ({
         nome: d.nome,
         origem: d.origem,
@@ -1676,7 +1855,7 @@ export async function construirRelatorioParticipacaoHibrido(
       empresaCnaePrincipal: empresa?.cnae || null,
       empresaCnaesSecundarios: cnaesSecundariosEmpresa,
       cnaesCompativeisComEdital: compatCnaes.cnaesCompativeis,
-      cofreDocumentacaoInspecao: docsAtivos.map((d: any) => ({
+      cofreDocumentacaoInspecao: docsAtivos.map((d) => ({
         nome: d.nome,
         categoria: d.categoria,
         possuiAnexo: docPossuiAnexo(d),
@@ -1692,6 +1871,13 @@ export async function construirRelatorioParticipacaoHibrido(
       observacoesUsuario: obsUsuario || null,
     }),
     leituraCertame?.anexosBinariosMultimodais,
+    {
+      tenantId: tenantId ?? null,
+      userId: actorMeta?.userId ?? null,
+      usuarioNome: actorMeta?.usuarioNome ?? null,
+      licitacaoId: oportunidade?.id ?? licitacaoId,
+      empresaNome: empresa?.razaoSocial ?? empresa?.nomeFantasia ?? null,
+    },
   );
 
   // Nunca permitir que a LLM aprove como APTO sem ressalvas quando o banco aponta pendência real
@@ -1742,7 +1928,7 @@ export async function construirRelatorioParticipacaoHibrido(
 
   const itensCandidatosLLM = Array.isArray(enriquecidoLLM?.itens?.lista)
     ? enriquecidoLLM.itens.lista.filter(
-        (it: any) =>
+        (it) =>
           it &&
           typeof it.descricao === "string" &&
           !pareceCabecalhoDeLoteOuObjeto(
@@ -1857,7 +2043,9 @@ export async function construirRelatorioParticipacaoHibrido(
   const cnaesSugeridosFinal: string[] = Array.isArray(cnaesLLM) && cnaesLLM.length > 0
     ? cnaesLLM.map(String).map((s) => s.trim()).filter(Boolean)
     : !empresa?.cnae && cnaesSecundariosEmpresa.length === 0
-      ? (cnaesFallbackPorSegmento[oportunidade.segmentoMacro] || [
+      ? ((oportunidade.segmentoMacro
+          ? cnaesFallbackPorSegmento[oportunidade.segmentoMacro]
+          : undefined) || [
           "Atividade econômica compatível com o objeto do certame nos termos da Classificação Nacional de Atividades Econômicas (CNAE/IBGE)",
         ])
       : [];
@@ -1875,7 +2063,7 @@ export async function construirRelatorioParticipacaoHibrido(
     certsLLM?.tempoMinimoAtuacao || null;
 
   // Mescla segura: nunca sobrescrever a verdade do banco (/documentacao); apenas complementar com exigências específicas do edital
-  const nomesDocsCofreNorm = docsAtivos.map((d: any) =>
+  const nomesDocsCofreNorm = docsAtivos.map((d) =>
     String(d.nome || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -2102,11 +2290,11 @@ export async function construirRelatorioParticipacaoHibrido(
       observacao:
         escopoCompativel && atuaNaUf
           ? compatCnaes.compativel &&
-            !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro) &&
+            !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro || "") &&
             (compatCnaes.origemMatch === "SECUNDARIO" || compatCnaes.origemMatch === "AMBOS")
             ? `Compatibilidade confirmada pelo CNAE Secundário (${compatCnaes.cnaesCompativeis[0]}) para o segmento ${nomeSegmentoEdital} (${oportunidade.uf}).`
             : compatCnaes.compativel &&
-                !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro) &&
+                !segmentosEmpresaCodigos.includes(oportunidade.segmentoMacro || "") &&
                 compatCnaes.origemMatch === "PRINCIPAL"
               ? `Compatibilidade confirmada pelo CNAE Principal (${compatCnaes.cnaesCompativeis[0]}) para o segmento ${nomeSegmentoEdital} (${oportunidade.uf}).`
               : `O objeto licitado (${nomeSegmentoEdital}) e a localidade (${oportunidade.uf}) estão alinhados ao escopo operacional configurado pela empresa.`
@@ -2228,7 +2416,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   analiseId: string;
   mensagem: string;
   cota: CotaMensalAnaliseIA;
-  analise: any;
+  analise: AnaliseIAParticipacaoRecord | null;
 }> {
   const input = solicitarAnaliseInputSchema.parse(rawInput ?? {});
   const referencia = options?.referencia ?? new Date();
@@ -2236,8 +2424,8 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   const realId = oportunidade.id;
   const effectiveUserId =
     options?.userId ??
-    (user as any)?.id ??
-    (user as any)?.email ??
+    user?.id ??
+    user?.email ??
     actorContext?.usuarioId ??
     null;
 
@@ -2286,7 +2474,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   // 2. Cria registro imediato com status PROCESSANDO (incrementando a cota 0/X -> 1/X)
   const analiseId = `ia_${randomUUID()}`;
   const obsInicial = input.observacoes || input.observacoesExtras;
-  const registroInicial: any = {
+  const registroInicial: AnaliseIAParticipacaoRecord = {
     id: analiseId,
     licitacaoId: realId,
     tenantId: tenantId ?? null,
@@ -2340,12 +2528,16 @@ export async function iniciarAnaliseParticipacaoAssincrona(
   );
 
   // 3. Dispara o processamento em background
-  const jobPromise = (async () => {
+  const jobPromise = (async (): Promise<AnaliseIAParticipacaoRecord | null> => {
     try {
       const resultado = await construirRelatorioParticipacaoHibrido(
         realId,
         input,
         tenantId,
+        {
+          userId: user?.id ?? actorContext?.usuarioId ?? null,
+          usuarioNome: user?.name ?? actorContext?.usuarioNome ?? null,
+        },
       );
 
       const concluidoEm = new Date();
@@ -2399,7 +2591,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
             viabilidade: resultado.viabilidadeTexto,
             custos: resultado.custosTexto,
             precoSugerido: resultado.precoSugerido,
-            relatorioJson: resultado.relatorio as any,
+            relatorioJson: resultado.relatorio as unknown as Prisma.InputJsonValue,
             pdfBase64,
             pdfNome,
             concluidoEm,
@@ -2440,7 +2632,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
       }).catch(() => undefined);
 
       return memFinal ?? { ...registroInicial, ...patchConcluido };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msgErro =
         err instanceof Error ? err.message : "Erro ao processar análise de IA";
       updateInMemoryLicitacaoAnaliseIA(realId, analiseId, {
@@ -2470,7 +2662,9 @@ export async function iniciarAnaliseParticipacaoAssincrona(
       mensagem:
         "Relatório de participação gerado com sucesso e salvo na aba Histórico Análise IA.",
       cota: cotaAtualizada,
-      analise: concluida ?? getInMemoryLicitacaoAnaliseIA(realId, analiseId),
+      analise:
+        concluida ??
+        (getInMemoryLicitacaoAnaliseIA(realId, analiseId) as AnaliseIAParticipacaoRecord | null),
     };
   }
 
@@ -2490,7 +2684,7 @@ export async function iniciarAnaliseParticipacaoAssincrona(
  */
 export async function aguardarProcessamentoAnaliseIA(
   analiseId: string,
-): Promise<any | null> {
+): Promise<AnaliseIAParticipacaoRecord | null> {
   const job = pendingBackgroundJobs.get(analiseId);
   if (job) {
     return await job;
@@ -2505,14 +2699,14 @@ export async function obterAnaliseIAPorId(
   licitacaoId: string,
   analiseId: string,
   tenantId?: string | null,
-): Promise<any | null> {
+): Promise<AnaliseIAParticipacaoRecord | null> {
   const oportunidade = await getOportunidadeById(licitacaoId, tenantId);
   const realId = oportunidade.id;
 
   // Se ainda estiver processando em background, aguarda finalizar antes de servir o PDF
   await aguardarProcessamentoAnaliseIA(analiseId);
 
-  const mem = getInMemoryLicitacaoAnaliseIA(realId, analiseId);
+  const mem = getInMemoryLicitacaoAnaliseIA(realId, analiseId) as AnaliseIAParticipacaoRecord | null;
   if (mem) {
     if (tenantId && mem.tenantId && mem.tenantId !== tenantId) {
       return null;
@@ -2533,6 +2727,9 @@ export async function obterAnaliseIAPorId(
     // ignore
   }
 
-  const todas = listInMemoryLicitacaoAnalisesIA(realId, tenantId);
+  const todas = listInMemoryLicitacaoAnalisesIA(
+    realId,
+    tenantId,
+  ) as AnaliseIAParticipacaoRecord[];
   return todas.find((a) => a.id === analiseId) || null;
 }

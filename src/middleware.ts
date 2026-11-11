@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_ROUTES = [
   "/login",
+  "/admin/login",
   "/cadastro",
   "/esqueci-senha",
   "/recuperar-senha",
@@ -61,11 +62,10 @@ export async function middleware(req: NextRequest) {
       });
     }
 
-    const email = typeof token?.email === "string" ? token.email.toLowerCase() : "";
+    const isRevoked = Boolean(token?.sessionRevoked || token?.ativo === false);
     const isSuper =
-      token?.role === "SUPERADMIN" ||
-      email === "vitorhenrique018@gmail.com" ||
-      email === "alfredosouza100@gmail.com";
+      !isRevoked &&
+      (token?.role === "SUPERADMIN" || token?.isSuperAdmin === true);
 
     if (!isSuper) {
       // Reescreve para /404 simulando página inexistente para qualquer cliente ou bot

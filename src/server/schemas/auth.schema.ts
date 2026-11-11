@@ -41,6 +41,12 @@ export const sessionUserSchema = z.object({
   email: z.string().email(),
   role: roleSchema,
   ativo: z.boolean(),
+  isSuperAdmin: z.boolean().optional(),
+  adminRole: z
+    .enum(["SUPERADMIN_MASTER", "ADMIN_OPERACIONAL", "SUPORTE_N1"])
+    .nullable()
+    .optional(),
+  sessionVersion: z.number().int().optional(),
   activeTenantId: z.string().nullable().optional(),
   cnpj: z.string().nullable().optional(),
   plano: z.string().nullable().optional(),

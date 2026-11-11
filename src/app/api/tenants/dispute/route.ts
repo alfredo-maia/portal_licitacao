@@ -7,7 +7,7 @@ import { disputeClaimCnpj } from "@/server/services/tenant.service";
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   const user = session?.user as
-    | { id?: string; email?: string }
+    | { id?: string; email?: string; name?: string | null }
     | undefined;
 
   if (!user?.id || !user?.email) {
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     const result = await disputeClaimCnpj({
       userId: user.id,
       userEmail: user.email,
+      userName: user.name ?? null,
       input: parsed.data,
     });
 

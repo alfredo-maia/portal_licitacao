@@ -95,29 +95,32 @@ export function _resetPasswordResetStore(): void {
 export async function solicitarRecuperacaoSenha(
   rawEmail: string,
   ip = "127.0.0.1",
+  options?: { bypassRateLimit?: boolean },
 ): Promise<EsqueciSenhaResponse> {
   const parsed = esqueciSenhaSchema.parse({ email: rawEmail });
   const normalizedEmail = parsed.email.trim().toLowerCase();
 
-  // 1. Verificação de Rate Limit determinístico por Cliente/IP
-  const cleanIp = (ip || "127.0.0.1").split(",")[0].trim() || "127.0.0.1";
-  const rateLimitKey = `ip:${cleanIp}`;
+  // 1. Verificação de Rate Limit determinístico por Cliente/IP (ignorado em disparos autorizados do Portal ADM)
   const now = Date.now();
-  const history = (rateLimitStore.get(rateLimitKey) || []).filter(
-    (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS,
-  );
+  if (!options?.bypassRateLimit) {
+    const cleanIp = (ip || "127.0.0.1").split(",")[0].trim() || "127.0.0.1";
+    const rateLimitKey = `ip:${cleanIp}`;
+    const history = (rateLimitStore.get(rateLimitKey) || []).filter(
+      (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS,
+    );
 
-  if (history.length >= MAX_ATTEMPTS) {
-    return {
-      ok: false,
-      code: "RATE_LIMIT_EXCEEDED",
-      message:
-        "Limite de 2 tentativas a cada 15 minutos atingido. Aguarde alguns minutos antes de tentar novamente.",
-    };
+    if (history.length >= MAX_ATTEMPTS) {
+      return {
+        ok: false,
+        code: "RATE_LIMIT_EXCEEDED",
+        message:
+          "Limite de 2 tentativas a cada 15 minutos atingido. Aguarde alguns minutos antes de tentar novamente.",
+      };
+    }
+
+    history.push(now);
+    rateLimitStore.set(rateLimitKey, history);
   }
-
-  history.push(now);
-  rateLimitStore.set(rateLimitKey, history);
 
   // 2. Busca usuário no banco (ou memória em fallback de teste) com anti-enumeração
   let user: { id: string; email: string; name?: string | null; ativo?: boolean } | null =
@@ -155,7 +158,7 @@ export async function solicitarRecuperacaoSenha(
 
     try {
       await ensurePasswordResetTokenTable();
-      await (prisma as any).passwordResetToken.create({
+      await prisma.passwordResetToken.create({
         data: {
           id: recordId,
           userId: user.id,
@@ -209,7 +212,7 @@ async function resolveResetRecord(rawToken: string): Promise<{
 
   try {
     await ensurePasswordResetTokenTable();
-    const dbRecord = await (prisma as any).passwordResetToken.findUnique({
+    const dbRecord = await prisma.passwordResetToken.findUnique({
       where: { tokenHash },
       include: {
         user: {
@@ -336,7 +339,7 @@ export async function redefinirSenhaComToken(
       where: { id: record.userId },
       data: { passwordHash },
     });
-    await (prisma as any).passwordResetToken.update({
+    await prisma.passwordResetToken.update({
       where: { tokenHash },
       data: { usedAt },
     });

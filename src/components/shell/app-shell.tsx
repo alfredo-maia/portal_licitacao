@@ -44,6 +44,7 @@ import {
 } from "@carbon/icons-react";
 import { NotificationsBell } from "./notifications-bell";
 import { TenantHeaderSelector } from "./tenant-header-selector";
+import { SystemBroadcastBanner } from "./system-broadcast-banner";
 import { SuporteModal } from "@/components/suporte/suporte-modal";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
@@ -133,6 +134,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname === "/cadastro" ||
     pathname === "/esqueci-senha" ||
     pathname === "/recuperar-senha";
+
+  // Portal ADM possui Shell Carbon próprio (AdminShell) com <main id="main-content"> dedicado
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  if (isAdminRoute) {
+    return <>{children}</>;
+  }
 
   if (isAuthRoute) {
     return (
@@ -380,6 +388,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </InlineNotification>
           </div>
         )}
+        <SystemBroadcastBanner />
         {children}
       </main>
 

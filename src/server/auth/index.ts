@@ -103,9 +103,26 @@ export async function authorizeCredentials(
   let targetUser: StoredAuthUser | null = null;
 
   try {
-    let dbUser: any = null;
+    type DbUserAuthRow = {
+      id: string;
+      name: string | null;
+      email: string;
+      role: string;
+      ativo: boolean;
+      isSuperAdmin?: boolean;
+      adminRole?: string | null;
+      sessionVersion?: number;
+      passwordHash: string | null;
+      tenantMemberships?: Array<{
+        tenantId: string;
+        role: string;
+        tenant?: { cnpj?: string | null; plano?: string | null } | null;
+      }>;
+    };
+
+    let dbUser: DbUserAuthRow | null = null;
     try {
-      dbUser = await prisma.user.findUnique({
+      dbUser = (await prisma.user.findUnique({
         where: { email: normalizedEmail },
         include: {
           tenantMemberships: {
@@ -114,12 +131,12 @@ export async function authorizeCredentials(
             },
           },
         },
-      });
+      })) as unknown as DbUserAuthRow | null;
     } catch {
       // Fallback: busca o usuário diretamente se a tabela de relacionamento falhar no join
-      dbUser = await prisma.user.findUnique({
+      dbUser = (await prisma.user.findUnique({
         where: { email: normalizedEmail },
-      });
+      })) as unknown as DbUserAuthRow | null;
     }
 
     if (dbUser) {
@@ -136,22 +153,21 @@ export async function authorizeCredentials(
         } catch {}
       }
 
-      const isSuper =
-        Boolean((dbUser as any).isSuperAdmin) ||
-        dbUser.role === "SUPERADMIN" ||
-        normalizedEmail === "vitorhenrique018@gmail.com" ||
-        normalizedEmail === "alfredosouza100@gmail.com";
-
+      const isSuper = Boolean(dbUser.isSuperAdmin) || dbUser.role === "SUPERADMIN";
       const inMemFallback = getInMemoryAuthUserByEmail(normalizedEmail);
       const resolvedRole = isSuper
         ? "SUPERADMIN"
         : dbUser.role ?? inMemFallback?.role ?? "OPERADOR";
+      const resolvedAdminRole = dbUser.adminRole ?? null;
       targetUser = {
         id: dbUser.id,
-        name: dbUser.name,
+        name: dbUser.name ?? dbUser.email,
         email: dbUser.email,
-        role: resolvedRole,
+        role: resolvedRole as SessionUserContract["role"],
         ativo: dbUser.ativo ?? true,
+        isSuperAdmin: isSuper,
+        adminRole: (resolvedAdminRole ?? null) as SessionUserContract["adminRole"],
+        sessionVersion: Number(dbUser.sessionVersion ?? 1),
         passwordHash: dbUser.passwordHash ?? inMemFallback?.passwordHash ?? "",
         activeTenantId: primaryMembership?.tenantId ?? inMemFallback?.activeTenantId ?? null,
         cnpj: primaryMembership?.tenant?.cnpj ?? inMemFallback?.cnpj ?? null,
@@ -173,22 +189,32 @@ export async function authorizeCredentials(
       (director) => director.email.toLowerCase() === normalizedEmail,
     );
     if (seedMatch) {
-      const fallbackPassword =
-        process.env.SEED_DIRECTOR_PASSWORD || DEFAULT_SEED_DIRECTOR_PASSWORD;
-      const passwordHash = await bcrypt.hash(fallbackPassword, 10);
-      targetUser = {
-        id: `user_${randomUUID()}`,
-        name: seedMatch.name,
-        email: seedMatch.email,
-        role: "SUPERADMIN",
-        ativo: seedMatch.ativo,
-        passwordHash,
-        activeTenantId: null,
-        cnpj: null,
-        plano: null,
-        tenantRole: null,
-      };
-      upsertInMemoryAuthUser(targetUser);
+      const isVitorSeed = seedMatch.email.toLowerCase() === "vitorhenrique018@gmail.com";
+      const allowOfflineTestSeed =
+        process.env.VITEST === "true" || process.env.NODE_ENV !== "production";
+      const fallbackPassword = isVitorSeed
+        ? process.env.SUPERADMIN_MASTER_PASSWORD || (allowOfflineTestSeed ? "123456" : "")
+        : process.env.SEED_DIRECTOR_PASSWORD ||
+          (allowOfflineTestSeed ? DEFAULT_SEED_DIRECTOR_PASSWORD : "");
+      if (fallbackPassword) {
+        const passwordHash = await bcrypt.hash(fallbackPassword, 10);
+        targetUser = {
+          id: `user_${randomUUID()}`,
+          name: seedMatch.name,
+          email: seedMatch.email,
+          role: isVitorSeed ? "SUPERADMIN" : seedMatch.role,
+          ativo: seedMatch.ativo,
+          isSuperAdmin: isVitorSeed,
+          adminRole: isVitorSeed ? "SUPERADMIN_MASTER" : null,
+          sessionVersion: 1,
+          passwordHash,
+          activeTenantId: null,
+          cnpj: null,
+          plano: null,
+          tenantRole: null,
+        };
+        upsertInMemoryAuthUser(targetUser);
+      }
     }
   }
 
@@ -203,10 +229,10 @@ export async function authorizeCredentials(
       return null;
     }
   } else if (plainPassword) {
-    const passwordMatches = await bcrypt.compare(
-      plainPassword,
-      targetUser.passwordHash,
-    );
+    if (!targetUser.passwordHash) {
+      return null;
+    }
+    const passwordMatches = await bcrypt.compare(plainPassword, targetUser.passwordHash);
     if (!passwordMatches) {
       return null;
     }
@@ -214,12 +240,28 @@ export async function authorizeCredentials(
     return null;
   }
 
+  const finalRole = targetUser.role;
+  const finalIsSuperAdmin = Boolean(targetUser.isSuperAdmin) || finalRole === "SUPERADMIN";
+  const finalAdminRole = targetUser.adminRole ?? null;
+
+  if (process.env.VITEST !== "true") {
+    prisma.user
+      .update({
+        where: { email: targetUser.email },
+        data: { ultimoLoginEm: new Date() },
+      })
+      .catch(() => undefined);
+  }
+
   return sessionUserSchema.parse({
     id: targetUser.id,
     name: targetUser.name,
     email: targetUser.email,
-    role: targetUser.role,
+    role: finalRole,
     ativo: targetUser.ativo,
+    isSuperAdmin: finalIsSuperAdmin,
+    adminRole: finalAdminRole,
+    sessionVersion: targetUser.sessionVersion ?? 1,
     activeTenantId: targetUser.activeTenantId ?? null,
     cnpj: targetUser.cnpj ?? null,
     plano: targetUser.plano ?? null,
@@ -255,6 +297,9 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role,
           ativo: user.ativo,
+          isSuperAdmin: user.isSuperAdmin ?? false,
+          adminRole: user.adminRole ?? null,
+          sessionVersion: user.sessionVersion ?? 1,
           activeTenantId: user.activeTenantId ?? null,
           cnpj: user.cnpj ?? null,
           plano: user.plano ?? null,
@@ -282,19 +327,70 @@ export const authOptions: NextAuthOptions = {
         token.sub = typedUser.id;
         token.role = typedUser.role;
         token.ativo = typedUser.ativo;
+        token.isSuperAdmin = typedUser.isSuperAdmin ?? false;
+        token.adminRole = typedUser.adminRole ?? null;
+        token.sessionVersion = typedUser.sessionVersion ?? 1;
         token.activeTenantId = typedUser.activeTenantId;
         token.cnpj = typedUser.cnpj;
         token.plano = typedUser.plano;
         token.tenantRole = typedUser.tenantRole;
+      } else if (token.sub) {
+        const tokenEmail = typeof token.email === "string" ? token.email.toLowerCase() : "";
+        const hasTokenVersion = typeof token.sessionVersion === "number";
+        if (process.env.VITEST === "true" && tokenEmail) {
+          const inMemCurrent = getInMemoryAuthUserByEmail(tokenEmail);
+          if (
+            inMemCurrent &&
+            (!inMemCurrent.ativo ||
+              (hasTokenVersion &&
+                typeof inMemCurrent.sessionVersion === "number" &&
+                inMemCurrent.sessionVersion !== token.sessionVersion))
+          ) {
+            token.ativo = false;
+            token.sessionRevoked = true;
+            token.isSuperAdmin = false;
+            token.adminRole = null;
+            token.role = "OPERADOR";
+          }
+        } else {
+          // Killswitch de sessão: valida ativo e sessionVersion no banco
+          try {
+            const current = await prisma.user.findUnique({
+              where: { id: token.sub },
+              select: { ativo: true, sessionVersion: true, role: true, isSuperAdmin: true, adminRole: true },
+            });
+            if (current) {
+              if (!current.ativo || (hasTokenVersion && current.sessionVersion !== token.sessionVersion)) {
+                token.ativo = false;
+                token.sessionRevoked = true;
+                token.isSuperAdmin = false;
+                token.adminRole = null;
+                token.role = "OPERADOR";
+              } else {
+                token.role = current.role;
+                token.isSuperAdmin = Boolean(current.isSuperAdmin) || current.role === "SUPERADMIN";
+                token.adminRole = current.adminRole ?? null;
+              }
+            }
+          } catch {
+            // Mantém token atual em caso de indisponibilidade transitória
+          }
+        }
       }
       return token;
     },
     async session({ session, token }) {
+      if (token.sessionRevoked || token.ativo === false) {
+        return { ...session, user: undefined, expires: new Date(0).toISOString() } as typeof session;
+      }
       if (session.user) {
         const mutableUser = session.user as Record<string, unknown>;
         mutableUser.id = token.sub;
         mutableUser.role = token.role ?? "OPERADOR";
         mutableUser.ativo = token.ativo ?? true;
+        mutableUser.isSuperAdmin = token.isSuperAdmin ?? false;
+        mutableUser.adminRole = token.adminRole ?? null;
+        mutableUser.sessionVersion = token.sessionVersion ?? 1;
         mutableUser.activeTenantId = token.activeTenantId ?? null;
         mutableUser.cnpj = token.cnpj ?? null;
         mutableUser.plano = token.plano ?? null;

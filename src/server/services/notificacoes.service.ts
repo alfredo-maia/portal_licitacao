@@ -386,6 +386,7 @@ export async function executarJobNotificacoesDiarias(referencia?: Date): Promise
     N9_MENCAO_NOTA: 0,
     N10_MOVIMENTACAO_LICITACAO: 0,
     N11_RELATORIO_IA_PRONTO: 0,
+    N12_AVISO_SISTEMA: 0,
   };
   let ignoradas = 0;
 

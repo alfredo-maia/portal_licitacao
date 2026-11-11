@@ -29,10 +29,10 @@ export async function GET(request: Request, context: RouteContext) {
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
   const headerTenant = new URL(request.url).searchParams.get("tenantId") || undefined;
-  const sessionTenant = (user as any)?.activeTenantId || undefined;
+  const sessionTenant = user.activeTenantId || undefined;
   const preferredTenant = headerTenant || cookieTenant || sessionTenant;
   const tenantId = await resolveUserActiveTenantId(
-    (user as any)?.id || "",
+    user.id || "",
     preferredTenant,
     sessionTenant,
   );

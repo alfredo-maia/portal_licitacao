@@ -22,6 +22,8 @@ export const cadastroContaSchema = z.object({
   ufs: z.array(z.string().length(2, "UF deve ter 2 letras")).default([]),
   brasilInteiro: z.boolean().default(true),
   segmentoPrincipal: z.string().optional(),
+  affiliateCodigo: z.string().trim().max(40).optional(),
+  cupomCodigo: z.string().trim().max(40).optional(),
 }).refine((data) => data.nomeResponsavel || data.nome, {
   message: "Informe o nome do responsável.",
   path: ["nomeResponsavel"],

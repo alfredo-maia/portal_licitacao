@@ -8,7 +8,10 @@ import {
   extrairTextoDocx,
   extrairTextoPdf,
 } from "./leitor-documentos-certame.service";
-import { chamarLlmJsonMultimodal } from "./llm-multimodal.service";
+import {
+  chamarLlmJsonMultimodal,
+  type LlmTelemetryContext,
+} from "./llm-multimodal.service";
 
 export interface ResultadoInspecaoDocumentoCofre {
   validacaoStatus: DocumentoValidacaoStatus;
@@ -197,6 +200,7 @@ export async function inspecionarArquivoDocumentoCofre(params: {
   dataVencimentoInformada?: Date | null;
   semValidade?: boolean;
   tenantCnpj?: string | null;
+  telemetryContext?: Partial<LlmTelemetryContext>;
 }): Promise<ResultadoInspecaoDocumentoCofre> {
   const agora = new Date();
   const mimeReal = detectarTipoRealPorBuffer(
@@ -276,6 +280,10 @@ export async function inspecionarArquivoDocumentoCofre(params: {
         },
       ],
       timeoutMs: process.env.VITEST === "true" ? 3000 : 60000,
+      telemetryContext: {
+        ...(params.telemetryContext ?? {}),
+        feature: "INSPECAO_COFRE",
+      },
     });
 
     if (llmResp?.data) {

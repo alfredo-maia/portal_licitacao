@@ -82,6 +82,8 @@ export interface InMemoryTenantRecord {
   ufs?: string[];
   brasilInteiro?: boolean;
   preferenciasUpdatedAt?: Date | null;
+  affiliateId?: string | null;
+  cupomCodigo?: string | null;
   maxCnpjs: number;
   maxUsers: number;
   ativo: boolean;
@@ -112,15 +114,32 @@ export interface InMemoryTenantConviteRecord {
   criadoEm: Date;
 }
 
+export interface InMemoryCnpjDisputeRecord {
+  id: string;
+  cnpj: string;
+  tenantAtualId: string | null;
+  requerenteUserId: string | null;
+  requerenteNome: string;
+  requerenteEmail: string;
+  motivo: string;
+  metodo: string;
+  status: string;
+  decididoPorNome: string | null;
+  decididoEm: Date | null;
+  criadoEm: Date;
+}
+
 // Armazenamento em memória para suporte a testes unitários sem banco ativo
 export const inMemoryTenants = new Map<string, InMemoryTenantRecord>();
 export const inMemoryTenantUsers: InMemoryTenantUserRecord[] = [];
 export const inMemoryTenantConvites: InMemoryTenantConviteRecord[] = [];
+export const inMemoryCnpjDisputes = new Map<string, InMemoryCnpjDisputeRecord>();
 
 export function resetInMemoryTenantStorage(): void {
   inMemoryTenants.clear();
   inMemoryTenantUsers.length = 0;
   inMemoryTenantConvites.length = 0;
+  inMemoryCnpjDisputes.clear();
 }
 
 /**
@@ -350,7 +369,7 @@ export async function createTenantForUser(params: {
       },
     });
 
-    await (prisma as any).configuracaoEmpresa.create({
+    await prisma.configuracaoEmpresa.create({
       data: {
         id: `cfg_${newTenantId}`,
         tenantId: newTenantId,
@@ -676,6 +695,7 @@ export async function revokeTeamMember(params: {
 export async function disputeClaimCnpj(params: {
   userId: string;
   userEmail: string;
+  userName?: string | null;
   input: DisputeClaimCnpjInput;
 }): Promise<{
   protocolo: string;
@@ -683,7 +703,66 @@ export async function disputeClaimCnpj(params: {
   mensagem: string;
 }> {
   const cleanedCnpj = cleanCnpj(params.input.cnpj);
+  const formattedCnpj = formatCnpj(cleanedCnpj);
   const protocolo = `DISP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const normalizedEmail = params.userEmail.trim().toLowerCase();
+
+  const memTenant = Array.from(inMemoryTenants.values()).find(
+    (t) => cleanCnpj(t.cnpj) === cleanedCnpj,
+  );
+  let tenantAtualId: string | null = memTenant?.id ?? null;
+  if (!tenantAtualId) {
+    try {
+      const dbTenant = await prisma.tenant.findFirst({
+        where: { cnpj: { in: Array.from(new Set([cleanedCnpj, formattedCnpj])) } },
+        select: { id: true },
+      });
+      tenantAtualId = dbTenant?.id ?? null;
+    } catch {
+      tenantAtualId = null;
+    }
+  }
+
+  let requerenteNome = params.userName?.trim() || "";
+  if (!requerenteNome) {
+    try {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { name: true },
+      });
+      requerenteNome = dbUser?.name || "";
+    } catch {
+      requerenteNome = "";
+    }
+  }
+  if (!requerenteNome) {
+    requerenteNome = normalizedEmail.split("@")[0] || "Solicitante";
+  }
+
+  const record: InMemoryCnpjDisputeRecord = {
+    id: protocolo,
+    cnpj: formattedCnpj,
+    tenantAtualId,
+    requerenteUserId: params.userId,
+    requerenteNome,
+    requerenteEmail: normalizedEmail,
+    motivo: params.input.motivo,
+    metodo: params.input.metodo,
+    status: "PENDENTE",
+    decididoPorNome: null,
+    decididoEm: null,
+    criadoEm: new Date(),
+  };
+
+  inMemoryCnpjDisputes.set(protocolo, record);
+
+  try {
+    await prisma.cnpjDispute.create({
+      data: record,
+    });
+  } catch {
+    // Fallback em memória garantido acima quando Postgres está offline
+  }
 
   return {
     protocolo,

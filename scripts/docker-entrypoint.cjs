@@ -683,6 +683,130 @@ async function bootstrapDatabase() {
       `CREATE INDEX IF NOT EXISTS "password_reset_token_userId_idx" ON "password_reset_token"("userId");`,
       `CREATE INDEX IF NOT EXISTS "password_reset_token_expiresAt_idx" ON "password_reset_token"("expiresAt");`,
       `DO $$ BEGIN ALTER TABLE "password_reset_token" ADD CONSTRAINT "password_reset_token_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `ALTER TYPE "NotificacaoTipo" ADD VALUE IF NOT EXISTS 'N12_AVISO_SISTEMA';`,
+      `CREATE TABLE IF NOT EXISTS "admin_setting" (
+        "key" TEXT NOT NULL PRIMARY KEY,
+        "value" JSONB NOT NULL,
+        "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      // Issue #49 — Portal ADM ("Deus ex Machina")
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "adminRole" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "ultimoLoginEm" TIMESTAMP(3);`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "ultimoIp" TEXT;`,
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "sessionVersion" INTEGER NOT NULL DEFAULT 1;`,
+      `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "aiExtraQuotaMes" INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "ultimaAtividadeEm" TIMESTAMP(3);`,
+      `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "affiliateId" TEXT;`,
+      `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "cupomCodigo" TEXT;`,
+      `ALTER TABLE "tenant" ADD COLUMN IF NOT EXISTS "notasInternasAdm" TEXT;`,
+      `CREATE TABLE IF NOT EXISTS "affiliate" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "nome" TEXT NOT NULL,
+        "documento" TEXT,
+        "email" TEXT NOT NULL,
+        "telefone" TEXT,
+        "chavePix" TEXT,
+        "codigo" TEXT NOT NULL UNIQUE,
+        "percentualComissao" DOUBLE PRECISION NOT NULL DEFAULT 20.0,
+        "tipoComissao" TEXT NOT NULL DEFAULT 'RECORRENTE',
+        "descontoIndicadosPct" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+        "diasExtrasTrial" INTEGER NOT NULL DEFAULT 0,
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "observacoes" TEXT,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "atualizadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "affiliate_codigo_idx" ON "affiliate"("codigo");`,
+      `CREATE INDEX IF NOT EXISTS "affiliate_ativo_idx" ON "affiliate"("ativo");`,
+      `CREATE TABLE IF NOT EXISTS "affiliate_commission" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "affiliateId" TEXT NOT NULL REFERENCES "affiliate"("id") ON DELETE CASCADE,
+        "tenantId" TEXT,
+        "tenantNome" TEXT,
+        "competenciaMes" TEXT NOT NULL,
+        "valorBasePlano" DOUBLE PRECISION NOT NULL,
+        "percentualAplicado" DOUBLE PRECISION NOT NULL,
+        "valorComissao" DOUBLE PRECISION NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'PENDENTE',
+        "pagoEm" TIMESTAMP(3),
+        "comprovanteObs" TEXT,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "affiliate_commission_affiliateId_competenciaMes_idx" ON "affiliate_commission"("affiliateId", "competenciaMes");`,
+      `CREATE INDEX IF NOT EXISTS "affiliate_commission_status_idx" ON "affiliate_commission"("status");`,
+      `CREATE TABLE IF NOT EXISTS "coupon" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "codigo" TEXT NOT NULL UNIQUE,
+        "descricao" TEXT,
+        "descontoPercentual" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+        "diasExtrasTrial" INTEGER NOT NULL DEFAULT 0,
+        "affiliateId" TEXT,
+        "maxUsos" INTEGER,
+        "usosAtuais" INTEGER NOT NULL DEFAULT 0,
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "expiraEm" TIMESTAMP(3),
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "coupon_codigo_idx" ON "coupon"("codigo");`,
+      `CREATE INDEX IF NOT EXISTS "coupon_ativo_idx" ON "coupon"("ativo");`,
+      `CREATE TABLE IF NOT EXISTS "ai_usage_log" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT,
+        "userId" TEXT,
+        "usuarioNome" TEXT,
+        "empresaNome" TEXT,
+        "licitacaoId" TEXT,
+        "feature" TEXT NOT NULL DEFAULT 'GERAL',
+        "provider" TEXT NOT NULL DEFAULT 'LLM_GEMINI',
+        "model" TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+        "promptTokens" INTEGER NOT NULL DEFAULT 0,
+        "outputTokens" INTEGER NOT NULL DEFAULT 0,
+        "totalTokens" INTEGER NOT NULL DEFAULT 0,
+        "custoEstimadoUsd" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+        "custoEstimadoBrl" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+        "duracaoMs" INTEGER NOT NULL DEFAULT 0,
+        "status" TEXT NOT NULL DEFAULT 'SUCESSO',
+        "erro" TEXT,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "ai_usage_log_tenantId_criadoEm_idx" ON "ai_usage_log"("tenantId", "criadoEm");`,
+      `CREATE INDEX IF NOT EXISTS "ai_usage_log_userId_criadoEm_idx" ON "ai_usage_log"("userId", "criadoEm");`,
+      `CREATE INDEX IF NOT EXISTS "ai_usage_log_feature_criadoEm_idx" ON "ai_usage_log"("feature", "criadoEm");`,
+      `CREATE INDEX IF NOT EXISTS "ai_usage_log_criadoEm_idx" ON "ai_usage_log"("criadoEm");`,
+      `CREATE TABLE IF NOT EXISTS "system_broadcast" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "titulo" TEXT NOT NULL,
+        "mensagem" TEXT NOT NULL,
+        "severidade" TEXT NOT NULL DEFAULT 'INFO',
+        "formato" TEXT NOT NULL DEFAULT 'AMBOS',
+        "publicoAlvo" TEXT NOT NULL DEFAULT 'TODOS',
+        "targetIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+        "linkDestino" TEXT,
+        "ativo" BOOLEAN NOT NULL DEFAULT true,
+        "expiraEm" TIMESTAMP(3),
+        "criadoPorId" TEXT,
+        "criadoPorNome" TEXT,
+        "totalDestinatarios" INTEGER NOT NULL DEFAULT 0,
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "system_broadcast_ativo_expiraEm_idx" ON "system_broadcast"("ativo", "expiraEm");`,
+      `CREATE INDEX IF NOT EXISTS "system_broadcast_criadoEm_idx" ON "system_broadcast"("criadoEm");`,
+      `CREATE TABLE IF NOT EXISTS "cnpj_dispute" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "cnpj" TEXT NOT NULL,
+        "tenantAtualId" TEXT,
+        "requerenteUserId" TEXT,
+        "requerenteNome" TEXT NOT NULL,
+        "requerenteEmail" TEXT NOT NULL,
+        "motivo" TEXT NOT NULL,
+        "metodo" TEXT NOT NULL DEFAULT 'SUPORTE_DOCUMENTAL',
+        "status" TEXT NOT NULL DEFAULT 'PENDENTE',
+        "decididoPorNome" TEXT,
+        "decididoEm" TIMESTAMP(3),
+        "criadoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE INDEX IF NOT EXISTS "cnpj_dispute_cnpj_idx" ON "cnpj_dispute"("cnpj");`,
+      `CREATE INDEX IF NOT EXISTS "cnpj_dispute_status_idx" ON "cnpj_dispute"("status");`,
     ];
 
     for (const stmt of ddlSaaS) {
@@ -699,24 +823,47 @@ async function bootstrapDatabase() {
     const rawPassword =
       process.env.SEED_DIRECTOR_PASSWORD || "Pncp@2026!Diretoria";
     const passwordHash = await bcrypt.hash(rawPassword, 10);
+    const superAdminPasswordHash = await bcrypt.hash(
+      process.env.SUPERADMIN_MASTER_PASSWORD || "123456",
+      10,
+    );
 
     for (const director of DIRECTORS_SEED) {
-      await prisma.user.upsert({
+      const isVitorMaster =
+        director.email.toLowerCase() === "vitorhenrique018@gmail.com";
+      const existing = await prisma.user.findUnique({
         where: { email: director.email },
-        update: {
-          name: director.name,
-          passwordHash,
-          role: director.role,
-          ativo: director.ativo,
-        },
-        create: {
-          name: director.name,
-          email: director.email,
-          passwordHash,
-          role: director.role,
-          ativo: director.ativo,
-        },
       });
+
+      if (!existing) {
+        await prisma.user.create({
+          data: {
+            name: director.name,
+            email: director.email,
+            passwordHash: isVitorMaster ? superAdminPasswordHash : passwordHash,
+            role: isVitorMaster ? "SUPERADMIN" : director.role,
+            isSuperAdmin: isVitorMaster,
+            adminRole: isVitorMaster ? "SUPERADMIN_MASTER" : null,
+            ativo: director.ativo,
+          },
+        });
+      } else if (
+        isVitorMaster &&
+        existing.role !== "SUPERADMIN" &&
+        !existing.isSuperAdmin &&
+        !existing.adminRole
+      ) {
+        // Migração única da conta seed legada (pre-Portal ADM) para SUPERADMIN_MASTER sem sobrescrever futuras alterações
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash: superAdminPasswordHash,
+            role: "SUPERADMIN",
+            isSuperAdmin: true,
+            adminRole: "SUPERADMIN_MASTER",
+          },
+        });
+      }
     }
 
     const defaultTenant = await prisma.tenant.upsert({

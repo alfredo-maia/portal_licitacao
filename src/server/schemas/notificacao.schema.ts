@@ -18,6 +18,7 @@ export const NOTIFICACAO_TIPOS = [
   "N9_MENCAO_NOTA",
   "N10_MOVIMENTACAO_LICITACAO",
   "N11_RELATORIO_IA_PRONTO",
+  "N12_AVISO_SISTEMA",
 ] as const;
 
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
@@ -94,6 +95,12 @@ export const NOTIFICACAO_MATRIZ = {
   /** Issue #36 — relatório de participação (IA) concluído e disponível em PDF. */
   N11_RELATORIO_IA_PRONTO: {
     destinatarios: "RESPONSAVEL_E_ATRIBUIDOS",
+    severidade: "INFO",
+    antecedenciaDias: null,
+  },
+  /** Issue #49 — comunicado global / aviso em massa enviado pelo Portal ADM. */
+  N12_AVISO_SISTEMA: {
+    destinatarios: "TODOS",
     severidade: "INFO",
     antecedenciaDias: null,
   },

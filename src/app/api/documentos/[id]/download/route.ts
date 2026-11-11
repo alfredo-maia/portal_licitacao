@@ -17,13 +17,18 @@ function escapeHtmlText(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+interface SessionUserWithTenant {
+  id?: string;
+  activeTenantId?: string | null;
+}
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
   const session = await getServerSession(authOptions).catch(() => null);
-  const user = session?.user as { id?: string } | undefined;
+  const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
@@ -33,7 +38,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
     const cookieStore = await cookies();
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
-  const sessionTenant = (session?.user as any)?.activeTenantId;
+  const sessionTenant = user.activeTenantId ?? null;
   const tenantId = await resolveUserActiveTenantId(user.id, cookieTenant, sessionTenant);
 
   const { id } = await params;

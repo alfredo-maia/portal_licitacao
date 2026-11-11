@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { chamarLlmJsonMultimodal } from "./llm-multimodal.service";
+import {
+  chamarLlmJsonMultimodal,
+  type LlmTelemetryContext,
+} from "./llm-multimodal.service";
 import {
   pareceTituloTruncadoOuPobre,
   resolverTituloExibicaoLicitacao,
@@ -45,6 +48,7 @@ function validarTituloIaQualidade(titulo: string): boolean {
  */
 export async function gerarTitulosEmLotePrioridadeDupla(
   itens: ItemObjetoParaTitulo[],
+  telemetryContext?: Partial<LlmTelemetryContext>,
 ): Promise<Map<string, ResultadoTituloObjeto>> {
   const resultado = new Map<string, ResultadoTituloObjeto>();
   if (!Array.isArray(itens) || itens.length === 0) {
@@ -83,6 +87,10 @@ export async function gerarTitulosEmLotePrioridadeDupla(
           userPrompt: JSON.stringify({ objetos: promptItens }),
           temperature: 0.1,
           maxOutputTokens: 2048,
+          telemetryContext: {
+            ...(telemetryContext ?? {}),
+            feature: "RESUMO_PNCP",
+          },
         });
 
         const lista = Array.isArray(llm?.data?.titulos) ? llm.data.titulos : [];
@@ -117,8 +125,9 @@ export async function gerarTitulosEmLotePrioridadeDupla(
 
 export async function gerarTituloObjetoDuplaPrioridade(
   item: ItemObjetoParaTitulo,
+  telemetryContext?: Partial<LlmTelemetryContext>,
 ): Promise<ResultadoTituloObjeto> {
-  const mapa = await gerarTitulosEmLotePrioridadeDupla([item]);
+  const mapa = await gerarTitulosEmLotePrioridadeDupla([item], telemetryContext);
   return (
     mapa.get(item.pncpId) || {
       titulo: sintetizarTituloHeuristicoV2(item.objeto, item.tipoSistemaSugerido),

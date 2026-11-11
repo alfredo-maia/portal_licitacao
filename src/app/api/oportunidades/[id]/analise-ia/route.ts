@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { ZodError } from "zod";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
+import { runWithAuditActorContext } from "@/server/audit";
 import {
   AnaliseIAParticipacaoError,
   iniciarAnaliseParticipacaoAssincrona,
@@ -36,10 +37,10 @@ async function resolveTenantAndUser(request: Request) {
     cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
   } catch {}
   const headerTenant = new URL(request.url).searchParams.get("tenantId") || undefined;
-  const sessionTenant = (user as any)?.activeTenantId || undefined;
+  const sessionTenant = user.activeTenantId || undefined;
   const preferredTenant = headerTenant || cookieTenant || sessionTenant;
   const tenantId = await resolveUserActiveTenantId(
-    (user as any)?.id || "",
+    user.id || "",
     preferredTenant,
     sessionTenant,
   );
@@ -59,33 +60,43 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  try {
-    const userIdentifier = (user as any)?.id || (user as any)?.email || null;
-    const [cota, oportunidade] = await Promise.all([
-      obterStatusCotaAnaliseIA(tenantId, new Date(), userIdentifier),
-      getOportunidadeById(id, tenantId),
-    ]);
+  return runWithAuditActorContext(
+    {
+      usuarioId: user.id ?? null,
+      usuarioNome: user.name ?? user.email ?? null,
+      tenantId,
+      ip: request.headers?.get?.("x-forwarded-for") ?? null,
+    },
+    async () => {
+      try {
+        const userIdentifier = user.id || user.email || null;
+        const [cota, oportunidade] = await Promise.all([
+          obterStatusCotaAnaliseIA(tenantId, new Date(), userIdentifier),
+          getOportunidadeById(id, tenantId),
+        ]);
 
-    return NextResponse.json(
-      {
-        ok: true,
-        cota,
-        analises: oportunidade.analisesIA || [],
-      },
-      { status: 200 },
-    );
-  } catch (error) {
-    if (error instanceof OportunidadesServiceError) {
-      return NextResponse.json(
-        { ok: false, error: error.code, message: error.message },
-        { status: error.status },
-      );
-    }
-    return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR" },
-      { status: 500 },
-    );
-  }
+        return NextResponse.json(
+          {
+            ok: true,
+            cota,
+            analises: oportunidade.analisesIA || [],
+          },
+          { status: 200 },
+        );
+      } catch (error) {
+        if (error instanceof OportunidadesServiceError) {
+          return NextResponse.json(
+            { ok: false, error: error.code, message: error.message },
+            { status: error.status },
+          );
+        }
+        return NextResponse.json(
+          { ok: false, error: "INTERNAL_ERROR" },
+          { status: 500 },
+        );
+      }
+    },
+  );
 }
 
 /**
@@ -102,11 +113,15 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try {
     const text = await request.text();
     if (text) {
-      body = JSON.parse(text);
+      const parsedJson = JSON.parse(text) as unknown;
+      body =
+        parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)
+          ? (parsedJson as Record<string, unknown>)
+          : {};
     }
   } catch {
     return NextResponse.json(
@@ -115,80 +130,92 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const ip = request.headers.get("x-forwarded-for");
+  const userName = user.name ?? user.email ?? null;
   const actorContext = {
-    ip: request.headers.get("x-forwarded-for"),
-    usuarioId: user?.id,
-    usuarioNome: user?.name,
+    ip,
+    usuarioId: user.id,
+    usuarioNome: userName,
   };
 
-  // Compatibilidade com salvamento síncrono legado direto
-  if (body?.scriptPrompt && body?.relatorioTexto && !body?.observacoes) {
-    try {
-      const criada = await salvarAnaliseIA(id, body, user, actorContext);
-      return NextResponse.json({ ok: true, analise: criada }, { status: 201 });
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return NextResponse.json(
-          { ok: false, error: "VALIDATION_ERROR", issues: error.issues },
-          { status: 400 },
-        );
-      }
-      if (error instanceof OportunidadesServiceError) {
-        return NextResponse.json(
-          { ok: false, error: error.code, message: error.message },
-          { status: error.status },
-        );
-      }
-      return NextResponse.json(
-        { ok: false, error: "INTERNAL_ERROR" },
-        { status: 500 },
-      );
-    }
-  }
-
-  // Novo fluxo assíncrono com cota mensal e geração de PDF
-  try {
-    const resultado = await iniciarAnaliseParticipacaoAssincrona(
-      id,
-      body,
-      user,
-      actorContext,
+  return runWithAuditActorContext(
+    {
+      usuarioId: user.id ?? null,
+      usuarioNome: userName,
       tenantId,
-    );
+      ip: ip ?? null,
+    },
+    async () => {
+      // Compatibilidade com salvamento síncrono legado direto
+      if (Boolean(body.scriptPrompt) && Boolean(body.relatorioTexto) && !body.observacoes) {
+        try {
+          const criada = await salvarAnaliseIA(id, body, user, actorContext);
+          return NextResponse.json({ ok: true, analise: criada }, { status: 201 });
+        } catch (error) {
+          if (error instanceof ZodError) {
+            return NextResponse.json(
+              { ok: false, error: "VALIDATION_ERROR", issues: error.issues },
+              { status: 400 },
+            );
+          }
+          if (error instanceof OportunidadesServiceError) {
+            return NextResponse.json(
+              { ok: false, error: error.code, message: error.message },
+              { status: error.status },
+            );
+          }
+          return NextResponse.json(
+            { ok: false, error: "INTERNAL_ERROR" },
+            { status: 500 },
+          );
+        }
+      }
 
-    return NextResponse.json(
-      {
-        ...resultado,
-      },
-      { status: 201 },
-    );
-  } catch (error) {
-    if (error instanceof AnaliseIAParticipacaoError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: error.code,
-          message: error.message,
-          cota: error.cota,
-        },
-        { status: error.status },
-      );
-    }
-    if (error instanceof ZodError) {
-      return NextResponse.json(
-        { ok: false, error: "VALIDATION_ERROR", issues: error.issues },
-        { status: 400 },
-      );
-    }
-    if (error instanceof OportunidadesServiceError) {
-      return NextResponse.json(
-        { ok: false, error: error.code, message: error.message },
-        { status: error.status },
-      );
-    }
-    return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR" },
-      { status: 500 },
-    );
-  }
+      // Novo fluxo assíncrono com cota mensal e geração de PDF
+      try {
+        const resultado = await iniciarAnaliseParticipacaoAssincrona(
+          id,
+          body,
+          user,
+          actorContext,
+          tenantId,
+        );
+
+        return NextResponse.json(
+          {
+            ...resultado,
+          },
+          { status: 201 },
+        );
+      } catch (error) {
+        if (error instanceof AnaliseIAParticipacaoError) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: error.code,
+              message: error.message,
+              cota: error.cota,
+            },
+            { status: error.status },
+          );
+        }
+        if (error instanceof ZodError) {
+          return NextResponse.json(
+            { ok: false, error: "VALIDATION_ERROR", issues: error.issues },
+            { status: 400 },
+          );
+        }
+        if (error instanceof OportunidadesServiceError) {
+          return NextResponse.json(
+            { ok: false, error: error.code, message: error.message },
+            { status: error.status },
+          );
+        }
+        return NextResponse.json(
+          { ok: false, error: "INTERNAL_ERROR" },
+          { status: 500 },
+        );
+      }
+    },
+  );
 }

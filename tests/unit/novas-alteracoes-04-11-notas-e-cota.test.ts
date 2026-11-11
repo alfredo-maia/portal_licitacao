@@ -499,6 +499,9 @@ describe("Issue #36 — Análise Assíncrona de Participação IA + PDF + Cota +
     // Aguarda conclusão do processamento assíncrono
     const concluida = await aguardarProcessamentoAnaliseIA(inicio.analiseId);
     expect(concluida).toBeTruthy();
+    if (!concluida || !concluida.pdfBase64) {
+      throw new Error("Análise não concluída com PDF.");
+    }
     expect(concluida.status).toBe("CONCLUIDO");
     expect(concluida.pdfBase64).toBeTruthy();
     expect(concluida.pdfNome).toMatch(/\.pdf$/);

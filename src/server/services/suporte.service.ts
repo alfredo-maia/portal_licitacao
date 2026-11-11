@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Prisma, SupportTicketMessage } from "@prisma/client";
 import { APP_CONFIG } from "@/config/brand";
 import { prisma } from "@/lib/prisma";
 import { recordAuditLog } from "@/server/audit";
@@ -7,13 +8,20 @@ import { enviarNotificacaoWhatsApp } from "@/server/services/whatsapp.service";
 import {
   criarTicketSuporteInputSchema,
   responderTicketSuporteInputSchema,
+  supportTicketAutorTipoSchema,
+  supportTicketCategoriaSchema,
   supportTicketStatusSchema,
+  supportTicketUrgenciaSchema,
   type CriarTicketSuporteInput,
   type ResponderTicketSuporteInput,
   type SupportTicketItem,
   type SupportTicketMessageItem,
   type SupportTicketStatus,
 } from "@/server/schemas/suporte.schema";
+
+type SupportTicketWithMessages = Prisma.SupportTicketGetPayload<{
+  include: { mensagens: true };
+}>;
 
 const inMemorySuporteTickets = new Map<string, SupportTicketItem>();
 let suporteSequenciaMemoria = 0;
@@ -71,19 +79,23 @@ async function ensureSuporteTables(): Promise<void> {
   suporteTablesEnsured = true;
 }
 
-function mapDbMessage(msg: any): SupportTicketMessageItem {
+function mapDbMessage(msg: SupportTicketMessage): SupportTicketMessageItem {
+  const parsedTipo = supportTicketAutorTipoSchema.safeParse(msg.autorTipo);
   return {
     id: String(msg.id),
     ticketId: String(msg.ticketId),
     autorId: msg.autorId ?? null,
     autorNome: String(msg.autorNome || "Usuário"),
-    autorTipo: (msg.autorTipo === "SUPORTE" ? "SUPORTE" : "CLIENTE") as "CLIENTE" | "SUPORTE",
+    autorTipo: parsedTipo.success ? parsedTipo.data : "CLIENTE",
     mensagem: String(msg.mensagem || ""),
     criadoEm: new Date(msg.criadoEm),
   };
 }
 
-function mapDbTicket(row: any): SupportTicketItem {
+function mapDbTicket(row: SupportTicketWithMessages): SupportTicketItem {
+  const parsedCat = supportTicketCategoriaSchema.safeParse(row.categoria);
+  const parsedUrg = supportTicketUrgenciaSchema.safeParse(row.urgencia);
+  const parsedSt = supportTicketStatusSchema.safeParse(row.status);
   return {
     id: String(row.id),
     protocolo: String(row.protocolo),
@@ -92,10 +104,10 @@ function mapDbTicket(row: any): SupportTicketItem {
     autorNome: String(row.autorNome || "Cliente"),
     autorEmail: row.autorEmail ?? null,
     autorTelefone: row.autorTelefone ?? null,
-    categoria: row.categoria as any,
-    urgencia: row.urgencia as any,
+    categoria: parsedCat.success ? parsedCat.data : "DUVIDA",
+    urgencia: parsedUrg.success ? parsedUrg.data : "MEDIA",
     assunto: String(row.assunto),
-    status: row.status as any,
+    status: parsedSt.success ? parsedSt.data : "ABERTO",
     criadoEm: new Date(row.criadoEm),
     atualizadoEm: new Date(row.atualizadoEm),
     concluidoEm: row.concluidoEm ? new Date(row.concluidoEm) : null,
@@ -117,7 +129,7 @@ async function gerarProximoProtocolo(referencia = new Date()): Promise<string> {
   }
 
   try {
-    const ultimo = await (prisma as any).supportTicket.findFirst({
+    const ultimo = await prisma.supportTicket.findFirst({
       where: { protocolo: { startsWith: prefixo } },
       orderBy: { protocolo: "desc" },
       select: { protocolo: true },
@@ -187,7 +199,7 @@ export async function criarTicketSuporte(
   };
 
   try {
-    const created = await (prisma as any).supportTicket.create({
+    const created = await prisma.supportTicket.create({
       data: {
         id: ticketId,
         protocolo,
@@ -312,7 +324,7 @@ export async function listarTicketsSuporte(
   });
 
   try {
-    const where: any = {};
+    const where: Prisma.SupportTicketWhereInput = {};
     if (options?.status) where.status = options.status;
     if (!options?.isSuperAdmin) {
       if (tenantId) {
@@ -324,7 +336,7 @@ export async function listarTicketsSuporte(
       }
     }
 
-    const dbRows = await (prisma as any).supportTicket.findMany({
+    const dbRows = await prisma.supportTicket.findMany({
       where,
       include: {
         mensagens: { orderBy: { criadoEm: "asc" } },
@@ -360,7 +372,7 @@ export async function obterTicketSuportePorId(
   await ensureSuporteTables().catch(() => undefined);
 
   try {
-    const db = await (prisma as any).supportTicket.findUnique({
+    const db = await prisma.supportTicket.findUnique({
       where: { id: ticketId },
       include: { mensagens: { orderBy: { criadoEm: "asc" } } },
     });
@@ -435,7 +447,7 @@ export async function adicionarMensagemTicketSuporte(
   };
 
   try {
-    const dbUpdated = await (prisma as any).supportTicket.update({
+    const dbUpdated = await prisma.supportTicket.update({
       where: { id: ticketId },
       data: {
         status: novoStatus,
@@ -544,7 +556,7 @@ export async function atualizarStatusTicketSuporte(
   };
 
   try {
-    const dbUpdated = await (prisma as any).supportTicket.update({
+    const dbUpdated = await prisma.supportTicket.update({
       where: { id: ticketId },
       data: { status, atualizadoEm: agora, concluidoEm },
       include: { mensagens: { orderBy: { criadoEm: "asc" } } },

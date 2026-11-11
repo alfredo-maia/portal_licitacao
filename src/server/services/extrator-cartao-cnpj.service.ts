@@ -6,7 +6,10 @@ import {
   detectarTipoRealPorBuffer,
   extrairTextoPdf,
 } from "./leitor-documentos-certame.service";
-import { chamarLlmJsonMultimodal } from "./llm-multimodal.service";
+import {
+  chamarLlmJsonMultimodal,
+  type LlmTelemetryContext,
+} from "./llm-multimodal.service";
 
 const ROTULOS_RFB_PARADA = [
   "REPÚBLICA FEDERATIVA DO BRASIL",
@@ -304,6 +307,7 @@ export async function extrairDadosCartaoCnpjDeBuffer(params: {
   buffer: Buffer;
   nomeArquivo?: string | null;
   mimeType?: string | null;
+  telemetryContext?: Partial<LlmTelemetryContext>;
 }): Promise<CartaoCnpjExtraido> {
   const mimeReal = detectarTipoRealPorBuffer(
     params.buffer,
@@ -387,6 +391,10 @@ export async function extrairDadosCartaoCnpjDeBuffer(params: {
       ],
       temperature: 0.1,
       maxOutputTokens: 4096,
+      telemetryContext: {
+        ...(params.telemetryContext ?? {}),
+        feature: "CARTAO_CNPJ",
+      },
     });
 
     if (llmResp?.data && (llmResp.data.cnpj || parciaisRegex?.cnpj) && (llmResp.data.razaoSocial || parciaisRegex?.razaoSocial)) {
