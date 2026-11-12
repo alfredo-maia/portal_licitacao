@@ -26,7 +26,7 @@ import {
   Upload,
   UserFollow,
 } from "@carbon/icons-react";
-import { maskCnpj, maskCpf, maskPhone, sanitizeEmail } from "@/lib/masks";
+import { maskCnpj, maskCpf, maskPhone, parseMoedaBRL, sanitizeEmail } from "@/lib/masks";
 import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import type { SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
@@ -233,8 +233,11 @@ export function AfiliadosScreen() {
 
   const registrarPagamentoAfiliado = async () => {
     if (!modalPagamento || !modalPagamento.affiliateId) return;
-    const valorFinal = modalPagamento.valorPagoCustom
-      ? Number(modalPagamento.valorPagoCustom.replace(",", "."))
+    const customParsed = modalPagamento.valorPagoCustom
+      ? parseMoedaBRL(modalPagamento.valorPagoCustom)
+      : NaN;
+    const valorFinal = Number.isFinite(customParsed) && customParsed > 0
+      ? customParsed
       : resumoPagamentoModal.valorCalculado;
 
     const r = await adminFetch<{ error?: string }>("/api/admin/afiliados", {

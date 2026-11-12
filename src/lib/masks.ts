@@ -74,6 +74,29 @@ export function sanitizeEmail(email: string): string {
 }
 
 /**
+ * Converte string formatada em moeda brasileira (R$ 1.200,50 ou 1200,50) para número float
+ */
+export function parseMoedaBRL(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return NaN;
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  const str = String(value).trim();
+  if (!str) return NaN;
+  const limpo = str.replace(/[^\d.,]/g, "");
+  if (!limpo) return NaN;
+  if (limpo.includes(",") && limpo.includes(".")) {
+    const semMilhar = limpo.replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(semMilhar);
+    return Number.isFinite(num) ? num : NaN;
+  }
+  if (limpo.includes(",")) {
+    const num = parseFloat(limpo.replace(",", "."));
+    return Number.isFinite(num) ? num : NaN;
+  }
+  const num = parseFloat(limpo);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+/**
  * Faixas de Valor de Licitações (Sprint 7 — Item 2.9)
  */
 export const FAIXAS_VALOR_SPRINT7 = [
