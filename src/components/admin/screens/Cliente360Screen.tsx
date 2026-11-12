@@ -933,7 +933,7 @@ function Patrimonio({
   patch: PatchFn;
 }) {
   const patFromMap = dossie.porEmpresa?.[activeTenantId]?.patrimonioOperacional;
-  const pat: Dossie["patrimonioOperacional"] = patFromMap ?? {
+  const rawPat: Dossie["patrimonioOperacional"] = patFromMap ?? {
     ...dossie.patrimonioOperacional,
     licitacoes: dossie.patrimonioOperacional.licitacoes.some((l) => l.tenantId)
       ? dossie.patrimonioOperacional.licitacoes.filter((l) => !l.tenantId || l.tenantId === activeTenantId)
@@ -944,6 +944,15 @@ function Patrimonio({
         ? dossie.patrimonioOperacional.documentos.lista.filter((d) => !d.tenantId || d.tenantId === activeTenantId)
         : dossie.patrimonioOperacional.documentos.lista,
     },
+  };
+  const licitacoesSemRecusadas = rawPat.licitacoes.filter((l) => l.statusKanban !== "RECUSADA");
+  const kanbanSemRecusadas = Object.fromEntries(
+    Object.entries(rawPat.kanbanPorColuna).filter(([col]) => col !== "RECUSADA"),
+  );
+  const pat: Dossie["patrimonioOperacional"] = {
+    ...rawPat,
+    licitacoes: licitacoesSemRecusadas,
+    kanbanPorColuna: kanbanSemRecusadas,
   };
   const [inj, setInj] = useState({ aberto: false, licitacaoId: "", statusKanban: "PENDENTE", tenantId: activeTenantId });
 

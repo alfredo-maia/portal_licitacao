@@ -1008,7 +1008,7 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       const metrics = await obterMetricasSuperAdmin();
       expect(metrics.totalTenants).toBe(1);
       expect(metrics.tenantsAtivos).toBe(1);
-      expect(metrics.mrrEstimado).toBe(997);
+      expect(metrics.mrrEstimado).toBe(197);
       expect(metrics.r2StorageTotalMb).toBe(350);
     });
 
@@ -1293,7 +1293,7 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       expect(dossie.contaGlobal?.totalLicitacoes).toBe(2);
       expect(dossie.contaGlobal?.totalDocumentos).toBe(2);
       expect(dossie.contaGlobal?.totalPortais).toBe(1);
-      expect(dossie.contaGlobal?.valorMensalidade).toBe(997);
+      expect(dossie.contaGlobal?.valorMensalidade).toBe(197);
 
       const espelho = await obterEspelhamentoClienteSuperAdmin(conta.t2Id);
       expect(espelho.licitacoesKanban.map((x) => x.numeroEdital)).toEqual(["PE 002/2026"]);
@@ -1708,7 +1708,7 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       });
       const dossieViaFilial = await obterDossieCliente360SuperAdmin(conta.t2Id);
       expect(dossieViaFilial.notasInternasAdm).toBe("Cliente VIP conta consolidada");
-      expect(dossieViaFilial.contaGlobal?.valorMensalidade).toBe(997);
+      expect(dossieViaFilial.contaGlobal?.valorMensalidade).toBe(197);
     });
 
     it("S1 Webhook Asaas propaga status/plano para CNPJs irmãos e limpa trialFim", async () => {

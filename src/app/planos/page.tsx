@@ -92,7 +92,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
   {
     id: "BASICO",
     nome: "Básico",
-    preco: "R$ 197",
+    preco: "R$ 59,90",
     frequencia: "/ mês",
     descricao: "Ideal para empresas iniciantes em licitações públicas com atuação regional.",
     recursos: [
@@ -111,7 +111,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
   {
     id: "PRO",
     nome: "Pro",
-    preco: "R$ 497",
+    preco: "R$ 97,00",
     frequencia: "/ mês",
     descricao: "Para empresas consolidadas que participam ativamente em âmbito nacional.",
     destaque: true,
@@ -132,7 +132,7 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
   {
     id: "ENTERPRISE",
     nome: "Enterprise",
-    preco: "R$ 997",
+    preco: "R$ 197,00",
     frequencia: "/ mês",
     descricao: "Para grandes corporações e grupos empresariais com alta demanda de disputas.",
     recursos: [

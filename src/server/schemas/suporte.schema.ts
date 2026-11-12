@@ -85,6 +85,7 @@ export const supportTicketItemSchema = z.object({
   criadoEm: z.coerce.date(),
   atualizadoEm: z.coerce.date(),
   concluidoEm: z.coerce.date().nullable(),
+  mensagensNaoLidasCliente: z.number().int().nonnegative().optional().default(0),
   mensagens: z.array(supportTicketMessageSchema).default([]),
 });
 

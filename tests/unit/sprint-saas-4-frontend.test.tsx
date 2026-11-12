@@ -4,6 +4,16 @@ import { render, screen } from "@testing-library/react";
 import { SuperAdminDashboard } from "@/components/admin/SuperAdminDashboard";
 import { PaywallBanner } from "@/components/faturamento/PaywallBanner";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => "/admin",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 describe("Sprint SaaS 4 — Frontend SuperAdmin & Paywall", () => {
   it("deve renderizar o painel executivo SuperAdmin com tooltips de siglas e Radar de Teste Grátis em tabela", () => {
     const mockMetrics = {

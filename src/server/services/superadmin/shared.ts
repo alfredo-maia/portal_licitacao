@@ -1620,7 +1620,10 @@ export async function carregarPatrimonio(
 
   const rows = await dbTry(() =>
     prisma.tenantLicitacao.findMany({
-      where: { tenantId: { in: tenantIds } },
+      where: {
+        tenantId: { in: tenantIds },
+        statusKanban: { not: "RECUSADA" },
+      },
       include: {
         licitacao: {
           select: {
@@ -1632,11 +1635,12 @@ export async function carregarPatrimonio(
         },
       },
       orderBy: { dataDecisao: "desc" },
-      take: 500,
+      take: 100,
     }),
   );
   if (Array.isArray(rows)) {
     for (const r of rows) {
+      if (String(r.statusKanban) === "RECUSADA") continue;
       licMap.set(`${r.tenantId}__${r.licitacaoId}`, {
         id: r.id,
         tenantId: r.tenantId,
@@ -1656,6 +1660,7 @@ export async function carregarPatrimonio(
   }
   for (const tid of tenantIds) {
     for (const k of listInMemoryTenantLicitacoes(tid)) {
+      if (k.statusKanban === "RECUSADA") continue;
       const key = `${tid}__${k.licitacaoId}`;
       if (licMap.has(key)) continue;
       const lic = getInMemoryLicitacaoById(k.licitacaoId);

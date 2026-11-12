@@ -175,13 +175,19 @@ html[data-carbon-theme="g10"] .cds--app-theme-root.cds--g10 {
   }
 }
 
-.pncp-admin-row--active > td {
-  background-color: var(--cds-layer-selected-01) !important;
-  font-weight: 500;
+.cds--data-table tbody tr:not(.pncp-admin-row--active) > td {
+  background-color: var(--cds-layer-01) !important;
 }
 
+.cds--data-table tbody tr.pncp-admin-row--active > td,
+.pncp-admin-row--active > td {
+  background-color: rgba(15, 98, 254, 0.16) !important;
+  font-weight: 600;
+}
+
+.cds--data-table tbody tr.pncp-admin-row--active > td:first-child,
 .pncp-admin-row--active > td:first-child {
-  box-shadow: inset 4px 0 0 0 var(--cds-border-interactive);
+  box-shadow: inset 4px 0 0 0 var(--cds-border-interactive, #0f62fe);
 }
 
 [data-testid="admin-carbon-shell"] {

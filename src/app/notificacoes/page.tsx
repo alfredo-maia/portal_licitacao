@@ -228,64 +228,79 @@ export default function NotificacoesPage() {
             </Tile>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {dados.notificacoes.map((item) => (
-                <Tile
-                  key={item.id}
-                  data-testid={`notification-card-${item.id}`}
-                  style={{
-                    padding: "1.25rem",
-                    borderLeft: item.lida
-                      ? "4px solid transparent"
-                      : "4px solid var(--cds-support-info, #4589ff)",
-                    backgroundColor: item.lida
-                      ? "var(--cds-layer-01)"
-                      : "var(--cds-layer-accent-01, rgba(69, 137, 255, 0.05))",
-                    transition: "background-color 0.15s ease",
-                  }}
-                >
-                  <div
+              {dados.notificacoes.map((item) => {
+                const ehAvisoAdm = item.tipo === "N12_AVISO_SISTEMA";
+                return (
+                  <Tile
+                    key={item.id}
+                    data-testid={ehAvisoAdm ? `notificacao-card-adm-${item.id}` : `notification-card-${item.id}`}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: "1rem",
-                      flexWrap: "wrap",
+                      padding: "1.25rem",
+                      borderLeft: ehAvisoAdm
+                        ? "4px solid var(--cds-support-info, #8a3ffc)"
+                        : item.lida
+                          ? "4px solid transparent"
+                          : "4px solid var(--cds-support-info, #4589ff)",
+                      backgroundColor: ehAvisoAdm
+                        ? item.lida
+                          ? "rgba(138, 63, 252, 0.06)"
+                          : "rgba(138, 63, 252, 0.14)"
+                        : item.lida
+                          ? "var(--cds-layer-01)"
+                          : "var(--cds-layer-accent-01, rgba(69, 137, 255, 0.05))",
+                      transition: "background-color 0.15s ease",
                     }}
                   >
-                    <div style={{ display: "flex", gap: "1rem", flex: 1, minWidth: "16rem" }}>
-                      <div style={{ marginTop: "0.25rem", flexShrink: 0 }}>
-                        {renderIconSeveridade(item.severidade)}
-                      </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: "1rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: "1rem", flex: 1, minWidth: "16rem" }}>
+                        <div style={{ marginTop: "0.25rem", flexShrink: 0 }}>
+                          {renderIconSeveridade(item.severidade)}
+                        </div>
 
-                      <div style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            flexWrap: "wrap",
-                            marginBottom: "0.375rem",
-                          }}
-                        >
-                          {!item.lida && (
-                            <span
-                              data-testid="unread-dot"
-                              style={{
-                                width: "8px",
-                                height: "8px",
-                                borderRadius: "50%",
-                                backgroundColor: "var(--cds-support-info, #4589ff)",
-                                display: "inline-block",
-                              }}
-                            />
-                          )}
-                          <Tag
-                            type={getTagTypeSeveridade(item.severidade)}
-                            size="sm"
-                            className="pncp-mono"
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              flexWrap: "wrap",
+                              marginBottom: "0.375rem",
+                            }}
                           >
-                            {item.severidade}
-                          </Tag>
+                            {!item.lida && (
+                              <span
+                                data-testid="unread-dot"
+                                style={{
+                                  width: "8px",
+                                  height: "8px",
+                                  borderRadius: "50%",
+                                  backgroundColor: ehAvisoAdm
+                                    ? "var(--cds-support-info, #8a3ffc)"
+                                    : "var(--cds-support-info, #4589ff)",
+                                  display: "inline-block",
+                                }}
+                              />
+                            )}
+                            {ehAvisoAdm && (
+                              <Tag type="purple" size="sm">
+                                Comunicado ADM
+                              </Tag>
+                            )}
+                            <Tag
+                              type={getTagTypeSeveridade(item.severidade)}
+                              size="sm"
+                              className="pncp-mono"
+                            >
+                              {item.severidade}
+                            </Tag>
                           <span
                             className="pncp-mono"
                             style={{
@@ -369,7 +384,7 @@ export default function NotificacoesPage() {
                     </div>
                   </div>
                 </Tile>
-              ))}
+              ); })}
 
               {dados.totalPages > 1 && (
                 <div style={{ marginTop: "1rem" }}>

@@ -683,6 +683,99 @@ export async function criarAssinaturaAsaas(params: {
   });
 
   const hojeIso = new Date().toISOString().slice(0, 10);
+  const agora = new Date();
+  const novoMaxCnpjs = PLAN_LIMITS[params.plano].maxCnpjs;
+  const novoMaxUsers = params.plano === "ENTERPRISE" ? 10 : PLAN_LIMITS[params.plano].maxUsers;
+
+  const propagarMudancaPlanoParaTodosCnpjs = async (subId: string) => {
+    const memCurrent = inMemoryTenants.get(params.tenantId);
+    if (memCurrent) {
+      memCurrent.plano = params.plano;
+      memCurrent.maxCnpjs = Math.max(memCurrent.maxCnpjs, novoMaxCnpjs);
+      memCurrent.maxUsers = Math.max(memCurrent.maxUsers, novoMaxUsers);
+      memCurrent.asaasCustomerId = asaasCustomerId;
+      memCurrent.asaasSubscriptionId = subId;
+      memCurrent.updatedAt = agora;
+    }
+
+    try {
+      await prisma.tenant.update({
+        where: { id: params.tenantId },
+        data: {
+          plano: params.plano,
+          maxCnpjs: novoMaxCnpjs,
+          maxUsers: novoMaxUsers,
+          asaasCustomerId,
+          asaasSubscriptionId: subId,
+        },
+      });
+    } catch {}
+
+    // Propaga plano e limites para todos os CNPJs irmãos do mesmo TITULAR
+    const memTitular = inMemoryTenantUsers.find(
+      (tu) => tu.tenantId === params.tenantId && tu.role === "TITULAR" && tu.ativo,
+    );
+    let titularUserId = memTitular?.userId ?? null;
+    if (!titularUserId) {
+      try {
+        const dbTitular = await prisma.tenantUser.findFirst({
+          where: { tenantId: params.tenantId, role: "TITULAR", ativo: true },
+          select: { userId: true },
+        });
+        titularUserId = dbTitular?.userId ?? null;
+      } catch {}
+    }
+
+    if (titularUserId) {
+      const siblingIds = new Set<string>();
+      for (const tu of inMemoryTenantUsers) {
+        if (
+          tu.userId === titularUserId &&
+          tu.role === "TITULAR" &&
+          tu.ativo &&
+          tu.tenantId !== params.tenantId
+        ) {
+          siblingIds.add(tu.tenantId);
+        }
+      }
+      try {
+        const dbSibs = await prisma.tenantUser.findMany({
+          where: { userId: titularUserId, role: "TITULAR", ativo: true },
+          select: { tenantId: true },
+        });
+        for (const s of dbSibs) {
+          if (s.tenantId !== params.tenantId) siblingIds.add(s.tenantId);
+        }
+      } catch {}
+
+      for (const sibId of siblingIds) {
+        const memSib = inMemoryTenants.get(sibId);
+        if (memSib) {
+          memSib.plano = params.plano;
+          memSib.maxCnpjs = Math.max(memSib.maxCnpjs, novoMaxCnpjs);
+          memSib.maxUsers = Math.max(memSib.maxUsers, novoMaxUsers);
+          memSib.asaasCustomerId = asaasCustomerId;
+          memSib.asaasSubscriptionId = subId;
+          memSib.updatedAt = agora;
+        }
+      }
+
+      if (siblingIds.size > 0) {
+        try {
+          await prisma.tenant.updateMany({
+            where: { id: { in: Array.from(siblingIds) } },
+            data: {
+              plano: params.plano,
+              maxCnpjs: novoMaxCnpjs,
+              maxUsers: novoMaxUsers,
+              asaasCustomerId,
+              asaasSubscriptionId: subId,
+            },
+          });
+        } catch {}
+      }
+    }
+  };
 
   if (!cfg.configurado) {
     const subscriptionId = `sub_mock_${params.tenantId.slice(0, 8)}_${Date.now().toString(36)}`;
@@ -697,6 +790,8 @@ export async function criarAssinaturaAsaas(params: {
       plano: params.plano,
       isMock: true,
     });
+
+    await propagarMudancaPlanoParaTodosCnpjs(subscriptionId);
 
     const listaExistente = memoryMockInvoices.get(params.tenantId) || [];
     listaExistente.unshift({
@@ -759,15 +854,7 @@ export async function criarAssinaturaAsaas(params: {
     isMock: false,
   });
 
-  try {
-    await prisma.tenant.update({
-      where: { id: params.tenantId },
-      data: {
-        asaasCustomerId,
-        asaasSubscriptionId: subscriptionId,
-      },
-    });
-  } catch {}
+  await propagarMudancaPlanoParaTodosCnpjs(subscriptionId);
 
   let firstPayment: any = null;
   try {

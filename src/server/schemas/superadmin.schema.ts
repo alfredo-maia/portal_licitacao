@@ -595,7 +595,36 @@ export const AdminPagarComissaoSchema = z.object({
   commissionId: z.string().min(1),
   status: z.enum(["PAGO", "PENDENTE", "CANCELADO"]).default("PAGO"),
   comprovanteObs: z.string().optional(),
+  comprovanteDataUrl: z
+    .string()
+    .max(8_000_000, "Comprovante excede o tamanho máximo permitido (aprox. 5 MB).")
+    .nullable()
+    .optional(),
+  comprovanteNome: z.string().max(255).nullable().optional(),
+  comprovanteMimeType: z.string().max(120).nullable().optional(),
 });
+
+export const AdminRegistrarPagamentoAfiliadoSchema = z.object({
+  affiliateId: z.string().min(1, "Selecione o afiliado"),
+  competenciaMes: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, "Competência deve estar no formato YYYY-MM")
+    .optional(),
+  dataInicio: z.string().nullable().optional(),
+  dataFim: z.string().nullable().optional(),
+  valorPago: z.number().nonnegative().optional(),
+  comprovanteObs: z.string().nullable().optional(),
+  comprovanteDataUrl: z
+    .string()
+    .max(8_000_000, "Comprovante excede o tamanho máximo permitido (aprox. 5 MB).")
+    .nullable()
+    .optional(),
+  comprovanteNome: z.string().max(255).nullable().optional(),
+  comprovanteMimeType: z.string().max(120).nullable().optional(),
+});
+export type AdminRegistrarPagamentoAfiliadoInput = z.infer<
+  typeof AdminRegistrarPagamentoAfiliadoSchema
+>;
 
 /* =========================================================================
    Disparo de Avisos em Massa (/admin/avisos)
@@ -767,6 +796,7 @@ export const AdminAfiliadosPostSchema = z.discriminatedUnion("tipo", [
   AdminUpsertAffiliateSchema.extend({ tipo: z.literal("afiliado") }),
   AdminVincularAffiliateSchema.extend({ tipo: z.literal("vincular") }),
   AdminPagarComissaoSchema.extend({ tipo: z.literal("comissao") }),
+  AdminRegistrarPagamentoAfiliadoSchema.extend({ tipo: z.literal("registrar_pagamento") }),
 ]);
 export type AdminAfiliadosPostInput = z.infer<typeof AdminAfiliadosPostSchema>;
 

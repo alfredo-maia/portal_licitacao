@@ -71,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { isDark, toggleTheme } = useAppTheme();
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(true);
   const [suporteModalOpen, setSuporteModalOpen] = useState(false);
+  const [suporteNaoLidas, setSuporteNaoLidas] = useState(0);
   const [subStatus, setSubStatus] = useState<{
     billingStatus?: string;
     plano?: string;
@@ -79,6 +80,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     inGracePeriod?: boolean;
     mensagemStatus?: string;
   } | null>(null);
+
+  const carregarSuporteResumo = React.useCallback(async () => {
+    if (typeof fetch !== "function") return;
+    try {
+      const res = await fetch("/api/suporte/tickets?resumo=1");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) {
+          setSuporteNaoLidas(Number(data.totalMensagensNaoLidas) || 0);
+        }
+      }
+    } catch {
+      // Falha silenciosa
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void carregarSuporteResumo();
+    const handleUpdated = () => void carregarSuporteResumo();
+    if (typeof window !== "undefined") {
+      window.addEventListener("suporte-tickets-updated", handleUpdated);
+      return () => window.removeEventListener("suporte-tickets-updated", handleUpdated);
+    }
+  }, [carregarSuporteResumo, pathname]);
 
   React.useEffect(() => {
     if (typeof fetch !== "function") return;
@@ -397,7 +422,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         size="md"
         renderIcon={Headset}
         data-testid="support-fab-btn"
-        aria-label="Abrir Suporte"
+        aria-label={`Abrir Suporte${suporteNaoLidas > 0 ? ` (${suporteNaoLidas} novas mensagens)` : ""}`}
         onClick={() => setSuporteModalOpen(true)}
         style={{
           position: "fixed",
@@ -408,12 +433,41 @@ export function AppShell({ children }: { children: ReactNode }) {
           boxShadow: "0 4px 16px rgba(0, 0, 0, 0.28)",
         }}
       >
-        Suporte
+        <span>Suporte</span>
+        {suporteNaoLidas > 0 ? (
+          <span
+            data-testid="suporte-unread-badge"
+            className="pncp-mono"
+            style={{
+              position: "absolute",
+              top: "-6px",
+              right: "-6px",
+              backgroundColor: "var(--cds-support-error, #da1e28)",
+              color: "#ffffff",
+              borderRadius: "9999px",
+              fontSize: "0.625rem",
+              fontWeight: 700,
+              minWidth: "1.1rem",
+              height: "1.1rem",
+              padding: "0 0.25rem",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              lineHeight: 1,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+            }}
+          >
+            {suporteNaoLidas > 99 ? "99+" : suporteNaoLidas}
+          </span>
+        ) : null}
       </Button>
 
       <SuporteModal
         open={suporteModalOpen}
-        onClose={() => setSuporteModalOpen(false)}
+        onClose={() => {
+          setSuporteModalOpen(false);
+          void carregarSuporteResumo();
+        }}
       />
     </div>
   );

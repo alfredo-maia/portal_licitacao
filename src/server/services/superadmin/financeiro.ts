@@ -6,11 +6,13 @@ import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import {
   AdminFinanceiroActionSchema,
   AdminPagarComissaoSchema,
+  AdminRegistrarPagamentoAfiliadoSchema,
   AdminUpsertAffiliateSchema,
   AdminUpsertCouponSchema,
   AdminVincularAffiliateSchema,
   TenantInvoiceRecordSchema,
   type AdminFinanceiroActionInput,
+  type AdminRegistrarPagamentoAfiliadoInput,
   type AdminUpsertAffiliateInput,
   type AdminUpsertCouponInput,
   type TenantInvoiceRecord,
@@ -195,6 +197,56 @@ export async function vincularClienteAfiliadoSuperAdmin(rawInput: {
   return { ok: true, tenantId: input.tenantId, affiliateId: input.affiliateId };
 }
 
+export interface IndicadoRelatorioItem {
+  id: string;
+  nome: string;
+  cnpj?: string;
+  plano?: string;
+  billingStatus?: string;
+  valorBasePlano?: number;
+  valorComissao?: number;
+  criadoEm?: string;
+}
+
+export interface ComissaoDetalheExtra {
+  commissionId: string;
+  affiliateId: string;
+  competenciaMes: string;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  quantidadeIndicados: number;
+  clientesRelatorio: IndicadoRelatorioItem[];
+  comprovanteDataUrl?: string | null;
+  comprovanteNome?: string | null;
+  comprovanteMimeType?: string | null;
+}
+
+const ADMIN_COMISSOES_DETALHES_KEY = "admin_afiliados_comissoes_detalhes";
+const memComissoesDetalhes = new Map<string, ComissaoDetalheExtra>();
+
+async function carregarComissoesDetalhesMap(): Promise<Map<string, ComissaoDetalheExtra>> {
+  const out = new Map<string, ComissaoDetalheExtra>();
+  const persistidos = await lerSetting<ComissaoDetalheExtra[]>(ADMIN_COMISSOES_DETALHES_KEY, []);
+  if (Array.isArray(persistidos)) {
+    for (const item of persistidos) {
+      if (item && typeof item.commissionId === "string") {
+        out.set(item.commissionId, item);
+      }
+    }
+  }
+  for (const [k, v] of memComissoesDetalhes) {
+    out.set(k, v);
+  }
+  return out;
+}
+
+async function salvarComissaoDetalheExtra(detalhe: ComissaoDetalheExtra): Promise<void> {
+  memComissoesDetalhes.set(detalhe.commissionId, detalhe);
+  const mapa = await carregarComissoesDetalhesMap();
+  mapa.set(detalhe.commissionId, detalhe);
+  await gravarSetting(ADMIN_COMISSOES_DETALHES_KEY, Array.from(mapa.values()).slice(0, 300));
+}
+
 export async function listarAfiliadosSuperAdmin() {
   const afs = new Map<string, MemAffiliate>();
   const rows = await dbTry(() =>
@@ -205,42 +257,132 @@ export async function listarAfiliadosSuperAdmin() {
 
   const comMap = new Map<string, MemAffiliateCommission>();
   const comRows = await dbTry(() =>
-    prisma.affiliateCommission.findMany({ orderBy: { criadoEm: "desc" }, take: 500 }),
+    prisma.affiliateCommission.findMany({ orderBy: { criadoEm: "desc" }, take: 100 }),
   );
   if (Array.isArray(comRows)) for (const r of comRows) comMap.set(r.id, r);
   for (const [id, c] of memCommissions) if (!comMap.has(id)) comMap.set(id, c);
-  const comissoes = Array.from(comMap.values());
+  const comissoesRaw = Array.from(comMap.values());
 
-  // Indicados por afiliado
-  const indicados = new Map<string, Array<{ id: string; nome: string }>>();
-  const pushInd = (affId: string, id: string, nome: string) => {
+  // Indicados por afiliado com metadados financeiros
+  const indicados = new Map<string, IndicadoRelatorioItem[]>();
+  const pushInd = (
+    affId: string,
+    info: {
+      id: string;
+      nome: string;
+      cnpj?: string;
+      plano?: string;
+      billingStatus?: string;
+      criadoEm?: Date | string;
+    },
+  ) => {
+    const af = afs.get(affId);
+    const pct = af?.percentualComissao ?? 20;
+    const planoKey = (info.plano || "PRO") as PlanoAssinatura;
+    const valorBase = VALOR_PLANO[planoKey] ?? ASAAS_PLAN_PRICES_BRL.PRO;
+    const valorComissao = Math.round(valorBase * (pct / 100) * 100) / 100;
     const arr = indicados.get(affId) || [];
-    if (!arr.some((x) => x.id === id)) arr.push({ id, nome });
+    if (!arr.some((x) => x.id === info.id)) {
+      arr.push({
+        id: info.id,
+        nome: info.nome,
+        cnpj: info.cnpj,
+        plano: info.plano || "PRO",
+        billingStatus: info.billingStatus || "ATIVO",
+        valorBasePlano: valorBase,
+        valorComissao,
+        criadoEm: info.criadoEm ? new Date(info.criadoEm).toISOString() : new Date().toISOString(),
+      });
+    }
     indicados.set(affId, arr);
   };
   const tRows = await dbTry(() =>
     prisma.tenant.findMany({
       where: { affiliateId: { not: null } },
-      select: { id: true, razaoSocial: true, affiliateId: true },
+      select: {
+        id: true,
+        razaoSocial: true,
+        nomeFantasia: true,
+        cnpj: true,
+        plano: true,
+        billingStatus: true,
+        criadoEm: true,
+        affiliateId: true,
+      },
     }),
   );
   if (Array.isArray(tRows)) {
     for (const t of tRows) {
-      if (t.affiliateId) pushInd(t.affiliateId, t.id, t.razaoSocial);
+      if (t.affiliateId) {
+        pushInd(t.affiliateId, {
+          id: t.id,
+          nome: t.nomeFantasia || t.razaoSocial,
+          cnpj: t.cnpj,
+          plano: t.plano,
+          billingStatus: t.billingStatus,
+          criadoEm: t.criadoEm,
+        });
+      }
     }
   }
   for (const t of inMemoryTenants.values()) {
-    const aff = memTenantExtras.get(t.id)?.affiliateId ?? t.affiliateId ?? null;
-    if (aff) pushInd(aff, t.id, t.razaoSocial);
+    const ext = memTenantExtras.get(t.id);
+    const aff = ext?.affiliateId ?? t.affiliateId ?? null;
+    if (aff) {
+      pushInd(aff, {
+        id: t.id,
+        nome: t.nomeFantasia || t.razaoSocial,
+        cnpj: t.cnpj,
+        plano: t.plano,
+        billingStatus: t.billingStatus,
+        criadoEm: t.criadoEm,
+      });
+    }
   }
+
+  const detalhesMap = await carregarComissoesDetalhesMap();
+
+  const comissoes = comissoesRaw.map((c) => {
+    const det = detalhesMap.get(c.id);
+    const indAfiliado = indicados.get(c.affiliateId) || [];
+    const clientesRelatorio: IndicadoRelatorioItem[] =
+      det?.clientesRelatorio && det.clientesRelatorio.length > 0
+        ? det.clientesRelatorio
+        : c.tenantId
+          ? indAfiliado.filter((i) => i.id === c.tenantId).length > 0
+            ? indAfiliado.filter((i) => i.id === c.tenantId)
+            : [
+                {
+                  id: c.tenantId,
+                  nome: c.tenantNome || c.tenantId,
+                  valorBasePlano: c.valorBasePlano,
+                  valorComissao: c.valorComissao,
+                },
+              ]
+          : indAfiliado;
+    const quantidadeIndicados =
+      det?.quantidadeIndicados ?? (clientesRelatorio.length > 0 ? clientesRelatorio.length : 1);
+
+    return {
+      ...c,
+      quantidadeIndicados,
+      clientesRelatorio,
+      dataInicio: det?.dataInicio ?? null,
+      dataFim: det?.dataFim ?? null,
+      comprovanteDataUrl: det?.comprovanteDataUrl ?? null,
+      comprovanteNome: det?.comprovanteNome ?? null,
+      comprovanteMimeType: det?.comprovanteMimeType ?? null,
+    };
+  });
 
   const afiliados = Array.from(afs.values()).map((a) => {
     const minhas = comissoes.filter((c) => c.affiliateId === a.id);
+    const meusIndicados = indicados.get(a.id) || [];
     return {
       ...a,
       linkIndicacao: `/cadastro?ref=${a.codigo}`,
-      totalIndicados: indicados.get(a.id)?.length || 0,
-      indicados: indicados.get(a.id) || [],
+      totalIndicados: meusIndicados.length,
+      indicados: meusIndicados,
       comissaoPendenteBrl: minhas
         .filter((c) => c.status === "PENDENTE")
         .reduce((s, c) => s + c.valorComissao, 0),
@@ -298,6 +440,9 @@ export async function atualizarStatusComissaoAfiliadoSuperAdmin(rawInput: {
   commissionId: string;
   status?: "PAGO" | "PENDENTE" | "CANCELADO";
   comprovanteObs?: string;
+  comprovanteDataUrl?: string | null;
+  comprovanteNome?: string | null;
+  comprovanteMimeType?: string | null;
 }) {
   const input = AdminPagarComissaoSchema.parse(rawInput);
   const pagoEm = input.status === "PAGO" ? new Date() : null;
@@ -320,13 +465,151 @@ export async function atualizarStatusComissaoAfiliadoSuperAdmin(rawInput: {
   }
   if (!comissao) throw typedError("Comissão não encontrada.", 404);
 
+  if (input.comprovanteDataUrl || input.comprovanteNome) {
+    const dets = await carregarComissoesDetalhesMap();
+    const prev = dets.get(input.commissionId);
+    await salvarComissaoDetalheExtra({
+      commissionId: input.commissionId,
+      affiliateId: comissao.affiliateId,
+      competenciaMes: comissao.competenciaMes,
+      quantidadeIndicados: prev?.quantidadeIndicados ?? 1,
+      clientesRelatorio: prev?.clientesRelatorio ?? [],
+      comprovanteDataUrl: input.comprovanteDataUrl ?? prev?.comprovanteDataUrl ?? null,
+      comprovanteNome: input.comprovanteNome ?? prev?.comprovanteNome ?? null,
+      comprovanteMimeType: input.comprovanteMimeType ?? prev?.comprovanteMimeType ?? null,
+    });
+  }
+
   await registrarAuditoriaAdm(
     `COMISSAO_AFILIADO_${input.status}`,
     "AFFILIATE_COMMISSION",
     input.commissionId,
-    { ...dados },
+    { ...dados, comprovanteNome: input.comprovanteNome ?? null },
   );
   return { ok: true, comissao };
+}
+
+export async function registrarPagamentoAfiliadoSuperAdmin(
+  rawInput: AdminRegistrarPagamentoAfiliadoInput,
+) {
+  const input = AdminRegistrarPagamentoAfiliadoSchema.parse(rawInput);
+  const af = await carregarAfiliado(input.affiliateId);
+  if (!af) throw typedError("Afiliado não encontrado.", 404);
+
+  const snapshot = await listarAfiliadosSuperAdmin();
+  const afView = snapshot.afiliados.find((a) => a.id === af.id);
+  const todosIndicados = afView?.indicados || [];
+
+  const dtIni = input.dataInicio ? new Date(`${input.dataInicio}T00:00:00.000Z`).getTime() : null;
+  const dtFim = input.dataFim ? new Date(`${input.dataFim}T23:59:59.999Z`).getTime() : null;
+
+  const indicadosPeriodo = todosIndicados.filter((ind) => {
+    if (!dtIni && !dtFim) return true;
+    const ts = ind.criadoEm ? new Date(ind.criadoEm).getTime() : Date.now();
+    if (dtIni && !Number.isNaN(dtIni) && ts < dtIni) return false;
+    if (dtFim && !Number.isNaN(dtFim) && ts > dtFim) return false;
+    return true;
+  });
+
+  const clientesRelatorio =
+    indicadosPeriodo.length > 0 ? indicadosPeriodo : todosIndicados;
+
+  const competencia =
+    input.competenciaMes ||
+    (input.dataInicio && /^\d{4}-\d{2}/.test(input.dataInicio)
+      ? input.dataInicio.slice(0, 7)
+      : new Date()
+          .toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+          .slice(0, 7));
+
+  const valorBaseTotal =
+    clientesRelatorio.length > 0
+      ? clientesRelatorio.reduce(
+          (acc, item) => acc + (item.valorBasePlano ?? ASAAS_PLAN_PRICES_BRL.PRO),
+          0,
+        )
+      : ASAAS_PLAN_PRICES_BRL.PRO;
+
+  const valorCalculado =
+    Math.round(valorBaseTotal * (af.percentualComissao / 100) * 100) / 100;
+  const valorComissaoFinal =
+    input.valorPago !== undefined && input.valorPago > 0
+      ? input.valorPago
+      : valorCalculado;
+
+  const pagoEm = new Date();
+  const resumoNomes =
+    clientesRelatorio.length > 0
+      ? clientesRelatorio.map((c) => c.nome).join(", ")
+      : "Repasse consolidado do período";
+
+  const dados = {
+    affiliateId: af.id,
+    tenantId: clientesRelatorio[0]?.id ?? null,
+    tenantNome: resumoNomes.slice(0, 180),
+    competenciaMes: competencia,
+    valorBasePlano: Math.round(valorBaseTotal * 100) / 100,
+    percentualAplicado: af.percentualComissao,
+    valorComissao: valorComissaoFinal,
+    status: "PAGO",
+    pagoEm,
+    comprovanteObs:
+      input.comprovanteObs ||
+      (input.comprovanteNome
+        ? `Comprovante anexado: ${input.comprovanteNome}`
+        : "Pagamento registrado via Portal ADM"),
+  };
+
+  let criada = await dbTry(() => prisma.affiliateCommission.create({ data: dados }));
+  if (!criada) {
+    const id = `com_${randomUUID()}`;
+    criada = {
+      id,
+      ...dados,
+      criadoEm: pagoEm,
+    };
+    memCommissions.set(id, criada);
+  } else {
+    memCommissions.set(criada.id, criada);
+  }
+
+  await salvarComissaoDetalheExtra({
+    commissionId: criada.id,
+    affiliateId: af.id,
+    competenciaMes: competencia,
+    dataInicio: input.dataInicio ?? null,
+    dataFim: input.dataFim ?? null,
+    quantidadeIndicados: clientesRelatorio.length,
+    clientesRelatorio,
+    comprovanteDataUrl: input.comprovanteDataUrl ?? null,
+    comprovanteNome: input.comprovanteNome ?? null,
+    comprovanteMimeType: input.comprovanteMimeType ?? null,
+  });
+
+  await registrarAuditoriaAdm(
+    "REGISTRAR_PAGAMENTO_AFILIADO",
+    "AFFILIATE_COMMISSION",
+    criada.id,
+    {
+      affiliateId: af.id,
+      competenciaMes: competencia,
+      quantidadeIndicados: clientesRelatorio.length,
+      valorComissao: valorComissaoFinal,
+      comprovanteNome: input.comprovanteNome ?? null,
+    },
+  );
+
+  return {
+    ok: true,
+    comissao: {
+      ...criada,
+      quantidadeIndicados: clientesRelatorio.length,
+      clientesRelatorio,
+      comprovanteDataUrl: input.comprovanteDataUrl ?? null,
+      comprovanteNome: input.comprovanteNome ?? null,
+      comprovanteMimeType: input.comprovanteMimeType ?? null,
+    },
+  };
 }
 
 /* =========================================================================

@@ -33,6 +33,7 @@ export {
   listarAfiliadosSuperAdmin,
   listarCuponsSuperAdmin,
   listarHistoricoFaturasClienteSuperAdmin,
+  registrarPagamentoAfiliadoSuperAdmin,
   salvarAfiliadoSuperAdmin,
   salvarCupomSuperAdmin,
   vincularClienteAfiliadoSuperAdmin,

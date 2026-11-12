@@ -8,10 +8,70 @@ import {
 } from "@/server/auth/client-guard";
 import { can, type RbacUser } from "@/lib/rbac";
 import { responderTicketSuporteInputSchema } from "@/server/schemas/suporte.schema";
-import { adicionarMensagemTicketSuporte } from "@/server/services/suporte.service";
+import {
+  adicionarMensagemTicketSuporte,
+  marcarTicketVistoPeloCliente,
+  obterTicketSuportePorId,
+} from "@/server/services/suporte.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+  _req: Request,
+  context: { params: Promise<{ id: string }> | { id: string } },
+) {
+  try {
+    const session = await getServerSession(authOptions).catch(() => null);
+    const user = session?.user as (RbacUser & { id?: string; activeTenantId?: string }) | undefined;
+    if (!user?.id) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
+    if (isSuperAdminSessionUser(user)) {
+      return respostaProibidaAdminEmRotaCliente();
+    }
+
+    if (!can(user, "read", "suporte")) {
+      return NextResponse.json({ ok: false, error: "FORBIDDEN" }, { status: 403 });
+    }
+
+    const { id } = await Promise.resolve(context.params);
+
+    let cookieTenant: string | undefined;
+    try {
+      const cookieStore = await cookies();
+      cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+    } catch {}
+    const tenantId = await resolveUserActiveTenantId(
+      user.id,
+      cookieTenant,
+      user.activeTenantId,
+    );
+
+    const isSuperAdmin = user.isSuperAdmin === true || user.role === "SUPERADMIN";
+    const ticket = await obterTicketSuportePorId(id, tenantId, user.id, isSuperAdmin);
+
+    if (!ticket) {
+      return NextResponse.json(
+        { ok: false, error: "Chamado de suporte não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    marcarTicketVistoPeloCliente(id, user.id);
+
+    return NextResponse.json({
+      ok: true,
+      ticket,
+      mensagens: ticket.mensagens || [],
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { ok: false, error: error?.message || "Erro ao carregar mensagens do chamado." },
+      { status: 500 },
+    );
+  }
+}
 
 export async function POST(
   req: Request,

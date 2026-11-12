@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Grid,
   Column,
@@ -28,6 +29,8 @@ import {
 interface SuperAdminDashboardProps {
   initialMetrics?: SuperAdminMetrics;
   initialTenants?: SuperAdminTenantItem[];
+  metrics?: SuperAdminMetrics;
+  tenants?: SuperAdminTenantItem[];
 }
 
 const MESES_ANO = [
@@ -48,16 +51,34 @@ const MESES_ANO = [
 export function SuperAdminDashboard({
   initialMetrics,
   initialTenants,
+  metrics: propMetrics,
+  tenants: propTenants,
 }: SuperAdminDashboardProps) {
+  let router: any = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    router = useRouter();
+  } catch {
+    router = null;
+  }
+  const navegarPara = (url: string) => {
+    if (router && typeof router.push === "function") {
+      router.push(url);
+    } else if (typeof window !== "undefined") {
+      window.location.href = url;
+    }
+  };
+  const seedMetrics = initialMetrics ?? propMetrics ?? null;
+  const seedTenants = initialTenants ?? propTenants ?? [];
   const hoje = new Date();
   const [mes, setMes] = useState<string>(
-    String(initialMetrics?.periodoMes ?? hoje.getMonth() + 1),
+    String(seedMetrics?.periodoMes ?? hoje.getMonth() + 1),
   );
   const [ano, setAno] = useState<string>(
-    String(initialMetrics?.periodoAno ?? hoje.getFullYear()),
+    String(seedMetrics?.periodoAno ?? hoje.getFullYear()),
   );
-  const [metrics, setMetrics] = useState<SuperAdminMetrics | null>(initialMetrics || null);
-  const [tenants, setTenants] = useState<SuperAdminTenantItem[]>(initialTenants || []);
+  const [metrics, setMetrics] = useState<SuperAdminMetrics | null>(seedMetrics);
+  const [tenants, setTenants] = useState<SuperAdminTenantItem[]>(seedTenants);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -84,7 +105,7 @@ export function SuperAdminDashboard({
   };
 
   useEffect(() => {
-    if (!initialMetrics || !initialTenants) {
+    if (!seedMetrics || (!initialTenants && !propTenants)) {
       void carregarDados();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,68 +190,207 @@ export function SuperAdminDashboard({
         </div>
       )}
 
-      {/* KPI TILES EXECUTIVOS */}
-      <Grid fullWidth style={{ marginBottom: "2rem" }}>
-        <Column sm={4} md={4} lg={3}>
-          <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+      {/* 4 KPIS PRINCIPAIS — RETÂNGULOS SEPARADOS E CLICÁVEIS (SIMILAR AO PORTAL DO CLIENTE) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "1rem",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <Tile
+          data-testid="admin-kpi-card-mrr"
+          role="link"
+          tabIndex={0}
+          onClick={() => navegarPara("/admin/financeiro")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navegarPara("/admin/financeiro");
+            }
+          }}
+          style={{
+            minHeight: "140px",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+            cursor: "pointer",
+            height: "100%",
+          }}
+        >
+          <div
+            style={{
+              color: "var(--cds-text-secondary)",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.25rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              onClick={() => navegarPara("/admin/financeiro")}
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+            >
               <span>MRR ESTIMADO (MENSAL)</span>
               <SiglaInfoTooltip texto="MRR (Monthly Recurring Revenue): Receita Recorrente Mensal estimada das contas pagantes e em carência." />
-            </div>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-support-success)" }}>
-              {(metrics?.mrrEstimado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </div>
-            <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-text-secondary)" }}>
-              {metrics?.tenantsAtivos || 0} cliente(s) pagante(s) ativo(s)
-            </div>
-          </Tile>
-        </Column>
+            </span>
+            <Tag type="green" size="sm" className="pncp-mono">
+              Financeiro
+            </Tag>
+          </div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-support-success)" }}>
+            {(metrics?.mrrEstimado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </div>
+          <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-text-secondary)" }}>
+            {metrics?.tenantsAtivos || 0} cliente(s) pagante(s) ativo(s)
+          </div>
+        </Tile>
 
-        <Column sm={4} md={4} lg={3}>
-          <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              VOLUME ARREMATADO MENSAL
-            </div>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
-              {(metrics?.totalVolumeArrematado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </div>
-            <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-text-secondary)" }}>
-              Soma ganha pelos clientes no mês ({metrics?.totalLicitacoesContempladas || 0} certames contemplados)
-            </div>
-          </Tile>
-        </Column>
+        <Tile
+          data-testid="admin-kpi-card-volume"
+          role="link"
+          tabIndex={0}
+          onClick={() => navegarPara("/admin/licitacoes")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navegarPara("/admin/licitacoes");
+            }
+          }}
+          style={{
+            minHeight: "140px",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+            cursor: "pointer",
+            height: "100%",
+          }}
+        >
+          <div
+            style={{
+              color: "var(--cds-text-secondary)",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.25rem",
+            }}
+          >
+            <span>VOLUME ARREMATADO MENSAL</span>
+            <Tag type="blue" size="sm" className="pncp-mono">
+              Licitações
+            </Tag>
+          </div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
+            {(metrics?.totalVolumeArrematado || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </div>
+          <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-text-secondary)" }}>
+            Soma ganha pelos clientes no mês ({metrics?.totalLicitacoesContempladas || 0} certames contemplados)
+          </div>
+        </Tile>
 
-        <Column sm={4} md={4} lg={3}>
-          <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+        <Tile
+          data-testid="admin-kpi-card-r2"
+          role="link"
+          tabIndex={0}
+          onClick={() => navegarPara("/admin/clientes")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navegarPara("/admin/clientes");
+            }
+          }}
+          style={{
+            minHeight: "140px",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+            cursor: "pointer",
+            height: "100%",
+          }}
+        >
+          <div
+            style={{
+              color: "var(--cds-text-secondary)",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.25rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              onClick={() => navegarPara("/admin/clientes")}
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+            >
               <span>ARMAZENAMENTO R2 (STREAMING)</span>
               <SiglaInfoTooltip texto="R2 (Cloudflare R2): Armazenamento em nuvem de alta disponibilidade utilizado pelo Cofre de Documentos." />
-            </div>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
-              {metrics?.r2StorageTotalMb || 0} MB
-            </div>
-            <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-support-success)" }}>
-              100% Zero-PDF na VPS (Hostinger NVMe)
-            </div>
-          </Tile>
-        </Column>
+            </span>
+            <Tag type="cyan" size="sm" className="pncp-mono">
+              Clientes
+            </Tag>
+          </div>
+          <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "var(--cds-text-primary)" }}>
+            {metrics?.r2StorageTotalMb || 0} MB
+          </div>
+          <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--cds-support-success)" }}>
+            100% Zero-PDF na VPS (Hostinger NVMe)
+          </div>
+        </Tile>
 
-        <Column sm={4} md={4} lg={3}>
-          <Tile style={{ minHeight: "140px", backgroundColor: "var(--cds-layer-01)" }}>
-            <div style={{ color: "var(--cds-text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              CONECTOR WHATSAPP (ANTI-BAN)
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
-              <Tag type={metrics?.whatsappInstanciaConectada ? "green" : "red"}>
-                {metrics?.whatsappInstanciaConectada ? "INSTÂNCIA ATIVA" : "DESCONECTADO"}
-              </Tag>
-              <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
-                {metrics?.whatsappFilaPendentes || 0} na fila
-              </span>
-            </div>
-          </Tile>
-        </Column>
-      </Grid>
+        <Tile
+          data-testid="admin-kpi-card-whatsapp"
+          role="link"
+          tabIndex={0}
+          onClick={() => navegarPara("/admin/whatsapp")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              navegarPara("/admin/whatsapp");
+            }
+          }}
+          style={{
+            minHeight: "140px",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+            cursor: "pointer",
+            height: "100%",
+          }}
+        >
+          <div
+            style={{
+              color: "var(--cds-text-secondary)",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              marginBottom: "0.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.25rem",
+            }}
+          >
+            <span>CONECTOR WHATSAPP (ANTI-BAN)</span>
+            <Tag type="teal" size="sm" className="pncp-mono">
+              WhatsApp
+            </Tag>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
+            <Tag type={metrics?.whatsappInstanciaConectada ? "green" : "red"}>
+              {metrics?.whatsappInstanciaConectada ? "INSTÂNCIA ATIVA" : "DESCONECTADO"}
+            </Tag>
+            <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>
+              {metrics?.whatsappFilaPendentes || 0} na fila
+            </span>
+          </div>
+        </Tile>
+      </div>
 
       {/* PULSO EXECUTIVO ESTENDIDO (Issue #49 / #50) */}
       <KpiGrid>

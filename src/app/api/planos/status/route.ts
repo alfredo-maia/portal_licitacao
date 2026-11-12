@@ -8,7 +8,11 @@ import {
 } from "@/server/auth/client-guard";
 import { prisma } from "@/lib/prisma";
 import { evaluateTenantAccess } from "@/lib/subscription-guard";
-import { inMemoryTenants, resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import {
+  inMemoryTenants,
+  resolveUserActiveTenantId,
+  resolverEstadoFinanceiroUnificadoTitular,
+} from "@/server/services/tenant.service";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +32,9 @@ export async function GET() {
     const sessionTenant = guard.user.activeTenantId;
     const tenantId = await resolveUserActiveTenantId(userId, cookieTenant, sessionTenant);
 
-    let tenantData: any = null;
-    if (tenantId) {
+    const unificado = await resolverEstadoFinanceiroUnificadoTitular(userId, tenantId);
+    let tenantData: any = unificado?.tenantData || null;
+    if (!tenantData && tenantId) {
       try {
         tenantData = await prisma.tenant.findUnique({
           where: { id: tenantId },

@@ -254,6 +254,8 @@ export interface AdminColumn {
 
 export type AdminRow = { id: string } & Record<string, ReactNode>;
 
+export const MAX_ADMIN_TABLE_PAGE_SIZE = 100;
+
 export function AdminTable({
   titulo,
   descricao,
@@ -275,11 +277,12 @@ export function AdminTable({
   pageSizes?: number[];
   resetPageKey?: string | number;
 }) {
+  const cappedInitialSize = Math.min(Math.max(1, pageSize), MAX_ADMIN_TABLE_PAGE_SIZE);
   const [page, setPage] = useState(1);
-  const [currentSize, setCurrentSize] = useState(pageSize);
+  const [currentSize, setCurrentSize] = useState(cappedInitialSize);
 
   useEffect(() => {
-    setCurrentSize(pageSize);
+    setCurrentSize(Math.min(Math.max(1, pageSize), MAX_ADMIN_TABLE_PAGE_SIZE));
   }, [pageSize]);
 
   useEffect(() => {
@@ -301,12 +304,13 @@ export function AdminTable({
       ? linhas.slice((paginaSegura - 1) * currentSize, paginaSegura * currentSize)
       : linhas;
 
-  const baseSizes =
+  const baseSizes = (
     pageSizes && pageSizes.length > 0
       ? pageSizes
-      : pageSize === 5
-        ? [5, 10, 20]
-        : [10, 20, 50];
+      : cappedInitialSize === 5
+        ? [5, 10, 20, 50]
+        : [10, 20, 50, 100]
+  ).filter((s) => s > 0 && s <= MAX_ADMIN_TABLE_PAGE_SIZE);
   const resolvedPageSizes = baseSizes.includes(currentSize)
     ? baseSizes
     : [currentSize, ...baseSizes].sort((a, b) => a - b);
@@ -334,19 +338,23 @@ export function AdminTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                rs.map((row) => (
-                  <TableRow
-                    {...getRowProps({
-                      row,
-                      className: rowClassName ? rowClassName(row.id) : undefined,
-                    })}
-                    key={row.id}
-                  >
-                    {row.cells.map((cell) => (
-                      <TableCell key={cell.id}>{cell.value}</TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                rs.map((row) => {
+                  const rowProps = getRowProps({ row });
+                  const extraClass = rowClassName ? rowClassName(String(row.id)) : undefined;
+                  const finalClassName =
+                    [rowProps.className, extraClass].filter(Boolean).join(" ") || undefined;
+                  return (
+                    <TableRow
+                      {...rowProps}
+                      className={finalClassName}
+                      key={row.id}
+                    >
+                      {row.cells.map((cell) => (
+                        <TableCell key={cell.id}>{cell.value}</TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

@@ -151,6 +151,13 @@ export default function ConfiguracoesPage() {
   const [modalUploadCartao, setModalUploadCartao] = useState(false);
   const [arquivoCartaoCnpj, setArquivoCartaoCnpj] = useState<File | null>(null);
   const [enviandoCartaoCnpj, setEnviandoCartaoCnpj] = useState(false);
+  const [dragOverLogo, setDragOverLogo] = useState(false);
+  const [dragOverTimbrado, setDragOverTimbrado] = useState(false);
+  const [dragOverAssinatura, setDragOverAssinatura] = useState(false);
+  const [dragOverCsv, setDragOverCsv] = useState(false);
+  const [dragOverCartao, setDragOverCartao] = useState(false);
+  const [assinaturaDigitalUrl, setAssinaturaDigitalUrl] = useState<string | null>(null);
+  const [tabelaPrecosCsvNome, setTabelaPrecosCsvNome] = useState<string | null>(null);
 
   // 3. GESTÃO DA EQUIPE
   const [equipe, setEquipe] = useState<UsuarioEquipeItem[]>([]);
@@ -1480,9 +1487,40 @@ export default function ConfiguracoesPage() {
             </p>
             <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
               <Column lg={8} md={4} sm={4}>
-                <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", border: "1px dashed var(--cds-border-subtle)", height: "100%" }}>
+                <div
+                  data-testid="dropzone-logo-empresa"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverLogo(true);
+                  }}
+                  onDragLeave={() => setDragOverLogo(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverLogo(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      setNotificacao({ tipo: "error", texto: "A logomarca deve ter no máximo 2MB." });
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setEmpresa((prev) => ({ ...prev, logoUrl: reader.result as string }));
+                      setNotificacao({ tipo: "success", texto: "Logomarca carregada via arrastar e soltar. Clique em 'Salvar Alterações da Empresa' para gravar." });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  style={{
+                    padding: "1rem",
+                    backgroundColor: dragOverLogo ? "rgba(15, 98, 254, 0.08)" : "var(--cds-layer-01)",
+                    borderRadius: "4px",
+                    border: dragOverLogo ? "2px dashed var(--cds-interactive, #0f62fe)" : "1px dashed var(--cds-border-subtle)",
+                    height: "100%",
+                    transition: "all 0.2s ease",
+                  }}
+                >
                   <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
-                    🖼️ Logomarca da Empresa (PNG / JPG)
+                    🖼️ Logomarca da Empresa (PNG / JPG) — Arraste e solte o arquivo aqui
                   </strong>
                   <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
                     Recomendado: Fundo transparente ou branco, altura de até 150px.
@@ -1545,9 +1583,45 @@ export default function ConfiguracoesPage() {
               </Column>
 
               <Column lg={8} md={4} sm={4}>
-                <div style={{ padding: "1rem", backgroundColor: "var(--cds-layer-01)", borderRadius: "4px", border: "1px dashed var(--cds-border-subtle)", height: "100%" }}>
+                <div
+                  data-testid="dropzone-timbrado-empresa"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverTimbrado(true);
+                  }}
+                  onDragLeave={() => setDragOverTimbrado(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverTimbrado(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+                    if (!isPdf) {
+                      setNotificacao({ tipo: "error", texto: "Apenas arquivos em formato PDF (.pdf) são aceitos para a folha timbrada." });
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      setNotificacao({ tipo: "error", texto: "O arquivo PDF timbrado deve ter no máximo 5MB." });
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setEmpresa((prev) => ({ ...prev, papelTimbradoUrl: reader.result as string }));
+                      setNotificacao({ tipo: "success", texto: "Folha timbrada em PDF carregada via arrastar e soltar! Clique em 'Salvar Alterações da Empresa' para gravar." });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  style={{
+                    padding: "1rem",
+                    backgroundColor: dragOverTimbrado ? "rgba(15, 98, 254, 0.08)" : "var(--cds-layer-01)",
+                    borderRadius: "4px",
+                    border: dragOverTimbrado ? "2px dashed var(--cds-interactive, #0f62fe)" : "1px dashed var(--cds-border-subtle)",
+                    height: "100%",
+                    transition: "all 0.2s ease",
+                  }}
+                >
                   <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
-                    📄 Folha de Papel Timbrado Oficial (Apenas PDF)
+                    📄 Folha de Papel Timbrado Oficial (Apenas PDF) — Arraste e solte aqui
                   </strong>
                   <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
                     Faça upload da folha timbrada oficial em formato PDF (A4 com cabeçalho e rodapé institucionais). Esse modelo será o plano de fundo dos documentos gerados.
@@ -1610,6 +1684,159 @@ export default function ConfiguracoesPage() {
                       <label htmlFor="upload-timbrado-empresa" style={{ margin: 0 }}>
                         <Button kind="tertiary" size="sm" as="span">
                           Selecionar Folha Timbrada (PDF)
+                        </Button>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </Column>
+            </Grid>
+
+            {/* Uploads Adicionais Drag-and-Drop: Assinatura Digital e Catálogo CSV (Item 1) */}
+            <Grid style={{ padding: 0, marginBottom: "1.5rem" }}>
+              <Column lg={8} md={4} sm={4}>
+                <div
+                  data-testid="dropzone-assinatura-digital"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverAssinatura(true);
+                  }}
+                  onDragLeave={() => setDragOverAssinatura(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverAssinatura(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    if (file.size > 2 * 1024 * 1024) {
+                      setNotificacao({ tipo: "error", texto: "A assinatura digitalizada deve ter no máximo 2MB." });
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setAssinaturaDigitalUrl(reader.result as string);
+                      setNotificacao({ tipo: "success", texto: "Assinatura digital carregada via arrastar e soltar." });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  style={{
+                    padding: "1rem",
+                    backgroundColor: dragOverAssinatura ? "rgba(15, 98, 254, 0.08)" : "var(--cds-layer-01)",
+                    borderRadius: "4px",
+                    border: dragOverAssinatura ? "2px dashed var(--cds-interactive, #0f62fe)" : "1px dashed var(--cds-border-subtle)",
+                    height: "100%",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
+                    ✍️ Assinatura Digital do Representante (PNG / JPG) — Arraste e solte
+                  </strong>
+                  <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                    Anexe a assinatura escaneada em fundo transparente para aposição em propostas e declarações.
+                  </p>
+
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg"
+                    id="upload-assinatura-digital"
+                    data-testid="upload-assinatura-digital"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 2 * 1024 * 1024) {
+                        setNotificacao({ tipo: "error", texto: "A assinatura deve ter no máximo 2MB." });
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setAssinaturaDigitalUrl(reader.result as string);
+                        setNotificacao({ tipo: "success", texto: "Assinatura digitalizada carregada." });
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+
+                  {assinaturaDigitalUrl ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
+                      <Tag type="green" size="sm">✓ Assinatura Digital Carregada</Tag>
+                      <Button kind="ghost" size="sm" onClick={() => setAssinaturaDigitalUrl(null)}>
+                        Remover Assinatura
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <label htmlFor="upload-assinatura-digital" style={{ margin: 0 }}>
+                        <Button kind="tertiary" size="sm" as="span">
+                          Selecionar Assinatura Digital
+                        </Button>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </Column>
+
+              <Column lg={8} md={4} sm={4}>
+                <div
+                  data-testid="dropzone-csv-precos"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverCsv(true);
+                  }}
+                  onDragLeave={() => setDragOverCsv(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverCsv(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    if (!file.name.toLowerCase().endsWith(".csv")) {
+                      setNotificacao({ tipo: "error", texto: "Apenas arquivos .csv são aceitos." });
+                      return;
+                    }
+                    setTabelaPrecosCsvNome(file.name);
+                    setNotificacao({ tipo: "success", texto: `Arquivo CSV ${file.name} carregado via arrastar e soltar.` });
+                  }}
+                  style={{
+                    padding: "1rem",
+                    backgroundColor: dragOverCsv ? "rgba(15, 98, 254, 0.08)" : "var(--cds-layer-01)",
+                    borderRadius: "4px",
+                    border: dragOverCsv ? "2px dashed var(--cds-interactive, #0f62fe)" : "1px dashed var(--cds-border-subtle)",
+                    height: "100%",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <strong style={{ fontSize: "0.875rem", display: "block", marginBottom: "0.5rem" }}>
+                    📊 Catálogo & Tabela de Preços (Importação CSV) — Arraste e solte
+                  </strong>
+                  <p style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginBottom: "0.75rem" }}>
+                    Importe sua planilha de custos e itens de fornecimento em formato .csv (separado por vírgula ou ponto-e-vírgula).
+                  </p>
+
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    id="upload-csv-precos"
+                    data-testid="upload-csv-precos"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setTabelaPrecosCsvNome(file.name);
+                      setNotificacao({ tipo: "success", texto: `Arquivo CSV ${file.name} carregado.` });
+                    }}
+                  />
+
+                  {tabelaPrecosCsvNome ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-start" }}>
+                      <Tag type="purple" size="sm">✓ {tabelaPrecosCsvNome}</Tag>
+                      <Button kind="ghost" size="sm" onClick={() => setTabelaPrecosCsvNome(null)}>
+                        Remover CSV
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <label htmlFor="upload-csv-precos" style={{ margin: 0 }}>
+                        <Button kind="tertiary" size="sm" as="span">
+                          Selecionar Arquivo CSV
                         </Button>
                       </label>
                     </div>
@@ -2040,17 +2267,34 @@ export default function ConfiguracoesPage() {
           </p>
 
           <div
+            data-testid="dropzone-cartao-cnpj"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOverCartao(true);
+            }}
+            onDragLeave={() => setDragOverCartao(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOverCartao(false);
+              const f = e.dataTransfer.files?.[0] || null;
+              if (f) setArquivoCartaoCnpj(f);
+            }}
             style={{
               padding: "1rem",
-              border: "1px dashed var(--cds-border-strong)",
-              backgroundColor: "var(--cds-layer-01)",
+              border: dragOverCartao
+                ? "2px dashed var(--cds-interactive, #0f62fe)"
+                : "1px dashed var(--cds-border-strong)",
+              backgroundColor: dragOverCartao
+                ? "rgba(15, 98, 254, 0.08)"
+                : "var(--cds-layer-01)",
+              transition: "all 0.2s ease",
             }}
           >
             <label
               htmlFor="input-upload-cartao-cnpj"
               style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.5rem" }}
             >
-              Arquivo do Cartão CNPJ (.pdf, .png, .jpg, .jpeg, .webp) *
+              Arquivo do Cartão CNPJ (.pdf, .png, .jpg, .jpeg, .webp) — Arraste e solte o arquivo aqui *
             </label>
             <input
               id="input-upload-cartao-cnpj"

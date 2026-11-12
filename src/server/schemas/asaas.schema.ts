@@ -39,9 +39,9 @@ export type AsaasEventType = z.infer<typeof AsaasEventTypeEnum>;
  * Tabela oficial de preços mensais dos planos em BRL (sincronizada com /planos)
  */
 export const ASAAS_PLAN_PRICES_BRL = {
-  BASICO: 197.0,
-  PRO: 497.0,
-  ENTERPRISE: 997.0,
+  BASICO: 59.9,
+  PRO: 97.0,
+  ENTERPRISE: 197.0,
 } as const;
 
 export const ASAAS_PLAN_LABELS = {

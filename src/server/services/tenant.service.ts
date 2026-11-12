@@ -921,3 +921,224 @@ export async function disputeClaimCnpj(params: {
         : `Sua solicitação documental foi protocolada com sucesso (#${protocolo}). Nossa equipe de auditoria analisará os documentos em até 24h úteis.`,
   };
 }
+
+/**
+ * Unifica e sincroniza o estado financeiro e os dias de Teste Grátis (`trialFim`, `plano`, `billingStatus`)
+ * de todos os CNPJs vinculados ao mesmo titular, tomando sempre o 1º CNPJ cadastrado (`primaryTenant`)
+ * como fonte única da verdade (evitando divergências de dias de trial como 13 vs 12 dias).
+ */
+export async function resolverEstadoFinanceiroUnificadoTitular(
+  userId?: string | null,
+  activeTenantId?: string | null,
+): Promise<{
+  primaryTenantId: string;
+  trialFim: Date | null;
+  plano: PlanoAssinatura;
+  billingStatus: string;
+  tenantData: {
+    id: string;
+    cnpj: string;
+    razaoSocial: string;
+    plano: PlanoAssinatura;
+    billingStatus: string;
+    trialFim: Date | null;
+    vencimentoAssinatura: Date | null;
+    maxCnpjs: number;
+    maxUsers: number;
+    criadoEm: Date;
+  };
+} | null> {
+  const DIA_MS_LOCAL = 24 * 60 * 60 * 1000;
+  let ownerUserId = userId || null;
+
+  if (activeTenantId) {
+    const memTitular = inMemoryTenantUsers.find(
+      (tu) => tu.tenantId === activeTenantId && tu.role === "TITULAR" && tu.ativo,
+    );
+    if (memTitular?.userId) {
+      ownerUserId = memTitular.userId;
+    } else {
+      try {
+        const dbTitular = await prisma.tenantUser.findFirst({
+          where: { tenantId: activeTenantId, role: "TITULAR", ativo: true },
+          select: { userId: true },
+        });
+        if (dbTitular?.userId) ownerUserId = dbTitular.userId;
+      } catch {}
+    }
+  }
+
+  interface Snapshot {
+    id: string;
+    cnpj: string;
+    razaoSocial: string;
+    plano: PlanoAssinatura;
+    billingStatus: string;
+    trialFim: Date | null;
+    vencimentoAssinatura: Date | null;
+    maxCnpjs: number;
+    maxUsers: number;
+    criadoEm: Date;
+  }
+
+  const byId = new Map<string, Snapshot>();
+
+  if (ownerUserId) {
+    for (const tu of inMemoryTenantUsers) {
+      if (tu.userId === ownerUserId && tu.role === "TITULAR" && tu.ativo) {
+        const t = inMemoryTenants.get(tu.tenantId);
+        if (t) {
+          byId.set(t.id, {
+            id: t.id,
+            cnpj: t.cnpj,
+            razaoSocial: t.razaoSocial,
+            plano: t.plano,
+            billingStatus: t.billingStatus || "TRIAL",
+            trialFim: t.trialFim ? new Date(t.trialFim) : null,
+            vencimentoAssinatura: t.vencimentoAssinatura ? new Date(t.vencimentoAssinatura) : null,
+            maxCnpjs: t.maxCnpjs,
+            maxUsers: t.maxUsers,
+            criadoEm: new Date(t.criadoEm),
+          });
+        }
+      }
+    }
+
+    try {
+      const dbMemberships = await prisma.tenantUser.findMany({
+        where: { userId: ownerUserId, role: "TITULAR", ativo: true },
+        include: { tenant: true },
+        orderBy: { criadoEm: "asc" },
+      });
+      for (const m of dbMemberships) {
+        if (m.tenant && !byId.has(m.tenant.id)) {
+          byId.set(m.tenant.id, {
+            id: m.tenant.id,
+            cnpj: m.tenant.cnpj,
+            razaoSocial: m.tenant.razaoSocial,
+            plano: (m.tenant.plano as PlanoAssinatura) || "PRO",
+            billingStatus: m.tenant.billingStatus || "TRIAL",
+            trialFim: m.tenant.trialFim ? new Date(m.tenant.trialFim) : null,
+            vencimentoAssinatura: m.tenant.vencimentoAssinatura
+              ? new Date(m.tenant.vencimentoAssinatura)
+              : null,
+            maxCnpjs: m.tenant.maxCnpjs,
+            maxUsers: m.tenant.maxUsers,
+            criadoEm: new Date(m.tenant.criadoEm),
+          });
+        }
+      }
+    } catch {}
+  }
+
+  if (activeTenantId && !byId.has(activeTenantId)) {
+    const memT = inMemoryTenants.get(activeTenantId);
+    if (memT) {
+      byId.set(memT.id, {
+        id: memT.id,
+        cnpj: memT.cnpj,
+        razaoSocial: memT.razaoSocial,
+        plano: memT.plano,
+        billingStatus: memT.billingStatus || "TRIAL",
+        trialFim: memT.trialFim ? new Date(memT.trialFim) : null,
+        vencimentoAssinatura: memT.vencimentoAssinatura ? new Date(memT.vencimentoAssinatura) : null,
+        maxCnpjs: memT.maxCnpjs,
+        maxUsers: memT.maxUsers,
+        criadoEm: new Date(memT.criadoEm),
+      });
+    } else {
+      try {
+        const dbT = await prisma.tenant.findUnique({ where: { id: activeTenantId } });
+        if (dbT) {
+          byId.set(dbT.id, {
+            id: dbT.id,
+            cnpj: dbT.cnpj,
+            razaoSocial: dbT.razaoSocial,
+            plano: (dbT.plano as PlanoAssinatura) || "PRO",
+            billingStatus: dbT.billingStatus || "TRIAL",
+            trialFim: dbT.trialFim ? new Date(dbT.trialFim) : null,
+            vencimentoAssinatura: dbT.vencimentoAssinatura
+              ? new Date(dbT.vencimentoAssinatura)
+              : null,
+            maxCnpjs: dbT.maxCnpjs,
+            maxUsers: dbT.maxUsers,
+            criadoEm: new Date(dbT.criadoEm),
+          });
+        }
+      } catch {}
+    }
+  }
+
+  const all = Array.from(byId.values()).sort((a, b) => {
+    const diff = a.criadoEm.getTime() - b.criadoEm.getTime();
+    return diff !== 0 ? diff : a.id.localeCompare(b.id);
+  });
+
+  if (all.length === 0) return null;
+
+  const primary = all[0];
+  const canonicalTrialFim =
+    primary.billingStatus === "TRIAL"
+      ? primary.trialFim ?? new Date(primary.criadoEm.getTime() + 14 * DIA_MS_LOCAL)
+      : primary.trialFim;
+  const canonicalMaxCnpjs = Math.max(...all.map((t) => t.maxCnpjs), primary.maxCnpjs);
+  const canonicalMaxUsers = Math.max(...all.map((t) => t.maxUsers), primary.maxUsers);
+
+  // Sincroniza/auto-repara eventuais CNPJs irmãos divergentes em memória e banco
+  const divergentIds: string[] = [];
+  for (const item of all) {
+    const itemTrialMs = item.trialFim ? item.trialFim.getTime() : null;
+    const canonTrialMs = canonicalTrialFim ? canonicalTrialFim.getTime() : null;
+    if (
+      itemTrialMs !== canonTrialMs ||
+      item.plano !== primary.plano ||
+      item.billingStatus !== primary.billingStatus
+    ) {
+      divergentIds.push(item.id);
+    }
+
+    const mem = inMemoryTenants.get(item.id);
+    if (mem) {
+      mem.plano = primary.plano;
+      mem.billingStatus = primary.billingStatus;
+      mem.trialFim = canonicalTrialFim;
+      mem.vencimentoAssinatura = primary.vencimentoAssinatura;
+      mem.maxCnpjs = canonicalMaxCnpjs;
+      mem.maxUsers = canonicalMaxUsers;
+    }
+  }
+
+  if (divergentIds.length > 0) {
+    try {
+      await prisma.tenant.updateMany({
+        where: { id: { in: divergentIds } },
+        data: {
+          plano: primary.plano as PrismaPlanoAssinatura,
+          billingStatus: primary.billingStatus as any,
+          trialFim: canonicalTrialFim,
+          vencimentoAssinatura: primary.vencimentoAssinatura,
+          maxCnpjs: canonicalMaxCnpjs,
+          maxUsers: canonicalMaxUsers,
+        },
+      });
+    } catch {}
+  }
+
+  const target = (activeTenantId && byId.get(activeTenantId)) || primary;
+  return {
+    primaryTenantId: primary.id,
+    trialFim: canonicalTrialFim,
+    plano: primary.plano,
+    billingStatus: primary.billingStatus,
+    tenantData: {
+      ...target,
+      plano: primary.plano,
+      billingStatus: primary.billingStatus,
+      trialFim: canonicalTrialFim,
+      vencimentoAssinatura: primary.vencimentoAssinatura,
+      maxCnpjs: canonicalMaxCnpjs,
+      maxUsers: canonicalMaxUsers,
+    },
+  };
+}
+

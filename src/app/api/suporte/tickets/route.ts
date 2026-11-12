@@ -43,6 +43,7 @@ export async function GET(req: Request) {
     const queryTenant = searchParams.get("tenantId");
     const statusRaw = searchParams.get("status");
     const statusParsed = statusRaw ? supportTicketStatusSchema.safeParse(statusRaw) : null;
+    const resumo = searchParams.get("resumo") === "1" || searchParams.get("resumo") === "true";
 
     const tenantId = await resolveUserActiveTenantId(
       user.id,
@@ -53,11 +54,18 @@ export async function GET(req: Request) {
     const tickets = await listarTicketsSuporte(tenantId, user.id, {
       isSuperAdmin: user.isSuperAdmin === true || user.role === "SUPERADMIN",
       status: statusParsed?.success ? statusParsed.data : undefined,
+      resumo,
     });
+
+    const totalMensagensNaoLidas = tickets.reduce(
+      (acc, t) => acc + (t.mensagensNaoLidasCliente || 0),
+      0,
+    );
 
     return NextResponse.json({
       ok: true,
       tickets,
+      totalMensagensNaoLidas,
       activeTenantId: tenantId,
     });
   } catch (error: any) {

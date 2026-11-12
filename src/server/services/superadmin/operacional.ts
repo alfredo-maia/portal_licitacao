@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NotificacaoSeveridade, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getAuditActorContext } from "@/server/audit";
+import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import {
   AdminCreateBroadcastSchema,
   OnboardingChecklist,
@@ -206,7 +207,7 @@ export async function obterMetricasSuperAdmin(periodo?: {
   const dia = inicioDoDia().getTime();
 
   for (const t of tenants) {
-    const valor = t.valorMensalidade ?? VALOR_PLANO[t.plano] ?? 497;
+    const valor = t.valorMensalidade ?? VALOR_PLANO[t.plano] ?? ASAAS_PLAN_PRICES_BRL.PRO;
     if (t.billingStatus === "ATIVO") {
       ativos++;
       mrr += valor;

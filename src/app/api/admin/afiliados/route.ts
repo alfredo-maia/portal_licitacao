@@ -5,6 +5,7 @@ import { AdminAfiliadosPostSchema } from "@/server/schemas/superadmin.schema";
 import {
   atualizarStatusComissaoAfiliadoSuperAdmin,
   listarAfiliadosSuperAdmin,
+  registrarPagamentoAfiliadoSuperAdmin,
   salvarAfiliadoSuperAdmin,
   vincularClienteAfiliadoSuperAdmin,
 } from "@/server/services/superadmin.service";
@@ -30,7 +31,7 @@ export async function GET(req?: Request) {
   );
 }
 
-/** POST `{ tipo: "afiliado" | "vincular" | "comissao", ... }`. */
+/** POST `{ tipo: "afiliado" | "vincular" | "comissao" | "registrar_pagamento", ... }`. */
 export async function POST(req: NextRequest) {
   const g = await exigirAdmin("afiliados", "escrever");
   if (!g.ok) return g.response;
@@ -55,11 +56,18 @@ export async function POST(req: NextRequest) {
             }),
           );
         }
+        if (parsed.tipo === "registrar_pagamento") {
+          const { tipo: _tipo, ...dadosPagamento } = parsed;
+          return NextResponse.json(await registrarPagamentoAfiliadoSuperAdmin(dadosPagamento));
+        }
         return NextResponse.json(
           await atualizarStatusComissaoAfiliadoSuperAdmin({
             commissionId: parsed.commissionId,
             status: parsed.status,
             comprovanteObs: parsed.comprovanteObs,
+            comprovanteDataUrl: parsed.comprovanteDataUrl,
+            comprovanteNome: parsed.comprovanteNome,
+            comprovanteMimeType: parsed.comprovanteMimeType,
           }),
         );
       } catch (error) {

@@ -377,7 +377,7 @@ describe("Bloco 1 (Issue #38) — Header Trial Badge, Cartão CNPJ, CNAEs Secund
     fireEvent.click(screen.getByRole("button", { name: /Enviar Chamado/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/PROT-202611-0001/)).toBeInTheDocument();
+      expect(screen.getAllByText(/PROT-202611-0001/).length).toBeGreaterThan(0);
     });
   });
 

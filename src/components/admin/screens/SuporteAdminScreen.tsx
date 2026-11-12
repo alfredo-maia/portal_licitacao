@@ -50,25 +50,40 @@ const COLUNAS_SUPORTE: Array<{ id: SupportTicketStatus; label: string; tagType: 
 
 const MACROS_RESPOSTA = [
   {
-    label: "Macro: Boas-vindas / Análise",
+    id: "boas_vindas",
+    label: "Boas-vindas / Análise",
     texto: "Olá! Recebemos seu chamado e nossa equipe técnica já está analisando o caso. Retornaremos com a solução em breve.",
   },
   {
-    label: "Macro: Bônus de Cota IA Concedido",
-    texto: "Adicionamos análises extras de IA na sua conta para que você possa continuar operando normalmente sem aguardar a virada do mês.",
-  },
-  {
-    label: "Macro: Espaço R2 Expandido",
-    texto: "Expandimos a cota de armazenamento do seu Cofre R2 com +1 GB adicional. Você já pode anexar seus documentos normalmente.",
-  },
-  {
-    label: "Macro: Chamado Concluído",
+    id: "concluido",
+    label: "Chamado Concluído",
     texto: "Solicitação atendida com sucesso! Caso precise de qualquer outro suporte, estamos à disposição por aqui.",
+  },
+  {
+    id: "faturamento",
+    label: "Faturamento / Pagamento Confirmado",
+    texto: "Confirmamos a compensação do seu pagamento. Sua conta e recursos estão ativos e operando normalmente.",
+  },
+  {
+    id: "pncp_sincronizacao",
+    label: "Dúvidas sobre Coleta PNCP",
+    texto: "A sincronização com o PNCP ocorre automaticamente de forma periódica. As oportunidades correspondentes aos seus filtros já estão sendo processadas.",
+  },
+  {
+    id: "solicitar_dados",
+    label: "Solicitação de Informações Adicionais",
+    texto: "Poderia nos fornecer mais detalhes ou uma captura de tela do comportamento para que possamos investigar minuciosamente?",
   },
 ];
 
+function getUrgenciaTagType(urgencia: string): "red" | "warm-gray" | "gray" {
+  if (urgencia === "ALTA" || urgencia === "CRITICA") return "red";
+  if (urgencia === "MEDIA") return "warm-gray";
+  return "gray";
+}
+
 function TicketCardContent({ ticket, onOpen }: { ticket: SupportTicketItem; onOpen: () => void }) {
-  const urgColor = ticket.urgencia === "ALTA" ? "red" : ticket.urgencia === "MEDIA" ? "warm-gray" : "gray";
+  const urgColor = getUrgenciaTagType(ticket.urgencia);
   return (
     <Tile
       style={{
@@ -91,8 +106,14 @@ function TicketCardContent({ ticket, onOpen }: { ticket: SupportTicketItem; onOp
         <span style={{ fontSize: "0.7rem", color: "var(--cds-text-secondary)" }}>
           {ticket.mensagens.length} msg(s)
         </span>
-        <Button size="sm" kind="ghost" renderIcon={Chat} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpen(); }}>
-          Abrir
+        <Button
+          size="sm"
+          kind="ghost"
+          data-testid={`btn-abrir-ticket-${ticket.id}`}
+          renderIcon={Chat}
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); onOpen(); }}
+        >
+          Atender
         </Button>
       </div>
     </Tile>
@@ -101,12 +122,13 @@ function TicketCardContent({ ticket, onOpen }: { ticket: SupportTicketItem; onOp
 
 function DraggableTicketCard({ ticket, onOpen }: { ticket: SupportTicketItem; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: ticket.id });
+  const { role: _role, ...restAttributes } = attributes;
   const style: React.CSSProperties = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
   };
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <div ref={setNodeRef} style={style} {...listeners} {...restAttributes}>
       <TicketCardContent ticket={ticket} onOpen={onOpen} />
     </div>
   );
@@ -158,7 +180,11 @@ export function SuporteAdminScreen() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  const tickets = data?.tickets || [];
+  const tickets: SupportTicketItem[] = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.tickets)
+      ? data.tickets
+      : [];
   const ticketAtual = useMemo(
     () => tickets.find((t) => t.id === selecionadoId) || null,
     [tickets, selecionadoId],
@@ -193,22 +219,6 @@ export function SuporteAdminScreen() {
       await recarregar();
     } else {
       setFb({ kind: "error", texto: r.data?.error || "Erro ao responder ticket." });
-    }
-  };
-
-  const concederRecursoRapido = async (
-    tenantId: string,
-    payload: { adicionarAiQuota?: number; adicionarStorageMb?: number },
-    desc: string,
-  ) => {
-    const r = await adminFetch<{ error?: string }>("/api/admin/suporte", {
-      method: "POST",
-      body: { acao: "ajuda_rapida", tenantId, ...payload },
-    });
-    if (r.ok) {
-      setFb({ kind: "success", texto: desc });
-    } else {
-      setFb({ kind: "error", texto: r.data?.error || "Falha ao conceder recurso." });
     }
   };
 
@@ -301,11 +311,17 @@ export function SuporteAdminScreen() {
                   <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{t.categoria}</div>
                 </div>
               ),
-              urgencia: <Tag type={t.urgencia === "ALTA" ? "red" : t.urgencia === "MEDIA" ? "warm-gray" : "gray"}>{t.urgencia}</Tag>,
+              urgencia: <Tag type={getUrgenciaTagType(t.urgencia)}>{t.urgencia}</Tag>,
               status: <Tag type={colCfg?.tagType || "gray"}>{colCfg?.label || t.status}</Tag>,
               atualizado: fmtData(t.atualizadoEm),
               acoes: (
-                <Button size="sm" kind="primary" renderIcon={Chat} onClick={() => setSelecionadoId(t.id)}>
+                <Button
+                  size="sm"
+                  kind="primary"
+                  data-testid={`btn-atender-ticket-${t.id}`}
+                  renderIcon={Chat}
+                  onClick={() => setSelecionadoId(t.id)}
+                >
                   Atender
                 </Button>
               ),
@@ -345,39 +361,6 @@ export function SuporteAdminScreen() {
               </Select>
             </div>
 
-            {ticketAtual.tenantId ? (
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <Button
-                  size="sm"
-                  kind="tertiary"
-                  renderIcon={Add}
-                  onClick={() =>
-                    void concederRecursoRapido(
-                      ticketAtual.tenantId!,
-                      { adicionarAiQuota: 10 },
-                      "+10 análises extras de IA concedidas ao cliente.",
-                    )
-                  }
-                >
-                  +10 Análises IA
-                </Button>
-                <Button
-                  size="sm"
-                  kind="tertiary"
-                  renderIcon={Add}
-                  onClick={() =>
-                    void concederRecursoRapido(
-                      ticketAtual.tenantId!,
-                      { adicionarStorageMb: 1024 },
-                      "+1 GB no Cofre R2 concedido ao cliente.",
-                    )
-                  }
-                >
-                  +1 GB Cofre R2
-                </Button>
-              </div>
-            ) : null}
-
             <div style={{ maxHeight: "260px", overflowY: "auto", display: "grid", gap: "0.5rem", padding: "0.5rem", border: "1px solid var(--cds-border-subtle-01)" }}>
               {ticketAtual.mensagens.map((m) => (
                 <Tile
@@ -398,13 +381,25 @@ export function SuporteAdminScreen() {
               ))}
             </div>
 
-            <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+            {/* Select de Macros Rápidas (Item 9.b) */}
+            <Select
+              id="select-macro-suporte"
+              data-testid="select-macro-suporte"
+              labelText="Mensagens rápidas (Macros)"
+              value=""
+              onChange={(e) => {
+                const val = e.target.value;
+                const m = MACROS_RESPOSTA.find((item) => item.id === val);
+                if (m) {
+                  setResposta(m.texto);
+                }
+              }}
+            >
+              <SelectItem value="" text="Selecione uma resposta rápida pronta (Macro)..." />
               {MACROS_RESPOSTA.map((m) => (
-                <Button key={m.label} size="sm" kind="ghost" onClick={() => setResposta(m.texto)}>
-                  {m.label}
-                </Button>
+                <SelectItem key={m.id} value={m.id} text={m.label} />
               ))}
-            </div>
+            </Select>
 
             <TextArea
               id="sup-resp-txt"

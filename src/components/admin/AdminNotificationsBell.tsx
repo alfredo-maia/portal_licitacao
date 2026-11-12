@@ -32,7 +32,15 @@ function fmtNotifDataCurta(v: string | null | undefined): string {
   });
 }
 
-function renderCategoriaIcon(categoria: AdminNotificationItem["categoria"]) {
+function renderCategoriaIcon(
+  categoria: AdminNotificationItem["categoria"],
+  severidade?: string,
+  metadados?: Record<string, unknown>,
+) {
+  const urg = (metadados?.urgencia as string) || (severidade === "CRITICA" ? "CRITICA" : "");
+  if (categoria === "CHAMADO_SUPORTE" && (urg === "CRITICA" || urg === "ALTA" || severidade === "CRITICA")) {
+    return <Headset size={16} style={{ color: "var(--cds-support-error, #da1e28)" }} />;
+  }
   switch (categoria) {
     case "NOVO_CLIENTE_TRIAL":
       return <UserFollow size={16} style={{ color: "var(--cds-support-success, #24a148)" }} />;
@@ -270,7 +278,7 @@ export function AdminNotificationsBell() {
                   }}
                 >
                   <div style={{ marginTop: "0.125rem", flexShrink: 0 }}>
-                    {renderCategoriaIcon(item.categoria)}
+                    {renderCategoriaIcon(item.categoria, item.severidade, item.metadados)}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div

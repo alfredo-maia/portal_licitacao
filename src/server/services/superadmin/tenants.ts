@@ -247,6 +247,34 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
     return diff !== 0 ? diff : a.id.localeCompare(b.id);
   });
   const primaryRaw = empresasRaw[0] ?? raw;
+  const canonicalTrialFim =
+    primaryRaw.trialFim ??
+    (primaryRaw.billingStatus === "TRIAL" || !primaryRaw.billingStatus
+      ? new Date(new Date(primaryRaw.criadoEm).getTime() + 14 * 24 * 60 * 60 * 1000)
+      : null);
+  for (const emp of empresasRaw) {
+    const empTrialMs = emp.trialFim ? new Date(emp.trialFim).getTime() : null;
+    const canonTrialMs = canonicalTrialFim ? canonicalTrialFim.getTime() : null;
+    if (
+      emp.id !== primaryRaw.id &&
+      (empTrialMs !== canonTrialMs ||
+        emp.plano !== primaryRaw.plano ||
+        emp.billingStatus !== primaryRaw.billingStatus)
+    ) {
+      emp.plano = primaryRaw.plano;
+      emp.billingStatus = primaryRaw.billingStatus;
+      emp.trialFim = canonicalTrialFim;
+      emp.vencimentoAssinatura = primaryRaw.vencimentoAssinatura;
+      await aplicarPatchTenant(emp.id, {
+        plano: primaryRaw.plano as PlanoAssinatura,
+        billingStatus: (primaryRaw.billingStatus || "TRIAL") as TenantBillingStatus,
+        trialFim: canonicalTrialFim,
+        vencimentoAssinatura: primaryRaw.vencimentoAssinatura ?? null,
+      }).catch(() => undefined);
+    } else if (emp.id === primaryRaw.id && !emp.trialFim && canonicalTrialFim) {
+      emp.trialFim = canonicalTrialFim;
+    }
+  }
   const tenantIds = empresasRaw.map((e) => e.id);
   const nomes = new Map(empresasRaw.map((e) => [e.id, e.nomeFantasia || e.razaoSocial]));
 
@@ -774,7 +802,10 @@ export async function salvarEmpresaClienteSuperAdmin(
       calcOwner ? calcOwner.status : (input.billingStatus ?? "TRIAL")
     ) as TenantBillingStatus;
     const trialFimFinal = oldestOwnerRaw
-      ? (oldestOwnerRaw.trialFim ?? null)
+      ? (oldestOwnerRaw.trialFim ??
+        (statusFinal === "TRIAL"
+          ? new Date(new Date(oldestOwnerRaw.criadoEm).getTime() + 14 * 24 * 60 * 60 * 1000)
+          : null))
       : datas.trialFim;
     const vencimentoFinal = oldestOwnerRaw
       ? (oldestOwnerRaw.vencimentoAssinatura ?? null)

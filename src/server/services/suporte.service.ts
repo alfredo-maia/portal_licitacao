@@ -25,12 +25,35 @@ type SupportTicketWithMessages = Prisma.SupportTicketGetPayload<{
 }>;
 
 const inMemorySuporteTickets = new Map<string, SupportTicketItem>();
+const inMemoryClienteVistoEm = new Map<string, number>();
 let suporteSequenciaMemoria = 0;
 let suporteTablesEnsured = false;
 
 export function resetInMemorySuporteStore(): void {
   inMemorySuporteTickets.clear();
+  inMemoryClienteVistoEm.clear();
   suporteSequenciaMemoria = 0;
+}
+
+export function marcarTicketVistoPeloCliente(ticketId: string, userId?: string | null): void {
+  const agora = Date.now();
+  inMemoryClienteVistoEm.set(ticketId, agora);
+  if (userId) {
+    inMemoryClienteVistoEm.set(`${ticketId}:${userId}`, agora);
+  }
+}
+
+export function calcularMensagensNaoLidasCliente(
+  ticket: { id: string; mensagens?: SupportTicketMessageItem[] },
+  userId?: string | null,
+): number {
+  const chave = userId ? `${ticket.id}:${userId}` : ticket.id;
+  const vistoEm = inMemoryClienteVistoEm.get(chave) ?? inMemoryClienteVistoEm.get(ticket.id) ?? 0;
+  return (ticket.mensagens || []).filter((m) => {
+    if (m.autorTipo !== "SUPORTE") return false;
+    const msgTs = new Date(m.criadoEm).getTime();
+    return msgTs > vistoEm;
+  }).length;
 }
 
 async function ensureSuporteTables(): Promise<void> {
@@ -93,11 +116,12 @@ function mapDbMessage(msg: SupportTicketMessage): SupportTicketMessageItem {
   };
 }
 
-function mapDbTicket(row: SupportTicketWithMessages): SupportTicketItem {
+function mapDbTicket(row: SupportTicketWithMessages, userId?: string | null): SupportTicketItem {
   const parsedCat = supportTicketCategoriaSchema.safeParse(row.categoria);
   const parsedUrg = supportTicketUrgenciaSchema.safeParse(row.urgencia);
   const parsedSt = supportTicketStatusSchema.safeParse(row.status);
-  return {
+  const mensagens = Array.isArray(row.mensagens) ? row.mensagens.map(mapDbMessage) : [];
+  const base: SupportTicketItem = {
     id: String(row.id),
     protocolo: String(row.protocolo),
     tenantId: row.tenantId ?? null,
@@ -112,8 +136,11 @@ function mapDbTicket(row: SupportTicketWithMessages): SupportTicketItem {
     criadoEm: new Date(row.criadoEm),
     atualizadoEm: new Date(row.atualizadoEm),
     concluidoEm: row.concluidoEm ? new Date(row.concluidoEm) : null,
-    mensagens: Array.isArray(row.mensagens) ? row.mensagens.map(mapDbMessage) : [],
+    mensagens,
+    mensagensNaoLidasCliente: 0,
   };
+  base.mensagensNaoLidasCliente = calcularMensagensNaoLidasCliente(base, userId || base.userId);
+  return base;
 }
 
 async function gerarProximoProtocolo(referencia = new Date()): Promise<string> {
@@ -197,6 +224,7 @@ export async function criarTicketSuporte(
     atualizadoEm: agora,
     concluidoEm: null,
     mensagens: [inicialMessage],
+    mensagensNaoLidasCliente: 0,
   };
 
   try {
@@ -328,7 +356,7 @@ export async function criarTicketSuporte(
 export async function listarTicketsSuporte(
   tenantId?: string | null,
   userId?: string | null,
-  options?: { isSuperAdmin?: boolean; status?: SupportTicketStatus },
+  options?: { isSuperAdmin?: boolean; status?: SupportTicketStatus; resumo?: boolean },
 ): Promise<SupportTicketItem[]> {
   await ensureSuporteTables().catch(() => undefined);
 
@@ -339,6 +367,8 @@ export async function listarTicketsSuporte(
     if (userId) return t.userId === userId;
     return false;
   });
+
+  let rawList: SupportTicketItem[] = [];
 
   try {
     const where: Prisma.SupportTicketWhereInput = {};
@@ -363,21 +393,42 @@ export async function listarTicketsSuporte(
 
     const merged = new Map<string, SupportTicketItem>();
     for (const row of dbRows) {
-      const mapped = mapDbTicket(row);
+      const mapped = mapDbTicket(row, userId);
       merged.set(mapped.id, mapped);
     }
     for (const m of memFiltrados) {
-      if (!merged.has(m.id)) merged.set(m.id, m);
+      if (!merged.has(m.id)) {
+        merged.set(m.id, {
+          ...m,
+          mensagensNaoLidasCliente: calcularMensagensNaoLidasCliente(m, userId),
+        });
+      }
     }
 
-    return Array.from(merged.values()).sort(
-      (a, b) => b.atualizadoEm.getTime() - a.atualizadoEm.getTime(),
-    );
+    rawList = Array.from(merged.values());
   } catch {
-    return memFiltrados.sort(
-      (a, b) => b.atualizadoEm.getTime() - a.atualizadoEm.getTime(),
-    );
+    rawList = memFiltrados.map((m) => ({
+      ...m,
+      mensagensNaoLidasCliente: calcularMensagensNaoLidasCliente(m, userId),
+    }));
   }
+
+  const ordenados = rawList.sort(
+    (a, b) => b.atualizadoEm.getTime() - a.atualizadoEm.getTime(),
+  );
+
+  if (options?.resumo) {
+    return ordenados.map((t) => ({
+      ...t,
+      mensagensNaoLidasCliente: calcularMensagensNaoLidasCliente(t, userId),
+      mensagens: [],
+    }));
+  }
+
+  return ordenados.map((t) => ({
+    ...t,
+    mensagensNaoLidasCliente: calcularMensagensNaoLidasCliente(t, userId),
+  }));
 }
 
 export async function obterTicketSuportePorId(

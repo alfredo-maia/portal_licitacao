@@ -52,6 +52,41 @@ const ADMIN_ICONS: Record<string, CarbonIconType> = {
   sistema: Settings,
 };
 
+function formatarPrimeiroSegundoNome(
+  nome?: string | null,
+  email?: string | null,
+): string {
+  const limpo = (nome || "").trim();
+  if (limpo) {
+    const partes = limpo.split(/\s+/).filter(Boolean);
+    return partes.slice(0, 2).join(" ");
+  }
+  const emailPref = (email || "").split("@")[0]?.trim();
+  if (emailPref) {
+    const partesEmail = emailPref.replace(/[._-]+/g, " ").split(/\s+/).filter(Boolean);
+    if (partesEmail.length > 0) {
+      return partesEmail
+        .slice(0, 2)
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
+  return "Administrador ADM";
+}
+
+function obterTagPapelAdmin(role?: string | null): {
+  label: string;
+  type: "red" | "purple" | "teal";
+} {
+  if (role === "ADMIN_OPERACIONAL") {
+    return { label: "Admin Operacional", type: "purple" };
+  }
+  if (role === "SUPORTE_N1") {
+    return { label: "Suporte N1", type: "teal" };
+  }
+  return { label: "SuperAdmin Master", type: "red" };
+}
+
 /**
  * Shell Carbon exclusivo do Portal ADM ("Deus ex Machina"): completamente desacoplado do `AppShell`
  * do cliente (sem Suporte FAB, sem seletor de CNPJ, sem menu de licitações).
@@ -59,9 +94,13 @@ const ADMIN_ICONS: Record<string, CarbonIconType> = {
 export function AdminShell({
   children,
   adminRole,
+  adminName,
+  adminEmail,
 }: {
   children: ReactNode;
   adminRole?: string | null;
+  adminName?: string | null;
+  adminEmail?: string | null;
 }) {
   const pathname = usePathname() || "/admin";
   const router = useRouter();
@@ -83,6 +122,9 @@ export function AdminShell({
           adminPodeAcessar(adminRole, route.id as AdminArea, "ler"),
         );
 
+  const nomeExibicao = formatarPrimeiroSegundoNome(adminName, adminEmail);
+  const papelInfo = obterTagPapelAdmin(adminRole);
+
   const sair = () => {
     void signOut({ callbackUrl: "/admin/login" });
   };
@@ -99,12 +141,38 @@ export function AdminShell({
         />
         <HeaderName as={Link} href="/admin" prefix="">
           <span>{APP_CONFIG.brandName}</span>
-          <Tag type="red" size="sm" style={{ marginLeft: "0.5rem" }}>
-            SUPERADMIN
-          </Tag>
         </HeaderName>
 
         <HeaderGlobalBar>
+          <div
+            data-testid="admin-header-user-info"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0 0.75rem",
+              height: "3rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              data-testid="admin-header-user-name"
+              style={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                color: "var(--cds-text-primary, #f4f4f4)",
+              }}
+            >
+              {nomeExibicao}
+            </span>
+            <Tag
+              data-testid="admin-header-user-role"
+              type={papelInfo.type}
+              size="sm"
+            >
+              {papelInfo.label}
+            </Tag>
+          </div>
           <AdminNotificationsBell />
           <HeaderGlobalAction
             aria-label={isDark ? "Alternar para Tema Claro" : "Alternar para Tema Escuro"}

@@ -273,7 +273,7 @@ describe("Bloco 3 (Issue #40) — Integrações Asaas, Resend, Evolution API v2 
       expect(assinatura.ok).toBe(true);
       expect(assinatura.mock).toBe(true);
       expect(assinatura.subscriptionId).toContain("sub_");
-      expect(assinatura.valor).toBe(497);
+      expect(assinatura.valor).toBe(97);
     });
 
     it("3.2 com ASAAS_API_KEY configurada deve criar cliente, assinatura mensal, retornar link/PIX e listar faturas via REST v3", async () => {
@@ -467,7 +467,7 @@ describe("Bloco 3 (Issue #40) — Integrações Asaas, Resend, Evolution API v2 
       const jsonCheckout = await resCheckout.json();
       expect(jsonCheckout.ok).toBe(true);
       expect(jsonCheckout.plano).toBe("ENTERPRISE");
-      expect(jsonCheckout.valor).toBe(997);
+      expect(jsonCheckout.valor).toBe(197);
       expect(jsonCheckout.subscriptionId).toContain("sub_");
 
       const resFaturas = await faturasGet();
