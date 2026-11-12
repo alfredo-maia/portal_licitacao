@@ -20,6 +20,7 @@ import {
 } from "@carbon/react";
 import { ArrowLeft, Add, Edit } from "@carbon/icons-react";
 import { maskCnpj, maskCpf, maskPhone, sanitizeEmail } from "@/lib/masks";
+import { CATALOGO_MACRO_SEGMENTOS, type MacroSegmento } from "@/server/schemas/segmentos.schema";
 import {
   AdminTable,
   EngajamentoTag,
@@ -81,6 +82,10 @@ interface Dossie {
     plano: string;
     billingStatus: string;
     ativo: boolean;
+    segmentos?: string[];
+    subsegmentos?: string[];
+    ufs?: string[];
+    brasilInteiro?: boolean;
   }>;
   usuarios: Array<{
     id: string;
@@ -281,7 +286,13 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
   }
 
   const { tenant, titular, onboarding, cotas, patrimonioOperacional: pat } = data;
-  const activeOnboarding = data.porEmpresa?.[activeTenantId]?.onboarding ?? onboarding;
+  const activeOnboarding =
+    data.porEmpresa?.[activeTenantId]?.onboarding ??
+    onboarding ?? {
+      score: 0,
+      percentual: 0,
+      statusEngajamento: "NOVO",
+    };
   const tituloEmpresa = selectedEmpresa?.nomeFantasia || selectedEmpresa?.razaoSocial || tenant.nomeFantasia || tenant.razaoSocial;
   const descEmpresa = `${selectedEmpresa?.razaoSocial || tenant.razaoSocial} • ${selectedEmpresa?.cnpj || tenant.cnpj}`;
   const planoAtivo = selectedEmpresa?.plano || tenant.plano;
@@ -417,8 +428,9 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
           <Tab>1 · Conta principal</Tab>
           <Tab>2 · Empresas (CNPJs)</Tab>
           <Tab>3 · Usuários</Tab>
-          <Tab>4 · Licitações & Cofre</Tab>
-          <Tab>5 · Recursos & Cotas</Tab>
+          <Tab>4 · Segmentos & Regiões (UFs)</Tab>
+          <Tab>5 · Licitações & Cofre</Tab>
+          <Tab>6 · Recursos & Cotas</Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -431,6 +443,9 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
             <Usuarios dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
           <TabPanel>
+            <SegmentosUfs dossie={data} activeTenantId={activeTenantId} />
+          </TabPanel>
+          <TabPanel>
             <Patrimonio dossie={data} activeTenantId={activeTenantId} patch={patch} />
           </TabPanel>
           <TabPanel>
@@ -439,7 +454,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
         </TabPanels>
       </Tabs>
 
-      {data.disputas.length > 0 && (
+      {Boolean(data.disputas && data.disputas.length > 0) && (
         <div style={{ marginTop: "2rem" }}>
           <AdminTable
             titulo="Disputas de titularidade de CNPJ"
@@ -451,7 +466,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
               { key: "status", header: "Status" },
               { key: "acoes", header: "" },
             ]}
-            linhas={data.disputas.map((d) => ({
+            linhas={(data.disputas || []).map((d) => ({
               id: d.id,
               cnpj: d.cnpj,
               req: `${d.requerenteNome} (${d.requerenteEmail})`,
@@ -922,7 +937,196 @@ function Usuarios({
   );
 }
 
-/* ---------------------------- Aba 4 — Licitações & Cofre ---------------------------- */
+/* ---------------------------- Aba 4 — Segmentos & Regiões (UFs) ---------------------------- */
+function SegmentosUfs({
+  dossie,
+  activeTenantId,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+}) {
+  const empresas = dossie.empresas || [];
+
+  return (
+    <div style={{ display: "grid", gap: "1.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div>
+          <h3 style={{ fontSize: "1.125rem", fontWeight: 600 }}>
+            Segmentos & Regiões de Atuação por Empresa
+          </h3>
+          <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
+            Visão detalhada das UFs de monitoramento e Segmentos/Subsegmentos cadastrados para cada CNPJ da conta.
+          </p>
+        </div>
+        <Tag type="blue">{empresas.length} empresa(s) vinculada(s)</Tag>
+      </div>
+
+      <div style={{ display: "grid", gap: "1.25rem" }}>
+        {empresas.map((emp) => {
+          const isSelected = emp.id === activeTenantId;
+          const ufs = emp.ufs || [];
+          const brasilInteiro = emp.brasilInteiro ?? (ufs.length === 0);
+          const segmentos = emp.segmentos || [];
+          const subsegmentos = emp.subsegmentos || [];
+
+          return (
+            <Tile
+              key={emp.id}
+              data-testid={`tile-segmentos-empresa-${emp.id}`}
+              style={{
+                padding: "1.5rem",
+                border: isSelected
+                  ? "2px solid var(--cds-interactive, #0f62fe)"
+                  : "1px solid var(--cds-border-subtle, #393939)",
+                backgroundColor: isSelected
+                  ? "var(--cds-layer-01)"
+                  : "var(--cds-layer-02, #262626)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  marginBottom: "1rem",
+                  paddingBottom: "0.75rem",
+                  borderBottom: "1px solid var(--cds-border-subtle, #393939)",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: "1.05rem" }}>
+                      {emp.nomeFantasia || emp.razaoSocial}
+                    </strong>
+                    {isSelected && <Tag type="green" size="sm">Visualizando</Tag>}
+                    <Tag type="cyan" size="sm">{emp.plano}</Tag>
+                  </div>
+                  <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+                    {emp.razaoSocial} • CNPJ: {maskCnpj(emp.cnpj)} {emp.cidade && emp.uf ? `• Sede: ${emp.cidade}/${emp.uf}` : ""}
+                  </div>
+                </div>
+              </div>
+
+              {/* UFs */}
+              <div style={{ marginBottom: "1rem" }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "0.8125rem",
+                    fontWeight: 600,
+                    color: "var(--cds-text-secondary)",
+                    marginBottom: "0.4rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Regiões de Atuação (UFs)
+                </span>
+                {brasilInteiro ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Tag type="teal" size="md">
+                      Todo o Brasil (27 UFs)
+                    </Tag>
+                  </div>
+                ) : ufs.length > 0 ? (
+                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                    {ufs.map((uf) => (
+                      <Tag key={uf} type="blue" size="sm">
+                        {uf}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+                    Nenhuma UF específica configurada.
+                  </p>
+                )}
+              </div>
+
+              {/* Segmentos Macro */}
+              <div style={{ marginBottom: "1rem" }}>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "0.8125rem",
+                    fontWeight: 600,
+                    color: "var(--cds-text-secondary)",
+                    marginBottom: "0.4rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Segmentos Macro de Atuação
+                </span>
+                {segmentos.length > 0 ? (
+                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                    {segmentos.map((seg) => {
+                      const def = CATALOGO_MACRO_SEGMENTOS[seg as MacroSegmento];
+                      const nomeAmigavel = def?.nome || seg;
+                      return (
+                        <Tag key={seg} type="purple" size="md">
+                          {nomeAmigavel}
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+                    Nenhum segmento macro selecionado no momento.
+                  </p>
+                )}
+              </div>
+
+              {/* Subsegmentos */}
+              <div>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "0.8125rem",
+                    fontWeight: 600,
+                    color: "var(--cds-text-secondary)",
+                    marginBottom: "0.4rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Subsegmentos Especializados ({subsegmentos.length})
+                </span>
+                {subsegmentos.length > 0 ? (
+                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                    {subsegmentos.map((sub) => {
+                      let subNome = sub;
+                      for (const macro of Object.values(CATALOGO_MACRO_SEGMENTOS)) {
+                        const found = macro.subcategorias?.find((s) => s.codigo === sub);
+                        if (found) {
+                          subNome = found.nome;
+                          break;
+                        }
+                      }
+                      return (
+                        <Tag key={sub} type="cool-gray" size="sm">
+                          {subNome}
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+                    Nenhum subsegmento específico selecionado.
+                  </p>
+                )}
+              </div>
+            </Tile>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- Aba 5 — Licitações & Cofre ---------------------------- */
 function Patrimonio({
   dossie,
   activeTenantId,

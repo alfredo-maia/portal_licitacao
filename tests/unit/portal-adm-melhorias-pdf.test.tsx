@@ -310,21 +310,24 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
 
       const view = render(<AdminLoginPage />);
 
-      // Padrão inicial PASSWORD preservado (compatível com testes legados)
+      // Passo 1: Informar e-mail e Avançar
       expect(screen.getByLabelText("E-mail administrativo")).toBeInTheDocument();
-      expect(screen.getByLabelText("Senha")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Entrar no Portal ADM/i })).toBeInTheDocument();
-
-      // Seleciona opção EMAIL_OTP
-      const btnEmailOtp = screen.getByRole("button", { name: /Receber código por E-mail/i });
-      expect(btnEmailOtp).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /Receber código no WhatsApp/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Avançar/i })).toBeInTheDocument();
 
       fireEvent.change(screen.getByLabelText("E-mail administrativo"), {
         target: { value: "VitorHenrique018@gmail.com" },
       });
+      fireEvent.click(screen.getByRole("button", { name: /Avançar/i }));
+
+      // Passo 2: Exibe opções de login (Senha, E-mail OTP, WhatsApp OTP)
+      const btnEmailOtp = await screen.findByRole("button", { name: /Receber código por E-mail/i });
+      expect(btnEmailOtp).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Receber código no WhatsApp/i }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Entrar com Senha/i })).toBeInTheDocument();
+
+      // Seleciona opção EMAIL_OTP
       fireEvent.click(btnEmailOtp);
 
       await waitFor(() =>
@@ -356,7 +359,7 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith("/admin"));
 
       // Alterna para WHATSAPP_OTP também com realm: "admin"
-      fireEvent.click(screen.getByRole("button", { name: /Entrar com senha/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Voltar/i }));
       fireEvent.click(screen.getByRole("button", { name: /Receber código no WhatsApp/i }));
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith(
@@ -1478,8 +1481,8 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       // Faixa inferior minimalista Conta Global
       expect(screen.getByTestId("conta-global-resumo")).toBeInTheDocument();
 
-      // Aba 4: paginação 5 em 5 no CNPJ 2 inicialmente selecionado
-      fireEvent.click(screen.getByRole("tab", { name: /4 · Licitações & Cofre/i }));
+      // Aba Licitações & Cofre: paginação 5 em 5 no CNPJ 2 inicialmente selecionado
+      fireEvent.click(screen.getByRole("tab", { name: /Licitações & Cofre/i }));
       await waitFor(() => expect(screen.getByText("EDITAL-EMP2-1")).toBeInTheDocument());
       expect(screen.getByText("EDITAL-EMP2-5")).toBeInTheDocument();
       expect(screen.queryByText("EDITAL-EMP2-6")).not.toBeInTheDocument();
@@ -1497,7 +1500,7 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
 
       // Aba 2 destaca o CNPJ selecionado (tnt_c360_1) com Visualizando
       fireEvent.click(screen.getByRole("tab", { name: /2 · Empresas/i }));
-      expect(screen.getByText("Visualizando")).toBeInTheDocument();
+      expect(screen.getAllByText("Visualizando").length).toBeGreaterThanOrEqual(1);
 
       view.unmount();
     });

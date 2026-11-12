@@ -411,6 +411,7 @@ export interface RawTenant {
   uf?: string | null;
   cidade?: string | null;
   segmentos: string[];
+  subsegmentos?: string[];
   ufs: string[];
   brasilInteiro: boolean;
   preferenciasUpdatedAt?: Date | null;
@@ -577,6 +578,7 @@ export function rawDeDb(t: DbTenantWithRaw): RawTenant {
     uf: t.uf,
     cidade: t.cidade,
     segmentos: t.segmentos || [],
+    subsegmentos: (t as any).subsegmentos || [],
     ufs: t.ufs || [],
     brasilInteiro: t.brasilInteiro ?? true,
     preferenciasUpdatedAt: t.preferenciasUpdatedAt ?? null,
@@ -655,6 +657,7 @@ export function rawDeMemoria(t: InMemoryTenantRecord): RawTenant {
     uf: t.uf,
     cidade: t.cidade,
     segmentos: t.segmentos || [],
+    subsegmentos: (t as any).subsegmentos || [],
     ufs: t.ufs || [],
     brasilInteiro: t.brasilInteiro ?? true,
     preferenciasUpdatedAt: t.preferenciasUpdatedAt ?? null,
@@ -1789,8 +1792,10 @@ export function empresaPublica(raw: RawTenant) {
     plano: raw.plano,
     billingStatus: calc.status,
     ativo: raw.ativo,
-    segmentos: raw.segmentos,
-    ufs: raw.ufs,
+    segmentos: raw.segmentos || [],
+    subsegmentos: raw.subsegmentos || [],
+    ufs: raw.ufs || [],
+    brasilInteiro: raw.brasilInteiro ?? true,
     trialFim: raw.trialFim ?? null,
     vencimentoAssinatura: raw.vencimentoAssinatura ?? null,
   };

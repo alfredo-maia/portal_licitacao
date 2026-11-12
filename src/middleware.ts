@@ -121,13 +121,19 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Proteção de Borda Defensiva para o Portal SuperAdmin (/admin)
+  // 2. Proteção para o Portal SuperAdmin (/admin)
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    if (!isSuper) {
-      // Reescreve para /404 simulando página inexistente para qualquer cliente ou bot
+    if (token && !isSuper) {
+      // Cliente comum logado tentando acessar área administrativa -> 404
       const notFoundUrl = req.nextUrl.clone();
       notFoundUrl.pathname = "/404";
       return NextResponse.rewrite(notFoundUrl);
+    }
+    if (!isSuper) {
+      // Usuário não logado tentando acessar o Portal ADM -> redireciona automaticamente para /admin/login
+      const adminLoginUrl = req.nextUrl.clone();
+      adminLoginUrl.pathname = "/admin/login";
+      return NextResponse.redirect(adminLoginUrl, 307);
     }
     return NextResponse.next();
   }
