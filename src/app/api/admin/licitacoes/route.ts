@@ -102,6 +102,8 @@ export async function POST(req: NextRequest) {
           case "sincronizar_pncp": {
             const r = await executarIngestaoDiariaPncp({
               diasRetroativos: parsed.diasRetroativos,
+              dataInicial: parsed.dataInicial,
+              dataFinal: parsed.dataFinal,
               origem: "MANUAL",
               usarIa: parsed.usarIa,
             });
@@ -113,6 +115,8 @@ export async function POST(req: NextRequest) {
               entidadeId: r.id,
               depois: {
                 diasRetroativos: parsed.diasRetroativos,
+                dataInicial: parsed.dataInicial,
+                dataFinal: parsed.dataFinal,
                 usarIa: parsed.usarIa,
                 criados: r.criados,
                 atualizados: r.atualizados,

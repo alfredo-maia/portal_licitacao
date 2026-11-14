@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import {
   Button,
+  Checkbox,
   Modal,
   Search,
   Select,
@@ -101,6 +102,13 @@ export function LicitacoesAdminScreen() {
 
   const [modalLote, setModalLote] = useState(false);
   const [jsonLote, setJsonLote] = useState("[]");
+  const [modalSyncPncp, setModalSyncPncp] = useState<{
+    modo: "24h" | "7d" | "14d" | "custom";
+    diasRetroativos: number;
+    dataInicial: string;
+    dataFinal: string;
+    usarIa: boolean;
+  } | null>(null);
 
   const salvarManual = async () => {
     if (!modalManual) return;
@@ -182,16 +190,36 @@ export function LicitacoesAdminScreen() {
   };
 
   const sincronizarPncp = async () => {
-    setFb({ kind: "info", texto: "Sincronização com o PNCP iniciada..." });
+    if (!modalSyncPncp) return;
+    setFb({ kind: "info", texto: "Sincronização com o PNCP iniciada em segundo plano..." });
+    const payload: Record<string, unknown> = {
+      acao: "sincronizar_pncp",
+      usarIa: modalSyncPncp.usarIa,
+    };
+    if (modalSyncPncp.modo === "custom") {
+      if (!modalSyncPncp.dataInicial || !modalSyncPncp.dataFinal) {
+        setFb({ kind: "error", texto: "Informe data inicial e data final no formato YYYYMMDD." });
+        return;
+      }
+      payload.dataInicial = modalSyncPncp.dataInicial.replace(/\D/g, "");
+      payload.dataFinal = modalSyncPncp.dataFinal.replace(/\D/g, "");
+    } else {
+      payload.diasRetroativos = modalSyncPncp.diasRetroativos;
+    }
+
     const r = await adminFetch<{ criados?: number; atualizados?: number; error?: string }>("/api/admin/licitacoes", {
       method: "POST",
-      body: { acao: "sincronizar_pncp", diasRetroativos: 1 },
+      body: payload,
     });
     if (r.ok) {
-      setFb({ kind: "success", texto: `PNCP sincronizado: ${r.data.criados ?? 0} criada(s), ${r.data.atualizados ?? 0} atualizada(s).` });
+      setFb({
+        kind: "success",
+        texto: `PNCP sincronizado: ${r.data.criados ?? 0} certame(s) criado(s), ${r.data.atualizados ?? 0} atualizado(s).`,
+      });
+      setModalSyncPncp(null);
       await recarregar();
     } else {
-      setFb({ kind: "error", texto: r.data?.error || "Erro ao sincronizar PNCP." });
+      setFb({ kind: "error", texto: r.data?.error || "Erro ao sincronizar com o PNCP." });
     }
   };
 
@@ -231,7 +259,19 @@ export function LicitacoesAdminScreen() {
             <Button kind="tertiary" onClick={() => setModalLote(true)}>
               Importar lote JSON
             </Button>
-            <Button kind="secondary" renderIcon={CloudDownload} onClick={() => void sincronizarPncp()}>
+            <Button
+              kind="secondary"
+              renderIcon={CloudDownload}
+              onClick={() =>
+                setModalSyncPncp({
+                  modo: "7d",
+                  diasRetroativos: 7,
+                  dataInicial: "20261106",
+                  dataFinal: "20261113",
+                  usarIa: true,
+                })
+              }
+            >
               Sincronizar PNCP agora
             </Button>
             <Button kind="ghost" renderIcon={Renew} onClick={() => void recarregar()} disabled={loading}>
@@ -434,6 +474,77 @@ export function LicitacoesAdminScreen() {
           onChange={(e) => setJsonLote(e.target.value)}
           rows={8}
         />
+      </Modal>
+
+      <Modal
+        open={modalSyncPncp !== null}
+        modalHeading="Sincronizar Licitações com o PNCP"
+        primaryButtonText="Sincronizar Agora"
+        secondaryButtonText="Cancelar"
+        onRequestClose={() => setModalSyncPncp(null)}
+        onRequestSubmit={() => void sincronizarPncp()}
+      >
+        {modalSyncPncp ? (
+          <div style={{ display: "grid", gap: "1rem" }}>
+            <Select
+              id="sync-modo"
+              labelText="Período de Coleta no PNCP"
+              value={modalSyncPncp.modo}
+              onChange={(e) => {
+                const modo = e.target.value as "24h" | "7d" | "14d" | "custom";
+                let dias = 7;
+                if (modo === "24h") dias = 1;
+                if (modo === "14d") dias = 14;
+                setModalSyncPncp({
+                  ...modalSyncPncp,
+                  modo,
+                  diasRetroativos: dias,
+                });
+              }}
+            >
+              <SelectItem value="7d" text="Últimos 7 dias (Sexta-feira passada até hoje)" />
+              <SelectItem value="24h" text="Últimas 24 horas (1 dia retroativo)" />
+              <SelectItem value="14d" text="Últimos 14 dias (2 semanas)" />
+              <SelectItem value="custom" text="Intervalo de Datas Personalizado (YYYYMMDD)" />
+            </Select>
+
+            {modalSyncPncp.modo === "custom" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <TextInput
+                  id="sync-data-ini"
+                  labelText="Data Inicial (ex: 20261106)"
+                  value={modalSyncPncp.dataInicial}
+                  onChange={(e) =>
+                    setModalSyncPncp({ ...modalSyncPncp, dataInicial: e.target.value })
+                  }
+                  placeholder="AAAAMMDD"
+                  maxLength={8}
+                />
+                <TextInput
+                  id="sync-data-fim"
+                  labelText="Data Final (ex: 20261113)"
+                  value={modalSyncPncp.dataFinal}
+                  onChange={(e) =>
+                    setModalSyncPncp({ ...modalSyncPncp, dataFinal: e.target.value })
+                  }
+                  placeholder="AAAAMMDD"
+                  maxLength={8}
+                />
+              </div>
+            )}
+
+            <div style={{ marginTop: "0.5rem" }}>
+              <Checkbox
+                id="sync-usar-ia"
+                labelText="Usar síntese inteligente de títulos de objeto"
+                checked={modalSyncPncp.usarIa}
+                onChange={(_e, { checked }) =>
+                  setModalSyncPncp({ ...modalSyncPncp, usarIa: checked })
+                }
+              />
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

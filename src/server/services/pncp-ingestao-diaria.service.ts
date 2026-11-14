@@ -71,7 +71,7 @@ function parseDataSeguro(val?: string | null, fallback?: Date): Date {
   return fallback ?? new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
 }
 
-function mapPncpItemParaIngestao(
+export function mapPncpItemParaIngestao(
   raw: PncpContratacaoRaw,
   tituloSintetizado: string,
 ): IngestaoLicitacaoItemInput {

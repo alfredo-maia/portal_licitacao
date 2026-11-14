@@ -963,7 +963,9 @@ export const AdminLicitacoesPostSchema = z.discriminatedUnion("acao", [
   }),
   z.object({
     acao: z.literal("sincronizar_pncp"),
-    diasRetroativos: z.number().int().min(1).max(15).optional().default(1),
+    diasRetroativos: z.number().int().min(1).max(60).optional().default(1),
+    dataInicial: z.string().regex(/^\d{8}$/).optional(),
+    dataFinal: z.string().regex(/^\d{8}$/).optional(),
     usarIa: z.boolean().optional().default(true),
   }),
 ]);

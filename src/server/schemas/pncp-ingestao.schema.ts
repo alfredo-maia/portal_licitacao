@@ -4,7 +4,7 @@ export const metodoTituloLicitacaoSchema = z.enum(["IA", "HEURISTICA_V2"]);
 export type MetodoTituloLicitacao = z.infer<typeof metodoTituloLicitacaoSchema>;
 
 export const executarIngestaoPncpInputSchema = z.object({
-  diasRetroativos: z.coerce.number().int().min(0).max(15).default(1),
+  diasRetroativos: z.coerce.number().int().min(0).max(60).default(1),
   dataInicial: z.string().regex(/^\d{8}$/).optional(),
   dataFinal: z.string().regex(/^\d{8}$/).optional(),
   modalidades: z
