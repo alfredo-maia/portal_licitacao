@@ -15,6 +15,9 @@ export const executarIngestaoPncpInputSchema = z.object({
   ufs: z.array(z.string().trim().length(2)).optional(),
   tamanhoPagina: z.coerce.number().int().min(10).max(50).default(50),
   maxPaginasPorModalidade: z.coerce.number().int().min(1).max(20).default(3),
+  incluirPropostasAbertas: z.boolean().default(false),
+  maxPaginasPropostas: z.coerce.number().int().min(1).max(20).default(3),
+  silenciarNotificacoes: z.boolean().default(false),
   usarIa: z.boolean().default(true),
   origem: z.enum(["CRON", "MANUAL", "SCRIPT"]).default("CRON"),
 });

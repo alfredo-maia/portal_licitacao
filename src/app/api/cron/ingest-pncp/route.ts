@@ -61,10 +61,12 @@ export async function GET(request: Request) {
   const diasParam = url.searchParams.get("diasRetroativos");
   const usarIaParam = url.searchParams.get("usarIa");
   const modalidadesParam = url.searchParams.get("modalidades");
+  const incluirPropostasParam = url.searchParams.get("incluirPropostasAbertas");
 
   const resultado = await executarIngestaoDiariaPncp({
     diasRetroativos: diasParam ? Number(diasParam) : 1,
     usarIa: usarIaParam === "false" ? false : true,
+    incluirPropostasAbertas: incluirPropostasParam === "false" ? false : true,
     modalidades: modalidadesParam
       ? modalidadesParam
           .split(",")
@@ -108,6 +110,9 @@ export async function POST(request: Request) {
     ufs: body.ufs,
     tamanhoPagina: body.tamanhoPagina,
     maxPaginasPorModalidade: body.maxPaginasPorModalidade,
+    incluirPropostasAbertas: body.incluirPropostasAbertas ?? false,
+    maxPaginasPropostas: body.maxPaginasPropostas,
+    silenciarNotificacoes: body.silenciarNotificacoes ?? false,
     usarIa: body.usarIa ?? true,
     origem: body.origem || "MANUAL",
   });

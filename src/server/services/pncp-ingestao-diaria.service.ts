@@ -280,6 +280,90 @@ export async function executarIngestaoDiariaPncp(
     }
   }
 
+  // Fase 2 (Issue #59): Consulta leve a /contratacoes/proposta para detectar
+  // retificações e reaberturas de prazo em licitações publicadas anteriormente.
+  if (parsed.incluirPropostasAbertas) {
+    for (const modalidadeCod of parsed.modalidades) {
+      const ufsLoop =
+        parsed.ufs && parsed.ufs.length > 0 ? parsed.ufs : [undefined];
+
+      for (const ufFiltro of ufsLoop) {
+        for (let pagina = 1; pagina <= parsed.maxPaginasPropostas; pagina++) {
+          const qs = new URLSearchParams({
+            dataFinal,
+            codigoModalidadeContratacao: String(modalidadeCod),
+            pagina: String(pagina),
+            tamanhoPagina: String(parsed.tamanhoPagina),
+          });
+          if (ufFiltro) qs.set("uf", ufFiltro.toUpperCase());
+
+          const url = `https://pncp.gov.br/api/consulta/v1/contratacoes/proposta?${qs.toString()}`;
+          try {
+            const res = await fetch(url, {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(timeoutMs),
+            });
+
+            if (res.status === 204 || res.status === 404) {
+              break;
+            }
+            if (!res.ok) {
+              errosModalidade.push(
+                `proposta mod=${modalidadeCod} p=${pagina} status=${res.status}`,
+              );
+              break;
+            }
+
+            const body = (await res.json()) as {
+              data?: unknown[];
+              totalPaginas?: number;
+            } | null;
+            const itensRaw = Array.isArray(body?.data) ? body.data : [];
+            paginasProcessadas += 1;
+
+            for (const rawItem of itensRaw) {
+              const validated = pncpContratacaoRawSchema.safeParse(rawItem);
+              if (!validated.success) continue;
+              const prev = porPncpId.get(validated.data.numeroControlePNCP);
+              if (!prev) {
+                porPncpId.set(validated.data.numeroControlePNCP, validated.data);
+              } else {
+                const prevEnc = prev.dataEncerramentoProposta
+                  ? new Date(prev.dataEncerramentoProposta).getTime()
+                  : 0;
+                const nextEnc = validated.data.dataEncerramentoProposta
+                  ? new Date(validated.data.dataEncerramentoProposta).getTime()
+                  : 0;
+                if (nextEnc > prevEnc) {
+                  porPncpId.set(
+                    validated.data.numeroControlePNCP,
+                    validated.data,
+                  );
+                }
+              }
+            }
+
+            const totalPaginas = Number(body?.totalPaginas ?? 0);
+            if (
+              itensRaw.length === 0 ||
+              (totalPaginas > 0 && pagina >= totalPaginas) ||
+              (totalPaginas === 0 && itensRaw.length < parsed.tamanhoPagina)
+            ) {
+              break;
+            }
+          } catch (err: unknown) {
+            const msgErro = err instanceof Error ? err.message : "erro de rede";
+            errosModalidade.push(
+              `proposta mod=${modalidadeCod} p=${pagina}: ${msgErro}`,
+            );
+            break;
+          }
+        }
+      }
+    }
+  }
+
   const coletados = Array.from(porPncpId.values());
   let criados = 0;
   let atualizados = 0;
@@ -311,6 +395,7 @@ export async function executarIngestaoDiariaPncp(
         versaoContrato: 2,
         executadoEm: new Date().toISOString(),
         totalRegistros: payloadItens.length,
+        silenciarNotificacoes: parsed.silenciarNotificacoes,
         licitacoes: payloadItens,
       },
       {
@@ -318,6 +403,7 @@ export async function executarIngestaoDiariaPncp(
       },
       {
         usarIaTitulos: false,
+        silenciarNotificacoes: parsed.silenciarNotificacoes,
         titulosPreGerados: mapaTitulos,
       },
     );

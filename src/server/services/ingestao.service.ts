@@ -11,10 +11,13 @@ import {
   getInMemoryLicitacaoByIdPncp,
   insertInMemoryLicitacao,
   type LicitacaoRecord,
+  listAllInMemoryTenantLicitacoes,
   listInMemoryUsuarios,
   type NovaLicitacaoData,
+  setInMemoryTenantLicitacao,
   updateInMemoryLicitacao,
 } from "./licitacoes-store";
+import { REABERTA_POS_RECUSA_TAG } from "@/server/schemas/oportunidades.schema";
 import { criarNotificacao, notificarMovimentacaoLicitacao } from "./notificacoes.service";
 import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
 import {
@@ -156,7 +159,95 @@ async function updateLicitacao(
  */
 export interface IngestaoOpcoes {
   usarIaTitulos?: boolean;
+  silenciarNotificacoes?: boolean;
   titulosPreGerados?: Map<string, { titulo: string; metodo: string }>;
+}
+
+async function reativarRecusadasPorReabertura(params: {
+  licitacaoId: string;
+  numeroEdital: string;
+  dataAnteriorIso: string;
+  dataNovaIso: string;
+  actorContext?: IngestaoActorContext;
+}): Promise<number> {
+  const { licitacaoId, numeroEdital, dataAnteriorIso, dataNovaIso, actorContext } =
+    params;
+  const tenantsReativados = new Set<string>();
+
+  try {
+    const recusadasDb = await prisma.tenantLicitacao.findMany({
+      where: { licitacaoId, statusKanban: "RECUSADA" },
+      select: { id: true, tenantId: true, tags: true, motivoRecusa: true },
+    });
+
+    for (const tl of recusadasDb) {
+      const novasTags = Array.from(
+        new Set([...(Array.isArray(tl.tags) ? tl.tags : []), REABERTA_POS_RECUSA_TAG]),
+      );
+      await prisma.tenantLicitacao.update({
+        where: { id: tl.id },
+        data: {
+          statusKanban: "PENDENTE",
+          tags: novasTags,
+          // Preserva motivoRecusa anterior para histórico até nova deliberação
+        },
+      });
+      tenantsReativados.add(tl.tenantId);
+      await recordAuditLog({
+        acao: "INGESTAO_REABERTURA_POS_RECUSA",
+        entidadeTipo: "LICITACAO",
+        entidadeId: licitacaoId,
+        tenantId: tl.tenantId,
+        antes: { statusKanban: "RECUSADA", dataEncerramentoProposta: dataAnteriorIso },
+        depois: {
+          statusKanban: "PENDENTE",
+          tags: novasTags,
+          dataEncerramentoProposta: dataNovaIso,
+          numeroEdital,
+        },
+        usuarioId: actorContext?.usuarioId ?? null,
+        usuarioNome: actorContext?.usuarioNome ?? null,
+        ip: actorContext?.ip ?? null,
+      });
+    }
+  } catch {
+    // PostgreSQL indisponível: fallback em memória abaixo
+  }
+
+  const recusadasMem = listAllInMemoryTenantLicitacoes().filter(
+    (tl) => tl.licitacaoId === licitacaoId && tl.statusKanban === "RECUSADA",
+  );
+  for (const tl of recusadasMem) {
+    const novasTags = Array.from(
+      new Set([...(Array.isArray(tl.tags) ? tl.tags : []), REABERTA_POS_RECUSA_TAG]),
+    );
+    setInMemoryTenantLicitacao(tl.tenantId, licitacaoId, {
+      statusKanban: "PENDENTE",
+      tags: novasTags,
+      motivoRecusa: tl.motivoRecusa ?? null,
+    });
+    if (!tenantsReativados.has(tl.tenantId)) {
+      tenantsReativados.add(tl.tenantId);
+      await recordAuditLog({
+        acao: "INGESTAO_REABERTURA_POS_RECUSA",
+        entidadeTipo: "LICITACAO",
+        entidadeId: licitacaoId,
+        tenantId: tl.tenantId,
+        antes: { statusKanban: "RECUSADA", dataEncerramentoProposta: dataAnteriorIso },
+        depois: {
+          statusKanban: "PENDENTE",
+          tags: novasTags,
+          dataEncerramentoProposta: dataNovaIso,
+          numeroEdital,
+        },
+        usuarioId: actorContext?.usuarioId ?? null,
+        usuarioNome: actorContext?.usuarioNome ?? null,
+        ip: actorContext?.ip ?? null,
+      });
+    }
+  }
+
+  return tenantsReativados.size;
 }
 
 export async function ingestLicitacoesV2(
@@ -199,6 +290,9 @@ export async function ingestLicitacoesV2(
       }
     }
   }
+
+  const silenciarNotificacoes =
+    options?.silenciarNotificacoes ?? parsed.silenciarNotificacoes ?? false;
 
   let criados = 0;
   let atualizados = 0;
@@ -321,36 +415,50 @@ export async function ingestLicitacoesV2(
       ip: actorContext?.ip ?? null,
     });
 
-    const destN2 = Array.from(new Set([existente.responsavelId, ...allActiveUserIds].filter(Boolean))) as string[];
-    await criarNotificacao({
-      tipo: "N2_LICITACAO_ATUALIZADA",
-      titulo: `Edital Atualizado no PNCP: ${registro.numeroEdital}`,
-      descricao: `O certame ${registro.numeroEdital} sofreu retificação de campos críticos no PNCP.`,
-      linkDestino: `/oportunidades/${registro.id}`,
-      licitacaoId: registro.id,
-      chaveIdempotencia: montarChaveIdempotencia({
-        tipo: "N2_LICITACAO_ATUALIZADA",
-        entidadeId: registro.id,
-        janela: novoHash,
-      }),
-      destinatarioIds: destN2,
-    }).catch(() => undefined);
-
     const encAnt = existente.dataEncerramentoProposta
       ? new Date(existente.dataEncerramentoProposta).getTime()
       : new Date(existente.dataAbertura).getTime();
     const encNovo = patch.dataEncerramentoProposta
       ? new Date(patch.dataEncerramentoProposta).getTime()
       : new Date(registro.dataAbertura).getTime();
-    if (encAnt !== encNovo) {
-      await notificarMovimentacaoLicitacao({
+
+    // Se o prazo foi prorrogado/reaberto para o futuro, reativa tenants que haviam recusado
+    if (encNovo > encAnt && encNovo > Date.now()) {
+      await reativarRecusadasPorReabertura({
         licitacaoId: registro.id,
         numeroEdital: registro.numeroEdital,
-        orgaoNome: registro.orgaoNome,
-        tipoEvento: "DATAS",
-        resumoMudanca: `A data limite da proposta do edital ${registro.numeroEdital} foi retificada no PNCP`,
-        chaveSufixo: novoHash,
+        dataAnteriorIso: new Date(encAnt).toISOString(),
+        dataNovaIso: new Date(encNovo).toISOString(),
+        actorContext,
+      });
+    }
+
+    if (!silenciarNotificacoes) {
+      const destN2 = Array.from(new Set([existente.responsavelId, ...allActiveUserIds].filter(Boolean))) as string[];
+      await criarNotificacao({
+        tipo: "N2_LICITACAO_ATUALIZADA",
+        titulo: `Edital Atualizado no PNCP: ${registro.numeroEdital}`,
+        descricao: `O certame ${registro.numeroEdital} sofreu retificação de campos críticos no PNCP.`,
+        linkDestino: `/oportunidades/${registro.id}`,
+        licitacaoId: registro.id,
+        chaveIdempotencia: montarChaveIdempotencia({
+          tipo: "N2_LICITACAO_ATUALIZADA",
+          entidadeId: registro.id,
+          janela: novoHash,
+        }),
+        destinatarioIds: destN2,
       }).catch(() => undefined);
+
+      if (encAnt !== encNovo) {
+        await notificarMovimentacaoLicitacao({
+          licitacaoId: registro.id,
+          numeroEdital: registro.numeroEdital,
+          orgaoNome: registro.orgaoNome,
+          tipoEvento: "DATAS",
+          resumoMudanca: `A data limite da proposta do edital ${registro.numeroEdital} foi retificada no PNCP`,
+          chaveSufixo: novoHash,
+        }).catch(() => undefined);
+      }
     }
   }
 
@@ -373,18 +481,20 @@ export async function ingestLicitacoesV2(
     ip: actorContext?.ip ?? null,
   });
 
-  await criarNotificacao({
-    tipo: "N1_COLETA_CONCLUIDA",
-    titulo: `Coleta PNCP Concluída (${parsed.licitacoes.length} certames)`,
-    descricao: `Esteira autônoma processou ${parsed.licitacoes.length} certame(s) com sucesso (${criados} novos, ${atualizados} atualizados, ${inalterados} inalterados).`,
-    linkDestino: `/oportunidades`,
-    chaveIdempotencia: montarChaveIdempotencia({
+  if (!silenciarNotificacoes) {
+    await criarNotificacao({
       tipo: "N1_COLETA_CONCLUIDA",
-      entidadeId: `lote_${parsed.executadoEm}`,
-      janela: parsed.executadoEm,
-    }),
-    destinatarioIds: allActiveUserIds,
-  }).catch(() => undefined);
+      titulo: `Coleta PNCP Concluída (${parsed.licitacoes.length} certames)`,
+      descricao: `Esteira autônoma processou ${parsed.licitacoes.length} certame(s) com sucesso (${criados} novos, ${atualizados} atualizados, ${inalterados} inalterados).`,
+      linkDestino: `/oportunidades`,
+      chaveIdempotencia: montarChaveIdempotencia({
+        tipo: "N1_COLETA_CONCLUIDA",
+        entidadeId: `lote_${parsed.executadoEm}`,
+        janela: parsed.executadoEm,
+      }),
+      destinatarioIds: allActiveUserIds,
+    }).catch(() => undefined);
+  }
 
   return {
     ok: true,
