@@ -812,6 +812,18 @@ async function bootstrapDatabase() {
       );`,
       `CREATE INDEX IF NOT EXISTS "cnpj_dispute_cnpj_idx" ON "cnpj_dispute"("cnpj");`,
       `CREATE INDEX IF NOT EXISTS "cnpj_dispute_status_idx" ON "cnpj_dispute"("status");`,
+      // Issue #59 — Índices SQL para Oportunidades Vigentes, Histórico de Licitações e Ordenação Global
+      `CREATE EXTENSION IF NOT EXISTS pg_trgm;`,
+      `UPDATE "Licitacao" SET "dataEncerramentoProposta" = "dataAbertura" WHERE "dataEncerramentoProposta" IS NULL;`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_dataEncerramentoProposta_idx" ON "Licitacao"("dataEncerramentoProposta");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_dataPublicacaoPncp_idx" ON "Licitacao"("dataPublicacaoPncp");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_segmento_uf_enc_idx" ON "Licitacao"("segmentoMacro", "uf", "dataEncerramentoProposta");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_valorEstimado_idx" ON "Licitacao"("valorEstimado");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_orgaoNome_idx" ON "Licitacao"("orgaoNome");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_subcategorias_gin_idx" ON "Licitacao" USING GIN ("subcategorias");`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_resumo_trgm_idx" ON "Licitacao" USING GIN ("resumo" gin_trgm_ops);`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_miniResumo_trgm_idx" ON "Licitacao" USING GIN ("miniResumo" gin_trgm_ops);`,
+      `CREATE INDEX IF NOT EXISTS "Licitacao_orgaoNome_trgm_idx" ON "Licitacao" USING GIN ("orgaoNome" gin_trgm_ops);`,
     ];
 
     for (const stmt of ddlSaaS) {

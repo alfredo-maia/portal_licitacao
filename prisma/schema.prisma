@@ -228,10 +228,15 @@ model Licitacao {
   updatedAt             DateTime                    @updatedAt
 
   @@index([dataAbertura])
+  @@index([dataEncerramentoProposta])
+  @@index([dataPublicacaoPncp])
   @@index([status])
   @@index([idPncp])
   @@index([tipoSistemaCodigo])
   @@index([segmentoMacro])
+  @@index([segmentoMacro, uf, dataEncerramentoProposta])
+  @@index([valorEstimado])
+  @@index([orgaoNome])
   @@index([modalidadeCodigo])
   @@index([createdAt])
 }

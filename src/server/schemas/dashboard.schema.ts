@@ -24,6 +24,15 @@ export const dashboardQuerySchema = z.object({
   ano: z.coerce.number().int().min(2024).max(2100).optional(),
   tenantId: z.string().optional(),
   segmentosTenantAtivo: z.array(z.string()).optional(),
+  subsegmentosTenantAtivo: z.array(z.string()).optional(),
+  ufsTenantAtivo: z
+    .array(z.string())
+    .transform((arr) =>
+      arr
+        .map((u) => u.trim().toUpperCase())
+        .filter((u) => /^[A-Z]{2}$/.test(u)),
+    )
+    .optional(),
 });
 
 const contagemSchema = z.object({ total: z.number().int().nonnegative() });

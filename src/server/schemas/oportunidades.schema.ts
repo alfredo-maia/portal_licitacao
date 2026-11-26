@@ -27,10 +27,34 @@ export const parecerIAFilterSchema = z
   .enum(["GO", "AVALIAR", "NO_GO", "NO-GO"])
   .transform((value) => (value === "NO-GO" ? "NO_GO" : value));
 
+export const REABERTA_POS_RECUSA_TAG = "REABERTA_POS_RECUSA" as const;
+
+export const oportunidadesSortBySchema = z.enum([
+  "dataLimite",
+  "orgaoNome",
+  "miniResumo",
+  "valorEstimado",
+]);
+
+export const sortDirSchema = z.enum(["asc", "desc"]);
+
+export const buscaMinTresCaracteresSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  },
+  z
+    .string()
+    .min(3, "Informe ao menos 3 caracteres para pesquisar")
+    .max(200, "Termo de busca muito extenso")
+    .optional(),
+);
+
 /**
  * Filtros da listagem de oportunidades (`GET /api/oportunidades`), incluindo
- * os query params vindos do Dashboard (`periodo=mes`, `status`, `tipoSistema`).
- * A ordenação é sempre `dataAbertura ASC` e não faz parte deste contrato.
+ * os query params vindos do Dashboard (`periodo=mes`, `status`, `tipoSistema`)
+ * e paginação/ordenação global executada em SQL no PostgreSQL.
  */
 export const oportunidadesFilterSchema = z.object({
   tipoSistema: tipoSistemaCodigoSchema.optional(),
@@ -42,6 +66,14 @@ export const oportunidadesFilterSchema = z.object({
   subsegmentosTenantAtivo: z
     .union([z.array(z.string()), z.string()])
     .transform((val) => (Array.isArray(val) ? val : [val]))
+    .optional(),
+  ufsTenantAtivo: z
+    .union([z.array(z.string()), z.string()])
+    .transform((val) =>
+      (Array.isArray(val) ? val : val.split(","))
+        .map((u) => u.trim().toUpperCase())
+        .filter((u) => /^[A-Z]{2}$/.test(u)),
+    )
     .optional(),
   subsegmento: z.string().optional(),
   uf: z
@@ -67,7 +99,9 @@ export const oportunidadesFilterSchema = z.object({
   dataInicio: z.string().optional(),
   dataFim: z.string().optional(),
   ordenacao: z.enum(["dataLimiteDesc", "dataAberturaAsc"]).optional(),
-  busca: z.string().trim().min(1).optional(),
+  sortBy: oportunidadesSortBySchema.optional(),
+  sortDir: sortDirSchema.optional(),
+  busca: buscaMinTresCaracteresSchema,
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(10),
 });
@@ -133,6 +167,8 @@ export const criarLicitacaoManualSchema = z.object({
 
 export type FaixaValor = z.infer<typeof faixaValorSchema>;
 export type ParecerIAFilter = z.infer<typeof parecerIAFilterSchema>;
+export type OportunidadesSortBy = z.infer<typeof oportunidadesSortBySchema>;
+export type SortDir = z.infer<typeof sortDirSchema>;
 export type OportunidadesFilterInput = z.infer<
   typeof oportunidadesFilterSchema
 >;

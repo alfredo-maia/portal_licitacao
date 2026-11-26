@@ -205,12 +205,14 @@ export const ingestaoPayloadV2Schema = z.preprocess((val: unknown) => {
   executadoEm: z.string().min(1).default(() => new Date().toISOString()),
   totalRegistros: z.number().int().nonnegative().optional(),
   usarIaTitulos: z.boolean().optional(),
+  silenciarNotificacoes: z.boolean().optional(),
   licitacoes: z.array(ingestaoLicitacaoItemSchema),
 }).transform((data) => ({
   versaoContrato: 2 as const,
   executadoEm: data.executadoEm,
   totalRegistros: data.totalRegistros ?? data.licitacoes.length,
   usarIaTitulos: data.usarIaTitulos,
+  silenciarNotificacoes: data.silenciarNotificacoes ?? false,
   licitacoes: data.licitacoes,
 })));
 
