@@ -40,7 +40,8 @@ export const SCORE_MINIMO_CLASSIFICACAO = 10;
 /** Bônus aplicado à macro LEILOES quando o objeto é, de fato, um leilão. */
 const BONUS_LEILAO = 50;
 /** LEILOES só pontua quando o texto indica leilão (evita falso positivo em compras comuns). */
-const GATILHO_LEILAO = /\b(leilao|leiloes|leiloeiro|leiloeira|leiloar)\b/;
+const GATILHO_LEILAO =
+  /\b(leilao|leiloes|leiloeiro|leiloeira|leiloar|alienacao|alienacoes|alienar|alienados?)\b/;
 
 /**
  * Neutraliza jargões licitatórios e expressões polissêmicas que poderiam disparar falsos positivos

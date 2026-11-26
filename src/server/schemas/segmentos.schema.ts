@@ -857,7 +857,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3702",
         nome: "Imóveis - casas, terrenos, lotes, glebas, apartamentos, prédios, salas comerciais",
-        palavrasChave: ["imoveis", "terrenos", "lotes", "glebas", "apartamentos", "predios", "salas comerciais", "casas", "lote urbano"],
+        palavrasChave: ["imoveis", "imovel", "terrenos", "terreno", "lotes", "glebas", "gleba", "gleba de terras", "apartamentos", "predios", "salas comerciais", "casas", "lote urbano", "bem imovel", "bens imoveis", "imovel desafetado"],
       },
       {
         codigo: "3703",
@@ -1040,7 +1040,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "0310",
         nome: "Serviços de vigilância, armada e desarmada",
-        palavrasChave: ["vigilancia armada", "vigilancia desarmada", "vigilancia patrimonial", "seguranca patrimonial", "servicos de vigilancia", "vigilante", "monitoramento 24h", "ronda motorizada", "portaria remota"],
+        palavrasChave: ["vigilancia armada", "vigilancia desarmada", "vigilancia patrimonial", "seguranca patrimonial", "seguranca nao armada", "seguranca armada", "seguranca privada", "servicos de seguranca", "servicos de vigilancia", "vigilante", "monitoramento 24h", "ronda motorizada", "portaria remota"],
       },
       {
         codigo: "0311",
