@@ -13,21 +13,22 @@ const EXPECTED_ROUTES = [
   { order: 1, path: "/dashboard", label: "Dashboard" },
   { order: 2, path: "/oportunidades", label: "Oportunidades" },
   { order: 3, path: "/minhas-licitacoes", label: "Minhas Licitações" },
-  { order: 4, path: "/calendario", label: "Calendário" },
-  { order: 5, path: "/portais", label: "Portais de Licitações" },
-  { order: 6, path: "/documentacao", label: "Documentação" },
-  { order: 7, path: "/declaracoes", label: "Declarações" },
-  { order: 8, path: "/impugnacoes", label: "Impugnações" },
+  { order: 4, path: "/historico-licitacoes", label: "Histórico de Licitações" },
+  { order: 5, path: "/calendario", label: "Calendário" },
+  { order: 6, path: "/portais", label: "Portais de Licitações" },
+  { order: 7, path: "/documentacao", label: "Documentação" },
+  { order: 8, path: "/declaracoes", label: "Declarações" },
+  { order: 9, path: "/impugnacoes", label: "Impugnações" },
   {
-    order: 9,
+    order: 10,
     path: "/robo-de-lances",
     label: "Robô de Lances",
     badge: "Em breve",
     isPlaceholder: true,
   },
-  { order: 10, path: "/notificacoes", label: "Notificações" },
-  { order: 11, path: "/planos", label: "Planos" },
-  { order: 12, path: "/configuracoes", label: "Configurações" },
+  { order: 11, path: "/notificacoes", label: "Notificações" },
+  { order: 12, path: "/planos", label: "Planos" },
+  { order: 13, path: "/configuracoes", label: "Configurações" },
 ] as const;
 
 function hasAppRouterPageForRoute(routePath: string): boolean {
@@ -68,8 +69,8 @@ describe("Sprint 0 & Nova Sprint — Contrato das 12 Rotas Oficiais (src/config/
     expect(OFFICIAL_ROUTES).toEqual(APP_ROUTES);
   });
 
-  it("deve conter exatamente as 12 rotas na ordem especificada", () => {
-    expect(APP_ROUTES).toHaveLength(12);
+  it("deve conter exatamente as 13 rotas na ordem especificada", () => {
+    expect(APP_ROUTES).toHaveLength(13);
 
     EXPECTED_ROUTES.forEach((expected, index) => {
       const actual = APP_ROUTES[index];
@@ -81,10 +82,10 @@ describe("Sprint 0 & Nova Sprint — Contrato das 12 Rotas Oficiais (src/config/
     });
   });
 
-  it("deve configurar /robo-de-lances (rota 9) com badge 'Em breve' e flag isPlaceholder", () => {
+  it("deve configurar /robo-de-lances (rota 10) com badge 'Em breve' e flag isPlaceholder", () => {
     const roboRoute = getRouteByPath("/robo-de-lances");
     expect(roboRoute).toBeDefined();
-    expect(roboRoute?.order).toBe(9);
+    expect(roboRoute?.order).toBe(10);
     expect(roboRoute?.badge).toBe("Em breve");
     expect(roboRoute?.isPlaceholder).toBe(true);
   });

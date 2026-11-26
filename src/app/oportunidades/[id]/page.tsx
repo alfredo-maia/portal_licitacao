@@ -245,6 +245,8 @@ interface OportunidadeDetalhe {
   justificativaIA?: string | null;
   status: string;
   motivoRecusa?: string | null;
+  tags?: string[];
+  reabertaPosRecusa?: boolean;
   valorProposta?: number | null;
   lanceMinimo?: number | null;
   valorHomologado?: number | null;
@@ -2871,6 +2873,40 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            {(() => {
+              const dataRefEncerramento = new Date(
+                oportunidade.dataEncerramentoProposta || oportunidade.dataAbertura,
+              );
+              const prazoEncerrado =
+                !Number.isNaN(dataRefEncerramento.getTime()) &&
+                dataRefEncerramento.getTime() < Date.now();
+              const isConsultaHistoricaEncerrada =
+                prazoEncerrado &&
+                (oportunidade.status === "PENDENTE" ||
+                  oportunidade.status === "RECUSADA");
+              return (
+                <>
+                  {isConsultaHistoricaEncerrada && (
+                    <Tag
+                      type="cool-gray"
+                      size="md"
+                      data-testid="badge-prazo-encerrado-historico"
+                    >
+                      Prazo Encerrado — Consulta Histórica
+                    </Tag>
+                  )}
+                  {oportunidade.reabertaPosRecusa && (
+                    <Tag
+                      type="purple"
+                      size="md"
+                      data-testid="badge-reaberta-pos-recusa"
+                    >
+                      Reaberta após Recusa — Nova Data no PNCP
+                    </Tag>
+                  )}
+                </>
+              );
+            })()}
             <Tag type="blue" size="md">
               Status: {oportunidade.status}
             </Tag>
@@ -2879,73 +2915,107 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
         {/* Barra de Ações Rápidas da Diretoria */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "1rem" }}>
-          {oportunidade.status === "PENDENTE" ? (
-            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
-              <Button
-                kind="primary"
-                size="sm"
-                renderIcon={CheckmarkOutline}
-                onClick={() => handleDecisao("GO")}
-                data-testid="btn-dossie-aceitar"
-                style={{ backgroundColor: "#24a148", color: "#ffffff" }}
-              >
-                Participar
-              </Button>
-              <Button
-                kind="danger"
-                size="sm"
-                renderIcon={CloseOutline}
-                onClick={() => setShowRecusarModal(true)}
-                data-testid="btn-dossie-recusar"
-                style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
-              >
-                Não Participar
-              </Button>
-              <Button
-                kind="tertiary"
-                size="sm"
-                renderIcon={Bot}
-                onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
-                data-testid="btn-open-verificar-participacao"
-                style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
-              >
-                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
-              </Button>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ minWidth: "250px" }}>
-                <Select
-                  id="select-pipeline-status"
-                  labelText="Status da Licitação"
-                  data-testid="select-pipeline-status"
+          {(() => {
+            const dataRefEncerramento = new Date(
+              oportunidade.dataEncerramentoProposta || oportunidade.dataAbertura,
+            );
+            const prazoEncerrado =
+              !Number.isNaN(dataRefEncerramento.getTime()) &&
+              dataRefEncerramento.getTime() < Date.now();
+            const isConsultaHistoricaEncerrada =
+              prazoEncerrado &&
+              (oportunidade.status === "PENDENTE" ||
+                oportunidade.status === "RECUSADA");
+
+            if (isConsultaHistoricaEncerrada) {
+              return (
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <Button
+                    kind="tertiary"
+                    size="sm"
+                    renderIcon={Bot}
+                    onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
+                    data-testid="btn-open-verificar-participacao"
+                    style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
+                  >
+                    🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
+                  </Button>
+                </div>
+              );
+            }
+
+            if (oportunidade.status === "PENDENTE") {
+              return (
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <Button
+                    kind="primary"
+                    size="sm"
+                    renderIcon={CheckmarkOutline}
+                    onClick={() => handleDecisao("GO")}
+                    data-testid="btn-dossie-aceitar"
+                    style={{ backgroundColor: "#24a148", color: "#ffffff" }}
+                  >
+                    Participar
+                  </Button>
+                  <Button
+                    kind="danger"
+                    size="sm"
+                    renderIcon={CloseOutline}
+                    onClick={() => setShowRecusarModal(true)}
+                    data-testid="btn-dossie-recusar"
+                    style={{ backgroundColor: "#da1e28", color: "#ffffff" }}
+                  >
+                    Não Participar
+                  </Button>
+                  <Button
+                    kind="tertiary"
+                    size="sm"
+                    renderIcon={Bot}
+                    onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
+                    data-testid="btn-open-verificar-participacao"
+                    style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
+                  >
+                    🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
+                  </Button>
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ minWidth: "250px" }}>
+                  <Select
+                    id="select-pipeline-status"
+                    labelText="Status da Licitação"
+                    data-testid="select-pipeline-status"
+                    size="sm"
+                    value={oportunidade.status}
+                    disabled={salvandoStatusPipeline}
+                    onChange={(e) => handleMudarStatusPipeline(e.target.value)}
+                  >
+                    {STATUS_OPTIONS_PIPELINE.map((st) => (
+                      <SelectItem key={st.id} value={st.id} text={st.text} />
+                    ))}
+                  </Select>
+                </div>
+                <Button
+                  kind="tertiary"
                   size="sm"
-                  value={oportunidade.status}
-                  disabled={salvandoStatusPipeline}
-                  onChange={(e) => handleMudarStatusPipeline(e.target.value)}
+                  renderIcon={Bot}
+                  onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
+                  data-testid="btn-open-verificar-participacao"
+                  style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
                 >
-                  {STATUS_OPTIONS_PIPELINE.map((st) => (
-                    <SelectItem key={st.id} value={st.id} text={st.text} />
-                  ))}
-                </Select>
+                  🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
+                </Button>
+                {statusPipelineMsg && (
+                  <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
+                    ✓ {statusPipelineMsg}
+                  </span>
+                )}
               </div>
-              <Button
-                kind="tertiary"
-                size="sm"
-                renderIcon={Bot}
-                onClick={() => (analisesValidasCount > 0 ? setConfirmarReanaliseIAOpen(true) : setModalIAOpen(true))}
-                data-testid="btn-open-verificar-participacao"
-                style={{ border: "1px solid var(--cds-border-strong)", color: "var(--cds-text-primary)" }}
-              >
-                🤖 Verificar Status de Participação ({cotaIA ? `${cotaIA.usadas}/${cotaIA.limite}` : "..."})
-              </Button>
-              {statusPipelineMsg && (
-                <span style={{ fontSize: "0.8125rem", color: "var(--cds-support-success)", fontWeight: 500 }}>
-                  ✓ {statusPipelineMsg}
-                </span>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
             {oportunidade.motivoRecusa && (

@@ -46,6 +46,17 @@ export const APP_ROUTES: readonly AppRoute[] = [
   },
   {
     order: 4,
+    id: "historico-licitacoes",
+    path: "/historico-licitacoes",
+    href: "/historico-licitacoes",
+    label: "Histórico de Licitações",
+    name: "Histórico de Licitações",
+    title: "Histórico de Licitações",
+    description:
+      "Pesquisa livre na base histórica e geral de licitações (encerradas, em aberto e outros segmentos) para consulta de editais e análise de IA.",
+  },
+  {
+    order: 5,
     id: "calendario",
     path: "/calendario",
     href: "/calendario",
@@ -56,7 +67,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Grade mensal de certames (chips normais/opacos) e alertas de validade de certidões.",
   },
   {
-    order: 5,
+    order: 6,
     id: "portais",
     path: "/portais",
     href: "/portais",
@@ -67,7 +78,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Gestão de credenciais, anuidades e alertas de renovação.",
   },
   {
-    order: 6,
+    order: 7,
     id: "documentacao",
     path: "/documentacao",
     href: "/documentacao",
@@ -78,7 +89,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Repositório de certidões, balanços, diplomas e atestados (ACT) com alerta vermelho/negrito.",
   },
   {
-    order: 7,
+    order: 8,
     id: "declaracoes",
     path: "/declaracoes",
     href: "/declaracoes",
@@ -89,7 +100,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Gerador de modelos oficiais.",
   },
   {
-    order: 8,
+    order: 9,
     id: "impugnacoes",
     path: "/impugnacoes",
     href: "/impugnacoes",
@@ -100,7 +111,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Controle de petições com cálculo automático do prazo de 3 dias úteis (Lei 14.133).",
   },
   {
-    order: 9,
+    order: 10,
     id: "robo-de-lances",
     path: "/robo-de-lances",
     href: "/robo-de-lances",
@@ -112,7 +123,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     isPlaceholder: true,
   },
   {
-    order: 10,
+    order: 11,
     id: "notificacoes",
     path: "/notificacoes",
     href: "/notificacoes",
@@ -123,7 +134,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
       "Central completa de avisos e notificações (Anexo 3), conectada ao sino global.",
   },
   {
-    order: 11,
+    order: 12,
     id: "planos",
     path: "/planos",
     href: "/planos",
@@ -133,7 +144,7 @@ export const APP_ROUTES: readonly AppRoute[] = [
     description: "Gestão do plano de assinatura, limites e contratação.",
   },
   {
-    order: 12,
+    order: 13,
     id: "configuracoes",
     path: "/configuracoes",
     href: "/configuracoes",

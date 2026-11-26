@@ -86,7 +86,39 @@ function OportunidadesContent() {
 
   const page = Number(searchParams.get("page")) || 1;
   const pageSize = Number(searchParams.get("pageSize")) || 10;
+  const sortBy = (searchParams.get("sortBy") || "dataLimite") as
+    | "dataLimite"
+    | "orgaoNome"
+    | "miniResumo"
+    | "valorEstimado";
+  const sortDir = (searchParams.get("sortDir") || "desc") as "asc" | "desc";
   const { isReadOnly } = useTenantSubscription();
+
+  const headerToSortField: Record<
+    string,
+    "dataLimite" | "orgaoNome" | "miniResumo" | "valorEstimado"
+  > = {
+    dataAbertura: "dataLimite",
+    orgaoUF: "orgaoNome",
+    miniResumo: "miniResumo",
+    valorEstimado: "valorEstimado",
+  };
+
+  const handleServerSort = (headerKey: string) => {
+    const field = headerToSortField[headerKey];
+    if (!field) return;
+    const nextDir: "asc" | "desc" =
+      sortBy === field ? (sortDir === "desc" ? "asc" : "desc") : "desc";
+    const currentParams = new URLSearchParams(searchParams.toString());
+    currentParams.set("sortBy", field);
+    currentParams.set("sortDir", nextDir);
+    currentParams.delete("ordenacao");
+    currentParams.set("page", "1");
+    setSortingModalMsg("Ordenando toda a base de oportunidades no banco de dados...");
+    setSortingModalOpen(true);
+    setLoading(true);
+    router.push(`/oportunidades?${currentParams.toString()}`);
+  };
 
   const headers = [
     { key: "dataAbertura", header: "Data Limite (Proposta)", isSortable: true },
@@ -101,6 +133,10 @@ function OportunidadesContent() {
   const [showRecusarModal, setShowRecusarModal] = React.useState(false);
   const [loadingModalOpen, setLoadingModalOpen] = React.useState(false);
   const [loadingModalMsg, setLoadingModalMsg] = React.useState("Processando deliberação...");
+  const [sortingModalOpen, setSortingModalOpen] = React.useState(false);
+  const [sortingModalMsg, setSortingModalMsg] = React.useState(
+    "Ordenando e consultando todas as oportunidades...",
+  );
   const [recusaMotivoGenerico, setRecusaMotivoGenerico] = React.useState(MOTIVOS_RECUSA_GENERICOS[0]);
   const [recusaMotivoCustom, setRecusaMotivoCustom] = React.useState("");
   const [selectedOpportunityId, setSelectedOpportunityId] = React.useState<string | null>(null);
@@ -120,6 +156,7 @@ function OportunidadesContent() {
   const [filtroDataInicio, setFiltroDataInicio] = React.useState('');
   const [filtroDataFim, setFiltroDataFim] = React.useState('');
   const [filtroBusca, setFiltroBusca] = React.useState('');
+  const [buscaValidationMsg, setBuscaValidationMsg] = React.useState<string | null>(null);
 
   const [manualNumeroEdital, setManualNumeroEdital] = React.useState("");
   const [manualOrgaoNome, setManualOrgaoNome] = React.useState("");
@@ -163,8 +200,9 @@ function OportunidadesContent() {
     setError(null);
     try {
       const currentParams = new URLSearchParams(searchParams.toString());
-      if (!currentParams.has("ordenacao")) {
-        currentParams.set("ordenacao", "dataLimiteDesc");
+      if (!currentParams.has("sortBy") && !currentParams.has("ordenacao")) {
+        currentParams.set("sortBy", "dataLimite");
+        currentParams.set("sortDir", "desc");
       }
       const response = await fetch(`/api/oportunidades?${currentParams.toString()}`);
       if (!response.ok) {
@@ -205,6 +243,7 @@ function OportunidadesContent() {
       setError(err instanceof Error ? err.message : "Um erro desconhecido ocorreu.");
     } finally {
       setLoading(false);
+      setSortingModalOpen(false);
     }
   }, [searchParams]);
 
@@ -823,14 +862,25 @@ function OportunidadesContent() {
             <TextInput
               id="filter-busca"
               data-testid="filter-busca"
-              labelText="Busca por palavra-chave"
-              placeholder="Digite o termo e clique em buscar..."
+              labelText="Busca por palavra-chave (mín. 3 letras)"
+              placeholder="Digite ao menos 3 letras e clique em buscar..."
               disabled={loading || loadingPreferencias}
               value={filtroBusca}
-              onChange={(e) => setFiltroBusca(e.target.value)}
+              invalid={Boolean(buscaValidationMsg)}
+              invalidText={buscaValidationMsg || undefined}
+              onChange={(e) => {
+                setFiltroBusca(e.target.value);
+                if (buscaValidationMsg) setBuscaValidationMsg(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  handleFilterChange("busca", filtroBusca);
+                  const trimmed = filtroBusca.trim();
+                  if (trimmed.length > 0 && trimmed.length < 3) {
+                    setBuscaValidationMsg("Informe ao menos 3 caracteres para pesquisar.");
+                    return;
+                  }
+                  setBuscaValidationMsg(null);
+                  handleFilterChange("busca", trimmed);
                 }
               }}
               style={{ minWidth: "240px" }}
@@ -841,7 +891,15 @@ function OportunidadesContent() {
               renderIcon={Search}
               id="btn-executar-busca-oportunidades"
               disabled={loading || loadingPreferencias}
-              onClick={() => handleFilterChange("busca", filtroBusca)}
+              onClick={() => {
+                const trimmed = filtroBusca.trim();
+                if (trimmed.length > 0 && trimmed.length < 3) {
+                  setBuscaValidationMsg("Informe ao menos 3 caracteres para pesquisar.");
+                  return;
+                }
+                setBuscaValidationMsg(null);
+                handleFilterChange("busca", trimmed);
+              }}
             >
               Buscar
             </Button>
@@ -867,28 +925,11 @@ function OportunidadesContent() {
               <DataTable
                 rows={oportunidades}
               headers={headers}
-              isSortable
-              sortRow={(
-                cellA: any,
-                cellB: any,
-                { sortDirection, sortStates, key }: any,
-              ) => {
-                const dir = sortDirection === sortStates.DESC ? -1 : 1;
-                if (key === "valorEstimado") {
-                  return ((Number(cellA) || 0) - (Number(cellB) || 0)) * dir;
-                }
-                return (
-                  String(cellA ?? "").localeCompare(String(cellB ?? ""), "pt-BR", {
-                    sensitivity: "base",
-                    numeric: true,
-                  }) * dir
-                );
-              }}
+              isSortable={false}
               data-testid="oportunidades-datatable"
               render={({
                 rows,
                 headers,
-                getHeaderProps,
                 getRowProps,
               }) => (
                 <TableContainer style={{ overflowX: "auto", maxWidth: "100%" }}>
@@ -922,9 +963,27 @@ function OportunidadesContent() {
                           } else if (header.key === "acoes") {
                             headerStyle = { width: "80px", whiteSpace: "nowrap", textAlign: "center" };
                           }
+                          const mappedField = headerToSortField[header.key];
+                          const isSortableCol = Boolean(mappedField);
+                          const isActiveSort = isSortableCol && sortBy === mappedField;
+                          const carbonDir = !isSortableCol
+                            ? "NONE"
+                            : isActiveSort
+                            ? sortDir === "desc"
+                              ? "DESC"
+                              : "ASC"
+                            : "NONE";
                           return (
                             <TableHeader
-                              {...getHeaderProps({ header, isSortable: header.isSortable })}
+                              key={header.key}
+                              isSortable={isSortableCol}
+                              isSortHeader={isActiveSort}
+                              sortDirection={carbonDir}
+                              onClick={
+                                isSortableCol
+                                  ? () => handleServerSort(header.key)
+                                  : undefined
+                              }
                               style={headerStyle}
                             >
                               {header.header}
@@ -1062,12 +1121,14 @@ function OportunidadesContent() {
             page={page}
             pageNumberText="Número da página"
             pageSize={pageSize}
-            pageSizes={[10, 25, 50]}
+            pageSizes={[10, 25, 50, 100]}
             totalItems={total}
             onChange={({ page: newPage, pageSize: newPageSize }) => {
               const currentParams = new URLSearchParams(searchParams.toString());
-              currentParams.set("page", String(newPage));
+              currentParams.set("page", String(newPageSize !== pageSize ? 1 : newPage));
               currentParams.set("pageSize", String(newPageSize));
+              setSortingModalMsg("Carregando página de oportunidades...");
+              setSortingModalOpen(true);
               router.push(`/oportunidades?${currentParams.toString()}`);
             }}
             data-testid="oportunidades-pagination"
@@ -1345,6 +1406,29 @@ function OportunidadesContent() {
             }}
           >
             <InlineLoading status="active" description={loadingModalMsg} />
+          </div>
+        </Modal>
+      )}
+      {/* Modal de Carregamento de Ordenação / Paginação SQL */}
+      {sortingModalOpen && !loadingModalOpen && (
+        <Modal
+          passiveModal
+          open
+          modalHeading="Consultando Oportunidades"
+          onRequestClose={() => {}}
+          preventCloseOnClickOutside
+          size="xs"
+          data-testid="modal-ordenacao-loading"
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1.5rem 0.5rem",
+            }}
+          >
+            <InlineLoading status="active" description={sortingModalMsg} />
           </div>
         </Modal>
       )}
