@@ -5,14 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
+  ActionableNotification,
   Button,
   Header,
   HeaderGlobalAction,
   HeaderGlobalBar,
   HeaderMenuButton,
   HeaderName,
-  InlineNotification,
-  NotificationActionButton,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -377,40 +376,36 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         {subStatus?.isReadOnly && pathname !== "/planos" && (
           <div style={{ marginBottom: "1rem" }} data-testid="banner-bloqueio-planos">
-            <InlineNotification
+            <ActionableNotification
+              inline
               kind="error"
               title="Acesso Somente-Leitura:"
               subtitle={
                 subStatus.mensagemStatus ||
                 "Seu período de teste expirou. Escolha um plano para reativar as ações."
               }
+              actionButtonLabel="Ver Planos"
+              onActionButtonClick={() => router.push("/planos")}
               hideCloseButton
-            >
-              <div style={{ marginTop: "0.5rem" }}>
-                <NotificationActionButton onClick={() => router.push("/planos")}>
-                  Ver Planos
-                </NotificationActionButton>
-              </div>
-            </InlineNotification>
+              style={{ maxWidth: "100%" }}
+            />
           </div>
         )}
         {subStatus?.inGracePeriod && pathname !== "/planos" && (
           <div style={{ marginBottom: "1rem" }} data-testid="banner-carencia-planos">
-            <InlineNotification
+            <ActionableNotification
+              inline
               kind="warning"
               title="Período de Carência:"
               subtitle={
                 subStatus.mensagemStatus ||
                 "Seu período de teste terminou. Você tem alguns dias de carência antes do bloqueio das ações."
               }
+              actionButtonLabel="Regularizar Plano"
+              onActionButtonClick={() => router.push("/planos")}
               hideCloseButton
-            >
-              <div style={{ marginTop: "0.5rem" }}>
-                <NotificationActionButton onClick={() => router.push("/planos")}>
-                  Regularizar Plano
-                </NotificationActionButton>
-              </div>
-            </InlineNotification>
+              style={{ maxWidth: "100%" }}
+            />
           </div>
         )}
         <SystemBroadcastBanner />
