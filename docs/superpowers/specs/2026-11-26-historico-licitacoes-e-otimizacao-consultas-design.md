@@ -2,7 +2,7 @@
 
 - **Data:** 2026-11-26
 - **Issue:** `#59`
-- **Status:** Em revisão técnica (Builder Check) antes da aprovação final
+- **Status:** Pronto para aprovação do parceiro (revisado via Builder Check)
 
 ---
 
@@ -75,22 +75,25 @@ Inserir nova rota oficial em `APP_ROUTES` na posição **4** (entre `Minhas Lici
 - `description`: `"Base geral de licitações encerradas e em aberto (todos os segmentos, inclusive Outros) para consulta de editais e análise com IA."`
 - Ícone Carbon no `AppShell` (`ROUTE_ICONS`): `Catalog` (ou `Archive`) de `@carbon/icons-react`.
 
-### 5.2. Regras de Vigência e Perfil do Tenant em `/oportunidades` e `/dashboard`
-1. **Filtro de Vigência (`PENDENTE`):**
+### 5.2. Regras de Vigência, Métricas do Dashboard e Perfil do Tenant em `/oportunidades` e `/dashboard`
+1. **Filtro de Vigência (`PENDENTE`) vs. Volume Mensal (`Oportunidades Recebidas`):**
    - Em `buildPrismaWhere` ([oportunidades.service.ts](file:///Users/vitorhenrique/Desktop/Profissional/Programacao/AV%20System/Portais%20Gerenciais/Portal%20de%20Licitacoes/portal_licitacao/src/server/services/oportunidades.service.ts)) e `getDashboardData` ([dashboard.service.ts](file:///Users/vitorhenrique/Desktop/Profissional/Programacao/AV%20System/Portais%20Gerenciais/Portal%20de%20Licitacoes/portal_licitacao/src/server/services/dashboard.service.ts)):
-   - Quando listando/contabilizando oportunidades `PENDENTE` na fila de triagem (ou `aguardandoDecisao` no Dashboard), aplicar obrigatoriamente:
+   - **Fila de Triagem (`/oportunidades` status `PENDENTE`) e card `Aguardando Decisão` (Dashboard):** aplicam obrigatoriamente vigência ativa:
      ```sql
      (dataEncerramentoProposta >= NOW())
      OR (dataEncerramentoProposta IS NULL AND dataAbertura >= NOW())
      ```
+   - **Card `Oportunidades Recebidas` no Dashboard (Decisão do Parceiro):** exibe o **volume total do mês** selecionado — todas as licitações do perfil do cliente (Segmentos + Subsegmentos + UFs) cuja data de publicação (`COALESCE(dataPublicacaoPncp, createdAt)`) pertence àquele mês, mesmo que parte delas já tenha encerrado durante o próprio mês. Isso também evita que a carga retroativa de 2026 infle o mês atual com editais antigos de janeiro–outubro.
+   - **Agregação SQL no Dashboard:** `getDashboardData` deixa de carregar toda a tabela `Licitacao` via `findMany()` sem limite em memória e passa a usar consultas agregadas SQL (`count` / `aggregate` / `groupBy` com `where` indexado), mantendo suporte seguro ao volume completo de 2026.
+   - **Certames resgatados do Histórico (`OUTROS` / fora da UF) no Kanban:** qualquer `licitacaoId` presente em `tenant_licitacao` com deliberação ativa do cliente (`emPrecificacao`, `volumeEmDisputa`, `contempladas`, `resultados`, `criticas72h`) é **sempre incluída** nas métricas do Kanban no Dashboard, mesmo que o edital seja `OUTROS` ou de outra UF.
    - A cláusula legada `tenantCriadoEm - 30 dias` deixa de ser usada para puxar itens vencidos; itens cujo prazo expirou saem automaticamente de `PENDENTE` na triagem.
    - Itens já deliberados no Kanban (`statusKanban` ≠ `PENDENTE` e ≠ `RECUSADA`) **não** sofrem filtro de vigência e jamais são marcados como recusados ao vencer.
 2. **Alinhamento Completo do Perfil do Tenant (Segmentos + Subsegmentos + UFs):**
    - Em `GET /api/oportunidades` e `GET /api/dashboard`:
      - Carregar `cfg.segmentos`, `cfg.subsegmentos`, `cfg.ufs` e `cfg.brasilInteiro` do tenant ativo.
      - Quando `!cfg.brasilInteiro && cfg.ufs.length > 0`, enviar `ufsTenantAtivo: cfg.ufs` para ambos os serviços (evitando que o backend retorne UFs fora da área de atuação do cliente quando o filtro da tela está vazio).
-     - No Dashboard, passar também `subsegmentosTenantAtivo: cfg.subsegmentos` e `ufsTenantAtivo` para que os cards do Dashboard batam **exatamente** com os números da tela de Oportunidades.
-   - `segmentoMacro = "OUTROS"` continua bloqueado em `/oportunidades` e `/dashboard` (pois `segmentosTenantAtivo` contém apenas códigos dentre os 40 comerciais).
+     - No Dashboard, passar também `subsegmentosTenantAtivo: cfg.subsegmentos` e `ufsTenantAtivo` para que o backlog `Aguardando Decisão` bata **exatamente** com os números de `/oportunidades`.
+   - `segmentoMacro = "OUTROS"` continua bloqueado na fila automática de `/oportunidades` e no card `Oportunidades Recebidas` / `Aguardando Decisão` do `/dashboard`.
 
 ### 5.3. Paginação e Ordenação 100% SQL (`[10, 25, 50, 100]`)
 1. **Contrato Zod (`oportunidadesFilterSchema` e novo `historicoLicitacoesQuerySchema`):**
@@ -120,7 +123,7 @@ Inserir nova rota oficial em `APP_ROUTES` na posição **4** (entre `Minhas Lici
    - Os filtros de data vêm pré-preenchidos por conveniência com os **últimos 30 dias** (`hoje - 30 dias` até `hoje`), editáveis pelo usuário.
    - Exibe um `Tile` de estado inicial: *"Defina os filtros acima (período de até 30 dias, segmento, UF ou palavra-chave com mínimo de 3 letras) e clique em **Buscar** para consultar o Histórico de Licitações."*
 2. **Filtros Liberados para Todos os Planos:**
-   - **Período (`Data Limite De` / `Data Limite Até`):** Obrigatório; diferença máxima de **30 dias corridos** (`(dataFim - dataInicio) <= 30 dias`). Se exceder 30 dias, bloqueia no front-end e no Zod com mensagem clara.
+   - **Período (`Data Limite De` / `Data Limite Até`):** Obrigatório; diferença máxima de **30 dias corridos** (`(dataFim - dataInicio) <= 30 dias`). Se exceder 30 dias, bloqueia no front-end e no Zod com mensagem clara. Ao trocar **Situação do Prazo** para **`Em Aberto` (`ABERTAS`)**, a UI ajusta automaticamente a janela sugerida para **`[hoje, hoje + 30 dias]`** (e ao voltar para `Todas` ou `Encerradas`, sugere `[hoje - 30 dias, hoje]`), mantendo a regra de máximo 30 dias sem zerar a busca de editais futuros.
    - **Situação do Prazo (`situacaoPrazo`):** `TODAS` (padrão), `ENCERRADAS` (`dataEncerramentoProposta < NOW()`), `ABERTAS` (`dataEncerramentoProposta >= NOW()`).
    - **Segmento:** `Todos (incl. Outros)` + todos os **40 segmentos oficiais** + **`OUTROS` ("Outros / Sem segmento definido")**.
    - **Subsegmento:** Todos os subsegmentos da macro escolhida (188 ao todo).
@@ -138,6 +141,7 @@ Inserir nova rota oficial em `APP_ROUTES` na posição **4** (entre `Minhas Lici
        - Ocultar os botões **Participar** e **Não Participar**.
        - Manter 100% habilitados: botão **Verificar Status de Participação (IA)**, aba **Arquivos do Edital** (com botão *Buscar Arquivos no PNCP* → cache lazy no Cloudflare R2), aba **Notas** e aba **Histórico Análise IA**.
      - Se `!prazoEncerrado` (edital ainda aberto encontrado via Histórico, ex.: `OUTROS` ou outra UF): mantém o botão **Participar** visível e funcional para enviar diretamente ao Kanban do cliente!
+     - **Badge de Reabertura após Recusa (Decisão do Parceiro):** se o registro do tenant possuir a tag `"REABERTA_POS_RECUSA"` em `TenantLicitacao.tags` (definida quando um edital previamente recusado teve o prazo prorrogado no PNCP e voltou automaticamente para `PENDENTE`), o Dossiê `/oportunidades/[id]` exibe um badge Carbon em destaque (**`Reaberta após Recusa — Nova Data no PNCP`**) acompanhado de aviso informando a prorrogação (e exibindo o motivo anterior da recusa para contexto). Quando o cliente delibera novamente (`Participar` ou `Não Participar`), a tag `"REABERTA_POS_RECUSA"` é limpa.
 
 ### 5.5. Índices PostgreSQL (`prisma/schema.prisma` + SQL de Índices)
 1. Adicionar no `model Licitacao` em `prisma/schema.prisma`:
@@ -153,20 +157,22 @@ Inserir nova rota oficial em `APP_ROUTES` na posição **4** (entre `Minhas Lici
    - `CREATE INDEX IF NOT EXISTS idx_licitacao_subcategorias_gin ON "Licitacao" USING gin ("subcategorias");`
 
 ### 5.6. Coletor Diário de Reaberturas & Carga Histórica 2026
-1. **Reaberturas no Coletor Diário (`pncp-ingestao-diaria.service.ts`):**
-   - Além da coleta padrão em `/api/consulta/v1/contratacoes/publicacao` (novas publicações), adicionar segunda fase leve consultando `/api/consulta/v1/contratacoes/proposta` (propostas atualmente em aberto) para atualizar `dataEncerramentoProposta` de editais antigos retificados/reabertos.
-   - Como `ingestLicitacoesV2` já compara `hashCritico` (que inclui `dataEncerramentoProposta`), qualquer reabertura atualiza o registro no PostgreSQL, gera notificação de retificação e torna o edital elegível em `/oportunidades`.
+1. **Reaberturas no Coletor Diário (`pncp-ingestao-diaria.service.ts` + `ingestao.service.ts`):**
+   - Além da coleta padrão em `/api/consulta/v1/contratacoes/publicacao` (novas publicações), adicionar segunda fase leve consultando `/api/consulta/v1/contratacoes/proposta` (propostas atualmente em aberto, com paginação controlada e `usarIaTitulos: false` para zero custo de LLM e sem risco de timeout HTTP) focada em atualizar `dataEncerramentoProposta` de editais existentes retificados/reabertos e capturar eventuais editais em aberto perdidos.
+   - **Reativação automática `RECUSADA` → `PENDENTE` (Decisão do Parceiro):** Em `ingestLicitacoesV2`, sempre que um edital existente tiver `dataEncerramentoProposta` estendida para uma data **posterior** à data anterior e **futura (`> NOW()`)**, o serviço verifica os registros em `tenant_licitacao` daquela licitação com `statusKanban === "RECUSADA"` e os atualiza automaticamente para `statusKanban: "PENDENTE"`, adicionando `"REABERTA_POS_RECUSA"` em `tags` (preservando `motivoRecusa` anterior para contexto até nova deliberação), gravando `AuditLog` e notificando o tenant (`N2` / `N10`). Certames já em participação no Kanban (`ACEITA`, `EM_DISPUTA`, etc.) permanecem intactos e recebem apenas a notificação de retificação de data.
 2. **Script de Carga Histórica 2026 (`scripts/backfill-pncp-2026.ts`):**
    - Percorre `20260101` até `20261125` em janelas controladas (ex.: de 3 em 3 dias ou dia a dia, de trás para frente — começando pelos meses mais recentes até janeiro/2026).
    - Grava checkpoint em arquivo local (`.cache/backfill-pncp-2026-checkpoint.json`) permitindo pausar e retomar sem repetir páginas já coletadas.
-   - Envia lotes com `usarIaTitulos: false` e novo campo opcional `silenciarNotificacoes: true` em `ingestaoPayloadV2Schema` (para não disparar centenas de notificações `N1_COLETA_CONCLUIDA` no sininho dos clientes durante a carga histórica).
+   - Envia lotes com `usarIaTitulos: false` e novo campo opcional `silenciarNotificacoes: true` em `ingestaoPayloadV2Schema` (para não disparar centenas de notificações `N1_COLETA_CONCLUIDA` no sininho dos clientes durante a carga histórica) e preserva `dataPublicacaoPncp` oficial de cada certame.
    - **Zero download de PDFs:** apenas metadados + classificação V3 + título fiel no PostgreSQL.
 
 ---
 
 ## 6. Decisões Assumidas pelo Construtor (Para Conferência)
 
-1. **Campo de data do filtro de 30 dias no Histórico:** Filtra sobre `dataEncerramentoProposta` (com fallback para `dataAbertura` quando nulo), mantendo 100% de coerência visual com a coluna *"Data Limite (Proposta)"* exibida na tabela.
-2. **Notificações silenciadas no backfill:** Adição do flag opcional `silenciarNotificacoes?: boolean` na ingestão em lote para evitar flood no sininho de notificações durante cargas históricas de meses anteriores.
-3. **Filtro de prazo padrão no Histórico:** Abre com `Data Limite De = hoje - 30 dias`, `Data Limite Até = hoje` e `Situação = Todas` (trazendo encerradas e abertas dentro da janela), mas **sem disparar a query** até o clique em **"Buscar"**.
-4. **Limpeza de `GET /api/oportunidades`:** Quando `busca` tiver 1 ou 2 caracteres, tanto `/oportunidades` quanto `/historico-licitacoes` exigem mínimo de 3 caracteres para executar busca textual.
+1. **Campo de data do filtro de 30 dias no Histórico + ajuste automático em `Em Aberto`:** Filtra sobre `COALESCE(dataEncerramentoProposta, dataAbertura)` (mesma coluna *"Data Limite (Proposta)"* da tabela). Ao selecionar `Situação = Em Aberto`, o front-end desloca automaticamente a janela padrão de `[hoje - 30d, hoje]` para `[hoje, hoje + 30d]` para que licitações futuras apareçam imediatamente.
+2. **Métrica mensal baseada em `dataPublicacaoPncp` + SQL no Dashboard:** Para impedir que a carga histórica de 2026 distorça o mês atual ou estoure memória, o Dashboard usa `COALESCE(dataPublicacaoPncp, createdAt)` e consultas agregadas SQL, incluindo sempre nas métricas de Kanban qualquer licitação que o cliente tenha resgatado do Histórico (`OUTROS` ou outra UF).
+3. **Armazenamento da marcação de reabertura sem migração destrutiva:** Reutiliza a coluna existente `TenantLicitacao.tags` (`"REABERTA_POS_RECUSA"`) para acionar o badge em `/oportunidades/[id]` e limpa a tag assim que o cliente delibera novamente.
+4. **Fase 2 do coletor (`/contratacoes/proposta`) sem IA:** Roda com síntese determinística V3 (`usarIaTitulos: false`) para manter o cron rápido e sem gasto extra de tokens.
+5. **Notificações silenciadas no backfill:** Flag opcional `silenciarNotificacoes?: boolean` na ingestão em lote evita flood no sininho durante cargas retroativas.
+6. **Validação de 3 caracteres na busca textual:** Aplicada em `/oportunidades` e `/historico-licitacoes` quando o campo de busca textual não está vazio.
