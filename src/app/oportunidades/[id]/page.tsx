@@ -17,7 +17,6 @@ import {
   TextArea,
   Modal,
   InlineNotification,
-  FilterableMultiSelect,
   InlineLoading,
   Loading,
   Checkbox,
@@ -72,6 +71,7 @@ import {
 import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
+import { MembrosEquipeMultiSelect } from "@/components/oportunidades/MembrosEquipeMultiSelect";
 import { APP_CONFIG } from "@/config/brand";
 import { TIPOS_SISTEMA_CATALOG } from "@/config/tipos-sistema";
 import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
@@ -2988,19 +2988,13 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
           </div>
 
           <div style={{ minWidth: "320px", flex: 2 }}>
-            <FilterableMultiSelect
-              key={`membros-${usuarios.length}-${(oportunidade.atribuidos || []).map((a) => a.usuarioId).sort().join(",")}`}
+            <MembrosEquipeMultiSelect
               id="multiselect-membros-equipe"
               titleText="Membros Atribuídos da Equipe"
               placeholder="Selecione os membros..."
-              items={usuarios.map((u) => ({ id: u.id, text: `${u.name} (${u.role})` }))}
-              itemToString={(item) => (item ? item.text : "")}
-              initialSelectedItems={usuarios
-                .filter((u) => atribuidoIds.includes(u.id))
-                .map((u) => ({ id: u.id, text: `${u.name} (${u.role})` }))}
-              onChange={({ selectedItems }) => {
-                setAtribuidoIds((selectedItems || []).map((item) => item.id));
-              }}
+              items={usuarios.map((u) => ({ id: u.id, name: u.name, role: u.role }))}
+              selectedIds={atribuidoIds}
+              onChange={setAtribuidoIds}
             />
           </div>
 
