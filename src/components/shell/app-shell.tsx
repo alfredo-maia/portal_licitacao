@@ -121,9 +121,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   React.useEffect(() => {
-    if (typeof window !== "undefined" && pathname && !pathname.startsWith("/oportunidades/")) {
+    if (typeof window !== "undefined" && pathname) {
       try {
-        sessionStorage.setItem("portal_nav_origin", pathname);
+        if (!pathname.startsWith("/oportunidades/")) {
+          sessionStorage.setItem("portal_nav_origin", pathname);
+        }
+        // Limpa flag de retorno do Dossiê se o usuário navegar para outro módulo pelo menu
+        if (
+          pathname !== "/historico-licitacoes" &&
+          !pathname.startsWith("/oportunidades/")
+        ) {
+          const rawHist = sessionStorage.getItem("portal_historico_last_state");
+          if (rawHist) {
+            const parsed = JSON.parse(rawHist) as Record<string, unknown>;
+            if (parsed && parsed.returningFromDossie) {
+              sessionStorage.setItem(
+                "portal_historico_last_state",
+                JSON.stringify({ ...parsed, returningFromDossie: false }),
+              );
+            }
+          }
+        }
       } catch {
         // Ignora erros de storage (ex: modo restrito)
       }

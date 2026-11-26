@@ -89,10 +89,17 @@ export async function listHistoricoLicitacoesPaginado(
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (segs.length === 1) {
-      and.push({ segmentoMacro: segs[0] });
-    } else if (segs.length > 1) {
-      and.push({ segmentoMacro: { in: segs } });
+    if (segs.length > 0) {
+      const incluiOutros = segs.includes("OUTROS");
+      const condMacro: Prisma.LicitacaoWhereInput =
+        segs.length === 1
+          ? { segmentoMacro: segs[0] }
+          : { segmentoMacro: { in: segs } };
+      if (incluiOutros) {
+        and.push({ OR: [condMacro, { segmentoMacro: null }] });
+      } else {
+        and.push(condMacro);
+      }
     }
   }
 
@@ -224,8 +231,12 @@ export async function listHistoricoLicitacoesPaginado(
           .map((s) => s.trim())
           .filter(Boolean);
         const macro = (rec as { segmentoMacro?: string | null }).segmentoMacro;
-        if (segs.length > 0 && (!macro || !segs.includes(macro))) {
-          return false;
+        if (segs.length > 0) {
+          const bateOutrosNull = !macro && segs.includes("OUTROS");
+          const bateExplicito = Boolean(macro && segs.includes(macro));
+          if (!bateOutrosNull && !bateExplicito) {
+            return false;
+          }
         }
       }
 

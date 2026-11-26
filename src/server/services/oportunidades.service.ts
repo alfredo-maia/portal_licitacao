@@ -386,8 +386,9 @@ function buildPrismaWhere(
   }
 
   // Escopo automático do perfil do tenant (segmentos, subsegmentos e UFs)
+  // Sempre intersecta com filtros explícitos da URL para impedir bypass de escopo
   const perfilTenantAnd: Prisma.LicitacaoWhereInput[] = [];
-  if (!filters.segmento && filters.segmentosTenantAtivo && filters.segmentosTenantAtivo.length > 0) {
+  if (filters.segmentosTenantAtivo && filters.segmentosTenantAtivo.length > 0) {
     const segWhere = buildSegmentosSubsegmentosPrismaWhere(
       filters.segmentosTenantAtivo,
       filters.subsegmento ? undefined : filters.subsegmentosTenantAtivo,
@@ -647,7 +648,8 @@ function matchesFilters(
         return false;
       }
     }
-  } else if (
+  }
+  if (
     deveAplicarPerfilTenant &&
     filters.segmentosTenantAtivo &&
     filters.segmentosTenantAtivo.length > 0

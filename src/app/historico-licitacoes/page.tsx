@@ -848,7 +848,7 @@ function HistoricoLicitacoesContent() {
                             >
                               {titulo}
                             </span>
-                            {item.segmentoMacro === "OUTROS" && (
+                            {(!item.segmentoMacro || item.segmentoMacro === "OUTROS") && (
                               <Tag
                                 type="cool-gray"
                                 size="sm"
