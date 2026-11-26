@@ -123,7 +123,7 @@ describe("Issue #59 (Task 5) — Reabertura pós-recusa, silenciarNotificacoes e
       urlsChamadas.some((u) => u.includes("/api/consulta/v1/contratacoes/publicacao")),
     ).toBe(true);
     expect(
-      urlsChamadas.some((u) => u.includes("/api/consulta/v1/contratacoes/proposta")),
+      urlsChamadas.some((u) => u.includes("/api/consulta/v1/contratacoes/atualizacao")),
     ).toBe(true);
   });
 });

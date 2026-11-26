@@ -3036,7 +3036,20 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
         </div>
       </Tile>
 
-      {/* Caixa de Gestão de Equipe (PRD §4.4.1 B) */}
+      {/* Caixa de Gestão de Equipe (PRD §4.4.1 B) — oculta em Consulta Histórica encerrada */}
+      {(() => {
+        const dataRefEnc = new Date(
+          oportunidade.dataEncerramentoProposta || oportunidade.dataAbertura,
+        );
+        const prazoEncerradoEquipe =
+          !Number.isNaN(dataRefEnc.getTime()) &&
+          dataRefEnc.getTime() < Date.now();
+        const modoHistoricoEncerrado =
+          prazoEncerradoEquipe &&
+          (oportunidade.status === "PENDENTE" ||
+            oportunidade.status === "RECUSADA");
+        if (modoHistoricoEncerrado) return null;
+        return (
       <Tile style={{ padding: "1.25rem", marginBottom: "1.5rem" }} data-testid="equipe-assignment-box">
         <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <UserFollow size={18} /> Equipe Operacional da Licitação
@@ -3101,6 +3114,8 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
           </div>
         )}
       </Tile>
+        );
+      })()}
 
       {/* Carbon Tabs do Dossiê */}
       <Tabs selectedIndex={activeTab} onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}>

@@ -405,28 +405,23 @@ export async function getDashboardData(
         : row.status;
 
     const teveTransicaoNoMes = (licId: string, statusAlvo: string): boolean => {
-      if (
-        historicoMes.some(
-          (h) =>
-            h.licitacaoId === licId &&
-            h.statusNovo === statusAlvo &&
-            h.ocorridoEm >= inicioUtc &&
-            h.ocorridoEm < fimUtc,
-        )
-      ) {
-        return true;
-      }
       if (query.tenantId) {
+        // Isolamento estrito por tenant: licitacao_status_historico não tem tenantId,
+        // portanto avaliamos exclusivamente dataDecisao do tenant_licitacao.
         const info = tenantDeliberacoes.get(licId);
-        if (
+        return Boolean(
           info?.dataDecisao &&
-          info.dataDecisao >= inicioUtc &&
-          info.dataDecisao < fimUtc
-        ) {
-          return true;
-        }
+            info.dataDecisao >= inicioUtc &&
+            info.dataDecisao < fimUtc,
+        );
       }
-      return false;
+      return historicoMes.some(
+        (h) =>
+          h.licitacaoId === licId &&
+          h.statusNovo === statusAlvo &&
+          h.ocorridoEm >= inicioUtc &&
+          h.ocorridoEm < fimUtc,
+      );
     };
 
     const publicadoNoMes = (row: {
@@ -630,25 +625,21 @@ export async function getDashboardData(
   const pendentesNoMes = pendentesVigentes.filter(publicadoNoMes).length;
 
   function teveTransicaoNoMes(licId: string, statusAlvo: string): boolean {
-    const trans = historico.some(
+    if (query.tenantId) {
+      const info = tenantDeliberacoes.get(licId);
+      return Boolean(
+        info?.dataDecisao &&
+          info.dataDecisao >= inicioUtc &&
+          info.dataDecisao < fimUtc,
+      );
+    }
+    return historico.some(
       (h) =>
         h.licitacaoId === licId &&
         h.statusNovo === statusAlvo &&
         h.ocorridoEm >= inicioUtc &&
         h.ocorridoEm < fimUtc,
     );
-    if (trans) return true;
-    if (query.tenantId) {
-      const info = tenantDeliberacoes.get(licId);
-      if (
-        info?.dataDecisao &&
-        info.dataDecisao >= inicioUtc &&
-        info.dataDecisao < fimUtc
-      ) {
-        return true;
-      }
-    }
-    return false;
   }
 
   const emPrecificacaoTotal = licitacoesDeliberadas.filter((l) => {

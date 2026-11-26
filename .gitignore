@@ -29,4 +29,5 @@ next-env.d.ts
 # Runtime uploads
 public/uploads/
 scratch/
+.cache/
 

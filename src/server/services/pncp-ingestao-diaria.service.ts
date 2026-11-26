@@ -280,8 +280,9 @@ export async function executarIngestaoDiariaPncp(
     }
   }
 
-  // Fase 2 (Issue #59): Consulta leve a /contratacoes/proposta para detectar
-  // retificações e reaberturas de prazo em licitações publicadas anteriormente.
+  // Fase 2 (Issue #59 / Issue #60): Consulta leve a /contratacoes/atualizacao
+  // para detectar retificações e reaberturas de prazo em licitações publicadas
+  // anteriormente (independente de quão distante seja a nova data futura).
   if (parsed.incluirPropostasAbertas) {
     for (const modalidadeCod of parsed.modalidades) {
       const ufsLoop =
@@ -290,6 +291,7 @@ export async function executarIngestaoDiariaPncp(
       for (const ufFiltro of ufsLoop) {
         for (let pagina = 1; pagina <= parsed.maxPaginasPropostas; pagina++) {
           const qs = new URLSearchParams({
+            dataInicial,
             dataFinal,
             codigoModalidadeContratacao: String(modalidadeCod),
             pagina: String(pagina),
@@ -297,7 +299,7 @@ export async function executarIngestaoDiariaPncp(
           });
           if (ufFiltro) qs.set("uf", ufFiltro.toUpperCase());
 
-          const url = `https://pncp.gov.br/api/consulta/v1/contratacoes/proposta?${qs.toString()}`;
+          const url = `https://pncp.gov.br/api/consulta/v1/contratacoes/atualizacao?${qs.toString()}`;
           try {
             const res = await fetch(url, {
               method: "GET",
@@ -310,7 +312,7 @@ export async function executarIngestaoDiariaPncp(
             }
             if (!res.ok) {
               errosModalidade.push(
-                `proposta mod=${modalidadeCod} p=${pagina} status=${res.status}`,
+                `atualizacao mod=${modalidadeCod} p=${pagina} status=${res.status}`,
               );
               break;
             }

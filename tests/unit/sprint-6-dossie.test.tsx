@@ -21,7 +21,7 @@ const mockDetalheData = {
     uf: "GO",
     modalidade: "Pregão Eletrônico",
     valorEstimado: 450000,
-    dataAbertura: "2026-11-15T09:00:00.000Z",
+    dataAbertura: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
     miniResumo: "Fornecimento de pães",
     resumo: "Aquisição de pães franceses para alimentação escolar.",
     tipoSistemaCodigo: "ALIMENTACAO",

@@ -125,10 +125,39 @@ const LIMITE_2M = 2_000_000;
 
 type ParsedFilters = OportunidadesFilterInput;
 
+import { OPERACAO_TIMEZONE } from "@/server/schemas/status-grupos.schema";
+
 function mesCorrente(agora: Date = new Date()): { inicio: Date; fim: Date } {
-  const inicio = new Date(agora.getFullYear(), agora.getMonth(), 1);
-  const fim = new Date(agora.getFullYear(), agora.getMonth() + 1, 1);
+  const ano = parseInt(
+    agora.toLocaleDateString("en-US", {
+      year: "numeric",
+      timeZone: OPERACAO_TIMEZONE,
+    }),
+    10,
+  );
+  const mes = parseInt(
+    agora.toLocaleDateString("en-US", {
+      month: "numeric",
+      timeZone: OPERACAO_TIMEZONE,
+    }),
+    10,
+  );
+  const inicio = new Date(Date.UTC(ano, mes - 1, 1, 3, 0, 0, 0));
+  const fim = new Date(Date.UTC(ano, mes, 1, 3, 0, 0, 0));
   return { inicio, fim };
+}
+
+function parseDataFiltroBrt(str: string, fimDoDia: boolean): Date {
+  const trimmed = str.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return new Date(
+      `${trimmed}T${fimDoDia ? "23:59:59.999" : "00:00:00.000"}-03:00`,
+    );
+  }
+  const d = new Date(trimmed);
+  if (fimDoDia) d.setUTCHours(23, 59, 59, 999);
+  else d.setUTCHours(0, 0, 0, 0);
+  return d;
 }
 
 export function buildPrazoAbertoPrismaWhere(
@@ -257,7 +286,7 @@ export function buildOrderBySql(
     case "dataLimite":
     default:
       return [
-        { dataEncerramentoProposta: dir },
+        { dataEncerramentoProposta: { sort: dir, nulls: "last" } },
         { dataAbertura: dir },
         { idPncp: "asc" },
       ];
@@ -312,51 +341,38 @@ export function compareLicitacoesGlobal(
 
 function buildPrismaWhere(
   filters: ParsedFilters,
-  options?: { targetIds?: string[]; excludedIds?: string[]; agora?: Date },
+  options?: {
+    targetIds?: string[];
+    excludedIds?: string[];
+    deliberatedIds?: string[];
+    agora?: Date;
+  },
 ): Prisma.LicitacaoWhereInput {
   const and: Prisma.LicitacaoWhereInput[] = [];
   const agora = options?.agora ?? new Date();
+  const isTodasComTenant =
+    (filters.status === "TODOS" || (filters.status as string) === "TODAS") &&
+    options?.deliberatedIds !== undefined;
 
   if (filters.tipoSistema) {
     and.push({ tipoSistemaCodigo: filters.tipoSistema });
   }
-  const selectedSegments = filters.segmento
-    ? filters.segmento
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : filters.segmentosTenantAtivo && filters.segmentosTenantAtivo.length > 0
-      ? filters.segmentosTenantAtivo
-      : [];
 
-  if (filters.subsegmento) {
+  // Filtros explícitos do usuário (sempre aplicados, inclusive em TODOS e resgatadas)
+  if (filters.segmento) {
+    const selectedSegments = filters.segmento
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (selectedSegments.length === 1) {
       and.push({ segmentoMacro: selectedSegments[0] });
     } else if (selectedSegments.length > 1) {
       and.push({ segmentoMacro: { in: selectedSegments } });
     }
-    and.push({ subcategorias: { array_contains: [filters.subsegmento] } });
-  } else if (selectedSegments.length > 0) {
-    const segWhere = buildSegmentosSubsegmentosPrismaWhere(
-      selectedSegments,
-      filters.subsegmentosTenantAtivo,
-    );
-    if (Object.keys(segWhere).length > 0) {
-      and.push(segWhere);
-    }
-  } else if (
-    filters.subsegmentosTenantAtivo &&
-    filters.subsegmentosTenantAtivo.length > 0
-  ) {
-    const segWhere = buildSegmentosSubsegmentosPrismaWhere(
-      undefined,
-      filters.subsegmentosTenantAtivo,
-    );
-    if (Object.keys(segWhere).length > 0) {
-      and.push(segWhere);
-    }
   }
-
+  if (filters.subsegmento) {
+    and.push({ subcategorias: { array_contains: [filters.subsegmento] } });
+  }
   if (filters.uf) {
     const ufs = filters.uf
       .split(",")
@@ -368,45 +384,91 @@ function buildPrismaWhere(
       and.push({ uf: { in: ufs } });
     }
   }
+
+  // Escopo automático do perfil do tenant (segmentos, subsegmentos e UFs)
+  const perfilTenantAnd: Prisma.LicitacaoWhereInput[] = [];
+  if (!filters.segmento && filters.segmentosTenantAtivo && filters.segmentosTenantAtivo.length > 0) {
+    const segWhere = buildSegmentosSubsegmentosPrismaWhere(
+      filters.segmentosTenantAtivo,
+      filters.subsegmento ? undefined : filters.subsegmentosTenantAtivo,
+    );
+    if (Object.keys(segWhere).length > 0) perfilTenantAnd.push(segWhere);
+  } else if (
+    !filters.subsegmento &&
+    filters.subsegmentosTenantAtivo &&
+    filters.subsegmentosTenantAtivo.length > 0
+  ) {
+    const segWhere = buildSegmentosSubsegmentosPrismaWhere(
+      filters.segmento
+        ? filters.segmento
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
+      filters.subsegmentosTenantAtivo,
+    );
+    if (Object.keys(segWhere).length > 0) perfilTenantAnd.push(segWhere);
+  }
   if (filters.ufsTenantAtivo && filters.ufsTenantAtivo.length > 0) {
-    if (filters.ufsTenantAtivo.length === 1) {
-      and.push({ uf: filters.ufsTenantAtivo[0] });
-    } else {
-      and.push({ uf: { in: filters.ufsTenantAtivo } });
-    }
+    perfilTenantAnd.push(
+      filters.ufsTenantAtivo.length === 1
+        ? { uf: filters.ufsTenantAtivo[0] }
+        : { uf: { in: filters.ufsTenantAtivo } },
+    );
   }
 
   const isPendenteView = !filters.status || filters.status === "PENDENTE";
 
-  if (options?.targetIds !== undefined) {
-    and.push({ id: { in: options.targetIds } });
-  } else {
-    if (filters.status === "MINHAS") {
-      and.push({
-        status: {
-          notIn: ["PENDENTE", "RECUSADA"],
-        },
-      });
-    } else if (
-      filters.status &&
-      filters.status !== "TODOS" &&
-      (filters.status as string) !== "TODAS"
-    ) {
-      and.push({ status: filters.status as any });
-    } else if (!filters.status) {
-      // Por padrão na Central de Oportunidades, apenas certames PENDENTES são exibidos.
-      // Certames aceitos vão para Minhas Licitações e Calendário; certames recusados são arquivados.
-      and.push({ status: "PENDENTE" });
+  if (isTodasComTenant) {
+    // TODOS com tenant: (PENDENTE vigentes no perfil do tenant) OU (deliberadas do tenant, incluindo resgatadas)
+    const deliberatedIds = options?.deliberatedIds ?? [];
+    const pendenteBranchAnd: Prisma.LicitacaoWhereInput[] = [
+      ...perfilTenantAnd,
+      buildPrazoAbertoPrismaWhere(agora),
+    ];
+    if (deliberatedIds.length > 0) {
+      pendenteBranchAnd.push({ id: { notIn: deliberatedIds } });
     }
-  }
+    const pendenteBranch: Prisma.LicitacaoWhereInput = { AND: pendenteBranchAnd };
+    if (deliberatedIds.length > 0) {
+      and.push({
+        OR: [pendenteBranch, { id: { in: deliberatedIds } }],
+      });
+    } else {
+      and.push(pendenteBranch);
+    }
+  } else {
+    if (perfilTenantAnd.length > 0) {
+      and.push(...perfilTenantAnd);
+    }
 
-  // Vigência estrita na Central de Oportunidades: editais PENDENTES vencidos pertencem ao Histórico
-  if (isPendenteView && options?.targetIds === undefined) {
-    and.push(buildPrazoAbertoPrismaWhere(agora));
-  }
+    if (options?.targetIds !== undefined) {
+      and.push({ id: { in: options.targetIds } });
+    } else {
+      if (filters.status === "MINHAS") {
+        and.push({
+          status: {
+            notIn: ["PENDENTE", "RECUSADA"],
+          },
+        });
+      } else if (
+        filters.status &&
+        filters.status !== "TODOS" &&
+        (filters.status as string) !== "TODAS"
+      ) {
+        and.push({ status: filters.status as any });
+      } else if (!filters.status) {
+        and.push({ status: "PENDENTE" });
+      }
+    }
 
-  if (options?.excludedIds && options.excludedIds.length > 0) {
-    and.push({ id: { notIn: options.excludedIds } });
+    if (isPendenteView && options?.targetIds === undefined) {
+      and.push(buildPrazoAbertoPrismaWhere(agora));
+    }
+
+    if (options?.excludedIds && options.excludedIds.length > 0) {
+      and.push({ id: { notIn: options.excludedIds } });
+    }
   }
   if (filters.parecerIA) {
     and.push({ parecerIA: filters.parecerIA });
@@ -449,8 +511,13 @@ function buildPrismaWhere(
     const { inicio, fim } = mesCorrente(agora);
     and.push({
       OR: [
-        { dataAbertura: { gte: inicio, lt: fim } },
-        { createdAt: { gte: inicio, lt: fim } },
+        { dataPublicacaoPncp: { gte: inicio, lt: fim } },
+        {
+          AND: [
+            { dataPublicacaoPncp: null },
+            { createdAt: { gte: inicio, lt: fim } },
+          ],
+        },
       ],
     });
   }
@@ -460,14 +527,10 @@ function buildPrismaWhere(
   if (dataIniStr || dataFimStr) {
     const range: Prisma.DateTimeFilter = {};
     if (dataIniStr) {
-      const d = new Date(dataIniStr);
-      d.setHours(0, 0, 0, 0);
-      range.gte = d;
+      range.gte = parseDataFiltroBrt(dataIniStr, false);
     }
     if (dataFimStr) {
-      const d = new Date(dataFimStr);
-      d.setHours(23, 59, 59, 999);
-      range.lte = d;
+      range.lte = parseDataFiltroBrt(dataFimStr, true);
     }
     and.push({
       OR: [
@@ -567,6 +630,12 @@ function matchesFilters(
   if (filters.tipoSistema && enriched.tipoSistemaCodigo !== filters.tipoSistema) {
     return false;
   }
+  const isTodasView =
+    filters.status === "TODOS" || (filters.status as string) === "TODAS";
+  const isDeliberatedByTenant =
+    hasTenantContext && record.status !== "PENDENTE";
+  const deveAplicarPerfilTenant = !(isTodasView && isDeliberatedByTenant);
+
   if (filters.segmento) {
     const selectedSegments = filters.segmento
       .split(",")
@@ -579,6 +648,7 @@ function matchesFilters(
       }
     }
   } else if (
+    deveAplicarPerfilTenant &&
     filters.segmentosTenantAtivo &&
     filters.segmentosTenantAtivo.length > 0
   ) {
@@ -595,6 +665,7 @@ function matchesFilters(
       return false;
     }
   } else if (
+    deveAplicarPerfilTenant &&
     !passaSubsegmentosTenant(
       (enriched as any).segmentoMacro,
       subsDoRegistro,
@@ -613,20 +684,18 @@ function matchesFilters(
     }
   }
   if (
+    deveAplicarPerfilTenant &&
     filters.ufsTenantAtivo &&
     filters.ufsTenantAtivo.length > 0 &&
     !filters.ufsTenantAtivo.includes(enriched.uf.toUpperCase())
   ) {
     return false;
   }
-  if (
-    filters.status === "MINHAS" ||
-    (hasTenantContext && (filters.status === "TODOS" || (filters.status as string) === "TODAS"))
-  ) {
+  if (filters.status === "MINHAS") {
     if (record.status === "PENDENTE" || record.status === "RECUSADA") {
       return false;
     }
-  } else if (filters.status && filters.status !== "TODOS" && (filters.status as string) !== "TODAS") {
+  } else if (filters.status && !isTodasView) {
     if (record.status !== filters.status) {
       return false;
     }
@@ -639,8 +708,11 @@ function matchesFilters(
     return false;
   }
 
-  // Vigência estrita para oportunidades PENDENTES
-  const isPendenteView = !filters.status || filters.status === "PENDENTE";
+  // Vigência estrita para oportunidades PENDENTES (inclusive no ramo PENDENTE de status=TODOS)
+  const isPendenteView =
+    !filters.status ||
+    filters.status === "PENDENTE" ||
+    (isTodasView && record.status === "PENDENTE");
   if (isPendenteView) {
     const dataLimiteVigencia = record.dataEncerramentoProposta
       ? new Date(record.dataEncerramentoProposta)
@@ -698,10 +770,10 @@ function matchesFilters(
 
   if (filters.periodo === "mes") {
     const { inicio, fim } = mesCorrente(agora);
-    const aberturaNoMes =
-      record.dataAbertura >= inicio && record.dataAbertura < fim;
-    const criadoNoMes = record.createdAt >= inicio && record.createdAt < fim;
-    if (!aberturaNoMes && !criadoNoMes) {
+    const dataPubRef = record.dataPublicacaoPncp
+      ? new Date(record.dataPublicacaoPncp)
+      : new Date(record.createdAt);
+    if (dataPubRef < inicio || dataPubRef >= fim) {
       return false;
     }
   }
@@ -713,15 +785,13 @@ function matchesFilters(
       ? new Date(record.dataEncerramentoProposta)
       : new Date(record.dataAbertura);
     if (dataIniStr) {
-      const ini = new Date(dataIniStr);
-      ini.setHours(0, 0, 0, 0);
+      const ini = parseDataFiltroBrt(dataIniStr, false);
       if (dataLimite.getTime() < ini.getTime()) {
         return false;
       }
     }
     if (dataFimStr) {
-      const fim = new Date(dataFimStr);
-      fim.setHours(23, 59, 59, 999);
+      const fim = parseDataFiltroBrt(dataFimStr, true);
       if (dataLimite.getTime() > fim.getTime()) {
         return false;
       }
@@ -809,13 +879,20 @@ function resolverPrismaTenantOptions(
   tenantId: string | null | undefined,
   tenantStatusMap: Map<string, TenantStatusInfo>,
   agora: Date,
-): { emptyResult: boolean; prismaOptions: { targetIds?: string[]; excludedIds?: string[]; agora: Date } } {
-  const isKanbanFetch =
-    filters.status === "MINHAS" ||
-    filters.status === "TODOS" ||
-    (filters.status as string) === "TODAS";
+): {
+  emptyResult: boolean;
+  prismaOptions: {
+    targetIds?: string[];
+    excludedIds?: string[];
+    deliberatedIds?: string[];
+    agora: Date;
+  };
+} {
+  const isKanbanOnly = filters.status === "MINHAS";
+  const isTodasView =
+    filters.status === "TODOS" || (filters.status as string) === "TODAS";
 
-  if (isKanbanFetch) {
+  if (isKanbanOnly) {
     if (!tenantId) {
       return { emptyResult: true, prismaOptions: { agora } };
     }
@@ -828,7 +905,17 @@ function resolverPrismaTenantOptions(
     return { emptyResult: false, prismaOptions: { targetIds: activeIds, agora } };
   }
 
-  if (filters.status && filters.status !== "PENDENTE") {
+  if (isTodasView && tenantId) {
+    const deliberatedIds = Array.from(tenantStatusMap.entries())
+      .filter(([, v]) => v.statusKanban !== "PENDENTE")
+      .map(([id]) => id);
+    return {
+      emptyResult: false,
+      prismaOptions: { deliberatedIds, agora },
+    };
+  }
+
+  if (filters.status && filters.status !== "PENDENTE" && !isTodasView) {
     if (!tenantId) {
       return { emptyResult: true, prismaOptions: { agora } };
     }
@@ -2034,6 +2121,26 @@ export async function deliberarOportunidade(
   const existente = await getOportunidadeById(input.id, input.tenantId);
   const statusAnterior = existente.status;
   const novoStatus = parsed.decisao === "GO" ? "ACEITA" : "RECUSADA";
+
+  // Impede aceitar licitação cujo prazo de proposta já encerrou (Consulta Histórica)
+  if (
+    parsed.decisao === "GO" &&
+    (statusAnterior === "PENDENTE" || statusAnterior === "RECUSADA")
+  ) {
+    const dataLimiteRef = existente.dataEncerramentoProposta
+      ? new Date(existente.dataEncerramentoProposta)
+      : new Date(existente.dataAbertura);
+    if (
+      !Number.isNaN(dataLimiteRef.getTime()) &&
+      dataLimiteRef.getTime() < Date.now()
+    ) {
+      throw new OportunidadesServiceError(
+        "PRAZO_ENCERRADO",
+        "Não é possível participar de uma licitação cujo prazo de envio de proposta já foi encerrado.",
+        400,
+      );
+    }
+  }
   const motivoRecusa =
     parsed.decisao === "NO_GO" ? (parsed.motivoRecusa ?? null) : null;
 

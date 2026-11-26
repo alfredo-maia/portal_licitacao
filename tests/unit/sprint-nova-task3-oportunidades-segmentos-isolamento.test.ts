@@ -6,6 +6,8 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
   it("deve restringir a busca padrão ('Todos os Segmentos') apenas aos segmentos configurados na empresa ativa", async () => {
     resetInMemoryLicitacoes();
 
+    const dataFutura = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+
     // Licitação de Alimentos
     insertInMemoryLicitacao({
       id: "lic_alim_1",
@@ -14,7 +16,8 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       orgaoNome: "Prefeitura de Goiânia",
       uf: "GO",
       objeto: "Aquisição de gêneros alimentícios e merenda escolar",
-      dataAbertura: new Date("2026-11-15T09:00:00Z"),
+      dataAbertura: dataFutura,
+      dataEncerramentoProposta: dataFutura,
       valorEstimado: 100000,
       tipoSistemaCodigo: "OUTROS",
       segmentoMacro: "ALIMENTACAO",
@@ -29,7 +32,8 @@ describe("Sprint Nova Task 3 — Oportunidades: Filtro de Segmentos e Isolamento
       orgaoNome: "Hospital Municipal",
       uf: "GO",
       objeto: "Aquisição de medicamentos e insumos hospitalares",
-      dataAbertura: new Date("2026-11-15T09:00:00Z"),
+      dataAbertura: dataFutura,
+      dataEncerramentoProposta: dataFutura,
       valorEstimado: 200000,
       tipoSistemaCodigo: "OUTROS",
       segmentoMacro: "SAUDE",

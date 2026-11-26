@@ -4,6 +4,7 @@ import React, { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ActionableNotification,
+  InlineNotification,
   Tag,
   Tile,
   DataTable,
@@ -65,6 +66,7 @@ interface Oportunidade {
   uf?: string;
   status?: string;
   tipoSistema?: string;
+  reabertaPosRecusa?: boolean;
 }
 
 
@@ -114,10 +116,12 @@ function OportunidadesContent() {
     currentParams.set("sortDir", nextDir);
     currentParams.delete("ordenacao");
     currentParams.set("page", "1");
+    const nextQs = currentParams.toString();
+    if (nextQs === searchParams.toString()) return;
     setSortingModalMsg("Ordenando toda a base de oportunidades no banco de dados...");
     setSortingModalOpen(true);
     setLoading(true);
-    router.push(`/oportunidades?${currentParams.toString()}`);
+    router.push(`/oportunidades?${nextQs}`);
   };
 
   const headers = [
@@ -206,7 +210,12 @@ function OportunidadesContent() {
       }
       const response = await fetch(`/api/oportunidades?${currentParams.toString()}`);
       if (!response.ok) {
-        throw new Error("Erro ao carregar oportunidades");
+        const errBody = await response.json().catch(() => null);
+        const msg =
+          errBody?.issues?.[0]?.message ||
+          errBody?.message ||
+          "Erro ao carregar oportunidades";
+        throw new Error(msg);
       }
       const data = await response.json();
       if (data.configuracaoPendente) {
@@ -907,7 +916,17 @@ function OportunidadesContent() {
         </div>
 
         {loading && <p>Carregando oportunidades...</p>}
-        {error && <p style={{ color: "red" }}>Erro: {error}</p>}
+        {error && (
+          <div style={{ marginBottom: "1rem" }} data-testid="oportunidades-error-banner">
+            <InlineNotification
+              kind="error"
+              title="Não foi possível carregar as oportunidades"
+              subtitle={error}
+              hideCloseButton
+              lowContrast
+            />
+          </div>
+        )}
 
         {!loading && !error && (
           configuracaoPendente ? (
@@ -1036,72 +1055,94 @@ function OportunidadesContent() {
                                   }).format(cell.value)}
                                 </span>
                               ) : cell.info.header === "miniResumo" ? (
-                                <span
-                                  style={{ fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}
-                                  title={
-                                    String(
-                                      oportunidades.find((o) => o.id === row.id)?.resumoObjeto ||
-                                        cell.value ||
-                                        "",
-                                    ).slice(0, 300) +
-                                    (String(
-                                      oportunidades.find((o) => o.id === row.id)?.resumoObjeto ||
-                                        cell.value ||
-                                        "",
-                                    ).length > 300
-                                      ? "..."
-                                      : "")
-                                  }
-                                >
-                                  {cell.value}
-                                </span>
+                                (() => {
+                                  const opRow = oportunidades.find((o) => o.id === row.id);
+                                  const resumoTxt = String(opRow?.resumoObjeto || cell.value || "");
+                                  return (
+                                    <span
+                                      style={{ fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}
+                                      title={
+                                        resumoTxt.slice(0, 300) +
+                                        (resumoTxt.length > 300 ? "..." : "")
+                                      }
+                                    >
+                                      {cell.value}
+                                      {opRow?.reabertaPosRecusa && (
+                                        <Tag
+                                          type="purple"
+                                          size="sm"
+                                          data-testid={`badge-row-reaberta-${row.id}`}
+                                          style={{ marginLeft: "0.5rem" }}
+                                        >
+                                          Reaberta
+                                        </Tag>
+                                      )}
+                                    </span>
+                                  );
+                                })()
                               ) : cell.info.header === "resumoObjeto" ? (
                                 <span title={String(cell.value)}>
                                   {String(cell.value).substring(0, 100)}...
                                 </span>
                               ) : cell.info.header === "acoes" ? (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{
-                                    display: "flex",
-                                    gap: "0.4rem",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    className="btn-action-go"
-                                    data-testid={`btn-aceitar-${row.id}`}
-                                    title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Participar"}
-                                    aria-label="Participar"
-                                    disabled={isReadOnly || deliberandoId === row.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!isReadOnly) handleAceitarClick(row.id);
-                                    }}
-                                  >
-                                    {deliberandoId === row.id ? (
-                                      <InlineLoading status="active" style={{ width: "16px", height: "16px" }} />
-                                    ) : (
-                                      <Checkmark size={18} />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-action-no-go"
-                                    data-testid={`btn-recusar-${row.id}`}
-                                    title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Não Participar"}
-                                    aria-label="Não Participar"
-                                    disabled={isReadOnly || deliberandoId === row.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!isReadOnly) handleRecusarClick(row.id);
-                                    }}
-                                  >
-                                    <Close size={18} />
-                                  </button>
-                                </div>
+                                (() => {
+                                  const opRow = oportunidades.find((o) => o.id === row.id);
+                                  const statusRow = opRow?.status || "PENDENTE";
+                                  if (statusRow !== "PENDENTE") {
+                                    return (
+                                      <Tag
+                                        type={statusRow === "RECUSADA" ? "red" : "green"}
+                                        size="sm"
+                                      >
+                                        {statusRow === "RECUSADA" ? "Recusada" : statusRow}
+                                      </Tag>
+                                    );
+                                  }
+                                  return (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.4rem",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="btn-action-go"
+                                        data-testid={`btn-aceitar-${row.id}`}
+                                        title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Participar"}
+                                        aria-label="Participar"
+                                        disabled={isReadOnly || deliberandoId === row.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!isReadOnly) handleAceitarClick(row.id);
+                                        }}
+                                      >
+                                        {deliberandoId === row.id ? (
+                                          <InlineLoading status="active" style={{ width: "16px", height: "16px" }} />
+                                        ) : (
+                                          <Checkmark size={18} />
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn-action-no-go"
+                                        data-testid={`btn-recusar-${row.id}`}
+                                        title={isReadOnly ? "Ação desabilitada no modo somente-leitura" : "Não Participar"}
+                                        aria-label="Não Participar"
+                                        disabled={isReadOnly || deliberandoId === row.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!isReadOnly) handleRecusarClick(row.id);
+                                        }}
+                                      >
+                                        <Close size={18} />
+                                      </button>
+                                    </div>
+                                  );
+                                })()
                               ) : (
                                 cell.value
                               )}
@@ -1124,12 +1165,16 @@ function OportunidadesContent() {
             pageSizes={[10, 25, 50, 100]}
             totalItems={total}
             onChange={({ page: newPage, pageSize: newPageSize }) => {
+              const targetPage = newPageSize !== pageSize ? 1 : newPage;
+              if (targetPage === page && newPageSize === pageSize) return;
               const currentParams = new URLSearchParams(searchParams.toString());
-              currentParams.set("page", String(newPageSize !== pageSize ? 1 : newPage));
+              currentParams.set("page", String(targetPage));
               currentParams.set("pageSize", String(newPageSize));
+              const nextQs = currentParams.toString();
+              if (nextQs === searchParams.toString()) return;
               setSortingModalMsg("Carregando página de oportunidades...");
               setSortingModalOpen(true);
-              router.push(`/oportunidades?${currentParams.toString()}`);
+              router.push(`/oportunidades?${nextQs}`);
             }}
             data-testid="oportunidades-pagination"
           />

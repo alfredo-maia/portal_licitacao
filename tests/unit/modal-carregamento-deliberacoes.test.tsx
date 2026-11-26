@@ -32,7 +32,7 @@ const mockLicitacao = {
   miniResumo: "Aquisição de Merenda Escolar",
   resumo: "Aquisição de Merenda Escolar",
   valorEstimado: 150000,
-  dataAbertura: "2026-11-20T10:00:00.000Z",
+  dataAbertura: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
   status: "PENDENTE",
   tipoSistemaCodigo: "ALIMENTACAO",
   arquivos: [],

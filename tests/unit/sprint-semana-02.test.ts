@@ -215,9 +215,12 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
     });
 
     it("deve filtrar por data limite inicial e final", async () => {
-      const d1 = "2026-11-10T10:00:00Z";
-      const d2 = "2026-11-20T10:00:00Z";
-      const d3 = "2026-12-01T10:00:00Z";
+      const diaMs = 24 * 60 * 60 * 1000;
+      const d1 = new Date(Date.now() + 10 * diaMs);
+      const d2 = new Date(Date.now() + 20 * diaMs);
+      const d3 = new Date(Date.now() + 35 * diaMs);
+      const inicioFiltro = new Date(Date.now() + 15 * diaMs).toISOString().slice(0, 10);
+      const fimFiltro = new Date(Date.now() + 25 * diaMs).toISOString().slice(0, 10);
 
       insertInMemoryLicitacao({
         id: "lic_filtro_1",
@@ -228,8 +231,8 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 100000,
-        dataAbertura: new Date(d1),
-        dataEncerramentoProposta: new Date(d1),
+        dataAbertura: d1,
+        dataEncerramentoProposta: d1,
       } as any);
 
       insertInMemoryLicitacao({
@@ -241,8 +244,8 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 100000,
-        dataAbertura: new Date(d2),
-        dataEncerramentoProposta: new Date(d2),
+        dataAbertura: d2,
+        dataEncerramentoProposta: d2,
       } as any);
 
       insertInMemoryLicitacao({
@@ -254,13 +257,13 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 100000,
-        dataAbertura: new Date(d3),
-        dataEncerramentoProposta: new Date(d3),
+        dataAbertura: d3,
+        dataEncerramentoProposta: d3,
       } as any);
 
       const filtradas = await listOportunidades({
-        dataLimiteInicio: "2026-11-15",
-        dataLimiteFim: "2026-11-25",
+        dataLimiteInicio: inicioFiltro,
+        dataLimiteFim: fimFiltro,
       });
 
       const ids = filtradas.map((l) => l.id);
@@ -356,25 +359,26 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
   });
 
   // =========================================================================
-  // 8. Regra de Visibilidade Temporal para Novos Clientes (Janela 30 dias + Vigentes)
+  // 8. Regra de Visibilidade Temporal (Issue #59: apenas Licitações Vigentes em Oportunidades)
   // =========================================================================
-  describe("Item 8: Janela de 30 dias retroativos + Licitações Vigentes", () => {
-    it("não deve exibir licitações vencidas criadas há mais de 30 dias do cadastro do cliente", async () => {
-      const clienteCriadoEm = new Date("2026-11-01T00:00:00Z");
+  describe("Item 8: Vigência estrita em Oportunidades (vencidas vão para Histórico de Licitações)", () => {
+    it("não deve exibir licitações vencidas em Oportunidades, mantendo apenas as vigentes", async () => {
+      const agoraMs = Date.now();
+      const diaMs = 24 * 60 * 60 * 1000;
       const tenantId = "tenant_novo_cliente_1";
       inMemoryTenants.set(tenantId, {
         id: tenantId,
         cnpj: "99.888.777/0001-22",
-        razaoSocial: "Novo Cliente 01/11",
+        razaoSocial: "Novo Cliente Vigente",
         plano: "PRO",
         billingStatus: "ACTIVE",
         ativo: true,
         segmentos: ["ALIMENTACAO"],
         ufs: ["GO"],
-        criadoEm: clienteCriadoEm,
+        criadoEm: new Date(agoraMs),
       } as any);
 
-      // 1. Licitação criada há 60 dias (01/09) e vencida há 50 dias (11/09) -> NÃO DEVE APARECER
+      // 1. Licitação vencida há 50 dias -> NÃO DEVE APARECER
       insertInMemoryLicitacao({
         id: "lic_antiga_vencida",
         idPncp: "PNCP-ANTIGA-VENCIDA",
@@ -384,13 +388,13 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 100000,
-        criadoEm: new Date("2026-09-01T00:00:00Z"),
-        dataAbertura: new Date("2026-09-11T10:00:00Z"),
-        dataEncerramentoProposta: new Date("2026-09-11T10:00:00Z"),
+        criadoEm: new Date(agoraMs - 60 * diaMs),
+        dataAbertura: new Date(agoraMs - 50 * diaMs),
+        dataEncerramentoProposta: new Date(agoraMs - 50 * diaMs),
         segmentoMacro: "ALIMENTACAO",
       } as any);
 
-      // 2. Licitação criada há 20 dias do cadastro (12/10) mesmo vencida em 20/10 -> DEVE APARECER (Janela 30 dias)
+      // 2. Licitação vencida recentemente (há 5 dias) -> NÃO DEVE APARECER em Oportunidades (vai para Histórico)
       insertInMemoryLicitacao({
         id: "lic_janela_30d",
         idPncp: "PNCP-JANELA-30D",
@@ -400,13 +404,13 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 200000,
-        criadoEm: new Date("2026-10-12T00:00:00Z"),
-        dataAbertura: new Date("2026-10-20T10:00:00Z"),
-        dataEncerramentoProposta: new Date("2026-10-20T10:00:00Z"),
+        criadoEm: new Date(agoraMs - 10 * diaMs),
+        dataAbertura: new Date(agoraMs - 5 * diaMs),
+        dataEncerramentoProposta: new Date(agoraMs - 5 * diaMs),
         segmentoMacro: "ALIMENTACAO",
       } as any);
 
-      // 3. Licitação antiga criada há 60 dias (01/09) mas com proposta vigente em 15/11 -> DEVE APARECER
+      // 3. Licitação antiga criada há 60 dias mas com proposta vigente futura -> DEVE APARECER
       insertInMemoryLicitacao({
         id: "lic_antiga_vigente",
         idPncp: "PNCP-ANTIGA-VIGENTE",
@@ -416,17 +420,17 @@ describe("Sprint Semana 02 - Pacote de Regras de Negócio e Melhorias (Issue #32
         uf: "GO",
         modalidade: "Pregão Eletrônico",
         valorEstimado: 300000,
-        criadoEm: new Date("2026-09-01T00:00:00Z"),
-        dataAbertura: new Date("2026-11-15T10:00:00Z"),
-        dataEncerramentoProposta: new Date("2026-11-15T10:00:00Z"),
+        criadoEm: new Date(agoraMs - 60 * diaMs),
+        dataAbertura: new Date(agoraMs + 15 * diaMs),
+        dataEncerramentoProposta: new Date(agoraMs + 15 * diaMs),
         segmentoMacro: "ALIMENTACAO",
       } as any);
 
       const lista = await listOportunidades({}, tenantId);
       const ids = lista.map((l) => l.id);
 
-      expect(ids).toContain("lic_janela_30d");
       expect(ids).toContain("lic_antiga_vigente");
+      expect(ids).not.toContain("lic_janela_30d");
       expect(ids).not.toContain("lic_antiga_vencida");
     });
   });

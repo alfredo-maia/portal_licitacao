@@ -41,13 +41,15 @@ export async function GET(request: Request) {
     const preferredTenant = cookieTenant || (session?.user as any)?.activeTenantId;
     const tenantId = await resolveUserActiveTenantId(userId, preferredTenant);
 
-    const isKanban =
-      params.status === "MINHAS" ||
-      params.status === "TODOS" ||
-      params.status === "TODAS";
+    const statusSolicitado = params.status;
+    const isDeliberatedSpecificStatus =
+      Boolean(statusSolicitado) &&
+      statusSolicitado !== "PENDENTE" &&
+      statusSolicitado !== "TODOS" &&
+      statusSolicitado !== "TODAS";
 
     let configuracaoPendente = false;
-    if (!isKanban && tenantId && !params.segmentosTenantAtivo) {
+    if (!isDeliberatedSpecificStatus && tenantId && !params.segmentosTenantAtivo) {
       try {
         const cfg = await obterConfiguracaoEmpresa(tenantId);
         if (!cfg?.segmentos || cfg.segmentos.length === 0) {

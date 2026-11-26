@@ -151,6 +151,24 @@ export default function HistoricoLicitacoesPage() {
   );
 }
 
+const HISTORICO_STORAGE_KEY = "portal_historico_last_state";
+
+interface HistoricoSavedState {
+  dataInicio: string;
+  dataFim: string;
+  situacaoPrazo: SituacaoPrazoHistorico;
+  segmento: string;
+  subsegmento: string;
+  uf: string;
+  faixaValor: string;
+  busca: string;
+  sortBy: OportunidadesSortBy;
+  sortDir: SortDir;
+  page: number;
+  pageSize: number;
+  returningFromDossie?: boolean;
+}
+
 function HistoricoLicitacoesContent() {
   const router = useRouter();
   const hoje = React.useMemo(() => new Date(), []);
@@ -186,64 +204,65 @@ function HistoricoLicitacoesContent() {
   const [sortBy, setSortBy] = React.useState<OportunidadesSortBy>("dataLimite");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
 
-  const validarFiltros = React.useCallback((): string | null => {
-    if (!dataInicio || !dataFim) {
-      return "Informe a data inicial e a data final (máximo de 30 dias).";
-    }
-    const diff = calcularDiferencaDiasIso(dataInicio, dataFim);
-    if (Number.isNaN(diff)) {
-      return "As datas informadas são inválidas.";
-    }
-    if (diff < 0) {
-      return "A data final deve ser igual ou posterior à data inicial.";
-    }
-    if (diff > MAX_HISTORICO_DIAS_JANELA) {
-      return `O intervalo máximo de consulta no Histórico é de ${MAX_HISTORICO_DIAS_JANELA} dias corridos.`;
-    }
-    const buscaTrim = busca.trim();
-    if (buscaTrim.length > 0 && buscaTrim.length < 3) {
-      return "Informe ao menos 3 caracteres para pesquisar por palavra-chave.";
-    }
-    return null;
-  }, [busca, dataFim, dataInicio]);
-
-  const executarConsulta = React.useCallback(
-    async (opts: {
-      targetPage: number;
-      targetPageSize: number;
-      targetSortBy: OportunidadesSortBy;
-      targetSortDir: SortDir;
-      mensagemLoading?: string;
-    }) => {
-      const erroLocal = validarFiltros();
-      if (erroLocal) {
-        setValidationError(erroLocal);
+  const executarConsultaComParams = React.useCallback(
+    async (
+      params: Omit<HistoricoSavedState, "returningFromDossie">,
+      mensagemLoading?: string,
+    ) => {
+      if (!params.dataInicio || !params.dataFim) {
+        setValidationError(
+          "Informe a data inicial e a data final (máximo de 30 dias).",
+        );
         return;
       }
+      const diff = calcularDiferencaDiasIso(params.dataInicio, params.dataFim);
+      if (Number.isNaN(diff)) {
+        setValidationError("As datas informadas são inválidas.");
+        return;
+      }
+      if (diff < 0) {
+        setValidationError(
+          "A data final deve ser igual ou posterior à data inicial.",
+        );
+        return;
+      }
+      if (diff > MAX_HISTORICO_DIAS_JANELA) {
+        setValidationError(
+          `O intervalo máximo de consulta no Histórico é de ${MAX_HISTORICO_DIAS_JANELA} dias corridos.`,
+        );
+        return;
+      }
+      const buscaTrim = params.busca.trim();
+      if (buscaTrim.length > 0 && buscaTrim.length < 3) {
+        setValidationError(
+          "Informe ao menos 3 caracteres para pesquisar por palavra-chave.",
+        );
+        return;
+      }
+
       setValidationError(null);
       setApiError(null);
       setLoadingMsg(
-        opts.mensagemLoading ||
-          "Consultando base histórica no banco de dados...",
+        mensagemLoading || "Consultando base histórica no banco de dados...",
       );
       setLoading(true);
       setHasSearched(true);
 
       try {
         const qs = new URLSearchParams({
-          dataInicio,
-          dataFim,
-          situacaoPrazo,
-          sortBy: opts.targetSortBy,
-          sortDir: opts.targetSortDir,
-          page: String(opts.targetPage),
-          pageSize: String(opts.targetPageSize),
+          dataInicio: params.dataInicio,
+          dataFim: params.dataFim,
+          situacaoPrazo: params.situacaoPrazo,
+          sortBy: params.sortBy,
+          sortDir: params.sortDir,
+          page: String(params.page),
+          pageSize: String(params.pageSize),
         });
-        if (segmento) qs.set("segmento", segmento);
-        if (subsegmento) qs.set("subsegmento", subsegmento);
-        if (uf) qs.set("uf", uf);
-        if (faixaValor) qs.set("faixaValor", faixaValor);
-        if (busca.trim()) qs.set("busca", busca.trim());
+        if (params.segmento) qs.set("segmento", params.segmento);
+        if (params.subsegmento) qs.set("subsegmento", params.subsegmento);
+        if (params.uf) qs.set("uf", params.uf);
+        if (params.faixaValor) qs.set("faixaValor", params.faixaValor);
+        if (buscaTrim) qs.set("busca", buscaTrim);
 
         const response = await fetch(`/api/historico-licitacoes?${qs.toString()}`);
         const data = await response.json().catch(() => null);
@@ -257,10 +276,10 @@ function HistoricoLicitacoesContent() {
 
         setItens(Array.isArray(data.itens) ? data.itens : []);
         setTotal(Number(data.total) || 0);
-        setPage(Number(data.page) || opts.targetPage);
-        setPageSize(Number(data.pageSize) || opts.targetPageSize);
-        setSortBy(opts.targetSortBy);
-        setSortDir(opts.targetSortDir);
+        setPage(Number(data.page) || params.page);
+        setPageSize(Number(data.pageSize) || params.pageSize);
+        setSortBy(params.sortBy);
+        setSortDir(params.sortDir);
       } catch (err: unknown) {
         setApiError(
           err instanceof Error
@@ -271,18 +290,125 @@ function HistoricoLicitacoesContent() {
         setLoading(false);
       }
     },
+    [],
+  );
+
+  const executarConsulta = React.useCallback(
+    async (opts: {
+      targetPage: number;
+      targetPageSize: number;
+      targetSortBy: OportunidadesSortBy;
+      targetSortDir: SortDir;
+      mensagemLoading?: string;
+    }) => {
+      await executarConsultaComParams(
+        {
+          dataInicio,
+          dataFim,
+          situacaoPrazo,
+          segmento,
+          subsegmento,
+          uf,
+          faixaValor,
+          busca,
+          sortBy: opts.targetSortBy,
+          sortDir: opts.targetSortDir,
+          page: opts.targetPage,
+          pageSize: opts.targetPageSize,
+        },
+        opts.mensagemLoading,
+      );
+    },
     [
       busca,
       dataFim,
       dataInicio,
+      executarConsultaComParams,
       faixaValor,
       segmento,
       situacaoPrazo,
       subsegmento,
       uf,
-      validarFiltros,
     ],
   );
+
+  // Restaura automaticamente a última pesquisa somente quando o usuário retorna do Dossiê
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.sessionStorage.getItem(HISTORICO_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as HistoricoSavedState;
+      if (!saved?.returningFromDossie) return;
+
+      window.sessionStorage.setItem(
+        HISTORICO_STORAGE_KEY,
+        JSON.stringify({ ...saved, returningFromDossie: false }),
+      );
+
+      setDataInicio(saved.dataInicio);
+      setDataFim(saved.dataFim);
+      setSituacaoPrazo(saved.situacaoPrazo);
+      setSegmento(saved.segmento || "");
+      setSubsegmento(saved.subsegmento || "");
+      setUf(saved.uf || "");
+      setFaixaValor(saved.faixaValor || "");
+      setBusca(saved.busca || "");
+      setSortBy(saved.sortBy || "dataLimite");
+      setSortDir(saved.sortDir || "desc");
+      setPage(saved.page || 1);
+      setPageSize(saved.pageSize || 10);
+
+      void executarConsultaComParams(
+        {
+          dataInicio: saved.dataInicio,
+          dataFim: saved.dataFim,
+          situacaoPrazo: saved.situacaoPrazo,
+          segmento: saved.segmento || "",
+          subsegmento: saved.subsegmento || "",
+          uf: saved.uf || "",
+          faixaValor: saved.faixaValor || "",
+          busca: saved.busca || "",
+          sortBy: saved.sortBy || "dataLimite",
+          sortDir: saved.sortDir || "desc",
+          page: saved.page || 1,
+          pageSize: saved.pageSize || 10,
+        },
+        "Restaurando sua última pesquisa no Histórico...",
+      );
+    } catch {
+      // Ignora erro de storage
+    }
+  }, [executarConsultaComParams]);
+
+  const abrirDossiePreservandoBusca = (id: string) => {
+    if (typeof window !== "undefined") {
+      try {
+        const snapshot: HistoricoSavedState = {
+          dataInicio,
+          dataFim,
+          situacaoPrazo,
+          segmento,
+          subsegmento,
+          uf,
+          faixaValor,
+          busca,
+          sortBy,
+          sortDir,
+          page,
+          pageSize,
+          returningFromDossie: true,
+        };
+        window.sessionStorage.setItem(
+          HISTORICO_STORAGE_KEY,
+          JSON.stringify(snapshot),
+        );
+      } catch {
+        // Ignora erro de storage
+      }
+    }
+    router.push(`/oportunidades/${id}`);
+  };
 
   const handleSituacaoChange = (nova: SituacaoPrazoHistorico) => {
     setSituacaoPrazo(nova);
@@ -696,9 +822,7 @@ function HistoricoLicitacoesContent() {
                         <TableRow
                           key={item.id}
                           data-testid={`historico-row-${item.id}`}
-                          onClick={() =>
-                            router.push(`/oportunidades/${item.id}`)
-                          }
+                          onClick={() => abrirDossiePreservandoBusca(item.id)}
                           style={{ cursor: "pointer" }}
                         >
                           <TableCell style={{ whiteSpace: "nowrap" }}>
