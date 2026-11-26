@@ -57,6 +57,9 @@ export async function GET(request: Request) {
           if (Array.isArray(cfg.subsegmentos) && cfg.subsegmentos.length > 0) {
             params.subsegmentosTenantAtivo = cfg.subsegmentos;
           }
+          if (!cfg.brasilInteiro && Array.isArray(cfg.ufs) && cfg.ufs.length > 0) {
+            params.ufsTenantAtivo = cfg.ufs;
+          }
         }
       } catch {}
     }
