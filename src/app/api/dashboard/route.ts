@@ -32,6 +32,8 @@ export async function GET(request: Request) {
 
   let configuracaoPendente = false;
   let segmentosTenantAtivo: string[] | undefined;
+  let subsegmentosTenantAtivo: string[] | undefined;
+  let ufsTenantAtivo: string[] | undefined;
   if (tenantId) {
     try {
       const cfg = await obterConfiguracaoEmpresa(tenantId);
@@ -39,6 +41,12 @@ export async function GET(request: Request) {
         configuracaoPendente = true;
       } else {
         segmentosTenantAtivo = cfg.segmentos;
+        if (Array.isArray(cfg.subsegmentos) && cfg.subsegmentos.length > 0) {
+          subsegmentosTenantAtivo = cfg.subsegmentos;
+        }
+        if (!cfg.brasilInteiro && Array.isArray(cfg.ufs) && cfg.ufs.length > 0) {
+          ufsTenantAtivo = cfg.ufs;
+        }
       }
     } catch {}
   }
@@ -63,6 +71,8 @@ export async function GET(request: Request) {
       ano: anoParam ? parseInt(anoParam, 10) : undefined,
       tenantId: tenantId || undefined,
       segmentosTenantAtivo,
+      subsegmentosTenantAtivo,
+      ufsTenantAtivo,
     });
     return NextResponse.json({ ...data, configuracaoPendente: false }, { status: 200 });
   } catch (error: any) {
