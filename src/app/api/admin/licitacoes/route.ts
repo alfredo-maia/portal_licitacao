@@ -14,6 +14,7 @@ import {
   salvarLicitacaoManualSuperAdmin,
 } from "@/server/services/superadmin.service";
 import { executarIngestaoDiariaPncp } from "@/server/services/pncp-ingestao-diaria.service";
+import { reclassificarCatalogoLicitacoesService } from "@/server/services/resumo-objeto-licitacao.service";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,17 @@ export async function POST(req: NextRequest) {
               },
             }).catch(() => undefined);
             return NextResponse.json(r, { status: r.ok ? 200 : 207 });
+          }
+          case "reclassificar_catalogo": {
+            const r = await reclassificarCatalogoLicitacoesService({
+              limite: parsed.limite,
+              actorContext: {
+                usuarioId: g.actor.id,
+                usuarioNome: g.actor.name,
+                ip: req.headers.get("x-forwarded-for") ?? null,
+              },
+            });
+            return NextResponse.json(r, { status: 200 });
           }
         }
       } catch (error) {

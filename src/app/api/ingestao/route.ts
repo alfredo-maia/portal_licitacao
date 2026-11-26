@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ingestLicitacoesV2 } from "@/server/services/ingestao.service";
+import { reclassificarCatalogoLicitacoesService } from "@/server/services/resumo-objeto-licitacao.service";
 
 /**
  * `POST /api/ingestao` (PRD §8 / sprint-1-spec §2.2): recebe o payload
@@ -32,6 +33,36 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+    return NextResponse.json(
+      { ok: false, error: "INTERNAL_ERROR" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * `PATCH /api/ingestao`: executa o saneamento retroativo determinístico (Motor V3)
+ * sobre o catálogo de licitações persistido (idempotente, sem custo de IA, sem exclusões).
+ */
+export async function PATCH(request: Request) {
+  try {
+    let limite = 5000;
+    try {
+      const body = (await request.json()) as { limite?: number } | null;
+      if (body?.limite && Number.isFinite(body.limite) && body.limite > 0) {
+        limite = Math.min(10000, Math.floor(body.limite));
+      }
+    } catch {}
+
+    const resultado = await reclassificarCatalogoLicitacoesService({
+      limite,
+      actorContext: {
+        usuarioNome: "Pipeline Ingestão V3 (Saneamento)",
+        ip: request.headers.get("x-forwarded-for"),
+      },
+    });
+    return NextResponse.json(resultado, { status: 200 });
+  } catch {
     return NextResponse.json(
       { ok: false, error: "INTERNAL_ERROR" },
       { status: 500 },

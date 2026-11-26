@@ -4,10 +4,13 @@ import {
   type LlmTelemetryContext,
 } from "./llm-multimodal.service";
 import {
+  pareceTituloContaminadoPorTemplateTi,
   pareceTituloTruncadoOuPobre,
   resolverTituloExibicaoLicitacao,
   sintetizarTituloHeuristicoV2,
 } from "@/lib/licitacao-texto";
+import { classificarLicitacaoPorTexto } from "./classificador-segmentos.service";
+import { recordAuditLog } from "@/server/audit";
 import { listInMemoryLicitacoes, updateInMemoryLicitacao } from "./licitacoes-store";
 import type { MetodoTituloLicitacao } from "@/server/schemas/pncp-ingestao.schema";
 
@@ -35,9 +38,12 @@ function limparTituloIaResposta(raw: unknown): string {
     .trim();
 }
 
-function validarTituloIaQualidade(titulo: string): boolean {
+function validarTituloIaQualidade(titulo: string, objetoOriginal?: string): boolean {
   if (!titulo || titulo.length < 10 || titulo.length > 95) return false;
   if (pareceTituloTruncadoOuPobre(titulo)) return false;
+  if (objetoOriginal && pareceTituloContaminadoPorTemplateTi(titulo, objetoOriginal)) {
+    return false;
+  }
   return true;
 }
 
@@ -93,11 +99,12 @@ export async function gerarTitulosEmLotePrioridadeDupla(
           },
         });
 
+        const mapaObjeto = new Map(lote.map((i) => [i.pncpId, i.objeto]));
         const lista = Array.isArray(llm?.data?.titulos) ? llm.data.titulos : [];
         for (const entrada of lista) {
           const id = typeof entrada?.pncpId === "string" ? entrada.pncpId.trim() : "";
           const tituloLimpo = limparTituloIaResposta(entrada?.titulo);
-          if (id && validarTituloIaQualidade(tituloLimpo)) {
+          if (id && validarTituloIaQualidade(tituloLimpo, mapaObjeto.get(id))) {
             resultado.set(id, {
               titulo: tituloLimpo,
               metodo: "IA",
@@ -272,5 +279,194 @@ export async function higienizarTitulosExistentesService(options?: {
     viaIa,
     viaHeuristica,
     exemplos,
+  };
+}
+
+export interface ReclassificacaoCatalogoResult {
+  ok: true;
+  analisados: number;
+  atualizados: number;
+  titulosCorrigidos: number;
+  segmentosAlterados: number;
+  movidosParaOutros: number;
+  amostras: Array<{
+    idPncp: string;
+    tituloAntes: string;
+    tituloDepois: string;
+    segmentoAntes: string | null;
+    segmentoDepois: string;
+    subcategoriasDepois: string[];
+  }>;
+}
+
+/**
+ * Saneamento retroativo determinístico (Motor V3):
+ * Recalcula `segmentoMacro` e `subcategorias` exclusivamente pelo `resumo` oficial do PNCP
+ * e higieniza `miniResumo` que estejam truncados ou contaminados por templates legados de TI.
+ */
+export async function reclassificarCatalogoLicitacoesService(options?: {
+  limite?: number;
+  actorContext?: { usuarioId?: string | null; usuarioNome?: string | null; ip?: string | null };
+}): Promise<ReclassificacaoCatalogoResult> {
+  const limite = options?.limite ?? 5000;
+
+  let registrosDb: Array<{
+    id: string;
+    idPncp: string;
+    miniResumo: string;
+    resumo: string;
+    tipoSistemaCodigo: string | null;
+    segmentoMacro: string | null;
+    subcategorias: unknown;
+  }> = [];
+  let usandoBanco = false;
+
+  try {
+    const found = await prisma.licitacao.findMany({
+      take: limite,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        idPncp: true,
+        miniResumo: true,
+        resumo: true,
+        tipoSistemaCodigo: true,
+        segmentoMacro: true,
+        subcategorias: true,
+      },
+    });
+    if (Array.isArray(found) && found.length > 0) {
+      registrosDb = found;
+      usandoBanco = true;
+    }
+  } catch {
+    // Fallback em memória abaixo
+  }
+
+  const registrosMemoria = listInMemoryLicitacoes().slice(0, limite);
+  const todosPorId = new Map<
+    string,
+    {
+      id: string;
+      idPncp: string;
+      miniResumo: string;
+      resumo: string;
+      tipoSistemaCodigo: string | null;
+      segmentoMacro: string | null;
+      subcategorias: unknown;
+    }
+  >();
+
+  for (const r of registrosDb) todosPorId.set(r.id, r);
+  for (const m of registrosMemoria) {
+    if (!todosPorId.has(m.id)) {
+      todosPorId.set(m.id, {
+        id: m.id,
+        idPncp: m.idPncp,
+        miniResumo: m.miniResumo,
+        resumo: m.resumo,
+        tipoSistemaCodigo: m.tipoSistemaCodigo ?? null,
+        segmentoMacro: m.segmentoMacro ?? null,
+        subcategorias: m.subcategorias ?? [],
+      });
+    }
+  }
+
+  let atualizados = 0;
+  let titulosCorrigidos = 0;
+  let segmentosAlterados = 0;
+  let movidosParaOutros = 0;
+  const amostras: ReclassificacaoCatalogoResult["amostras"] = [];
+
+  for (const reg of todosPorId.values()) {
+    if (!reg.resumo || reg.resumo.trim().length < 4) continue;
+
+    const classif = classificarLicitacaoPorTexto(reg.resumo);
+    const subsAntigas = Array.isArray(reg.subcategorias)
+      ? [...(reg.subcategorias as string[])].sort()
+      : [];
+    const subsNovas = [...classif.subcategorias].sort();
+
+    const segmentoMudou =
+      reg.segmentoMacro !== classif.macro ||
+      JSON.stringify(subsAntigas) !== JSON.stringify(subsNovas);
+
+    const precisaNovoTitulo =
+      pareceTituloTruncadoOuPobre(reg.miniResumo) ||
+      pareceTituloContaminadoPorTemplateTi(reg.miniResumo, reg.resumo);
+
+    const novoTitulo = precisaNovoTitulo
+      ? sintetizarTituloHeuristicoV2(reg.resumo, reg.tipoSistemaCodigo)
+      : reg.miniResumo;
+
+    const tituloMudou = Boolean(novoTitulo && novoTitulo !== reg.miniResumo);
+
+    if (!segmentoMudou && !tituloMudou) continue;
+
+    if (usandoBanco) {
+      try {
+        await prisma.licitacao.update({
+          where: { id: reg.id },
+          data: {
+            miniResumo: novoTitulo,
+            segmentoMacro: classif.macro,
+            subcategorias: classif.subcategorias,
+          },
+        });
+      } catch {}
+    }
+
+    updateInMemoryLicitacao(reg.id, {
+      miniResumo: novoTitulo,
+      segmentoMacro: classif.macro,
+      subcategorias: classif.subcategorias,
+    });
+
+    atualizados += 1;
+    if (tituloMudou) titulosCorrigidos += 1;
+    if (segmentoMudou) {
+      segmentosAlterados += 1;
+      if (classif.macro === "OUTROS" && reg.segmentoMacro !== "OUTROS") {
+        movidosParaOutros += 1;
+      }
+    }
+
+    if (amostras.length < 25) {
+      amostras.push({
+        idPncp: reg.idPncp,
+        tituloAntes: reg.miniResumo,
+        tituloDepois: novoTitulo,
+        segmentoAntes: reg.segmentoMacro,
+        segmentoDepois: classif.macro,
+        subcategoriasDepois: classif.subcategorias,
+      });
+    }
+  }
+
+  await recordAuditLog({
+    acao: "RECLASSIFICACAO_CATALOGO_V3",
+    entidadeTipo: "LICITACAO",
+    entidadeId: "catalogo-global",
+    antes: null,
+    depois: {
+      analisados: todosPorId.size,
+      atualizados,
+      titulosCorrigidos,
+      segmentosAlterados,
+      movidosParaOutros,
+    },
+    usuarioId: options?.actorContext?.usuarioId ?? null,
+    usuarioNome: options?.actorContext?.usuarioNome ?? "Motor Semântico V3",
+    ip: options?.actorContext?.ip ?? null,
+  }).catch(() => undefined);
+
+  return {
+    ok: true,
+    analisados: todosPorId.size,
+    atualizados,
+    titulosCorrigidos,
+    segmentosAlterados,
+    movidosParaOutros,
+    amostras,
   };
 }

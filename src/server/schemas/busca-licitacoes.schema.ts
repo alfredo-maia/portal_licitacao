@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MacroSegmentoEnum } from "./segmentos.schema";
+import { ClassificacaoMacroEnum } from "./segmentos.schema";
 
 export const buscaLicitacoesQuerySchema = z.object({
   q: z.string().optional().default(""),
@@ -65,7 +65,7 @@ export const itemLicitacaoBuscaSchema = z.object({
   municipio: z.string().nullable().optional(),
   modalidade: z.string(),
   modalidadeCodigo: z.number().nullable().optional(),
-  segmentoMacro: MacroSegmentoEnum.nullable().optional(),
+  segmentoMacro: ClassificacaoMacroEnum.nullable().optional(),
   subcategorias: z.array(z.string()).default([]),
   miniResumo: z.string(),
   resumo: z.string(),

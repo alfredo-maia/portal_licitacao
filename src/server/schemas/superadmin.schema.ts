@@ -968,5 +968,9 @@ export const AdminLicitacoesPostSchema = z.discriminatedUnion("acao", [
     dataFinal: z.string().regex(/^\d{8}$/).optional(),
     usarIa: z.boolean().optional().default(true),
   }),
+  z.object({
+    acao: z.literal("reclassificar_catalogo"),
+    limite: z.number().int().min(1).max(10000).optional().default(5000),
+  }),
 ]);
 export type AdminLicitacoesPostInput = z.infer<typeof AdminLicitacoesPostSchema>;

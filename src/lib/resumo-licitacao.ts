@@ -13,7 +13,9 @@ const STOP_PREFIXES: RegExp[] = [
   /^\s*sele[çc][ãa]o\s+(?:de\s+proposta\s+mais\s+vantajosa\s+para\s*(?:a|o)?|de\s+empresa(?:\s+(?:especializada|qualificada|t[ée]cnica))?\s+(?:para|visando)\s*(?:a|o)?)\s*/i,
   /^\s*(?:pelo\s+|atrav[ée]s\s+do\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?\s*(?:para|visando)?[^,;-]*[,;-]?\s*/i,
   /^\s*(?:eventual\s+e\s+futura|futura\s+e\s+eventual|futura|eventual)?\s*registro\s+de\s+pre[çc]os?\s+(?:para\s+|visando\s+(?:a\s+)?)?(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?/i,
-  /^\s*(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?contrata[çc][ãa]o(?:,?\s*mediante\s+sistema\s+de\s+registro\s+de\s+pre[çc]os?,?)?\s+(?:de\s+|para\s+)?/i,
+  /^\s*(?:futura\s+e\s+eventual\s+|eventual\s+e\s+futura\s+|eventual\s+|futura\s+)?contrata[çc][ãa]o(?:,?\s*(?:de\s+empresa\s+)?(?:por\s+meio\s+d[eo]\s+|atrav[ée]s\s+d[eo]\s+|mediante\s+)?sistema\s+de\s+registro\s+de\s+pre[çc]os?,?)?\s+(?:de\s+|para\s+)?/i,
+  /^\s*(?:empresa\s+)?(?:por\s+meio\s+d[eo]\s+|atrav[ée]s\s+d[eo]\s+|mediante\s+)sistema\s+de\s+registro\s+de\s+pre[çc]os?\s*(?:para\s+|visando\s+(?:a\s+)?)?/i,
+  /^\s*forma[çc][ãa]o\s+de\s+registro\s+de\s+pre[çc]os?\s*(?:para\s+|visando\s+(?:a\s+)?)?/i,
   /^\s*pessoa\s+jur[íi]dica\s+(?:especializada\s+|qualificada\s+)?(?:para|na|no|em)\s+(?:a\s+|o\s+)?/i,
   /^\s*empresa\s+(?:de\s+engenharia\s+|t[ée]cnica\s+|especializada\s+|qualificada\s+|capacitada\s+)?(?:para|na|no|em|visando)\s+(?:a\s+|o\s+)?/i,
   /^\s*empresa\s+(?:de|em)\s+/i,
@@ -198,7 +200,7 @@ export function limparTextoObjetoLicitacao(objetoRaw: string): string {
   return texto;
 }
 
-function formatarPalavraTitulo(palavra: string, idx: number): string {
+function formatarPalavraSimples(palavra: string, idx: number): string {
   const lower = palavra.toLowerCase();
   if (SIGLAS_PRESERVADAS.has(lower)) {
     return SIGLAS_PRESERVADAS.get(lower)!;
@@ -207,6 +209,73 @@ function formatarPalavraTitulo(palavra: string, idx: number): string {
     return lower;
   }
   return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function formatarPalavraTitulo(palavra: string, idx: number): string {
+  const lower = palavra.toLowerCase();
+  if (SIGLAS_PRESERVADAS.has(lower)) {
+    return SIGLAS_PRESERVADAS.get(lower)!;
+  }
+  if (palavra.includes("-") && palavra.length > 3) {
+    return palavra
+      .split("-")
+      .map((parte, subIdx) =>
+        parte ? formatarPalavraSimples(parte, idx === 0 && subIdx === 0 ? 0 : 0) : "",
+      )
+      .join("-");
+  }
+  return formatarPalavraSimples(palavra, idx);
+}
+
+const ANCORA_SOFTWARE_TI_REGEX =
+  /\b(?:software|softwares|saas|erp|sistema\s+informatizado|sistemas\s+informatizados|sistema\s+web|sistemas\s+web|sistemas?\s+de\s+gest[ãa]o|sistema\s+integrado|prontu[áa]rio\s+eletr[ôo]nico|plataforma\s+digital|solu[çc][ãa]o\s+tecnol[óo]gica|solu[çc][õo]es\s+tecnol[óo]gicas|tecnologia\s+da\s+informa[çc][ãa]o|aplicativo\s+m[óo]vel|licenciamento\s+de\s+(?:uso\s+de\s+)?(?:software|sistema|solu[çc][ãa]o)|licen[çc]as?\s+de\s+(?:uso\s+de\s+)?software|subscri[çc][ãa]o\s+de\s+software|f[áa]brica\s+de\s+software|desenvolvimento\s+de\s+(?:software|sistemas)|pontos\s+de\s+fun[çc][ãa]o|datacenter|data\s+center|firewall|ciberseguran[çc]a|endpoints|google\s+workspace|office\s+365|m365|windows\s+server|vmware|oracle|atlassian|jira|trello|autocad|autodesk|coreldraw|adobe|1doc|e-sus)\b/i;
+
+const NUCLEO_NAO_TI_BLOQUEIO_REGEX =
+  /\b(?:aux[íi]lio[- ]funeral|benef[íi]cio[- ]funeral|urna\s+funer[áa]ria|servi[çc]os?\s+funer[áa]rios?|g[êe]neros?\s+aliment[íi]cios?|merenda\s+escolar|cestas?\s+b[áa]sicas?|obra\s+de\s+(?:reforma|constru[çc][ãa]o|engenharia|pavimenta[çc][ãa]o|amplia[çc][ãa]o)|pavimenta[çc][ãa]o\s+asf[áa]ltica|impress[ãa]o\s+de\s+carn[êe]s|servi[çc]os?\s+gr[áa]ficos?|jornal\s+di[áa]rio|grande\s+circula[çc][ãa]o|licenciamento\s+ambiental|estudos?\s+ambientais?|aquisi[çc][ãa]o\s+de\s+(?:medicamentos|ve[íi]culos|combust[íi]v|materiais\s+de\s+constru[çc][ãa]o|materiais\s+hospitalares|pneus|[óo]leos))\b/i;
+
+const PADRAO_TITULO_TEMPLATE_TI_LEGADO =
+  /^(?:Software|SaaS)\s+de\s+gest[ãa]o\s+da\s+assist[êe]ncia\s+social|^Locação\s+de\s+sistema\s+de\s+gest[ãa]o\s+p[úu]blica|^Sistema\s+(?:de\s+gest[ãa]o\s+p[úu]blica|web\s+de\s+gest[ãa]o\s+de\s+folha|de\s+prontu[áa]rio\s+eletr[ôo]nico|de\s+gest[ãa]o\s+hospitalar|de\s+processo\s+administrativo\s+eletr[ôo]nico|de\s+gest[ãa]o\s+tribut[áa]ria|integrado\s+de\s+gest[ãa]o\s+previdenci[áa]ria|informatizado\s+de\s+gest[ãa]o,\s+rastreamento|de\s+gest[ãa]o\s+comercial\s+e\s+faturamento\s+de\s+saneamento|de\s+atendimento,\s+gerenciamento\s+e\s+triagem\s+de\s+senhas|integrado\s+SaaS\s+de\s+regula[çc][ãa]o)|^Plataforma\s+de\s+gest[ãa]o\s+escolar|^Portal\s+da\s+transpar[êe]ncia\s+e\s+publica[çc][ãa]o\s+de\s+di[áa]rio\s+oficial|^Licenciamento\s+corporativo\s+e\s+subscri[çc][ãa]o\s+de\s+softwares|^F[áa]brica\s+de\s+software,\s+sustenta[çc][ãa]o|^SaaS\s+e\s+solu[çc][ãa]o\s+tecnol[óo]gica/i;
+
+export function possuiContextoRealDeSoftwareTi(objetoRaw?: string | null): boolean {
+  if (!objetoRaw || typeof objetoRaw !== "string") return false;
+  const limpo = objetoRaw
+    .replace(/\bsistema\s+de\s+registro\s+de\s+pre[çc]os?\b/gi, " ")
+    .replace(/\b(?:na\s+forma\s+de\s+|via\s+|mediante\s+)?processo\s+eletr[ôo]nico\b/gi, " ")
+    .replace(/\blicenciamento\s+ambiental\b/gi, " ");
+
+  if (
+    NUCLEO_NAO_TI_BLOQUEIO_REGEX.test(limpo) &&
+    !/\b(?:software|softwares|saas|erp|sistema\s+informatizado)\b/i.test(limpo)
+  ) {
+    return false;
+  }
+
+  return ANCORA_SOFTWARE_TI_REGEX.test(limpo);
+}
+
+/**
+ * Identifica quando um `miniResumo` salvo anteriormente foi gerado por um template de TI/Software
+ * sobre um `resumo` original que NÃO é de tecnologia da informação.
+ */
+export function pareceTituloContaminadoPorTemplateTi(
+  titulo?: string | null,
+  objetoOriginal?: string | null,
+): boolean {
+  if (!titulo || !objetoOriginal) return false;
+  if (possuiContextoRealDeSoftwareTi(objetoOriginal)) return false;
+
+  if (PADRAO_TITULO_TEMPLATE_TI_LEGADO.test(titulo.trim())) {
+    return true;
+  }
+
+  if (
+    /\b(?:software|saas|erp)\b/i.test(titulo) &&
+    !/\b(?:software|saas|erp)\b/i.test(objetoOriginal)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -227,7 +296,8 @@ export function sintetizarMiniResumo(
 
   const rawLower = objetoRaw.toLowerCase();
 
-  // 1. Dicionário Semântico de Alta Precisão (TI/Software + compatibilidade retroativa)
+  // 1–3. Dicionário Semântico de Alta Precisão de TI/Software — SÓ executa se o objeto oficial for genuinamente de TI
+  if (possuiContextoRealDeSoftwareTi(objetoRaw)) {
   if (rawLower.includes("endpoints") || rawLower.includes("gerenciamento unificado de ativos")) {
     return "Gerenciamento unificado de ativos (endpoints) de TI";
   }
@@ -382,6 +452,7 @@ export function sintetizarMiniResumo(
   if (rawLower.includes("licença de uso") || rawLower.includes("licenciamento")) {
     return "Licenciamento corporativo e subscrição de softwares";
   }
+  }
 
   // 4. Heurística V2 Multissegmento (corte exclusivo em fronteira de palavra completa)
   const textoLimpo = limparTextoObjetoLicitacao(objetoRaw);
@@ -405,7 +476,10 @@ export function sintetizarMiniResumo(
 
     while (
       selecionadas.length > 2 &&
-      STOPWORDS_CONECTIVAS.has(selecionadas[selecionadas.length - 1].toLowerCase())
+      (STOPWORDS_CONECTIVAS.has(selecionadas[selecionadas.length - 1].toLowerCase()) ||
+        /^(?:futura|futuras|eventual|eventuais)$/i.test(
+          selecionadas[selecionadas.length - 1],
+        ))
     ) {
       selecionadas.pop();
     }
@@ -444,7 +518,11 @@ export function resolverTituloExibicaoLicitacao(
   const mini = (miniResumo || "").replace(/\[.*?\]\s*[-–—:]?\s*/g, "").trim();
   const full = (resumoFallback || "").trim();
 
-  if (mini && !pareceTituloTruncadoOuPobre(mini)) {
+  if (
+    mini &&
+    !pareceTituloTruncadoOuPobre(mini) &&
+    !pareceTituloContaminadoPorTemplateTi(mini, full)
+  ) {
     return mini;
   }
 

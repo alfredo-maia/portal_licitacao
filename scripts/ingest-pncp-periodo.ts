@@ -24,6 +24,8 @@ interface ScriptOptions {
   maxPaginasPorModalidade: number;
   tamanhoPagina: number;
   targetUrl: string;
+  usarIaTitulos: boolean;
+  reclassificarAntes: boolean;
 }
 
 function parseCliArgs(): ScriptOptions {
@@ -47,6 +49,8 @@ function parseCliArgs(): ScriptOptions {
   const maxPaginasPorModalidade = Number(opts.maxPaginas || opts.maxPaginasPorModalidade || 5);
   const tamanhoPagina = Number(opts.tamanhoPagina || 50);
   const targetUrl = (opts.targetUrl || process.env.TARGET_URL || "https://staging.aponta.cloud").replace(/\/$/, "");
+  const usarIaTitulos = opts.usarIa === "true";
+  const reclassificarAntes = opts.reclassificarAntes === "true";
 
   return {
     dataInicial,
@@ -55,6 +59,8 @@ function parseCliArgs(): ScriptOptions {
     maxPaginasPorModalidade,
     tamanhoPagina,
     targetUrl,
+    usarIaTitulos,
+    reclassificarAntes,
   };
 }
 
@@ -65,6 +71,7 @@ async function sleep(ms: number) {
 async function enviarLoteAoPortal(
   targetUrl: string,
   itens: IngestaoLicitacaoItemInput[],
+  usarIaTitulos: boolean,
 ): Promise<{ criados: number; atualizados: number; inalterados: number }> {
   const url = `${targetUrl}/api/ingestao`;
   const res = await fetch(url, {
@@ -77,6 +84,7 @@ async function enviarLoteAoPortal(
       versaoContrato: 2,
       executadoEm: new Date().toISOString(),
       totalRegistros: itens.length,
+      usarIaTitulos,
       licitacoes: itens,
     }),
   });
@@ -110,6 +118,28 @@ async function main() {
   console.log(`📄 Páginas por modalidade  : até ${opts.maxPaginasPorModalidade} (tamanho=${opts.tamanhoPagina})`);
   console.log(`🌐 Servidor de Destino     : ${opts.targetUrl}`);
   console.log("==================================================================\n");
+
+  if (opts.reclassificarAntes) {
+    console.log("🧹 Executando saneamento retroativo do catálogo (Motor V3)...");
+    const patchRes = await fetch(`${opts.targetUrl}/api/ingestao`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ limite: 5000 }),
+    });
+    if (patchRes.ok) {
+      const patchJson = await patchRes.json();
+      console.log("   ✓ Saneamento concluído:", JSON.stringify({
+        analisados: patchJson.analisados,
+        atualizados: patchJson.atualizados,
+        titulosCorrigidos: patchJson.titulosCorrigidos,
+        segmentosAlterados: patchJson.segmentosAlterados,
+        movidosParaOutros: patchJson.movidosParaOutros,
+      }));
+    } else {
+      console.warn(`   ⚠️ Saneamento retornou HTTP ${patchRes.status}`);
+    }
+    console.log("");
+  }
 
   const porPncpId = new Map<string, PncpContratacaoRaw>();
   let totalConsultado = 0;
@@ -215,7 +245,7 @@ async function main() {
     const totalLotes = Math.ceil(itensMapeados.length / BATCH_SIZE);
 
     try {
-      const res = await enviarLoteAoPortal(opts.targetUrl, lote);
+      const res = await enviarLoteAoPortal(opts.targetUrl, lote, opts.usarIaTitulos);
       totalCriados += res.criados;
       totalAtualizados += res.atualizados;
       totalInalterados += res.inalterados;

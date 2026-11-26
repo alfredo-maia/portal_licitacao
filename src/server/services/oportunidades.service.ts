@@ -299,6 +299,15 @@ function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
   const storedSubs: string[] = Array.isArray((record as any).subcategorias)
     ? (record as any).subcategorias
     : [];
+
+  if (storedMacro === "OUTROS") {
+    return {
+      ...record,
+      segmentoMacro: "OUTROS",
+      subcategorias: [],
+    } as LicitacaoRecord;
+  }
+
   const macroValida = !!storedMacro && storedMacro in CATALOGO_MACRO_SEGMENTOS;
   const subsValidas = storedSubs.filter(
     (codigo) => MACRO_POR_SUBCATEGORIA[codigo] === storedMacro,
@@ -310,9 +319,9 @@ function enrichRecordSegment(record: LicitacaoRecord): LicitacaoRecord {
     return record;
   }
 
+  // Classifica exclusivamente pelo objeto/resumo oficial, nunca pelo miniResumo sintético
   const classif = classificarLicitacaoPorTexto(
     record.resumo || (record as any).objeto || "",
-    record.miniResumo || "",
   );
   const effectiveMacro = macroValida ? (storedMacro as string) : classif.macro;
   const effectiveSubs =
@@ -335,10 +344,12 @@ function passaSubsegmentosTenant(
   subsegmentosTenant?: string[],
 ): boolean {
   if (!subsegmentosTenant || subsegmentosTenant.length === 0) return true;
-  const def = macro ? CATALOGO_MACRO_SEGMENTOS[macro as MacroSegmento] : undefined;
-  if (!def) return true;
+  if (!macro || macro === "OUTROS") return false;
+  const def = CATALOGO_MACRO_SEGMENTOS[macro as MacroSegmento];
+  if (!def) return false;
   const restringiu = def.subcategorias.some((s) => subsegmentosTenant.includes(s.codigo));
-  if (!restringiu || subs.length === 0) return true;
+  if (!restringiu) return true;
+  if (subs.length === 0) return false;
   return subs.some((codigo) => subsegmentosTenant.includes(codigo));
 }
 

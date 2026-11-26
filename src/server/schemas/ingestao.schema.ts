@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tipoSistemaCodigoNormalizadoSchema } from "./tipos-sistema.schema";
 import {
+  pareceTituloContaminadoPorTemplateTi,
   pareceTituloTruncadoOuPobre,
   sintetizarTituloHeuristicoV2,
 } from "@/lib/licitacao-texto";
@@ -113,7 +114,11 @@ const normalizeItemPreprocess = (raw: unknown) => {
   if (!copy.resumo && copy.objeto) {
     copy.resumo = copy.objeto;
   }
-  if (!copy.miniResumo || pareceTituloTruncadoOuPobre(copy.miniResumo)) {
+  if (
+    !copy.miniResumo ||
+    pareceTituloTruncadoOuPobre(copy.miniResumo) ||
+    pareceTituloContaminadoPorTemplateTi(copy.miniResumo, copy.resumo)
+  ) {
     copy.miniResumo = copy.resumo
       ? sintetizarTituloHeuristicoV2(copy.resumo, copy.tipoSistemaSugerido)
       : "Aquisição e Contratação Pública";
@@ -199,11 +204,13 @@ export const ingestaoPayloadV2Schema = z.preprocess((val: unknown) => {
   versaoContrato: z.literal(2).default(2),
   executadoEm: z.string().min(1).default(() => new Date().toISOString()),
   totalRegistros: z.number().int().nonnegative().optional(),
+  usarIaTitulos: z.boolean().optional(),
   licitacoes: z.array(ingestaoLicitacaoItemSchema),
 }).transform((data) => ({
   versaoContrato: 2 as const,
   executadoEm: data.executadoEm,
   totalRegistros: data.totalRegistros ?? data.licitacoes.length,
+  usarIaTitulos: data.usarIaTitulos,
   licitacoes: data.licitacoes,
 })));
 

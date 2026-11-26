@@ -136,7 +136,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "1102",
         nome: "Tanques, reservatórios, caixa d'água",
-        palavrasChave: ["caixa d agua", "reservatorio metalico", "reservatorio de fibra", "tanque de armazenamento", "tanque estacionario", "cisterna de polietileno", "reservatorio elevado"],
+        palavrasChave: ["caixa d agua", "reservatorio de agua", "reservatorio metalico", "reservatorio de fibra", "tanque de armazenamento", "tanque estacionario", "cisterna de polietileno", "reservatorio elevado"],
       },
       {
         codigo: "1103",
@@ -261,7 +261,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "0603",
         nome: "Lanchonete, restaurante, bar e locação de máquinas de bebidas",
-        palavrasChave: ["concessao de lanchonete", "concessao de cantina", "exploracao de restaurante", "locacao de maquina de cafe", "vending machine", "permissao de uso de cantina"],
+        palavrasChave: ["concessao de lanchonete", "concessao de cantina", "cessao de cantina", "area de cantina", "exploracao de restaurante", "locacao de maquina de cafe", "vending machine", "permissao de uso de cantina"],
       },
       {
         codigo: "0604",
@@ -355,7 +355,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "2901",
         nome: "Livros e material didático",
-        palavrasChave: ["livro didatico", "material didatico", "apostila pedagogica", "acervo bibliografico", "kit pedagogico", "sistema de ensino estruturado", "jogos educativos", "robotica educacional", "kit escolar"],
+        palavrasChave: ["livro didatico", "material didatico", "material escolar", "solucao educacional", "atividade pedagogica", "apostila pedagogica", "acervo bibliografico", "kit pedagogico", "sistema de ensino estruturado", "jogos educativos", "robotica educacional", "kit escolar"],
       },
     ],
   },
@@ -394,7 +394,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "2702",
         nome: "Utensílios de copa e cozinha",
-        palavrasChave: ["utensilios de cozinha", "utensilios de copa", "panela industrial", "talheres inox", "prato de vidro", "copo descartavel", "copos descartaveis", "garrafa termica", "bandeja refeitorio", "jarra", "xicara"],
+        palavrasChave: ["utensilios de cozinha", "utensilios de copa", "material de copa e cozinha", "copa e cozinha", "panela industrial", "talheres inox", "prato de vidro", "copo descartavel", "copos descartaveis", "garrafa termica", "bandeja refeitorio", "jarra", "xicara"],
       },
     ],
   },
@@ -438,7 +438,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "0101",
         nome: "Reformas, edificações e demolição",
-        palavrasChave: ["obra de reforma", "construcao de unidade", "construcao de escola", "ampliacao predial", "reforma predial", "edificacao publica", "demolicao de imovel", "obra civil", "construcao de quadra", "reforma de ubs"],
+        palavrasChave: ["obra de reforma", "servico de reforma", "reforma e adequacao", "servicos comuns de engenharia", "construcao de unidade", "construcao de escola", "ampliacao predial", "reforma predial", "reforma do", "reforma da", "edificacao publica", "demolicao de imovel", "obra civil", "construcao de quadra", "reforma de ubs"],
       },
       {
         codigo: "0102",
@@ -577,7 +577,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3004",
         nome: "Serviços gráficos, impressos e edições",
-        palavrasChave: ["servicos graficos", "servico grafico", "impressos graficos", "impressao de folders", "impressao de panfletos", "cartilhas impressas", "impressao de livros", "banner grafico", "carimbo grafico", "talonarios"],
+        palavrasChave: ["servicos graficos", "servico grafico", "impressos graficos", "impressao de folders", "impressao de panfletos", "impressao de carnes", "confeccao de carnes", "carnes de iptu", "cartilhas impressas", "impressao de livros", "banner grafico", "carimbo grafico", "talonarios"],
       },
       {
         codigo: "3005",
@@ -666,7 +666,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "1301",
         nome: "Equipamentos e materiais esportivos, instrumentos musicais, artes",
-        palavrasChave: ["material esportivo", "equipamentos esportivos", "bola de futebol", "uniforme esportivo", "instrumento musical", "instrumentos musicais", "violao", "bateria musical", "fanfarra", "trofeu esportivo", "artes plasticas", "material de arte", "tatame", "kit esportivo"],
+        palavrasChave: ["material esportivo", "equipamentos esportivos", "bola de futebol", "uniforme esportivo", "instrumento musical", "instrumentos musicais", "piano", "violao", "bateria musical", "fanfarra", "trofeu esportivo", "artes plasticas", "material de arte", "tatame", "kit esportivo"],
       },
     ],
   },
@@ -678,7 +678,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3301",
         nome: "Organização de eventos",
-        palavrasChave: ["organizacao de eventos", "realizacao de eventos", "evento institucional", "cerimonial", "festividades", "carnaval", "show artistico", "contratacao de artistas", "estrutura para eventos", "montagem de palco", "tenda para eventos", "feira de negocios"],
+        palavrasChave: ["organizacao de eventos", "realizacao de eventos", "evento institucional", "decoracao natalina", "iluminacao natalina", "cerimonial", "festividades", "carnaval", "show artistico", "contratacao de artistas", "estrutura para eventos", "montagem de palco", "tenda para eventos", "feira de negocios"],
       },
       {
         codigo: "3302",
@@ -717,7 +717,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3601",
         nome: "Urnas, funerários, artigos religiosos",
-        palavrasChave: ["urna funeraria", "servico funerario", "servicos funerarios", "caixao", "artigos religiosos", "funeraria", "translado de corpos", "sepultamento", "cremacao", "velorio"],
+        palavrasChave: ["urna funeraria", "urnas funerarias", "urna mortuaria", "auxilio funeral", "beneficio funeral", "funeral", "servico funerario", "servicos funerarios", "caixao", "artigos religiosos", "funeraria", "translado de corpos", "traslado funerario", "translado funerario", "tanatopraxia", "preparacao de corpos", "sepultamento", "cremacao", "velorio", "jazigo", "cemiterio"],
       },
     ],
   },
@@ -753,7 +753,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3101",
         nome: "Softwares, sistemas, serviços de rede, serviços técnicos",
-        palavrasChave: ["software", "licenciamento de software", "sistema de gestao", "software de gestao", "sistema informatizado", "erp", "saas", "software como servico", "solucao tecnologica", "plataforma digital", "servicos de ti", "servico de tecnologia da informacao", "desenvolvimento de sistemas", "nuvem", "hospedagem de sistema", "banco de dados", "licenca microsoft", "antivirus", "suporte tecnico em ti", "link de internet", "internet dedicada", "fibra optica", "cabeamento estruturado", "rede de dados", "wifi", "seguranca da informacao", "backup em nuvem", "data center", "service desk", "outsourcing de ti", "licencas de software", "assinatura anual de software", "sistema web"],
+        palavrasChave: ["software", "licenciamento de software", "sistema de gestao", "software de gestao", "sistema informatizado", "erp", "saas", "software como servico", "solucao tecnologica", "plataforma digital", "portal corporativo", "intranet corporativa", "servicos de ti", "servico de tecnologia da informacao", "desenvolvimento de sistemas", "nuvem", "hospedagem de sistema", "banco de dados", "licenca microsoft", "antivirus", "suporte tecnico em ti", "link de internet", "link dedicado", "acesso a internet", "internet dedicada", "fibra optica", "cabeamento estruturado", "rede de dados", "wifi", "seguranca da informacao", "backup em nuvem", "data center", "service desk", "outsourcing de ti", "licencas de software", "assinatura anual de software", "sistema web"],
       },
       {
         codigo: "3102",
@@ -815,7 +815,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "0206",
         nome: "Vidraçaria, marcenaria, serralheria",
-        palavrasChave: ["vidracaria", "marcenaria", "serralheria", "esquadria de aluminio", "porta de vidro", "janela de aluminio", "portao metalico", "grade de ferro", "box de vidro"],
+        palavrasChave: ["vidracaria", "marcenaria", "serralheria", "esquadria de aluminio", "porta de vidro", "janela de aluminio", "portao metalico", "instalacao de portao", "confeccao de grade", "fabricacao de grade", "grade de ferro", "box de vidro"],
       },
       {
         codigo: "0207",
@@ -1035,7 +1035,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "0309",
         nome: "Recursos humanos: ascensorista, copa, porteiro, telefonista e outros",
-        palavrasChave: ["ascensorista", "copeira", "porteiro", "recepcionista", "telefonista", "mao de obra terceirizada", "terceirizacao de mao de obra", "apoio administrativo terceirizado", "motorista terceirizado", "auxiliar administrativo terceirizado", "garcom", "cozinheiro", "agente de portaria", "servicos continuados com dedicacao exclusiva de mao de obra"],
+        palavrasChave: ["ascensorista", "copeira", "porteiro", "recepcionista", "telefonista", "mao de obra terceirizada", "terceirizacao de mao de obra", "dedicacao exclusiva de mao de obra", "servicos continuados de apoio administrativo", "apoio administrativo terceirizado", "motorista terceirizado", "auxiliar administrativo terceirizado", "garcom", "cozinheiro", "agente de portaria", "servicos continuados com dedicacao exclusiva de mao de obra"],
       },
       {
         codigo: "0310",
@@ -1094,7 +1094,7 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "3403",
         nome: "Publicações, divulgação, clipping, radiodifusão, assinaturas",
-        palavrasChave: ["publicacao oficial", "divulgacao de atos", "clipping", "radiodifusao", "assinatura de jornal", "assinatura de revista", "publicacao em diario oficial", "veiculacao em radio", "insercao em jornal", "publicacoes legais"],
+        palavrasChave: ["publicacao oficial", "publicacao de avisos", "avisos de licitacao", "jornal diario", "grande circulacao", "divulgacao de atos", "clipping", "radiodifusao", "assinatura de jornal", "assinatura de revista", "publicacao em diario oficial", "veiculacao em radio", "insercao em jornal", "publicacoes legais"],
       },
       {
         codigo: "3404",
@@ -1128,12 +1128,12 @@ export const CATALOGO_MACRO_SEGMENTOS: Record<MacroSegmento, MacroSegmentoDef> =
       {
         codigo: "2202",
         nome: "Materiais, produtos e utensílios médico, hospitalar e laboratorial",
-        palavrasChave: ["material hospitalar", "materiais hospitalares", "material medico hospitalar", "medico hospitalar", "material ambulatorial", "materiais ambulatoriais", "insumos hospitalares", "seringa", "seringas", "agulha", "luva de procedimento", "luvas cirurgicas", "gaze", "cateter", "cateteres", "esparadrapo", "atadura", "curativo", "mascara cirurgica", "sonda", "material odontologico", "reagentes laboratoriais", "material laboratorial", "descartaveis hospitalares", "campo cirurgico", "equipo de soro", "fralda geriatrica", "bisturi", "insumos para saude"],
+        palavrasChave: ["material hospitalar", "materiais hospitalares", "material medico hospitalar", "medico hospitalar", "dispositivo medico", "material ambulatorial", "materiais ambulatoriais", "insumos hospitalares", "seringa", "seringas", "agulha", "luva de procedimento", "luvas cirurgicas", "gaze", "cateter", "cateteres", "esparadrapo", "atadura", "curativo", "mascara cirurgica", "sonda", "material odontologico", "reagentes laboratoriais", "material laboratorial", "descartaveis hospitalares", "campo cirurgico", "equipo de soro", "fralda geriatrica", "bisturi", "insumos para saude"],
       },
       {
         codigo: "2203",
         nome: "Equipamentos e instrumentos, hospitalares, laboratoriais e científicos",
-        palavrasChave: ["equipamento hospitalar", "equipamentos hospitalares", "equipamento medico", "equipamentos medicos", "aparelho de raio x", "autoclave", "desfibrilador", "monitor multiparametrico", "ventilador pulmonar", "ultrassom", "eletrocardiografo", "cadeira odontologica", "oximetro", "equipamento odontologico", "analisador bioquimico", "microscopio", "centrifuga laboratorial", "tomografo", "ressonancia magnetica", "bomba de infusao", "incubadora neonatal", "estetoscopio", "esfigmomanometro", "equipamentos laboratoriais"],
+        palavrasChave: ["equipamento hospitalar", "equipamentos hospitalares", "equipamento medico", "equipamentos medicos", "aparelho de raio x", "aparelho de raios x", "radiografia movel", "autoclave", "desfibrilador", "monitor multiparametrico", "ventilador pulmonar", "ultrassom", "eletrocardiografo", "cadeira odontologica", "oximetro", "equipamento odontologico", "analisador bioquimico", "microscopio", "centrifuga laboratorial", "tomografo", "ressonancia magnetica", "bomba de infusao", "incubadora neonatal", "estetoscopio", "esfigmomanometro", "equipamentos laboratoriais"],
       },
       {
         codigo: "2204",
@@ -1295,8 +1295,15 @@ export const MACRO_POR_SUBCATEGORIA: Readonly<Record<string, MacroSegmento>> = O
   ),
 );
 
+export const ClassificacaoMacroEnum = z.union([
+  MacroSegmentoEnum,
+  z.literal("OUTROS"),
+]);
+
+export type ClassificacaoMacro = z.infer<typeof ClassificacaoMacroEnum>;
+
 export const classificacaoSegmentoSchema = z.object({
-  macro: MacroSegmentoEnum,
+  macro: ClassificacaoMacroEnum,
   subcategorias: z.array(z.string()).default([]),
   score: z.number().min(0).default(0),
   termosCorrespondentes: z.array(z.string()).default([]),

@@ -5,7 +5,7 @@ import {
   buscaLicitacoesQuerySchema,
   type ItemLicitacaoBusca,
 } from "@/server/schemas/busca-licitacoes.schema";
-import { type MacroSegmento } from "@/server/schemas/segmentos.schema";
+import { type ClassificacaoMacro } from "@/server/schemas/segmentos.schema";
 import { listInMemoryLicitacoes, type LicitacaoRecord } from "./licitacoes-store";
 import { normalizarTexto } from "./classificador-segmentos.service";
 
@@ -23,7 +23,7 @@ function mapRecordToBuscaItem(
     municipio: item.municipio,
     modalidade: item.modalidade,
     modalidadeCodigo: item.modalidadeCodigo,
-    segmentoMacro: (item.segmentoMacro as MacroSegmento) || null,
+    segmentoMacro: (item.segmentoMacro as ClassificacaoMacro) || null,
     subcategorias: Array.isArray(item.subcategorias) ? (item.subcategorias as string[]) : [],
     miniResumo: item.miniResumo,
     resumo: item.resumo,

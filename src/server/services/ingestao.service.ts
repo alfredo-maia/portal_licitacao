@@ -18,6 +18,7 @@ import {
 import { criarNotificacao, notificarMovimentacaoLicitacao } from "./notificacoes.service";
 import { montarChaveIdempotencia } from "@/server/schemas/notificacao.schema";
 import {
+  pareceTituloContaminadoPorTemplateTi,
   pareceTituloTruncadoOuPobre,
   sintetizarTituloHeuristicoV2,
 } from "@/lib/licitacao-texto";
@@ -51,12 +52,14 @@ function mapItemToLicitacaoData(
   tituloIaOverride?: string | null,
 ): NovaLicitacaoData {
   const normModalidade = normalizarModalidade(item.modalidade);
-  const classificacao = classificarLicitacaoPorTexto(item.resumo, item.miniResumo);
+  // Classifica EXCLUSIVAMENTE pelo resumo oficial do PNCP, jamais pelo miniResumo sintetizado
+  const classificacao = classificarLicitacaoPorTexto(item.resumo);
 
   const miniResumoResolvido =
     tituloIaOverride ||
-    (!pareceTituloTruncadoOuPobre(item.miniResumo)
-      ? sintetizarTituloHeuristicoV2(item.miniResumo, item.tipoSistemaSugerido)
+    (!pareceTituloTruncadoOuPobre(item.miniResumo) &&
+    !pareceTituloContaminadoPorTemplateTi(item.miniResumo, item.resumo)
+      ? item.miniResumo.trim()
       : sintetizarTituloHeuristicoV2(item.resumo, item.tipoSistemaSugerido));
 
   return {
@@ -165,7 +168,11 @@ export async function ingestLicitacoesV2(
 
   const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
   const deveUsarIaTitulos =
-    options?.usarIaTitulos !== undefined ? options.usarIaTitulos : !isTestEnv;
+    options?.usarIaTitulos !== undefined
+      ? options.usarIaTitulos
+      : parsed.usarIaTitulos !== undefined
+        ? parsed.usarIaTitulos
+        : !isTestEnv;
 
   const mapaTitulosIa = new Map<string, string>();
   if (options?.titulosPreGerados) {
@@ -251,10 +258,19 @@ export async function ingestLicitacoesV2(
       continue;
     }
 
+    const subsExistente = Array.isArray(existente.subcategorias)
+      ? [...(existente.subcategorias as string[])].sort()
+      : [];
+    const subsNovas = Array.isArray(dados.subcategorias)
+      ? [...(dados.subcategorias as string[])].sort()
+      : [];
+
     if (
       existente.hashCritico === novoHash &&
       existente.miniResumo === dados.miniResumo &&
-      existente.tipoSistemaCodigo === dados.tipoSistemaCodigo
+      existente.tipoSistemaCodigo === dados.tipoSistemaCodigo &&
+      existente.segmentoMacro === dados.segmentoMacro &&
+      JSON.stringify(subsExistente) === JSON.stringify(subsNovas)
     ) {
       inalterados += 1;
       registros.push(existente);

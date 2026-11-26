@@ -1,6 +1,8 @@
 export {
   limparTextoObjetoLicitacao,
+  pareceTituloContaminadoPorTemplateTi,
   pareceTituloTruncadoOuPobre,
+  possuiContextoRealDeSoftwareTi,
   resolverTituloExibicaoLicitacao,
   sintetizarMiniResumo,
   sintetizarTituloHeuristicoV2,
