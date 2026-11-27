@@ -26,8 +26,8 @@ export const ADMIN_ROUTES: readonly AdminRouteItem[] = [
   {
     id: "clientes",
     path: "/admin/clientes",
-    label: "Clientes 360º",
-    description: "Conta principal, CNPJs, usuários, licitações, trial e recursos.",
+    label: "Clientes",
+    description: "Conta principal, CNPJs, usuários, licitações, trial e uso.",
   },
   {
     id: "financeiro",

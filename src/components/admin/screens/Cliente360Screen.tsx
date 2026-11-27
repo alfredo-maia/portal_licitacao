@@ -375,6 +375,30 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
         descricao={descEmpresa}
         acoes={
           <>
+            <div
+              data-testid="cliente-ultimo-acesso-global"
+              title={
+                data.usoGlobal?.ultimoAcessoEm
+                  ? `Último acesso global da conta: ${fmtData(data.usoGlobal.ultimoAcessoEm)}`
+                  : "Nenhum acesso global registrado nos últimos 30 dias"
+              }
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                padding: "0.25rem 0.65rem",
+                borderRadius: "4px",
+                backgroundColor: "var(--cds-layer-01)",
+                border: "1px solid var(--cds-border-subtle)",
+                fontSize: "0.78rem",
+                color: "var(--cds-text-secondary)",
+              }}
+            >
+              <span>Último acesso (global):</span>
+              <strong style={{ color: "var(--cds-text-primary)" }}>
+                {fmtTempoRelativo(data.usoGlobal?.ultimoAcessoEm)}
+              </strong>
+            </div>
             <StatusFinanceiroTag status={statusAtivo} />
             <Tag type="blue">{planoAtivo}</Tag>
             {!ativoEmpresa ? <Tag type="red">Conta inativa</Tag> : null}

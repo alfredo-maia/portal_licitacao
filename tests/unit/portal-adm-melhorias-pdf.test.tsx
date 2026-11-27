@@ -1170,8 +1170,8 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       expect(screen.getAllByText("Pendente de configuração").length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText("+2 CNPJ(s)")).toBeInTheDocument();
       expect(screen.getByText(/Pertencente à conta de Mariana/i)).toBeInTheDocument();
-      const link360 = screen.getByRole("link", { name: /Abrir 360º/i });
-      expect(link360).toHaveAttribute("href", "/admin/clientes/tnt_sub_2");
+      const linkCliente = screen.getByTestId("cliente-card-tnt_p_1");
+      expect(linkCliente).toHaveAttribute("href", "/admin/clientes/tnt_sub_2");
       cliView.unmount();
     });
   });
@@ -1548,30 +1548,15 @@ describe("Issue #50 — Melhorias e Correções no Portal ADM", () => {
       const view = render(<FinanceiroScreen />);
       await waitFor(() => expect(screen.getByText("FinCliente 01")).toBeInTheDocument());
 
-      // Exatamente as 7 colunas solicitadas
-      for (const col of [
-        "Cliente / E-mail",
-        "Qtd de CNPJ",
-        "Plano",
-        "Status Financeiro",
-        "Vencimento / Trial",
-        "Cupom",
-        "Faturamento",
-      ]) {
-        expect(screen.getByRole("columnheader", { name: col })).toBeInTheDocument();
-      }
-      expect(screen.queryByRole("columnheader", { name: "Mensalidade" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("columnheader", { name: "Ações Rápidas" })).not.toBeInTheDocument();
+      // Carteira em cards paginados (20 por página) com +2 CNPJ(s) e 1 botão de faturamento por card
+      expect(screen.getByTestId("financeiro-cards-grid")).toBeInTheDocument();
+      expect(screen.getByText("+2 CNPJ(s)")).toBeInTheDocument();
 
-      // Paginação 10 em 10: item 11 não está na página 1
-      expect(screen.getByText("3 CNPJ(s)")).toBeInTheDocument();
-      expect(screen.queryByText("FinCliente 11")).not.toBeInTheDocument();
-
-      // Apenas 1 botão "Acessar Faturamento do cliente" por linha (sem +7d Trial / Dar baixa na linha)
+      // Apenas 1 botão "Acessar Faturamento do cliente" por card (12 cards na página 1)
       const btnsFaturamento = screen.getAllByRole("button", {
         name: /Acessar Faturamento do cliente/i,
       });
-      expect(btnsFaturamento).toHaveLength(10);
+      expect(btnsFaturamento).toHaveLength(12);
 
       // Abre o Modal unificado para o cliente TRIAL (btnsFaturamento[1]) -> Ações rápidas com +7d/+14d Trial (sem Dar Baixa rápido)
       fireEvent.click(btnsFaturamento[1]);

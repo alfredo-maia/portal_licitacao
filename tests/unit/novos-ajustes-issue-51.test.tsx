@@ -1435,10 +1435,10 @@ describe("Issue #51 — Novos Ajustes (Portal ADM & Área do Cliente)", () => {
       const view = render(<FinanceiroScreen />);
       await waitFor(() => expect(screen.getByText("Em Carência SA")).toBeInTheDocument());
 
-      // Clicar em RECEITA EM RISCO seleciona aba 'Em risco' no ContentSwitcher e filtra
-      fireEvent.click(screen.getByText("RECEITA EM RISCO"));
+      // Filtro 'Em risco' foi removido na Issue #66; filtrar por Carência exibe apenas Em Carência SA
+      fireEvent.click(screen.getByRole("tab", { name: "Carência" }));
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: "Em risco" })).toHaveAttribute(
+        expect(screen.getByRole("tab", { name: "Carência" })).toHaveAttribute(
           "aria-selected",
           "true",
         );

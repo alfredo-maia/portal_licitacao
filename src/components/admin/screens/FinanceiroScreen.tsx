@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Button,
   Checkbox,
   ContentSwitcher,
   Modal,
+  Pagination,
   Search,
   Select,
   SelectItem,
@@ -20,7 +21,7 @@ import {
   TextInput,
   Tile,
 } from "@carbon/react";
-import { Add, CloudUpload, Currency, Document, Renew, Time, TrashCan } from "@carbon/icons-react";
+import { Add, CloudUpload, Currency, Document, Edit, Renew, Time, TrashCan } from "@carbon/icons-react";
 import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import type {
   SuperAdminTenantItem,
@@ -28,12 +29,15 @@ import type {
   TenantInvoiceRecord,
 } from "@/server/schemas/superadmin.schema";
 import {
+  AdminSortSelect,
   AdminTable,
   FeedbackBar,
   KpiGrid,
   KpiTile,
+  OutrosCnpjsPopover,
   PageHeader,
   StatusFinanceiroTag,
+  TitularContatoLinha,
   adminFetch,
   fmtBRL,
   fmtData,
@@ -41,6 +45,7 @@ import {
   fmtNum,
   useAdminData,
   type Feedback,
+  type SortOption,
 } from "../admin-ui";
 
 interface CupomItem {
@@ -64,12 +69,33 @@ interface FinanceiroPayload {
 const FILTROS_STATUS = [
   { id: "TODOS", label: "Todos" },
   { id: "ATIVO", label: "Pagantes" },
-  { id: "EM_RISCO", label: "Em risco" },
   { id: "GRACE_PERIOD", label: "Carência" },
   { id: "BLOQUEADO", label: "Inadimplentes" },
   { id: "TRIAL", label: "Teste grátis" },
   { id: "CANCELADO", label: "Cancelados" },
 ];
+
+const ORDENACOES_FINANCEIRO: SortOption[] = [
+  { value: "cadastro_desc", label: "Cadastro: mais recente" },
+  { value: "cadastro_asc", label: "Cadastro: mais antigo" },
+  { value: "valor_desc", label: "Mensalidade: maior → menor" },
+  { value: "valor_asc", label: "Mensalidade: menor → maior" },
+  { value: "vencimento_asc", label: "Vencimento / Trial: mais próximo" },
+  { value: "vencimento_desc", label: "Vencimento / Trial: mais distante" },
+  { value: "atraso_desc", label: "Dias em atraso: maior → menor" },
+];
+
+const PLANO_TAG_TYPE: Record<string, "blue" | "cyan" | "teal"> = {
+  BASICO: "teal",
+  PRO: "blue",
+  ENTERPRISE: "cyan",
+};
+
+function tsFinanceiro(v: string | Date | null | undefined): number {
+  if (!v) return 0;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
 
 const ALLOWED_RECEIPT_MIMES = new Set([
   "image/png",
@@ -110,6 +136,12 @@ export function FinanceiroScreen() {
   const [modalFb, setModalFb] = useState<Feedback | null>(null);
   const [filtro, setFiltro] = useState("TODOS");
   const [busca, setBusca] = useState("");
+  const [ordenacao, setOrdenacao] = useState("cadastro_desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [cupomPage, setCupomPage] = useState(1);
+  const [cupomPageSize, setCupomPageSize] = useState(20);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -252,13 +284,15 @@ export function FinanceiroScreen() {
     reader.readAsDataURL(file);
   };
 
+  useEffect(() => {
+    setPage(1);
+  }, [filtro, busca, ordenacao]);
+
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
-    return clientes.filter((c) => {
-      if (filtro === "EM_RISCO") {
-        if (c.billingStatus !== "GRACE_PERIOD" && c.billingStatus !== "BLOQUEADO") return false;
-      } else if (filtro !== "TODOS" && c.billingStatus !== filtro) {
+    const base = clientes.filter((c) => {
+      if (filtro !== "TODOS" && c.billingStatus !== filtro) {
         return false;
       }
       if (!q) return true;
@@ -278,7 +312,51 @@ export function FinanceiroScreen() {
       );
       return matchPrincipal || Boolean(matchSub);
     });
-  }, [clientes, filtro, busca]);
+
+    const vencMs = (c: SuperAdminTenantItem) =>
+      tsFinanceiro(c.billingStatus === "TRIAL" ? c.trialFim : c.vencimentoAssinatura);
+    const valMes = (c: SuperAdminTenantItem) =>
+      c.valorMensalidade ??
+      ASAAS_PLAN_PRICES_BRL[c.plano as keyof typeof ASAAS_PLAN_PRICES_BRL] ??
+      ASAAS_PLAN_PRICES_BRL.PRO;
+
+    return [...base].sort((a, b) => {
+      switch (ordenacao) {
+        case "cadastro_asc":
+          return tsFinanceiro(a.criadoEm) - tsFinanceiro(b.criadoEm);
+        case "valor_desc":
+          return valMes(b) - valMes(a);
+        case "valor_asc":
+          return valMes(a) - valMes(b);
+        case "vencimento_asc": {
+          const va = vencMs(a) || Number.MAX_SAFE_INTEGER;
+          const vb = vencMs(b) || Number.MAX_SAFE_INTEGER;
+          return va - vb;
+        }
+        case "vencimento_desc":
+          return vencMs(b) - vencMs(a);
+        case "atraso_desc":
+          return (b.diasAtraso ?? 0) - (a.diasAtraso ?? 0);
+        case "cadastro_desc":
+        default:
+          return tsFinanceiro(b.criadoEm) - tsFinanceiro(a.criadoEm);
+      }
+    });
+  }, [clientes, filtro, busca, ordenacao]);
+
+  const totalPages = Math.max(1, Math.ceil(filtrados.length / pageSize));
+  const paginaSegura = Math.min(page, totalPages);
+  const filtradosPaginados = useMemo(() => {
+    const ini = (paginaSegura - 1) * pageSize;
+    return filtrados.slice(ini, ini + pageSize);
+  }, [filtrados, paginaSegura, pageSize]);
+
+  const cupomTotalPages = Math.max(1, Math.ceil(cupons.length / cupomPageSize));
+  const cupomPaginaSegura = Math.min(cupomPage, cupomTotalPages);
+  const cuponsPaginados = useMemo(() => {
+    const ini = (cupomPaginaSegura - 1) * cupomPageSize;
+    return cupons.slice(ini, ini + cupomPageSize);
+  }, [cupons, cupomPaginaSegura, cupomPageSize]);
 
   const executarAcao = async (
     payload: Record<string, unknown>,
@@ -360,22 +438,9 @@ export function FinanceiroScreen() {
         >
           <KpiTile rotulo="MRR ATIVO" valor={fmtBRL(resumo.mrr)} detalhe={`ARR: ${fmtBRL(resumo.mrr * 12)}`} cor="var(--cds-support-success)" />
         </button>
-        <button
-          type="button"
-          onClick={() => toggleKpiFiltro("EM_RISCO")}
-          aria-pressed={filtro === "EM_RISCO"}
-          style={{
-            width: "100%",
-            height: "100%",
-            padding: 0,
-            textAlign: "left",
-            background: "transparent",
-            border: filtro === "EM_RISCO" ? "2px solid var(--cds-border-interactive)" : "2px solid transparent",
-            cursor: "pointer",
-          }}
-        >
+        <div style={{ height: "100%" }}>
           <KpiTile rotulo="RECEITA EM RISCO" valor={fmtBRL(resumo.emRisco)} detalhe="Carência + inadimplentes" cor="var(--cds-support-error)" />
-        </button>
+        </div>
         <button
           type="button"
           onClick={() => toggleKpiFiltro("ATIVO")}
@@ -433,7 +498,7 @@ export function FinanceiroScreen() {
         </TabList>
         <TabPanels>
           <TabPanel>
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", margin: "1rem 0", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", margin: "1rem 0", alignItems: "center" }}>
               <div style={{ minWidth: "20rem", flex: 1 }}>
                 <Search
                   size="md"
@@ -444,87 +509,196 @@ export function FinanceiroScreen() {
                   onClear={() => setBusca("")}
                 />
               </div>
-              <ContentSwitcher
-                size="md"
-                selectedIndex={Math.max(0, FILTROS_STATUS.findIndex((f) => f.id === filtro))}
-                onChange={(e: { name?: string | number }) => setFiltro(String(e.name))}
-              >
-                {FILTROS_STATUS.map((f) => (
-                  <Switch key={f.id} name={f.id} text={f.label} />
-                ))}
-              </ContentSwitcher>
+              <AdminSortSelect
+                id="financeiro-sort"
+                testId="financeiro-sort-select"
+                value={ordenacao}
+                options={ORDENACOES_FINANCEIRO}
+                onChange={setOrdenacao}
+              />
+              <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+                <ContentSwitcher
+                  size="md"
+                  selectedIndex={Math.max(0, FILTROS_STATUS.findIndex((f) => f.id === filtro))}
+                  onChange={(e: { name?: string | number }) => setFiltro(String(e.name))}
+                >
+                  {FILTROS_STATUS.map((f) => (
+                    <Switch key={f.id} name={f.id} text={f.label} />
+                  ))}
+                </ContentSwitcher>
+              </div>
             </div>
 
-            <AdminTable
-              titulo={`${filtrados.length} conta(s)`}
-              pageSize={10}
-              resetPageKey={`${filtro}|${busca}`}
-              colunas={[
-                { key: "cliente", header: "Cliente / E-mail" },
-                { key: "qtdCnpjs", header: "Qtd de CNPJ" },
-                { key: "plano", header: "Plano" },
-                { key: "status", header: "Status Financeiro" },
-                { key: "vencimento", header: "Vencimento / Trial" },
-                { key: "cupom", header: "Cupom" },
-                { key: "faturamento", header: "Faturamento" },
-              ]}
-              vazio={loading ? "Carregando..." : "Nenhum registro financeiro para este filtro."}
-              linhas={filtrados.map((c) => ({
-                id: c.id,
-                cliente: (
-                  <div>
-                    <Link href={`/admin/clientes/${c.id}`} style={{ fontWeight: 600 }}>
-                      {c.nomeFantasia || c.razaoSocial}
-                    </Link>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                      {c.cnpj} • {c.titularEmail || "—"}
+            <div style={{ marginBottom: "0.75rem" }}>
+              <h2 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0, color: "var(--cds-text-primary)" }}>
+                {filtrados.length} conta(s)
+              </h2>
+            </div>
+
+            {filtradosPaginados.length === 0 ? (
+              <Tile style={{ padding: "2rem", textAlign: "center" }}>
+                <span style={{ color: "var(--cds-text-secondary)" }}>
+                  {loading ? "Carregando..." : "Nenhum registro financeiro para este filtro."}
+                </span>
+              </Tile>
+            ) : (
+              <div
+                data-testid="financeiro-cards-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {filtradosPaginados.map((c) => {
+                  const planoKey = (c.plano || "PRO").toUpperCase();
+                  const extras = Math.max(0, c.cnpjsAdicionaisCount ?? (c.qtdCnpjs ? c.qtdCnpjs - 1 : 0));
+                  const outrosCnpjs = (c.cnpjsVinculados || []).filter(
+                    (emp) => emp.id !== c.id && emp.cnpj !== c.cnpj,
+                  );
+                  const isHovered = hoveredId === c.id;
+                  const vencimentoStr =
+                    c.billingStatus === "TRIAL"
+                      ? `Trial até ${fmtDia(c.trialFim)}`
+                      : `Vencimento: ${fmtDia(c.vencimentoAssinatura)}`;
+
+                  return (
+                    <div
+                      key={c.id}
+                      data-testid={`financeiro-card-${c.id}`}
+                      className="pncp-admin-cliente-card"
+                      onMouseEnter={() => setHoveredId(c.id)}
+                      onMouseLeave={() => setHoveredId((prev) => (prev === c.id ? null : prev))}
+                      style={{
+                        position: "relative",
+                        zIndex: isHovered ? 25 : 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                        padding: "1.125rem",
+                        backgroundColor: "var(--cds-layer-01)",
+                        border: "1px solid var(--cds-border-subtle)",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {/* Topo: Empresa + CNPJ */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                          <Link
+                            href={`/admin/clientes/${c.id}`}
+                            style={{
+                              fontWeight: 600,
+                              fontSize: "0.95rem",
+                              color: "var(--cds-text-primary)",
+                              textDecoration: "none",
+                              lineHeight: 1.3,
+                            }}
+                          >
+                            {c.nomeFantasia || c.razaoSocial}
+                          </Link>
+                          <Tag type="cyan" size="sm" style={{ flexShrink: 0, margin: 0 }}>
+                            {extras > 0 ? `+${extras} CNPJ(s)` : `${c.qtdCnpjs ?? 1} CNPJ`}
+                          </Tag>
+                        </div>
+                        <div style={{ fontSize: "0.78rem", fontFamily: "monospace", color: "var(--cds-text-secondary)" }}>
+                          {c.cnpj}
+                        </div>
+                      </div>
+
+                      {/* Tags Financeiras */}
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.35rem" }}>
+                        <Tag type={PLANO_TAG_TYPE[planoKey] ?? "blue"} size="sm">
+                          {planoKey}
+                        </Tag>
+                        <StatusFinanceiroTag status={c.billingStatus} />
+                        {c.billingStatus === "TRIAL" ? (
+                          <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                            ({c.diasRestantesTrial}d)
+                          </span>
+                        ) : null}
+                        {c.diasAtraso > 0 ? (
+                          <span style={{ fontSize: "0.75rem", color: "var(--cds-support-error)", fontWeight: 600 }}>
+                            ({c.diasAtraso}d atraso)
+                          </span>
+                        ) : null}
+                        {c.cupomCodigo ? <Tag type="teal" size="sm">{c.cupomCodigo}</Tag> : null}
+                      </div>
+
+                      {/* Titular */}
+                      <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem" }}>
+                        <TitularContatoLinha
+                          nome={c.titularNome}
+                          telefone={c.telefone}
+                          email={c.titularEmail}
+                        />
+                      </div>
+
+                      {/* Valores + Ação */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.55rem",
+                          borderTop: "1px solid var(--cds-border-subtle)",
+                          paddingTop: "0.625rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.4rem", fontSize: "0.8rem" }}>
+                          <strong style={{ color: "var(--cds-text-primary)" }}>
+                            {fmtBRL(c.valorMensalidade)}/mês
+                          </strong>
+                          <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                            {vencimentoStr}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          kind="tertiary"
+                          renderIcon={Currency}
+                          onClick={() => void abrirFaturamentoModal(c)}
+                          style={{ width: "100%", maxWidth: "100%" }}
+                        >
+                          Acessar Faturamento do cliente
+                        </Button>
+                      </div>
+
+                      {isHovered && outrosCnpjs.length > 0 ? (
+                        <OutrosCnpjsPopover cardId={c.id} empresas={outrosCnpjs} />
+                      ) : null}
                     </div>
-                  </div>
-                ),
-                qtdCnpjs: (
-                  <Tag type="cyan" size="sm">
-                    {c.qtdCnpjs ?? 1} CNPJ(s)
-                  </Tag>
-                ),
-                plano: (
-                  <div>
-                    <Tag type="blue">{c.plano}</Tag>
-                    <div style={{ fontSize: "0.72rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
-                      {fmtBRL(c.valorMensalidade)}/mês
-                    </div>
-                  </div>
-                ),
-                status: (
-                  <div>
-                    <StatusFinanceiroTag status={c.billingStatus} />
-                    {c.billingStatus === "TRIAL" ? (
-                      <span style={{ marginLeft: "0.4rem", fontSize: "0.75rem" }}>({c.diasRestantesTrial}d)</span>
-                    ) : null}
-                    {c.diasAtraso > 0 ? (
-                      <span style={{ marginLeft: "0.4rem", fontSize: "0.75rem", color: "var(--cds-support-error)" }}>
-                        ({c.diasAtraso}d atraso)
-                      </span>
-                    ) : null}
-                  </div>
-                ),
-                vencimento: c.billingStatus === "TRIAL" ? fmtDia(c.trialFim) : fmtDia(c.vencimentoAssinatura),
-                cupom: c.cupomCodigo ? <Tag type="teal">{c.cupomCodigo}</Tag> : "—",
-                faturamento: (
-                  <Button
-                    size="sm"
-                    kind="tertiary"
-                    renderIcon={Currency}
-                    onClick={() => void abrirFaturamentoModal(c)}
-                  >
-                    Acessar Faturamento do cliente
-                  </Button>
-                ),
-              }))}
-            />
+                  );
+                })}
+              </div>
+            )}
+
+            {filtrados.length > 0 && (
+              <div style={{ marginTop: "1rem" }}>
+                <Pagination
+                  page={paginaSegura}
+                  pageSize={pageSize}
+                  pageSizes={[20, 40, 60, 100]}
+                  totalItems={filtrados.length}
+                  itemsPerPageText="Cards por página:"
+                  backwardText="Página anterior"
+                  forwardText="Próxima página"
+                  itemRangeText={(min, max, total) => `${min}–${max} de ${total} contas`}
+                  pageRangeText={(_current, total) => `de ${total} página(s)`}
+                  onChange={({ page: nextPage, pageSize: nextSize }: { page: number; pageSize: number }) => {
+                    if (nextSize !== pageSize) {
+                      setPageSize(nextSize);
+                      setPage(1);
+                    } else {
+                      setPage(nextPage);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </TabPanel>
 
           <TabPanel>
-            <div style={{ margin: "1rem 0" }}>
+            <div style={{ margin: "1rem 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
               <Button
                 renderIcon={Add}
                 onClick={() =>
@@ -540,45 +714,104 @@ export function FinanceiroScreen() {
               >
                 Novo cupom promocional
               </Button>
+              <span style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)" }}>
+                {cupons.length} cupom(ns) cadastrado(s)
+              </span>
             </div>
-            <AdminTable
-              titulo="Cupons cadastrados"
-              colunas={[
-                { key: "codigo", header: "Código" },
-                { key: "descricao", header: "Descrição" },
-                { key: "beneficios", header: "Benefício" },
-                { key: "usos", header: "Usos" },
-                { key: "status", header: "Status" },
-                { key: "acoes", header: "" },
-              ]}
-              linhas={cupons.map((cp) => ({
-                id: cp.id,
-                codigo: <Tag type="teal">{cp.codigo}</Tag>,
-                descricao: cp.descricao || "—",
-                beneficios: `${cp.descontoPercentual}% OFF • +${cp.diasExtrasTrial} dias trial`,
-                usos: `${cp.usosAtuais}${cp.maxUsos ? ` / ${cp.maxUsos}` : ""}`,
-                status: <Tag type={cp.ativo ? "green" : "gray"}>{cp.ativo ? "Ativo" : "Inativo"}</Tag>,
-                acoes: (
-                  <Button
-                    size="sm"
-                    kind="ghost"
-                    onClick={() =>
-                      setModalCupom({
-                        id: cp.id,
-                        codigo: cp.codigo,
-                        descricao: cp.descricao || "",
-                        descontoPercentual: String(cp.descontoPercentual),
-                        diasExtrasTrial: String(cp.diasExtrasTrial),
-                        maxUsos: cp.maxUsos ? String(cp.maxUsos) : "",
-                        ativo: cp.ativo,
-                      })
-                    }
+
+            {cuponsPaginados.length === 0 ? (
+              <Tile style={{ padding: "2rem", textAlign: "center" }}>
+                <span style={{ color: "var(--cds-text-secondary)" }}>
+                  Nenhum cupom promocional cadastrado.
+                </span>
+              </Tile>
+            ) : (
+              <div
+                data-testid="cupons-cards-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {cuponsPaginados.map((cp) => (
+                  <div
+                    key={cp.id}
+                    data-testid={`cupom-card-${cp.id}`}
+                    className="pncp-admin-cliente-card"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      padding: "1.125rem",
+                      backgroundColor: "var(--cds-layer-01)",
+                      border: "1px solid var(--cds-border-subtle)",
+                      borderRadius: "4px",
+                    }}
                   >
-                    Editar
-                  </Button>
-                ),
-              }))}
-            />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
+                      <Tag type="teal">{cp.codigo}</Tag>
+                      <Tag type={cp.ativo ? "green" : "gray"} size="sm">
+                        {cp.ativo ? "Ativo" : "Inativo"}
+                      </Tag>
+                    </div>
+                    <div style={{ fontSize: "0.85rem", color: "var(--cds-text-primary)" }}>
+                      {cp.descricao || "Sem descrição"}
+                    </div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.5rem" }}>
+                      <div>
+                        <strong>{cp.descontoPercentual}% OFF</strong> • +{cp.diasExtrasTrial} dias trial
+                      </div>
+                      <div style={{ marginTop: "0.2rem" }}>
+                        Usos: {cp.usosAtuais}
+                        {cp.maxUsos ? ` / ${cp.maxUsos}` : " (ilimitado)"}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      kind="ghost"
+                      renderIcon={Edit}
+                      onClick={() =>
+                        setModalCupom({
+                          id: cp.id,
+                          codigo: cp.codigo,
+                          descricao: cp.descricao || "",
+                          descontoPercentual: String(cp.descontoPercentual),
+                          diasExtrasTrial: String(cp.diasExtrasTrial),
+                          maxUsos: cp.maxUsos ? String(cp.maxUsos) : "",
+                          ativo: cp.ativo,
+                        })
+                      }
+                    >
+                      Editar cupom
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {cupons.length > 0 && (
+              <div style={{ marginTop: "1rem" }}>
+                <Pagination
+                  page={cupomPaginaSegura}
+                  pageSize={cupomPageSize}
+                  pageSizes={[20, 40, 60, 100]}
+                  totalItems={cupons.length}
+                  itemsPerPageText="Cards por página:"
+                  backwardText="Página anterior"
+                  forwardText="Próxima página"
+                  onChange={({ page: nextPage, pageSize: nextSize }: { page: number; pageSize: number }) => {
+                    if (nextSize !== cupomPageSize) {
+                      setCupomPageSize(nextSize);
+                      setCupomPage(1);
+                    } else {
+                      setCupomPage(nextPage);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </TabPanel>
         </TabPanels>
       </Tabs>

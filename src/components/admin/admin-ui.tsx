@@ -5,6 +5,8 @@ import {
   DataTable,
   InlineNotification,
   Pagination,
+  Select,
+  SelectItem,
   Table,
   TableBody,
   TableCell,
@@ -16,7 +18,8 @@ import {
   Tile,
   Tooltip,
 } from "@carbon/react";
-import { Information } from "@carbon/icons-react";
+import { ArrowsVertical, Information } from "@carbon/icons-react";
+import { maskCnpj, maskPhone } from "@/lib/masks";
 
 export const fmtBRL = (v: number | null | undefined): string =>
   (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -96,9 +99,181 @@ export function StatusFinanceiroTag({ status }: { status: string }) {
 }
 
 export function EngajamentoTag({ status }: { status?: string }) {
-  if (status === "ENGAJADO") return <Tag type="green">Engajado</Tag>;
+  if (status === "ENGAJADO") return <Tag type="green">Configurado</Tag>;
   if (status === "EM_CONFIGURACAO") return <Tag type="blue">Em configuração</Tag>;
   return <Tag type="magenta">Pendente de configuração</Tag>;
+}
+
+export interface SortOption {
+  value: string;
+  label: string;
+}
+
+export function AdminSortSelect({
+  id,
+  value,
+  options,
+  onChange,
+  testId,
+}: {
+  id: string;
+  value: string;
+  options: SortOption[];
+  onChange: (next: string) => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.45rem",
+        minWidth: "15.5rem",
+      }}
+    >
+      <ArrowsVertical
+        size={16}
+        aria-hidden="true"
+        style={{ color: "var(--cds-icon-secondary)", flexShrink: 0 }}
+      />
+      <div style={{ flex: 1 }}>
+        <Select
+          id={id}
+          data-testid={testId}
+          labelText="Ordenar lista"
+          hideLabel
+          size="md"
+          value={value}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange(e.target.value)}
+        >
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value} text={opt.label} />
+          ))}
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+export function TitularContatoLinha({
+  nome,
+  telefone,
+  email,
+}: {
+  nome?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+}) {
+  const nomeLimpo = (nome || "").trim();
+  const telDigits = (telefone || "").replace(/\D/g, "");
+  const telFormatado = telDigits.length >= 8 ? maskPhone(telDigits) : (telefone || "").trim();
+  const emailLimpo = (email || "").trim();
+
+  if (!nomeLimpo && !telFormatado && !emailLimpo) {
+    return (
+      <span style={{ fontSize: "0.8rem", color: "var(--cds-text-secondary)" }}>—</span>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        columnGap: "0.4rem",
+        rowGap: "0.4rem",
+        lineHeight: 1.5,
+        fontSize: "0.8rem",
+        color: "var(--cds-text-secondary)",
+      }}
+    >
+      {nomeLimpo ? (
+        <span style={{ fontWeight: 500, color: "var(--cds-text-primary)" }}>{nomeLimpo}</span>
+      ) : null}
+      {telFormatado ? (
+        <>
+          {nomeLimpo ? <span aria-hidden="true">•</span> : null}
+          <span style={{ whiteSpace: "nowrap" }}>{telFormatado}</span>
+        </>
+      ) : null}
+      {emailLimpo ? (
+        <>
+          {nomeLimpo || telFormatado ? <span aria-hidden="true">•</span> : null}
+          <span style={{ wordBreak: "break-word" }}>{emailLimpo}</span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function OutrosCnpjsPopover({
+  cardId,
+  empresas,
+}: {
+  cardId: string;
+  empresas: Array<{ id: string; cnpj: string; razaoSocial: string; nomeFantasia?: string | null }>;
+}) {
+  if (empresas.length === 0) return null;
+  return (
+    <div
+      data-testid={`card-outros-cnpjs-popover-${cardId}`}
+      role="tooltip"
+      style={{
+        position: "absolute",
+        left: "0.75rem",
+        right: "0.75rem",
+        top: "calc(100% + 0.35rem)",
+        zIndex: 50,
+        padding: "0.75rem 0.85rem",
+        borderRadius: "4px",
+        backgroundColor: "var(--cds-layer-02)",
+        border: "1px solid var(--cds-border-strong-01)",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.32)",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "0.7rem",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.04rem",
+          color: "var(--cds-text-secondary)",
+          marginBottom: "0.45rem",
+        }}
+      >
+        Outras empresas desta conta ({empresas.length})
+      </div>
+      <div style={{ display: "grid", gap: "0.4rem" }}>
+        {empresas.map((emp) => (
+          <div
+            key={emp.id}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.1rem",
+              paddingBottom: "0.3rem",
+              borderBottom: "1px solid var(--cds-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--cds-text-primary)" }}>
+              {emp.razaoSocial}
+            </span>
+            <span
+              style={{
+                fontSize: "0.74rem",
+                fontFamily: "monospace",
+                color: "var(--cds-text-secondary)",
+              }}
+            >
+              {maskCnpj(emp.cnpj)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function SiglaInfoTooltip({ texto }: { texto: string }) {
@@ -155,7 +330,11 @@ export function PageHeader({
           </p>
         ) : null}
       </div>
-      {acoes ? <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{acoes}</div> : null}
+      {acoes ? (
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+          {acoes}
+        </div>
+      ) : null}
     </div>
   );
 }

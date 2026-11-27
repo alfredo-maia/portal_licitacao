@@ -409,7 +409,7 @@ export function SuperAdminDashboard({
         <KpiTile
           rotulo="TESTE GRÁTIS"
           valor={fmtNum(metrics?.tenantsTrial)}
-          detalhe={`${fmtNum(metrics?.trialsEngajados)} engajados • ${fmtNum(metrics?.trialsAbandonados)} pendentes de configuração`}
+          detalhe={`${fmtNum(metrics?.trialsEngajados)} configurados • ${fmtNum(metrics?.trialsAbandonados)} pendentes de configuração`}
         />
         <KpiTile
           rotulo="INADIMPLENTES / CARÊNCIA"
@@ -502,7 +502,7 @@ export function SuperAdminDashboard({
                   {t.onboarding?.percentual ?? 0}% concluído
                 </span>
                 <Link href={`/admin/clientes/${t.id}`} style={{ fontSize: "0.8rem" }}>
-                  Abrir 360º
+                  Ver cliente
                 </Link>
               </div>
             ),

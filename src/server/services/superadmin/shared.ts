@@ -1157,8 +1157,18 @@ export async function listarTenantsSuperAdmin(filtros?: {
         ? new Date(ultimaAtividadeMs)
         : null;
 
+    const telefoneConsolidado =
+      baseItem.telefone ||
+      members.find((m) => m.telefone)?.telefone ||
+      members
+        .flatMap((m) => m.users)
+        .find((u) => u.role === "TITULAR" && u.telefone)?.telefone ||
+      members.flatMap((m) => m.users).find((u) => u.telefone)?.telefone ||
+      null;
+
     const item: SuperAdminTenantItem = {
       ...baseItem,
+      telefone: telefoneConsolidado,
       qtdCnpjs: members.length,
       cnpjsAdicionaisCount: Math.max(0, members.length - 1),
       cnpjsVinculados: members.map((m) => ({

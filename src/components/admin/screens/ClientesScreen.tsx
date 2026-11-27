@@ -11,29 +11,38 @@ import {
   Tag,
   Tile,
 } from "@carbon/react";
-import { ArrowRight, Renew } from "@carbon/icons-react";
+import { Renew } from "@carbon/icons-react";
 import type { SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
+  AdminSortSelect,
   EngajamentoTag,
+  OutrosCnpjsPopover,
   PageHeader,
   StatusFinanceiroTag,
+  TitularContatoLinha,
   UsoSaudeTag,
   adminFetch,
   fmtDia,
   fmtTempoRelativo,
+  type SortOption,
 } from "../admin-ui";
 
 const FILTROS = [
   { id: "TODOS", label: "Todos" },
-  { id: "ATIVO", label: "Pagantes" },
   { id: "TRIAL", label: "Teste grátis" },
   { id: "SEM_USO_OU_ESFRIANDO", label: "Sem uso / Esfriando" },
   { id: "EM_CONFIGURACAO", label: "Em configuração" },
   { id: "ABANDONO_TRIAL", label: "Pendente de configuração" },
-  { id: "ENGAJADO", label: "Engajados" },
-  { id: "GRACE_PERIOD", label: "Carência" },
-  { id: "BLOQUEADO", label: "Inadimplentes" },
-  { id: "CANCELADO", label: "Cancelados" },
+];
+
+const ORDENACOES: SortOption[] = [
+  { value: "cadastro_desc", label: "Cadastro: mais recente" },
+  { value: "cadastro_asc", label: "Cadastro: mais antigo" },
+  { value: "uso_desc", label: "Último acesso: mais recente" },
+  { value: "uso_asc", label: "Último acesso: menos recente" },
+  { value: "ia_desc", label: "Uso de IA: maior → menor" },
+  { value: "ia_asc", label: "Uso de IA: menor → maior" },
+  { value: "lic_desc", label: "Licitações: maior → menor" },
 ];
 
 const PLANO_TAG_TYPE: Record<string, "blue" | "cyan" | "teal"> = {
@@ -42,14 +51,22 @@ const PLANO_TAG_TYPE: Record<string, "blue" | "cyan" | "teal"> = {
   ENTERPRISE: "cyan",
 };
 
+function tsOuZero(v: string | Date | null | undefined): number {
+  if (!v) return 0;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string }) {
   const [busca, setBusca] = useState(buscaInicial);
   const [filtro, setFiltro] = useState("TODOS");
+  const [ordenacao, setOrdenacao] = useState("cadastro_desc");
   const [itens, setItens] = useState<SuperAdminTenantItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const carregar = useMemo(
     () => async () => {
@@ -78,26 +95,56 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
 
   useEffect(() => {
     setPage(1);
-  }, [filtro, busca]);
+  }, [filtro, busca, ordenacao]);
 
   useEffect(() => {
     const t = setTimeout(() => void carregar(), 250);
     return () => clearTimeout(t);
   }, [carregar]);
 
-  const totalItens = itens.length;
+  const itensOrdenados = useMemo(() => {
+    const lista = [...itens];
+    lista.sort((a, b) => {
+      switch (ordenacao) {
+        case "cadastro_asc":
+          return tsOuZero(a.criadoEm) - tsOuZero(b.criadoEm);
+        case "uso_desc":
+          return (
+            tsOuZero(b.uso?.ultimoAcessoEm ?? b.ultimaAtividadeEm) -
+            tsOuZero(a.uso?.ultimoAcessoEm ?? a.ultimaAtividadeEm)
+          );
+        case "uso_asc": {
+          const ta = tsOuZero(a.uso?.ultimoAcessoEm ?? a.ultimaAtividadeEm);
+          const tb = tsOuZero(b.uso?.ultimoAcessoEm ?? b.ultimaAtividadeEm);
+          return ta - tb;
+        }
+        case "ia_desc":
+          return (b.aiUsadasMes ?? 0) - (a.aiUsadasMes ?? 0);
+        case "ia_asc":
+          return (a.aiUsadasMes ?? 0) - (b.aiUsadasMes ?? 0);
+        case "lic_desc":
+          return (b.totalLicitacoesKanban ?? 0) - (a.totalLicitacoesKanban ?? 0);
+        case "cadastro_desc":
+        default:
+          return tsOuZero(b.criadoEm) - tsOuZero(a.criadoEm);
+      }
+    });
+    return lista;
+  }, [itens, ordenacao]);
+
+  const totalItens = itensOrdenados.length;
   const totalPages = Math.max(1, Math.ceil(totalItens / pageSize));
   const paginaSegura = Math.min(page, totalPages);
   const itensPaginados = useMemo(() => {
     const inicio = (paginaSegura - 1) * pageSize;
-    return itens.slice(inicio, inicio + pageSize);
-  }, [itens, paginaSegura, pageSize]);
+    return itensOrdenados.slice(inicio, inicio + pageSize);
+  }, [itensOrdenados, paginaSegura, pageSize]);
 
   return (
     <div>
       <PageHeader
-        titulo="Clientes 360º"
-        descricao="Busque por e-mail, nome ou CNPJ. Clique em um cliente para ver conta, CNPJs, equipe, licitações, cofre e recursos."
+        titulo="Clientes"
+        descricao="Busque por e-mail, nome ou CNPJ. Clique em um cliente para ver conta, CNPJs, equipe, licitações e uso."
         acoes={
           <Button
             kind="tertiary"
@@ -114,15 +161,15 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
       <div
         style={{
           display: "flex",
-          gap: "1rem",
+          gap: "0.75rem",
           flexWrap: "wrap",
           marginBottom: "1rem",
           alignItems: "center",
         }}
       >
-        <div style={{ minWidth: "22rem", flex: 1 }}>
+        <div style={{ minWidth: "20rem", flex: 1 }}>
           <Search
-            size="lg"
+            size="md"
             labelText="Buscar cliente"
             placeholder="E-mail, nome, razão social ou CNPJ"
             value={busca}
@@ -132,6 +179,13 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
             onClear={() => setBusca("")}
           />
         </div>
+        <AdminSortSelect
+          id="clientes-sort"
+          testId="clientes-sort-select"
+          value={ordenacao}
+          options={ORDENACOES}
+          onChange={setOrdenacao}
+        />
         <div style={{ maxWidth: "100%", overflowX: "auto" }}>
           <ContentSwitcher
             size="md"
@@ -189,7 +243,7 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
           data-testid="clientes-cards-grid"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
             gap: "1rem",
           }}
         >
@@ -205,6 +259,10 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
               : t.nomeFantasia || t.razaoSocial;
             const cnpjExibido = sub ? sub.cnpj : t.cnpj;
             const planoKey = (t.plano || "PRO").toUpperCase();
+            const outrosCnpjs = (t.cnpjsVinculados || []).filter(
+              (emp) => emp.id !== alvo360Id && emp.cnpj !== cnpjExibido,
+            );
+            const isHovered = hoveredId === t.id;
 
             return (
               <Link
@@ -212,7 +270,13 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                 href={`/admin/clientes/${alvo360Id}`}
                 data-testid={`cliente-card-${t.id}`}
                 className="pncp-admin-cliente-card"
+                onMouseEnter={() => setHoveredId(t.id)}
+                onMouseLeave={() =>
+                  setHoveredId((prev) => (prev === t.id ? null : prev))
+                }
                 style={{
+                  position: "relative",
+                  zIndex: isHovered ? 25 : 1,
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "space-between",
@@ -281,7 +345,7 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                   ) : null}
                 </div>
 
-                {/* Tags: Plano + Status + Termômetro */}
+                {/* Tags: Plano + Status + Configuração */}
                 <div
                   style={{
                     display: "flex",
@@ -300,42 +364,20 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                     </Tag>
                   ) : null}
                   <EngajamentoTag status={t.onboarding?.statusEngajamento} />
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      color: "var(--cds-text-secondary)",
-                    }}
-                  >
-                    {t.onboarding?.score ?? 0}/7
-                  </span>
                 </div>
 
-                {/* Titular */}
+                {/* Titular: Nome • Telefone • E-mail */}
                 <div
                   style={{
-                    fontSize: "0.8125rem",
                     borderTop: "1px solid var(--cds-border-subtle)",
                     paddingTop: "0.625rem",
                   }}
                 >
-                  <div
-                    style={{
-                      fontWeight: 500,
-                      color: "var(--cds-text-primary)",
-                    }}
-                  >
-                    {t.titularNome || "—"}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--cds-text-secondary)",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {t.titularEmail || "—"}
-                  </div>
+                  <TitularContatoLinha
+                    nome={t.titularNome}
+                    telefone={t.telefone}
+                    email={t.titularEmail}
+                  />
                 </div>
 
                 {/* Uso + Rodapé */}
@@ -359,8 +401,8 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                     }}
                   >
                     <span>
-                      {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre}{" "}
-                      docs • {t.totalUsuarios} usuário(s) •
+                      {t.totalLicitacoesKanban} lic. • {t.totalUsuarios}{" "}
+                      usuário(s) •
                     </span>
                     <UsoSaudeTag
                       status={t.uso?.status}
@@ -368,7 +410,12 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                       size="sm"
                     />
                     {t.uso && t.uso.diasAtivos7d > 0 ? (
-                      <span style={{ fontSize: "0.72rem", color: "var(--cds-text-helper)" }}>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          color: "var(--cds-text-helper)",
+                        }}
+                      >
                         ({t.uso.diasAtivos7d}d/7d)
                       </span>
                     ) : null}
@@ -376,31 +423,20 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                   </div>
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      flexWrap: "wrap",
                       fontSize: "0.75rem",
+                      color: "var(--cds-text-helper)",
                     }}
                   >
-                    <span style={{ color: "var(--cds-text-helper)" }}>
-                      Cadastro: {fmtDia(t.criadoEm)} • Último acesso:{" "}
-                      {fmtTempoRelativo(t.uso?.ultimoAcessoEm ?? t.ultimaAtividadeEm)}
-                    </span>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        fontWeight: 600,
-                        color: "var(--cds-link-primary, #4589ff)",
-                      }}
-                    >
-                      Abrir 360º <ArrowRight size={14} />
-                    </span>
+                    Cadastro: {fmtDia(t.criadoEm)} • Último acesso:{" "}
+                    {fmtTempoRelativo(
+                      t.uso?.ultimoAcessoEm ?? t.ultimaAtividadeEm,
+                    )}
                   </div>
                 </div>
+
+                {isHovered && outrosCnpjs.length > 0 ? (
+                  <OutrosCnpjsPopover cardId={t.id} empresas={outrosCnpjs} />
+                ) : null}
               </Link>
             );
           })}
@@ -417,7 +453,9 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
             itemsPerPageText="Cards por página:"
             backwardText="Página anterior"
             forwardText="Próxima página"
-            itemRangeText={(min, max, total) => `${min}–${max} de ${total} clientes`}
+            itemRangeText={(min, max, total) =>
+              `${min}–${max} de ${total} clientes`
+            }
             pageRangeText={(_current, total) => `de ${total} página(s)`}
             onChange={({
               page: nextPage,

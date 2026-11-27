@@ -906,7 +906,7 @@ describe("Issue #49 — Portal ADM Completo (Deus ex Machina)", () => {
         </AdminShell>,
       );
       expect(screen.getByText("Dashboard Executivo")).toBeInTheDocument();
-      expect(screen.getByText("Clientes 360º")).toBeInTheDocument();
+      expect(screen.getByText("Clientes")).toBeInTheDocument();
       expect(screen.getByText("Suporte (Lista & Kanban)")).toBeInTheDocument();
       expect(screen.getByText("Licitações & PNCP")).toBeInTheDocument();
       expect(screen.queryByText("Financeiro & Planos")).not.toBeInTheDocument();

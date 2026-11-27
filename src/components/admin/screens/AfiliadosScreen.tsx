@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Checkbox,
   Modal,
+  Pagination,
+  Search,
   Select,
   SelectItem,
   Tab,
@@ -14,6 +16,7 @@ import {
   Tabs,
   Tag,
   TextInput,
+  Tile,
 } from "@carbon/react";
 import {
   Add,
@@ -30,18 +33,34 @@ import { maskCnpj, maskCpf, maskPhone, parseMoedaBRL, sanitizeEmail } from "@/li
 import { ASAAS_PLAN_PRICES_BRL } from "@/server/schemas/asaas.schema";
 import type { SuperAdminTenantItem } from "@/server/schemas/superadmin.schema";
 import {
-  AdminTable,
+  AdminSortSelect,
   FeedbackBar,
   KpiGrid,
   KpiTile,
   PageHeader,
+  TitularContatoLinha,
   adminFetch,
   fmtBRL,
   fmtDia,
   fmtNum,
   useAdminData,
   type Feedback,
+  type SortOption,
 } from "../admin-ui";
+
+const ORDENACOES_AFILIADOS: SortOption[] = [
+  { value: "indicados_desc", label: "Indicados: maior → menor" },
+  { value: "pendente_desc", label: "Comissão pendente: maior → menor" },
+  { value: "pago_desc", label: "Comissão paga: maior → menor" },
+  { value: "nome_asc", label: "Nome: A → Z" },
+];
+
+const ORDENACOES_COMISSOES: SortOption[] = [
+  { value: "competencia_desc", label: "Competência: mais recente" },
+  { value: "valor_desc", label: "Comissão: maior → menor" },
+  { value: "valor_asc", label: "Comissão: menor → maior" },
+  { value: "pendente_primeiro", label: "Status: pendentes primeiro" },
+];
 
 interface IndicadoDetalhe {
   id: string;
@@ -139,16 +158,66 @@ export function AfiliadosScreen() {
   } | null>(null);
   const [dragOverComprovante, setDragOverComprovante] = useState(false);
 
-  // Filtros de data na aba Repasses & Comissões
+  // Filtros e ordenação
+  const [buscaAfiliado, setBuscaAfiliado] = useState("");
+  const [ordenacaoAff, setOrdenacaoAff] = useState("indicados_desc");
+  const [affPage, setAffPage] = useState(1);
+  const [affPageSize, setAffPageSize] = useState(20);
+
   const [filtroCompetencia, setFiltroCompetencia] = useState("");
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
   const [filtroDataFim, setFiltroDataFim] = useState("");
+  const [ordenacaoCom, setOrdenacaoCom] = useState("competencia_desc");
+  const [comPage, setComPage] = useState(1);
+  const [comPageSize, setComPageSize] = useState(20);
 
   // Modal Relatório da Comissão
   const [relatorioComissao, setRelatorioComissao] = useState<ComissaoItem | null>(null);
 
   const afiliados = data?.afiliados || [];
   const comissoes = data?.comissoes || [];
+
+  useEffect(() => {
+    setAffPage(1);
+  }, [buscaAfiliado, ordenacaoAff]);
+
+  useEffect(() => {
+    setComPage(1);
+  }, [filtroCompetencia, filtroDataInicio, filtroDataFim, ordenacaoCom]);
+
+  const afiliadosFiltrados = useMemo(() => {
+    const q = buscaAfiliado.trim().toLowerCase();
+    const base = !q
+      ? afiliados
+      : afiliados.filter(
+          (a) =>
+            a.nome.toLowerCase().includes(q) ||
+            a.email.toLowerCase().includes(q) ||
+            a.codigo.toLowerCase().includes(q) ||
+            (a.chavePix || "").toLowerCase().includes(q) ||
+            (a.telefone || "").toLowerCase().includes(q),
+        );
+    return [...base].sort((a, b) => {
+      switch (ordenacaoAff) {
+        case "pendente_desc":
+          return b.comissaoPendenteBrl - a.comissaoPendenteBrl;
+        case "pago_desc":
+          return b.comissaoPagaBrl - a.comissaoPagaBrl;
+        case "nome_asc":
+          return a.nome.localeCompare(b.nome, "pt-BR");
+        case "indicados_desc":
+        default:
+          return b.totalIndicados - a.totalIndicados;
+      }
+    });
+  }, [afiliados, buscaAfiliado, ordenacaoAff]);
+
+  const affTotalPages = Math.max(1, Math.ceil(afiliadosFiltrados.length / affPageSize));
+  const affPaginaSegura = Math.min(affPage, affTotalPages);
+  const afiliadosPaginados = useMemo(() => {
+    const ini = (affPaginaSegura - 1) * affPageSize;
+    return afiliadosFiltrados.slice(ini, ini + affPageSize);
+  }, [afiliadosFiltrados, affPaginaSegura, affPageSize]);
 
   const totais = useMemo(() => {
     const ativos = afiliados.filter((a) => a.ativo).length;
@@ -192,9 +261,9 @@ export function AfiliadosScreen() {
     };
   }, [modalPagamento, mapaAfiliados, afiliados]);
 
-  // Filtro de comissões por período/competência na aba Repasses & Comissões
+  // Filtro e ordenação de comissões por período/competência na aba Repasses & Comissões
   const comissoesFiltradas = useMemo(() => {
-    return comissoes.filter((c) => {
+    const base = comissoes.filter((c) => {
       if (filtroCompetencia && c.competenciaMes !== filtroCompetencia) return false;
       const dataRefStr = c.pagoEm || c.criadoEm || (c.competenciaMes ? `${c.competenciaMes}-01` : "");
       if ((filtroDataInicio || filtroDataFim) && dataRefStr) {
@@ -210,7 +279,31 @@ export function AfiliadosScreen() {
       }
       return true;
     });
-  }, [comissoes, filtroCompetencia, filtroDataInicio, filtroDataFim]);
+    return [...base].sort((a, b) => {
+      switch (ordenacaoCom) {
+        case "valor_desc":
+          return b.valorComissao - a.valorComissao;
+        case "valor_asc":
+          return a.valorComissao - b.valorComissao;
+        case "pendente_primeiro": {
+          const sa = a.status === "PENDENTE" ? 0 : 1;
+          const sb = b.status === "PENDENTE" ? 0 : 1;
+          if (sa !== sb) return sa - sb;
+          return b.competenciaMes.localeCompare(a.competenciaMes);
+        }
+        case "competencia_desc":
+        default:
+          return b.competenciaMes.localeCompare(a.competenciaMes);
+      }
+    });
+  }, [comissoes, filtroCompetencia, filtroDataInicio, filtroDataFim, ordenacaoCom]);
+
+  const comTotalPages = Math.max(1, Math.ceil(comissoesFiltradas.length / comPageSize));
+  const comPaginaSegura = Math.min(comPage, comTotalPages);
+  const comissoesPaginadas = useMemo(() => {
+    const ini = (comPaginaSegura - 1) * comPageSize;
+    return comissoesFiltradas.slice(ini, ini + comPageSize);
+  }, [comissoesFiltradas, comPaginaSegura, comPageSize]);
 
   const processarArquivoComprovante = (file: File | undefined | null) => {
     if (!file || !modalPagamento) return;
@@ -407,102 +500,189 @@ export function AfiliadosScreen() {
         </TabList>
         <TabPanels>
           <TabPanel>
-            <AdminTable
-              titulo="Parceiros afiliados"
-              colunas={[
-                { key: "nome", header: "Afiliado" },
-                { key: "codigo", header: "Código & Link" },
-                { key: "regra", header: "Comissão" },
-                { key: "pix", header: "Chave PIX" },
-                { key: "indicados", header: "Indicados" },
-                { key: "valores", header: "Pendente / Pago" },
-                { key: "acoes", header: "Ações" },
-              ]}
-              vazio={loading ? "Carregando..." : "Nenhum afiliado cadastrado."}
-              linhas={afiliados.map((a) => ({
-                id: a.id,
-                nome: (
-                  <div>
-                    <strong>{a.nome}</strong>
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                      {a.email} {a.telefone ? `• ${a.telefone}` : ""}
-                    </div>
-                  </div>
-                ),
-                codigo: (
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <Tag type="purple">{a.codigo}</Tag>
-                    <Button size="sm" kind="ghost" hasIconOnly iconDescription="Copiar link" renderIcon={Copy} onClick={() => void copiarLink(a.linkIndicacao)} />
-                  </div>
-                ),
-                regra: (
-                  <div>
-                    <strong>{a.percentualComissao}%</strong> ({a.tipoComissao === "RECORRENTE" ? "Recorrente" : "1ª mensalidade"})
-                    <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                      +{a.diasExtrasTrial}d trial • {a.descontoIndicadosPct}% desc. indicado
-                    </div>
-                  </div>
-                ),
-                pix: a.chavePix || "—",
-                indicados: (
-                  <div>
-                    <strong>{a.totalIndicados}</strong> cliente(s)
-                    {a.indicados.slice(0, 2).map((ind) => (
-                      <div key={ind.id} style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
-                        {ind.nome}
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", margin: "1rem 0", alignItems: "center" }}>
+              <div style={{ minWidth: "20rem", flex: 1 }}>
+                <Search
+                  size="md"
+                  labelText="Buscar afiliado"
+                  placeholder="Nome, código, e-mail, telefone ou chave PIX"
+                  value={buscaAfiliado}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBuscaAfiliado(e.target.value)}
+                  onClear={() => setBuscaAfiliado("")}
+                />
+              </div>
+              <AdminSortSelect
+                id="afiliados-sort"
+                testId="afiliados-sort-select"
+                value={ordenacaoAff}
+                options={ORDENACOES_AFILIADOS}
+                onChange={setOrdenacaoAff}
+              />
+            </div>
+
+            <div style={{ marginBottom: "0.75rem" }}>
+              <h2 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0, color: "var(--cds-text-primary)" }}>
+                {afiliadosFiltrados.length} afiliado(s)
+              </h2>
+            </div>
+
+            {afiliadosPaginados.length === 0 ? (
+              <Tile style={{ padding: "2rem", textAlign: "center" }}>
+                <span style={{ color: "var(--cds-text-secondary)" }}>
+                  {loading ? "Carregando..." : "Nenhum afiliado cadastrado."}
+                </span>
+              </Tile>
+            ) : (
+              <div
+                data-testid="afiliados-cards-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {afiliadosPaginados.map((a) => (
+                  <div
+                    key={a.id}
+                    data-testid={`afiliado-card-${a.id}`}
+                    className="pncp-admin-cliente-card"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "0.75rem",
+                      padding: "1.125rem",
+                      backgroundColor: "var(--cds-layer-01)",
+                      border: "1px solid var(--cds-border-subtle)",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {/* Topo: Nome + Status + Código */}
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+                        <strong style={{ fontSize: "0.95rem", color: "var(--cds-text-primary)" }}>{a.nome}</strong>
+                        <Tag type={a.ativo ? "green" : "gray"} size="sm" style={{ margin: 0, flexShrink: 0 }}>
+                          {a.ativo ? "Ativo" : "Inativo"}
+                        </Tag>
                       </div>
-                    ))}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginTop: "0.35rem", flexWrap: "wrap" }}>
+                        <Tag type="purple" size="sm" style={{ margin: 0 }}>
+                          {a.codigo}
+                        </Tag>
+                        <Button
+                          size="sm"
+                          kind="ghost"
+                          hasIconOnly
+                          iconDescription="Copiar link"
+                          renderIcon={Copy}
+                          onClick={() => void copiarLink(a.linkIndicacao)}
+                        />
+                        <span style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                          <strong>{a.percentualComissao}%</strong> ({a.tipoComissao === "RECORRENTE" ? "Recorrente" : "1ª mensalidade"})
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Contato & PIX */}
+                    <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem", display: "grid", gap: "0.35rem" }}>
+                      <TitularContatoLinha
+                        nome={a.documento || undefined}
+                        telefone={a.telefone}
+                        email={a.email}
+                      />
+                      <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                        PIX: <span style={{ fontFamily: "monospace", color: "var(--cds-text-primary)" }}>{a.chavePix || "—"}</span>
+                      </div>
+                    </div>
+
+                    {/* Benefícios, Indicados e Saldos */}
+                    <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem", display: "grid", gap: "0.45rem", fontSize: "0.78rem" }}>
+                      <div style={{ color: "var(--cds-text-secondary)" }}>
+                        Indicados: <strong style={{ color: "var(--cds-text-primary)" }}>{a.totalIndicados} cliente(s)</strong>
+                        {" • "}+{a.diasExtrasTrial}d trial • {a.descontoIndicadosPct}% desc.
+                      </div>
+                      {a.indicados.length > 0 ? (
+                        <div style={{ fontSize: "0.74rem", color: "var(--cds-text-helper)" }}>
+                          {a.indicados.slice(0, 2).map((ind) => ind.nome).join(", ")}
+                          {a.indicados.length > 2 ? ` +${a.indicados.length - 2}` : ""}
+                        </div>
+                      ) : null}
+                      <div style={{ display: "flex", gap: "0.85rem", flexWrap: "wrap", fontWeight: 600 }}>
+                        <span style={{ color: "var(--cds-support-warning)" }}>
+                          Pendente: {fmtBRL(a.comissaoPendenteBrl)}
+                        </span>
+                        <span style={{ color: "var(--cds-support-success)" }}>
+                          Pago: {fmtBRL(a.comissaoPagaBrl)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Ações */}
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem" }}>
+                      <Button
+                        size="sm"
+                        kind="tertiary"
+                        renderIcon={UserFollow}
+                        onClick={() =>
+                          setVincular({
+                            affiliateId: a.id,
+                            affiliateNome: a.nome,
+                            tenantId: tenants?.[0]?.id || "",
+                          })
+                        }
+                      >
+                        Vincular cliente
+                      </Button>
+                      <Button
+                        size="sm"
+                        kind="ghost"
+                        renderIcon={Edit}
+                        onClick={() =>
+                          setFormAff({
+                            id: a.id,
+                            nome: a.nome,
+                            documento: a.documento || "",
+                            email: a.email,
+                            telefone: a.telefone || "",
+                            chavePix: a.chavePix || "",
+                            codigo: a.codigo,
+                            percentualComissao: String(a.percentualComissao),
+                            tipoComissao: a.tipoComissao === "PRIMEIRA_MENSALIDADE" ? "PRIMEIRA_MENSALIDADE" : "RECORRENTE",
+                            descontoIndicadosPct: String(a.descontoIndicadosPct),
+                            diasExtrasTrial: String(a.diasExtrasTrial),
+                            ativo: a.ativo,
+                          })
+                        }
+                      >
+                        Editar
+                      </Button>
+                    </div>
                   </div>
-                ),
-                valores: (
-                  <div>
-                    <div style={{ color: "var(--cds-support-warning)" }}>Pend: {fmtBRL(a.comissaoPendenteBrl)}</div>
-                    <div style={{ color: "var(--cds-support-success)" }}>Pago: {fmtBRL(a.comissaoPagaBrl)}</div>
-                  </div>
-                ),
-                acoes: (
-                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-                    <Button
-                      size="sm"
-                      kind="tertiary"
-                      renderIcon={UserFollow}
-                      onClick={() =>
-                        setVincular({
-                          affiliateId: a.id,
-                          affiliateNome: a.nome,
-                          tenantId: tenants?.[0]?.id || "",
-                        })
-                      }
-                    >
-                      Vincular cliente
-                    </Button>
-                    <Button
-                      size="sm"
-                      kind="ghost"
-                      renderIcon={Edit}
-                      onClick={() =>
-                        setFormAff({
-                          id: a.id,
-                          nome: a.nome,
-                          documento: a.documento || "",
-                          email: a.email,
-                          telefone: a.telefone || "",
-                          chavePix: a.chavePix || "",
-                          codigo: a.codigo,
-                          percentualComissao: String(a.percentualComissao),
-                          tipoComissao: a.tipoComissao === "PRIMEIRA_MENSALIDADE" ? "PRIMEIRA_MENSALIDADE" : "RECORRENTE",
-                          descontoIndicadosPct: String(a.descontoIndicadosPct),
-                          diasExtrasTrial: String(a.diasExtrasTrial),
-                          ativo: a.ativo,
-                        })
-                      }
-                    >
-                      Editar
-                    </Button>
-                  </div>
-                ),
-              }))}
-            />
+                ))}
+              </div>
+            )}
+
+            {afiliadosFiltrados.length > 0 && (
+              <div style={{ marginTop: "1rem" }}>
+                <Pagination
+                  page={affPaginaSegura}
+                  pageSize={affPageSize}
+                  pageSizes={[20, 40, 60, 100]}
+                  totalItems={afiliadosFiltrados.length}
+                  itemsPerPageText="Cards por página:"
+                  backwardText="Página anterior"
+                  forwardText="Próxima página"
+                  onChange={({ page: nextPage, pageSize: nextSize }: { page: number; pageSize: number }) => {
+                    if (nextSize !== affPageSize) {
+                      setAffPageSize(nextSize);
+                      setAffPage(1);
+                    } else {
+                      setAffPage(nextPage);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </TabPanel>
 
           <TabPanel>
@@ -536,6 +716,13 @@ export function AfiliadosScreen() {
                 value={filtroDataFim}
                 onChange={(e) => setFiltroDataFim(e.target.value)}
               />
+              <AdminSortSelect
+                id="comissoes-sort"
+                testId="comissoes-sort-select"
+                value={ordenacaoCom}
+                options={ORDENACOES_COMISSOES}
+                onChange={setOrdenacaoCom}
+              />
               {(filtroCompetencia || filtroDataInicio || filtroDataFim) && (
                 <Button
                   size="sm"
@@ -551,62 +738,124 @@ export function AfiliadosScreen() {
               )}
             </div>
 
-            <AdminTable
-              titulo="Comissões geradas pelas assinaturas"
-              colunas={[
-                { key: "competencia", header: "Mês" },
-                { key: "afiliado", header: "Afiliado" },
-                { key: "qtdIndicados", header: "Qtd. Clientes indicados" },
-                { key: "base", header: "Base × %" },
-                { key: "comissao", header: "Comissão" },
-                { key: "status", header: "Status" },
-                { key: "relatorio", header: "Relatório" },
-                { key: "acoes", header: "Ações" },
-              ]}
-              vazio="Nenhuma comissão encontrada para os filtros selecionados."
-              linhas={comissoesFiltradas.map((c) => {
-                const qtd =
-                  c.quantidadeIndicados ??
-                  (c.clientesRelatorio && c.clientesRelatorio.length > 0 ? c.clientesRelatorio.length : 1);
-                return {
-                  id: c.id,
-                  competencia: c.competenciaMes,
-                  afiliado: nomeAfiliado.get(c.affiliateId) || c.affiliateId,
-                  qtdIndicados: (
-                    <div>
-                      <strong>{qtd}</strong> cliente{qtd > 1 ? "s" : ""}
+            <div style={{ marginBottom: "0.75rem" }}>
+              <h2 style={{ fontSize: "1.05rem", fontWeight: 600, margin: 0, color: "var(--cds-text-primary)" }}>
+                {comissoesFiltradas.length} repasse(s)
+              </h2>
+            </div>
+
+            {comissoesPaginadas.length === 0 ? (
+              <Tile style={{ padding: "2rem", textAlign: "center" }}>
+                <span style={{ color: "var(--cds-text-secondary)" }}>
+                  Nenhuma comissão encontrada para os filtros selecionados.
+                </span>
+              </Tile>
+            ) : (
+              <div
+                data-testid="comissoes-cards-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {comissoesPaginadas.map((c) => {
+                  const qtd =
+                    c.quantidadeIndicados ??
+                    (c.clientesRelatorio && c.clientesRelatorio.length > 0 ? c.clientesRelatorio.length : 1);
+                  return (
+                    <div
+                      key={c.id}
+                      data-testid={`comissao-card-${c.id}`}
+                      className="pncp-admin-cliente-card"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: "0.75rem",
+                        padding: "1.125rem",
+                        backgroundColor: "var(--cds-layer-01)",
+                        border: "1px solid var(--cds-border-subtle)",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+                        <div>
+                          <strong style={{ fontSize: "0.95rem", color: "var(--cds-text-primary)" }}>
+                            {nomeAfiliado.get(c.affiliateId) || c.affiliateId}
+                          </strong>
+                          <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)", marginTop: "0.15rem" }}>
+                            Competência: {c.competenciaMes} • {qtd} cliente{qtd > 1 ? "s" : ""} indicado{qtd > 1 ? "s" : ""}
+                          </div>
+                        </div>
+                        <Tag type={c.status === "PAGO" ? "green" : c.status === "PENDENTE" ? "warm-gray" : "gray"} size="sm" style={{ margin: 0 }}>
+                          {c.status}
+                        </Tag>
+                      </div>
+
+                      <div style={{ borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem", display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.78rem", color: "var(--cds-text-secondary)" }}>
+                          Base: {fmtBRL(c.valorBasePlano)} × {c.percentualAplicado}%
+                        </span>
+                        <strong style={{ fontSize: "1.05rem", color: c.status === "PAGO" ? "var(--cds-support-success)" : "var(--cds-text-primary)" }}>
+                          {fmtBRL(c.valorComissao)}
+                        </strong>
+                      </div>
+
+                      {c.pagoEm ? (
+                        <div style={{ fontSize: "0.74rem", color: "var(--cds-text-helper)" }}>
+                          Pago em {fmtDia(c.pagoEm)}
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", borderTop: "1px solid var(--cds-border-subtle)", paddingTop: "0.625rem" }}>
+                        <Button
+                          size="sm"
+                          kind="ghost"
+                          data-testid={`btn-relatorio-comissao-${c.id}`}
+                          renderIcon={Document}
+                          onClick={() => setRelatorioComissao(c)}
+                        >
+                          Ver relatório
+                        </Button>
+                        {c.status === "PENDENTE" ? (
+                          <Button
+                            size="sm"
+                            kind="primary"
+                            renderIcon={CheckmarkOutline}
+                            onClick={() => void marcarPago(c.id)}
+                          >
+                            Marcar PIX pago
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
-                  ),
-                  base: `${fmtBRL(c.valorBasePlano)} × ${c.percentualAplicado}%`,
-                  comissao: <strong>{fmtBRL(c.valorComissao)}</strong>,
-                  status: (
-                    <div>
-                      <Tag type={c.status === "PAGO" ? "green" : c.status === "PENDENTE" ? "warm-gray" : "gray"}>
-                        {c.status}
-                      </Tag>
-                      {c.pagoEm ? <div style={{ fontSize: "0.75rem" }}>{fmtDia(c.pagoEm)}</div> : null}
-                    </div>
-                  ),
-                  relatorio: (
-                    <Button
-                      size="sm"
-                      kind="ghost"
-                      hasIconOnly
-                      iconDescription="Abrir relatório do afiliado"
-                      data-testid={`btn-relatorio-comissao-${c.id}`}
-                      renderIcon={Document}
-                      onClick={() => setRelatorioComissao(c)}
-                    />
-                  ),
-                  acoes:
-                    c.status === "PENDENTE" ? (
-                      <Button size="sm" kind="primary" renderIcon={CheckmarkOutline} onClick={() => void marcarPago(c.id)}>
-                        Marcar PIX pago
-                      </Button>
-                    ) : null,
-                };
-              })}
-            />
+                  );
+                })}
+              </div>
+            )}
+
+            {comissoesFiltradas.length > 0 && (
+              <div style={{ marginTop: "1rem" }}>
+                <Pagination
+                  page={comPaginaSegura}
+                  pageSize={comPageSize}
+                  pageSizes={[20, 40, 60, 100]}
+                  totalItems={comissoesFiltradas.length}
+                  itemsPerPageText="Cards por página:"
+                  backwardText="Página anterior"
+                  forwardText="Próxima página"
+                  onChange={({ page: nextPage, pageSize: nextSize }: { page: number; pageSize: number }) => {
+                    if (nextSize !== comPageSize) {
+                      setComPageSize(nextSize);
+                      setComPage(1);
+                    } else {
+                      setComPage(nextPage);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </TabPanel>
         </TabPanels>
       </Tabs>
