@@ -601,13 +601,11 @@ describe("Issue #52 — Ajustes 11/11/2026 (ADM & Cliente)", () => {
     expect(within(cardAdm).getByText(/Comunicado ADM/i)).toBeTruthy();
   });
 
-  it("Item 1: deve disponibilizar áreas de Drag-and-Drop em campos de upload de Logo, Assinatura e CSV em /configuracoes", () => {
+  it("Item 1: deve disponibilizar áreas de Drag-and-Drop em campos de upload de Logo e Folha Timbrada em /configuracoes", () => {
     render(<ConfiguracoesPage />);
     fireEvent.click(screen.getByRole("tab", { name: /Dados da Empresa/i }));
     expect(screen.getByTestId("dropzone-logo-empresa")).toBeTruthy();
     expect(screen.getByTestId("dropzone-timbrado-empresa")).toBeTruthy();
-    expect(screen.getByTestId("dropzone-assinatura-digital")).toBeTruthy();
-    expect(screen.getByTestId("dropzone-csv-precos")).toBeTruthy();
   });
 
   it("Item 3: deve aplicar teto máximo de paginação (<= 100 rows) em AdminTable", () => {

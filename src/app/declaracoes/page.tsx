@@ -736,7 +736,10 @@ export default function DeclaracoesPage() {
                     ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
                     : undefined
               }
-              style={{ display: "inline-flex" }}
+              style={{
+                display: "inline-flex",
+                cursor: !canUseTimbrado || !temTimbradoOuLogo ? "not-allowed" : undefined,
+              }}
             >
               <Button
                 kind="primary"
@@ -746,6 +749,7 @@ export default function DeclaracoesPage() {
                 disabled={!canUseTimbrado || !temTimbradoOuLogo || gerandoPdf}
                 id="btn-imprimir-timbrado"
                 data-testid="btn-imprimir-timbrado"
+                style={!canUseTimbrado || !temTimbradoOuLogo ? { pointerEvents: "none" } : undefined}
               >
                 {gerandoPdf ? <InlineLoading description="Gerando..." /> : "Imprimir PDF Timbrado"}
               </Button>

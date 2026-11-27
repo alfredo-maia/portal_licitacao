@@ -9,7 +9,11 @@ import {
 } from "@/server/auth/client-guard";
 import { listHistoricoLicitacoesPaginado } from "@/server/services/historico-licitacoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import { isPlanoBasicoRestrito } from "@/lib/subscription-guard";
+import {
+  obterStatusAssinaturaCliente,
+  verificarBloqueioAssinaturaNaRota,
+} from "@/server/services/subscription-status.service";
 
 /**
  * `GET /api/historico-licitacoes` (Issue #59):
@@ -40,7 +44,18 @@ export async function GET(request: Request) {
     const preferredTenant = cookieTenant || user.activeTenantId || undefined;
     const tenantId = await resolveUserActiveTenantId(user.id, preferredTenant);
 
-    const result = await listHistoricoLicitacoesPaginado(params, tenantId);
+    let restringirAbertasApenasOutros = false;
+    try {
+      const sub = await obterStatusAssinaturaCliente({ user, cookieTenant });
+      restringirAbertasApenasOutros =
+        sub.hasTenantRecord && isPlanoBasicoRestrito(sub.evaluation);
+    } catch {
+      // Fail-open em testes sem banco
+    }
+
+    const result = await listHistoricoLicitacoesPaginado(params, tenantId, {
+      restringirAbertasApenasOutros,
+    });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {

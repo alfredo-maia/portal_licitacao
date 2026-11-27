@@ -206,6 +206,7 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                 key={t.id}
                 href={`/admin/clientes/${alvo360Id}`}
                 data-testid={`cliente-card-${t.id}`}
+                className="pncp-admin-cliente-card"
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -217,7 +218,6 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                   borderRadius: "4px",
                   textDecoration: "none",
                   color: "inherit",
-                  transition: "border-color 0.15s ease, transform 0.15s ease",
                   cursor: "pointer",
                 }}
               >

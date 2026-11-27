@@ -169,7 +169,8 @@ export default function PlanosPage() {
   const [recursoUpgradeAviso, setRecursoUpgradeAviso] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    const lerParametroUpgrade = () => {
+      if (typeof window === "undefined") return;
       try {
         const sp = new URLSearchParams(window.location.search);
         if (sp.get("upgrade") === "1") {
@@ -179,6 +180,25 @@ export default function PlanosPage() {
           );
         }
       } catch {}
+    };
+
+    lerParametroUpgrade();
+
+    const handleUpgradeEvent = (e: Event) => {
+      const detail = (e as CustomEvent<{ recurso?: string }>).detail;
+      const rec = detail?.recurso || "";
+      setRecursoUpgradeAviso(
+        UPGRADE_RECURSO_LABELS[rec] || "este recurso avançado",
+      );
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("popstate", lerParametroUpgrade);
+      window.addEventListener("planos-upgrade-recurso", handleUpgradeEvent);
+      return () => {
+        window.removeEventListener("popstate", lerParametroUpgrade);
+        window.removeEventListener("planos-upgrade-recurso", handleUpgradeEvent);
+      };
     }
   }, []);
 

@@ -29,6 +29,16 @@ function notify(state: TenantSubscriptionState | null) {
   listeners.forEach((l) => l(state));
 }
 
+export function resetTenantSubscriptionCache() {
+  notify(null);
+}
+
+export function syncTenantSubscriptionState(
+  state: TenantSubscriptionState | null,
+) {
+  notify(state);
+}
+
 export async function refreshTenantSubscription(): Promise<TenantSubscriptionState | null> {
   if (typeof fetch !== "function") return cachedState;
   try {

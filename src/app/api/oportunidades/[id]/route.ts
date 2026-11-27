@@ -9,7 +9,10 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import {
+  verificarBloqueioAssinaturaNaRota,
+  verificarPlanoMinimoNaRota,
+} from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -97,6 +100,15 @@ export async function PATCH(request: Request, context: RouteContext) {
       { ok: false, error: "INVALID_JSON" },
       { status: 400 },
     );
+  }
+
+  if (body?.calculadoraDados?.disputaConfig !== undefined) {
+    const bloqueioPlano = await verificarPlanoMinimoNaRota(
+      "PRO",
+      "Configuração de Disputa",
+      user as unknown as Record<string, unknown>,
+    );
+    if (bloqueioPlano) return bloqueioPlano;
   }
 
   try {

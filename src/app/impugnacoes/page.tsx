@@ -1075,7 +1075,10 @@ export default function ImpugnacoesPage() {
                       ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
                       : undefined
                 }
-                style={{ display: "inline-flex" }}
+                style={{
+                  display: "inline-flex",
+                  cursor: !canUseTimbrado || !temTimbradoOuLogo ? "not-allowed" : undefined,
+                }}
               >
                 <Button
                   kind="primary"
@@ -1085,6 +1088,7 @@ export default function ImpugnacoesPage() {
                   onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
                   id="btn-baixar-pdf-timbrado-modal"
                   data-testid="btn-baixar-pdf-timbrado-modal"
+                  style={!canUseTimbrado || !temTimbradoOuLogo ? { pointerEvents: "none" } : undefined}
                 >
                   Imprimir PDF Timbrado
                 </Button>
@@ -1126,7 +1130,11 @@ export default function ImpugnacoesPage() {
               }}
               dangerouslySetInnerHTML={{
                 __html: sanitizarHtmlDocumento(
-                  gerarMinutaJuridica(impugnacaoSelecionada, empresaAtiva || undefined).minutaHtml,
+                  gerarMinutaJuridica(
+                    impugnacaoSelecionada,
+                    empresaAtiva || undefined,
+                    { apenasTextoFormal: !canUseTimbrado },
+                  ).minutaHtml,
                 ),
               }}
             />

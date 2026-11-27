@@ -201,4 +201,17 @@ html[data-carbon-theme="g10"] .cds--app-theme-root.cds--g10 {
   }
 }
 
+.pncp-admin-cliente-card {
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pncp-admin-cliente-card:hover,
+.pncp-admin-cliente-card:focus-visible {
+  border-color: var(--cds-border-interactive, #0f62fe) !important;
+  background-color: var(--cds-layer-hover-01, #353535) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  outline: none;
+}
+
 

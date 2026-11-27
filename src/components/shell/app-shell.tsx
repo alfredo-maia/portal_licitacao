@@ -56,6 +56,11 @@ import {
   isRouteRestrictedForBasicPlan,
   isSubscriptionLocked,
 } from "@/lib/subscription-guard";
+import {
+  resetTenantSubscriptionCache,
+  syncTenantSubscriptionState,
+  type TenantSubscriptionState,
+} from "@/hooks/use-tenant-subscription";
 import { useAppTheme } from "@/providers/theme-provider";
 
 const ROUTE_ICONS: Record<string, CarbonIconType> = {
@@ -100,6 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       .then((data) => {
         if (data && data.ok !== false) {
           setSubStatus(data);
+          syncTenantSubscriptionState(data as TenantSubscriptionState);
           const lockedNow = Boolean(data.isBlocked || data.isReadOnly);
           setCachedLockedHint(lockedNow);
           if (typeof window !== "undefined") {
@@ -239,6 +245,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const handleLogout = () => {
+    resetTenantSubscriptionCache();
     if (typeof window !== "undefined") {
       try {
         localStorage.clear();
@@ -420,6 +427,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                       as={Link}
                       href={isRoboLocked ? roboLockedHref : "/robo-de-lances"}
                       title={isRoboLocked ? roboLockedTitle : undefined}
+                      onClick={() => {
+                        if (isRoboLocked && !isRoboLockedByPaywall && typeof window !== "undefined") {
+                          window.dispatchEvent(
+                            new CustomEvent("planos-upgrade-recurso", {
+                              detail: { recurso: "robo-de-lances" },
+                            }),
+                          );
+                        }
+                      }}
                       isActive={
                         !isRoboLocked &&
                         (pathname === "/robo-de-lances" ||
@@ -462,6 +478,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                           ? inteligenciaLockedTitle
                           : undefined
                       }
+                      onClick={() => {
+                        if (isInteligenciaLocked && !isInteligenciaLockedByPaywall && typeof window !== "undefined") {
+                          window.dispatchEvent(
+                            new CustomEvent("planos-upgrade-recurso", {
+                              detail: { recurso: "inteligencia-precos" },
+                            }),
+                          );
+                        }
+                      }}
                       isActive={
                         !isInteligenciaLocked &&
                         (pathname === "/inteligencia-precos" ||

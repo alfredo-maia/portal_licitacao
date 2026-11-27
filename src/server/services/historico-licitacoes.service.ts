@@ -28,6 +28,16 @@ export interface PaginatedHistoricoResult {
   page: number;
   pageSize: number;
   totalPages: number;
+  restringirAbertasApenasOutros?: boolean;
+}
+
+export interface HistoricoLicitacoesOptions {
+  /**
+   * Quando `true` (Plano Básico ativo fora do Trial — Issue #64),
+   * licitações `ENCERRADAS` continuam liberadas em todas as UFs/segmentos,
+   * mas licitações `ABERTAS` só podem ser exibidas se pertencerem ao segmento `OUTROS` (ou `segmentoMacro = null`).
+   */
+  restringirAbertasApenasOutros?: boolean;
 }
 
 const LIMITE_ATE_500K = 500_000;
@@ -53,11 +63,18 @@ function getDataLimite(rec: {
 export async function listHistoricoLicitacoesPaginado(
   rawQuery: HistoricoLicitacoesQueryInput | Record<string, unknown>,
   tenantId?: string | null,
+  options?: HistoricoLicitacoesOptions,
 ): Promise<PaginatedHistoricoResult> {
   const query = historicoLicitacoesQuerySchema.parse(rawQuery);
   const agora = new Date();
   const dataInicioDt = parseInicioDiaBrt(query.dataInicio);
   const dataFimDt = parseFimDiaBrt(query.dataFim);
+  const restringirAbertasApenasOutros = Boolean(
+    options?.restringirAbertasApenasOutros,
+  );
+  const condicaoOutros: Prisma.LicitacaoWhereInput = {
+    OR: [{ segmentoMacro: "OUTROS" }, { segmentoMacro: null }],
+  };
 
   const and: Prisma.LicitacaoWhereInput[] = [
     {
@@ -82,6 +99,19 @@ export async function listHistoricoLicitacoesPaginado(
     and.push(buildPrazoEncerradoPrismaWhere(agora));
   } else if (query.situacaoPrazo === "ABERTAS") {
     and.push(buildPrazoAbertoPrismaWhere(agora));
+    if (restringirAbertasApenasOutros) {
+      and.push(condicaoOutros);
+    }
+  } else if (restringirAbertasApenasOutros) {
+    // TODAS no Plano Básico: encerradas de qualquer segmento/UF OU abertas somente de OUTROS
+    and.push({
+      OR: [
+        buildPrazoEncerradoPrismaWhere(agora),
+        {
+          AND: [buildPrazoAbertoPrismaWhere(agora), condicaoOutros],
+        },
+      ],
+    });
   }
 
   if (query.segmento) {
@@ -209,6 +239,7 @@ export async function listHistoricoLicitacoesPaginado(
       page,
       pageSize,
       totalPages: Math.ceil(totalDb / pageSize) || 1,
+      restringirAbertasApenasOutros,
     };
   } catch {
     // PostgreSQL indisponível: fallback equivalente em memória (CI/testes)
@@ -224,6 +255,12 @@ export async function listHistoricoLicitacoesPaginado(
       const encerrado = limite.getTime() < agora.getTime();
       if (query.situacaoPrazo === "ENCERRADAS" && !encerrado) return false;
       if (query.situacaoPrazo === "ABERTAS" && encerrado) return false;
+
+      const macroAtual = (rec as { segmentoMacro?: string | null }).segmentoMacro;
+      const isSegmentoOutros = !macroAtual || macroAtual === "OUTROS";
+      if (restringirAbertasApenasOutros && !encerrado && !isSegmentoOutros) {
+        return false;
+      }
 
       if (query.segmento) {
         const segs = query.segmento
@@ -311,6 +348,7 @@ export async function listHistoricoLicitacoesPaginado(
       page,
       pageSize,
       totalPages,
+      restringirAbertasApenasOutros,
     };
   }
 }

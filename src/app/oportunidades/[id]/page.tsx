@@ -6742,7 +6742,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
               </Button>
               <div
                 title={!canUseTimbrado ? TOOLTIP_TIMBRADO_PRO_ENTERPRISE : undefined}
-                style={{ display: "inline-flex" }}
+                style={{
+                  display: "inline-flex",
+                  cursor: !canUseTimbrado ? "not-allowed" : undefined,
+                }}
               >
                 <Button
                   kind="secondary"
@@ -6751,6 +6754,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                   disabled={!canUseTimbrado || gerandoPdfCotacao}
                   onClick={handleBaixarPdfTimbradoCotacao}
                   data-testid="btn-imprimir-cotacao-timbrada"
+                  style={!canUseTimbrado ? { pointerEvents: "none" } : undefined}
                 >
                   {gerandoPdfCotacao ? "Gerando PDF..." : "📑 Imprimir PDF Timbrado Oficial"}
                 </Button>
@@ -6867,7 +6871,10 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
                     : undefined
               }
-              style={{ display: "inline-flex" }}
+              style={{
+                display: "inline-flex",
+                cursor: !canUseTimbrado || !temTimbradoOuLogo ? "not-allowed" : undefined,
+              }}
             >
               <Button
                 kind="primary"
@@ -6877,6 +6884,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 disabled={!canUseTimbrado || !temTimbradoOuLogo || gerandoPdfTimbradoProposta}
                 id="btn-imprimir-proposta-timbrada"
                 data-testid="btn-imprimir-proposta-timbrada"
+                style={!canUseTimbrado || !temTimbradoOuLogo ? { pointerEvents: "none" } : undefined}
               >
                 {gerandoPdfTimbradoProposta ? <InlineLoading description="Gerando..." /> : "Imprimir PDF Timbrado"}
               </Button>
@@ -7051,7 +7059,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     Precisa de mais análises analíticas de IA para este certame?
                   </strong>
                   <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
-                    Faça upgrade agora mesmo para o plano <strong>Pro (15 análises/mês)</strong> ou <strong>Enterprise (30 análises/mês)</strong> para continuar acelerando suas deliberações.
+                    Faça upgrade agora mesmo para o plano <strong>Pro (15 análises/mês)</strong> ou <strong>Enterprise (50 análises/mês)</strong> para continuar acelerando suas deliberações.
                   </p>
                   <Button
                     kind="primary"
@@ -7074,7 +7082,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                     Plano Enterprise: Limite Mensal de 30 Análises Atingido
                   </strong>
                   <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)", margin: 0, maxWidth: "550px" }}>
-                    Você atingiu o teto mensal de 30 análises do plano Enterprise. Para contratar cotas adicionais ou suporte customizado, entre em contato direto com nossa equipe comercial.
+                    Você atingiu o teto mensal de 50 análises do plano Enterprise. Para contratar cotas adicionais ou suporte customizado, entre em contato direto com nossa equipe comercial.
                   </p>
                   <Button
                     kind="tertiary"

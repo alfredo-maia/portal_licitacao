@@ -22,6 +22,7 @@ import {
 } from "@carbon/react";
 import { Reset, Search } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
 import { ESTADOS_BRASIL } from "@/config/estados";
 import { FAIXAS_VALOR_SPRINT7 } from "@/lib/masks";
 import { resolverTituloExibicaoLicitacao } from "@/lib/resumo-licitacao";
@@ -171,6 +172,7 @@ interface HistoricoSavedState {
 
 function HistoricoLicitacoesContent() {
   const router = useRouter();
+  const { isPlanoBasicoRestrito } = useTenantSubscription();
   const hoje = React.useMemo(() => new Date(), []);
 
   const [dataInicio, setDataInicio] = React.useState<string>(() =>
@@ -203,6 +205,24 @@ function HistoricoLicitacoesContent() {
   const [pageSize, setPageSize] = React.useState(10);
   const [sortBy, setSortBy] = React.useState<OportunidadesSortBy>("dataLimite");
   const [sortDir, setSortDir] = React.useState<SortDir>("desc");
+
+  const podeFiltrarAbertasLivre = !isPlanoBasicoRestrito || segmento === "OUTROS";
+  const situacaoOptionsEfetivas = React.useMemo(() => {
+    if (podeFiltrarAbertasLivre) {
+      return SITUACAO_OPTIONS;
+    }
+    return SITUACAO_OPTIONS.filter((s) => s.id !== "ABERTAS").map((s) =>
+      s.id === "TODAS"
+        ? { ...s, text: "Encerradas + Abertas de Outros" }
+        : s,
+    );
+  }, [podeFiltrarAbertasLivre]);
+
+  React.useEffect(() => {
+    if (!podeFiltrarAbertasLivre && situacaoPrazo === "ABERTAS") {
+      setSituacaoPrazo("ENCERRADAS");
+    }
+  }, [podeFiltrarAbertasLivre, situacaoPrazo]);
 
   const executarConsultaComParams = React.useCallback(
     async (
@@ -490,6 +510,18 @@ function HistoricoLicitacoesContent() {
           </div>
         </div>
 
+        {isPlanoBasicoRestrito && (
+          <div style={{ marginBottom: "1rem" }} data-testid="historico-aviso-plano-basico">
+            <InlineNotification
+              kind="info"
+              lowContrast
+              hideCloseButton
+              title="Plano Básico:"
+              subtitle="Você pode consultar licitações encerradas de todo o Brasil e todos os segmentos, além de licitações em aberto do segmento Outros. Para consultar editais em aberto de outros segmentos e estados, faça upgrade para o plano Pro."
+            />
+          </div>
+        )}
+
         <div
           data-testid="historico-filters"
           style={{
@@ -525,13 +557,17 @@ function HistoricoLicitacoesContent() {
             id="historico-situacao"
             data-testid="historico-filter-situacao"
             titleText="Situação do Prazo"
-            label="Todas (Encerradas e Em Aberto)"
+            label={
+              podeFiltrarAbertasLivre
+                ? "Todas (Encerradas e Em Aberto)"
+                : "Encerradas + Abertas de Outros"
+            }
             disabled={loading}
-            items={SITUACAO_OPTIONS}
+            items={situacaoOptionsEfetivas}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={
-              SITUACAO_OPTIONS.find((s) => s.id === situacaoPrazo) ||
-              SITUACAO_OPTIONS[0]
+              situacaoOptionsEfetivas.find((s) => s.id === situacaoPrazo) ||
+              situacaoOptionsEfetivas[0]
             }
             onChange={({ selectedItem }) => {
               if (selectedItem?.id) {
