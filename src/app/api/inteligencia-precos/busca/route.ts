@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { pesquisarInteligenciaPrecos } from "@/server/services/inteligencia-precos.service";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import {
+  verificarBloqueioAssinaturaNaRota,
+  verificarPlanoMinimoNaRota,
+} from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
   if (bloqueioAssinatura) return bloqueioAssinatura;
+  const bloqueioPlano = await verificarPlanoMinimoNaRota("PRO", "Inteligência de Preços");
+  if (bloqueioPlano) return bloqueioPlano;
 
   try {
     const { searchParams } = new URL(req.url);

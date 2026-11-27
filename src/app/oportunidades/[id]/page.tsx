@@ -70,6 +70,8 @@ import {
 } from "@carbon/icons-react";
 import { SalaSimuladaModal } from "@/components/robo-lances/sala-simulada-modal";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
+import { TOOLTIP_TIMBRADO_PRO_ENTERPRISE } from "@/lib/subscription-guard";
 import { FileDropZone } from "@/components/ui/file-drop-zone";
 import { MembrosEquipeMultiSelect } from "@/components/oportunidades/MembrosEquipeMultiSelect";
 import { APP_CONFIG } from "@/config/brand";
@@ -548,6 +550,7 @@ function OportunidadesDetalheContent({
 }: OportunidadesDetalhePageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isPlanoBasicoRestrito, canUseTimbrado } = useTenantSubscription();
 
   const handleVoltar = React.useCallback(() => {
     // 1. Suporte a parâmetro explícito caso exista em deep links
@@ -3136,7 +3139,23 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
             📄 Proposta Comercial
           </Tab>
           <Tab data-testid="tab-disputa">
-            ⚡ Disputa
+            <span
+              title={
+                isPlanoBasicoRestrito
+                  ? "Aba Disputa exclusiva dos planos Pro e Enterprise"
+                  : undefined
+              }
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+            >
+              <span>⚡ Disputa</span>
+              {isPlanoBasicoRestrito ? (
+                <Locked
+                  size={14}
+                  aria-label="Recurso exclusivo Pro e Enterprise"
+                  data-testid="tab-disputa-locked-icon"
+                />
+              ) : null}
+            </span>
           </Tab>
         </TabList>
 
@@ -5544,6 +5563,44 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
           {/* Aba 7: Disputa do Certame & Auto-Bidder Multi-Item */}
           <TabPanel>
+            {isPlanoBasicoRestrito ? (
+              <Tile
+                data-testid="aba-disputa-bloqueada-basico"
+                style={{
+                  padding: "2.5rem 2rem",
+                  marginTop: "1rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                  gap: "1rem",
+                }}
+              >
+                <Locked size={36} style={{ color: "var(--cds-icon-secondary, #8d8d8d)" }} />
+                <h4 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
+                  Aba Disputa exclusiva dos planos Pro e Enterprise
+                </h4>
+                <p
+                  style={{
+                    maxWidth: "36rem",
+                    fontSize: "0.9rem",
+                    color: "var(--cds-text-secondary)",
+                    margin: 0,
+                  }}
+                >
+                  A configuração de regras de disputa por item, trava de inexequibilidade e simulação com o Robô de Lances estão disponíveis a partir do plano Pro.
+                </p>
+                <Button
+                  kind="primary"
+                  size="md"
+                  renderIcon={Upgrade}
+                  onClick={() => router.push("/planos?upgrade=1&recurso=disputa")}
+                  data-testid="btn-upgrade-aba-disputa"
+                >
+                  Fazer Upgrade para Pro
+                </Button>
+              </Tile>
+            ) : (
             <Tile style={{ padding: "1.5rem", marginTop: "1rem" }}>
               {disputaFeedback && (
                 <InlineNotification
@@ -6656,6 +6713,7 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
                 </div>
               </div>
             </Tile>
+            )}
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -6682,16 +6740,21 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
               >
                 📄 Imprimir PDF Limpo (A4)
               </Button>
-              <Button
-                kind="secondary"
-                size="sm"
-                renderIcon={DocumentPdf}
-                disabled={gerandoPdfCotacao}
-                onClick={handleBaixarPdfTimbradoCotacao}
-                data-testid="btn-imprimir-cotacao-timbrada"
+              <div
+                title={!canUseTimbrado ? TOOLTIP_TIMBRADO_PRO_ENTERPRISE : undefined}
+                style={{ display: "inline-flex" }}
               >
-                {gerandoPdfCotacao ? "Gerando PDF..." : "📑 Imprimir PDF Timbrado Oficial"}
-              </Button>
+                <Button
+                  kind="secondary"
+                  size="sm"
+                  renderIcon={!canUseTimbrado ? Locked : DocumentPdf}
+                  disabled={!canUseTimbrado || gerandoPdfCotacao}
+                  onClick={handleBaixarPdfTimbradoCotacao}
+                  data-testid="btn-imprimir-cotacao-timbrada"
+                >
+                  {gerandoPdfCotacao ? "Gerando PDF..." : "📑 Imprimir PDF Timbrado Oficial"}
+                </Button>
+              </div>
               <Button
                 kind="tertiary"
                 size="sm"
@@ -6798,18 +6861,20 @@ Diretrizes/Observações: ${notasEstrategicas || "Análise executiva completa"}`
 
             <div
               title={
-                !temTimbradoOuLogo
-                  ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
-                  : undefined
+                !canUseTimbrado
+                  ? TOOLTIP_TIMBRADO_PRO_ENTERPRISE
+                  : !temTimbradoOuLogo
+                    ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
+                    : undefined
               }
               style={{ display: "inline-flex" }}
             >
               <Button
                 kind="primary"
                 size="sm"
-                renderIcon={DocumentPdf}
+                renderIcon={!canUseTimbrado ? Locked : DocumentPdf}
                 onClick={handleImprimirPropostaTimbrada}
-                disabled={!temTimbradoOuLogo || gerandoPdfTimbradoProposta}
+                disabled={!canUseTimbrado || !temTimbradoOuLogo || gerandoPdfTimbradoProposta}
                 id="btn-imprimir-proposta-timbrada"
                 data-testid="btn-imprimir-proposta-timbrada"
               >

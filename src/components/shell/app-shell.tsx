@@ -51,7 +51,9 @@ import { SuporteModal } from "@/components/suporte/suporte-modal";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
 import {
+  isPlanoBasicoRestrito,
   isRouteAllowedWhenSubscriptionBlocked,
+  isRouteRestrictedForBasicPlan,
   isSubscriptionLocked,
 } from "@/lib/subscription-guard";
 import { useAppTheme } from "@/providers/theme-provider";
@@ -185,12 +187,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     !isAdminRouteCheck &&
     isSubscriptionLockedNow &&
     !isRouteAllowedWhenSubscriptionBlocked(pathname);
+  const isBasicPlanRestrictedNow = isPlanoBasicoRestrito(subStatus);
+  const isCurrentRouteBlockedByBasicPlan =
+    !isAuthRouteCheck &&
+    !isAdminRouteCheck &&
+    !isCurrentRouteBlockedByPaywall &&
+    isBasicPlanRestrictedNow &&
+    isRouteRestrictedForBasicPlan(pathname);
 
   React.useEffect(() => {
     if (isCurrentRouteBlockedByPaywall) {
       router.replace("/planos?bloqueado=1");
+    } else if (isCurrentRouteBlockedByBasicPlan) {
+      const recurso = pathname.startsWith("/inteligencia-precos")
+        ? "inteligencia-precos"
+        : "robo-de-lances";
+      router.replace(`/planos?upgrade=1&recurso=${recurso}`);
     }
-  }, [isCurrentRouteBlockedByPaywall, router]);
+  }, [isCurrentRouteBlockedByPaywall, isCurrentRouteBlockedByBasicPlan, pathname, router]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && pathname) {
@@ -371,12 +385,28 @@ export function AppShell({ children }: { children: ReactNode }) {
                   pathname.startsWith("/robo-de-lances/") ||
                   pathname === "/inteligencia-precos" ||
                   pathname.startsWith("/inteligencia-precos/");
-                const isRoboLocked =
+                const isRoboLockedByPaywall =
                   isSubscriptionLockedNow &&
                   !isRouteAllowedWhenSubscriptionBlocked("/robo-de-lances");
-                const isInteligenciaLocked =
+                const isInteligenciaLockedByPaywall =
                   isSubscriptionLockedNow &&
                   !isRouteAllowedWhenSubscriptionBlocked("/inteligencia-precos");
+                const isRoboLocked =
+                  isRoboLockedByPaywall || isBasicPlanRestrictedNow;
+                const isInteligenciaLocked =
+                  isInteligenciaLockedByPaywall || isBasicPlanRestrictedNow;
+                const roboLockedHref = isRoboLockedByPaywall
+                  ? "/planos?bloqueado=1"
+                  : "/planos?upgrade=1&recurso=robo-de-lances";
+                const inteligenciaLockedHref = isInteligenciaLockedByPaywall
+                  ? "/planos?bloqueado=1"
+                  : "/planos?upgrade=1&recurso=inteligencia-precos";
+                const roboLockedTitle = isRoboLockedByPaywall
+                  ? "Assine um plano para desbloquear este módulo"
+                  : "Disponível apenas nos planos Pro e Enterprise";
+                const inteligenciaLockedTitle = isInteligenciaLockedByPaywall
+                  ? "Assine um plano para desbloquear este módulo"
+                  : "Disponível apenas nos planos Pro e Enterprise";
 
                 return (
                   <SideNavMenu
@@ -388,12 +418,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <SideNavMenuItem
                       as={Link}
-                      href={isRoboLocked ? "/planos?bloqueado=1" : "/robo-de-lances"}
-                      title={
-                        isRoboLocked
-                          ? "Assine um plano para desbloquear este módulo"
-                          : undefined
-                      }
+                      href={isRoboLocked ? roboLockedHref : "/robo-de-lances"}
+                      title={isRoboLocked ? roboLockedTitle : undefined}
                       isActive={
                         !isRoboLocked &&
                         (pathname === "/robo-de-lances" ||
@@ -428,12 +454,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                       as={Link}
                       href={
                         isInteligenciaLocked
-                          ? "/planos?bloqueado=1"
+                          ? inteligenciaLockedHref
                           : "/inteligencia-precos"
                       }
                       title={
                         isInteligenciaLocked
-                          ? "Assine um plano para desbloquear este módulo"
+                          ? inteligenciaLockedTitle
                           : undefined
                       }
                       isActive={
@@ -562,9 +588,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
         <SystemBroadcastBanner />
-        {isCurrentRouteBlockedByPaywall ? (
+        {isCurrentRouteBlockedByPaywall || isCurrentRouteBlockedByBasicPlan ? (
           <div
-            data-testid="paywall-redirect-guard"
+            data-testid={
+              isCurrentRouteBlockedByPaywall
+                ? "paywall-redirect-guard"
+                : "plan-upgrade-redirect-guard"
+            }
             style={{
               display: "flex",
               alignItems: "center",
@@ -575,7 +605,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <InlineLoading
               status="active"
-              description="Seu período de teste expirou. Redirecionando para Planos & Assinatura..."
+              description={
+                isCurrentRouteBlockedByPaywall
+                  ? "Seu período de teste expirou. Redirecionando para Planos & Assinatura..."
+                  : "Este módulo é exclusivo dos planos Pro e Enterprise. Redirecionando para Planos & Assinatura..."
+              }
             />
           </div>
         ) : (

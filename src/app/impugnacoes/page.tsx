@@ -28,6 +28,7 @@ import {
   Edit,
   Hourglass,
   Information,
+  Locked,
   Scale,
   Printer,
   Renew,
@@ -38,6 +39,8 @@ import {
   WarningAlt,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
+import { TOOLTIP_TIMBRADO_PRO_ENTERPRISE } from "@/lib/subscription-guard";
 import {
   calcularPrazoFatalImpugnacao,
   type ImpugnacaoItem,
@@ -516,6 +519,7 @@ export default function ImpugnacoesPage() {
   ).length;
   const totalProtocoladas = impugnacoes.filter((i) => i.status === "PROTOCOLADA").length;
   const totalAcatadas = impugnacoes.filter((i) => i.status === "ACATADA").length;
+  const { canUseTimbrado } = useTenantSubscription();
   const temTimbradoOuLogo = Boolean(empresaAtiva?.papelTimbradoUrl || empresaAtiva?.logoUrl);
 
   return (
@@ -1065,17 +1069,19 @@ export default function ImpugnacoesPage() {
               </Button>
               <div
                 title={
-                  !temTimbradoOuLogo
-                    ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
-                    : undefined
+                  !canUseTimbrado
+                    ? TOOLTIP_TIMBRADO_PRO_ENTERPRISE
+                    : !temTimbradoOuLogo
+                      ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
+                      : undefined
                 }
                 style={{ display: "inline-flex" }}
               >
                 <Button
                   kind="primary"
                   size="sm"
-                  renderIcon={DocumentPdf}
-                  disabled={!temTimbradoOuLogo}
+                  renderIcon={!canUseTimbrado ? Locked : DocumentPdf}
+                  disabled={!canUseTimbrado || !temTimbradoOuLogo}
                   onClick={() => window.open(`/api/impugnacoes/${impugnacaoSelecionada.id}/pdf`, "_blank")}
                   id="btn-baixar-pdf-timbrado-modal"
                   data-testid="btn-baixar-pdf-timbrado-modal"

@@ -345,10 +345,10 @@ export default function ConfiguracoesPage() {
     ? Math.max(currentTenant?.maxCnpjs || 2, 2)
     : currentTenant?.maxCnpjs || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
   const maxUsers = isEnterpriseAccount
-    ? 10
+    ? 5
     : billingStatus === "TRIAL"
     ? Math.max(currentTenant?.maxUsers || 2, 2)
-    : currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 10 : planoAtual === "PRO" ? 2 : 1);
+    : currentTenant?.maxUsers || (planoAtual === "ENTERPRISE" ? 5 : planoAtual === "PRO" ? 2 : 1);
   const isBasicoAtivo = planoAtual === "BASICO" && billingStatus !== "TRIAL";
 
   const diasDesdeUltimaAlteracao = empresa.preferenciasUpdatedAt

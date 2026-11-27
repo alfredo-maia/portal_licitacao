@@ -81,7 +81,7 @@ export async function GET(req: Request) {
             ? Math.max(m.tenant.maxCnpjs || 2, 2)
             : m.tenant.maxCnpjs;
           const maxUsersEfetivo = isEnterpriseAccount
-            ? 10
+            ? 5
             : isTrial
             ? Math.max(m.tenant.maxUsers || 2, 2)
             : m.tenant.maxUsers;
@@ -112,7 +112,7 @@ export async function GET(req: Request) {
         plano: isEnterpriseAccount ? "ENTERPRISE" : m.tenant.plano || "PRO",
         billingStatus: isEnterpriseAccount ? "ATIVO" : "TRIAL",
         maxCnpjs: isEnterpriseAccount ? 5 : Math.max(m.tenant.maxCnpjs || 2, 2),
-        maxUsers: isEnterpriseAccount ? 10 : Math.max(m.tenant.maxUsers || 2, 2),
+        maxUsers: isEnterpriseAccount ? 5 : Math.max(m.tenant.maxUsers || 2, 2),
         role: m.role,
         segmentos: m.tenant.segmentos || [],
         subsegmentos: m.tenant.subsegmentos || [],

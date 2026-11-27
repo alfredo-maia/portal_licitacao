@@ -94,18 +94,15 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
     nome: "Básico",
     preco: "R$ 59,90",
     frequencia: "/ mês",
-    descricao: "Ideal para empresas que estão iniciando em licitações públicas com foco regional e orçamentos essenciais.",
+    descricao: "Ideal para empresas que estão iniciando em licitações públicas com operação regional enxuta e orçamentos essenciais.",
     recursos: [
-      "1 CNPJ cadastrado",
-      "1 Usuário de acesso",
-      "1 Segmento Macro de atuação",
-      "1 Estado (UF da sede da empresa)",
-      "Busca e filtros de oportunidades no PNCP",
-      "Calculadora de Proposta: Custos, BDI e Margem de Lucro",
-      "Montagem de Orçamentos simplificados de itens do certame",
+      "1 CNPJ cadastrado e 1 Usuário de acesso",
+      "1 Segmento Macro e 1 Estado (UF da sede, alteração a cada 30 dias)",
       "5 Análises de Viabilidade com IA por mês",
-      "Dossiê da licitação e download de editais",
-      "Suporte via e-mail",
+      "Painel de Oportunidades, Minhas Licitações, Histórico de Licitações e Calendário",
+      "Dossiê completo, download de editais, Calculadora de Custos/BDI e Orçamentos manuais",
+      "Declarações, Impugnações, Pedido de Cotação e Proposta Comercial em via limpa (A4)",
+      "Gestão de Portais de Licitações e Suporte pela plataforma",
     ],
     maxCnpjs: 1,
     maxUsers: 1,
@@ -115,21 +112,17 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
     nome: "Pro",
     preco: "R$ 97,00",
     frequencia: "/ mês",
-    descricao: "Inteligência competitiva completa, pesquisa de preços praticados em outras licitações e orçamentos em todo o Brasil.",
+    descricao: "Para empresas que disputam em todo o Brasil com pesquisa de preços praticados, automação de disputa e documentos timbrados.",
     destaque: true,
     recursos: [
-      "Até 2 CNPJs cadastrados",
-      "Até 2 Usuários simultâneos",
-      "Todos os Segmentos Macros liberados",
-      "Todas as 27 UFs (Cobertura Nacional em todo o Brasil)",
-      "Busca de Preços Praticados em outras licitações e atas de registro",
-      "Calculadora Avançada de Custos, BDI, Encargos e Formação de Preço",
-      "Orçamentos de Itens do certame e cotação com fornecedores",
-      "Gerador de Proposta Comercial Timbrada em PDF",
-      "10 Análises de Viabilidade com IA por mês (com laudo executivo)",
-      "Dossiê avançado com download automático de todos os anexos",
-      "Gestão do Cofre de Documentos e alertas de validade de certidões",
-      "Suporte prioritário via WhatsApp",
+      "Tudo do plano Básico, mais:",
+      "Até 2 CNPJs cadastrados e até 2 Usuários simultâneos",
+      "Todos os Segmentos Macro e todas as 27 UFs (Brasil Inteiro) sem limite de troca",
+      "15 Análises de Viabilidade com IA por mês",
+      "Inteligência de Preços (pesquisa de preços praticados em outras licitações e itens salvos)",
+      "Robô de Lances e Aba Disputa no Dossiê com simulador usando itens reais do pipeline",
+      "Extração e sincronização automática de Itens do Certame para Orçamentos e Calculadora",
+      "Papel Timbrado e Logomarca oficial em Declarações, Impugnações, Propostas e Cotações PDF",
     ],
     maxCnpjs: 2,
     maxUsers: 2,
@@ -139,23 +132,27 @@ const PLANOS_CATALOGO: PlanoDefinicao[] = [
     nome: "Enterprise",
     preco: "R$ 197,00",
     frequencia: "/ mês",
-    descricao: "Para grandes empresas e grupos corporativos: multi-empresa, banco de inteligência de preços e alta escala em disputas.",
+    descricao: "Para grupos empresariais e equipes de licitação com múltiplos CNPJs, alto volume de análises e governança completa.",
     recursos: [
-      "Até 5 CNPJs cadastrados (Multi-Empresa consolidado)",
-      "Até 10 Colaboradores na equipe com controle de permissões",
-      "Cobertura nacional completa em todos os segmentos sem limites",
-      "Pesquisa profunda de histórico de preços e fornecedores em licitações anteriores",
-      "Calculadora e Formação de Preços com regras de disputa automatizadas",
-      "Módulo completo de Orçamentos, Cotações e Propostas Comerciais",
-      "20 Análises de Viabilidade com IA por mês",
-      "Prioridade máxima na coleta PNCP e processamento de editais",
-      "Trilha de auditoria executiva e governança completa",
-      "Gerente de contas dedicado e suporte VIP via WhatsApp",
+      "Tudo do plano Pro, mais:",
+      "Até 5 CNPJs consolidados (Multi-Empresa com troca instantânea)",
+      "Até 5 Usuários na equipe com controle de papéis e permissões",
+      "50 Análises de Viabilidade com IA por mês",
+      "Pesquisa avançada de preços, Calculadora completa e Orçamentos em escala",
+      "Trilha de Auditoria executiva e governança completa por usuário",
+      "Recursos avançados do Arsenal Corporativo e atendimento prioritário",
     ],
     maxCnpjs: 5,
-    maxUsers: 10,
+    maxUsers: 5,
   },
 ];
+
+const UPGRADE_RECURSO_LABELS: Record<string, string> = {
+  "inteligencia-precos": "Inteligência de Preços",
+  "robo-de-lances": "Robô de Lances",
+  disputa: "Aba Disputa",
+  timbrado: "Papel Timbrado e Logomarca",
+};
 
 export default function PlanosPage() {
   const [status, setStatus] = useState<StatusAssinatura | null>(null);
@@ -169,6 +166,21 @@ export default function PlanosPage() {
   const [pixCopiado, setPixCopiado] = useState(false);
   const [faturas, setFaturas] = useState<FaturaItemUI[]>([]);
   const [carregandoFaturas, setCarregandoFaturas] = useState(true);
+  const [recursoUpgradeAviso, setRecursoUpgradeAviso] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (sp.get("upgrade") === "1") {
+          const rec = sp.get("recurso") || "";
+          setRecursoUpgradeAviso(
+            UPGRADE_RECURSO_LABELS[rec] || "este recurso avançado",
+          );
+        }
+      } catch {}
+    }
+  }, []);
 
   const carregarStatus = useCallback(() => {
     fetch("/api/planos/status")
@@ -476,8 +488,20 @@ export default function PlanosPage() {
         </Tile>
       )}
 
+      {recursoUpgradeAviso && (
+        <div style={{ marginBottom: "1.5rem" }} data-testid="planos-upgrade-recurso-notice">
+          <InlineNotification
+            kind="info"
+            title={`Recurso exclusivo Pro & Enterprise (${recursoUpgradeAviso}):`}
+            subtitle={`Faça upgrade para o plano Pro ou Enterprise abaixo para desbloquear ${recursoUpgradeAviso}.`}
+            onCloseButtonClick={() => setRecursoUpgradeAviso(null)}
+          />
+        </div>
+      )}
+
       {/* Grid de Cards de Planos */}
       <div
+        data-testid="planos-cards-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",

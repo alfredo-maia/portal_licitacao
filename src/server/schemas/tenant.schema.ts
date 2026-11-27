@@ -33,7 +33,7 @@ export const PLAN_LIMITS: Record<
   PRO: {
     maxCnpjs: 2,
     maxUsers: 2,
-    maxMacroSegmentos: 3,
+    maxMacroSegmentos: 7,
     aiAnalisesMes: 15,
     temRelatoriosDiretoria: false,
     temChatPregoeiro: false,
@@ -42,7 +42,7 @@ export const PLAN_LIMITS: Record<
     maxCnpjs: 5,
     maxUsers: 5,
     maxMacroSegmentos: 7,
-    aiAnalisesMes: 30,
+    aiAnalisesMes: 50,
     temRelatoriosDiretoria: true,
     temChatPregoeiro: true,
   },

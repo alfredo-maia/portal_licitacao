@@ -8,7 +8,10 @@ import {
   listarItensPrecosSalvos,
   salvarItemPrecoTenant,
 } from "@/server/services/inteligencia-precos.service";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import {
+  verificarBloqueioAssinaturaNaRota,
+  verificarPlanoMinimoNaRota,
+} from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +42,8 @@ async function resolverTenantAtivo(
 export async function GET(req: Request) {
   const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
   if (bloqueioAssinatura) return bloqueioAssinatura;
+  const bloqueioPlano = await verificarPlanoMinimoNaRota("PRO", "Inteligência de Preços");
+  if (bloqueioPlano) return bloqueioPlano;
 
   try {
     const tenantId = await resolverTenantAtivo(req);
@@ -72,6 +77,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
   if (bloqueioAssinatura) return bloqueioAssinatura;
+  const bloqueioPlano = await verificarPlanoMinimoNaRota("PRO", "Inteligência de Preços");
+  if (bloqueioPlano) return bloqueioPlano;
 
   try {
     const body = await req.json().catch(() => ({}));

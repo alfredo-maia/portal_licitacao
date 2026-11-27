@@ -22,11 +22,14 @@ import {
   DocumentPdf,
   DocumentView,
   Information,
+  Locked,
   Printer,
   Reset,
   Template,
 } from "@carbon/icons-react";
 import { ModulePageShell } from "@/components/shell/module-page-shell";
+import { useTenantSubscription } from "@/hooks/use-tenant-subscription";
+import { TOOLTIP_TIMBRADO_PRO_ENTERPRISE } from "@/lib/subscription-guard";
 import { sanitizarHtmlDocumento } from "@/lib/sanitize-html";
 import { maskCnpj, maskCpf } from "@/lib/masks";
 import {
@@ -44,6 +47,7 @@ interface TemplateItem {
 }
 
 export default function DeclaracoesPage() {
+  const { canUseTimbrado } = useTenantSubscription();
   const [tipoSelecionado, setTipoSelecionado] = useState<DeclaracaoTipo>("HABILITACAO_PLENA");
   const [templates, setTemplates] = useState<TemplateItem[]>(
     DECLARACAO_TIPOS.map((t) => DECLARACAO_METADATA[t]),
@@ -726,18 +730,20 @@ export default function DeclaracoesPage() {
             </Button>
             <div
               title={
-                !temTimbradoOuLogo
-                  ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
-                  : undefined
+                !canUseTimbrado
+                  ? TOOLTIP_TIMBRADO_PRO_ENTERPRISE
+                  : !temTimbradoOuLogo
+                    ? "Cadastre o papel timbrado oficial ou o logotipo da empresa na tela de Configurações para habilitar a emissão timbrada."
+                    : undefined
               }
               style={{ display: "inline-flex" }}
             >
               <Button
                 kind="primary"
                 size="sm"
-                renderIcon={DocumentPdf}
+                renderIcon={!canUseTimbrado ? Locked : DocumentPdf}
                 onClick={handleImprimirTimbrado}
-                disabled={!temTimbradoOuLogo || gerandoPdf}
+                disabled={!canUseTimbrado || !temTimbradoOuLogo || gerandoPdf}
                 id="btn-imprimir-timbrado"
                 data-testid="btn-imprimir-timbrado"
               >

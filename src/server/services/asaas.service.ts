@@ -396,7 +396,7 @@ export async function processarWebhookAsaas(
         if (planoInferido) {
           updateData.plano = planoInferido;
           updateData.maxCnpjs = PLAN_LIMITS[planoInferido].maxCnpjs;
-          updateData.maxUsers = planoInferido === "ENTERPRISE" ? 10 : PLAN_LIMITS[planoInferido].maxUsers;
+          updateData.maxUsers = PLAN_LIMITS[planoInferido].maxUsers;
         }
 
         if (memTenant) {
@@ -685,7 +685,7 @@ export async function criarAssinaturaAsaas(params: {
   const hojeIso = new Date().toISOString().slice(0, 10);
   const agora = new Date();
   const novoMaxCnpjs = PLAN_LIMITS[params.plano].maxCnpjs;
-  const novoMaxUsers = params.plano === "ENTERPRISE" ? 10 : PLAN_LIMITS[params.plano].maxUsers;
+  const novoMaxUsers = PLAN_LIMITS[params.plano].maxUsers;
 
   const propagarMudancaPlanoParaTodosCnpjs = async (subId: string) => {
     const memCurrent = inMemoryTenants.get(params.tenantId);

@@ -4,7 +4,10 @@ import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { excluirItemPrecoSalvo } from "@/server/services/inteligencia-precos.service";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import {
+  verificarBloqueioAssinaturaNaRota,
+  verificarPlanoMinimoNaRota,
+} from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +17,8 @@ export async function DELETE(
 ) {
   const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
   if (bloqueioAssinatura) return bloqueioAssinatura;
+  const bloqueioPlano = await verificarPlanoMinimoNaRota("PRO", "Inteligência de Preços");
+  if (bloqueioPlano) return bloqueioPlano;
 
   try {
     const { id } = await context.params;

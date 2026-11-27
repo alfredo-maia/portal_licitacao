@@ -7,7 +7,10 @@ import { obterImpugnacao } from "@/server/services/impugnacoes.service";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { gerarPdfMinutaImpugnacao } from "@/lib/minuta-juridica";
-import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
+import {
+  verificarBloqueioAssinaturaNaRota,
+  verificarPlanoMinimoNaRota,
+} from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -22,6 +25,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: RouteContext) {
   const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
   if (bloqueioAssinatura) return bloqueioAssinatura;
+  const bloqueioPlano = await verificarPlanoMinimoNaRota(
+    "PRO",
+    "Emissão de Impugnação em PDF Timbrado",
+  );
+  if (bloqueioPlano) return bloqueioPlano;
 
   const { id } = await context.params;
 

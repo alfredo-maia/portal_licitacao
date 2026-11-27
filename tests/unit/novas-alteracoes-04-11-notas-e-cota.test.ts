@@ -119,7 +119,7 @@ describe("Issue #36 — Cota mensal de análises de IA por plano", () => {
   it("define os limites mensais oficiais: Básico 5, Pro/Trial 15, Enterprise 30", () => {
     expect(PLAN_LIMITS.BASICO.aiAnalisesMes).toBe(5);
     expect(PLAN_LIMITS.PRO.aiAnalisesMes).toBe(15);
-    expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(30);
+    expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(50);
   });
 
   it("calcula usados/limite e restantes (0/5 → 1/5)", () => {
@@ -146,7 +146,7 @@ describe("Issue #36 — Cota mensal de análises de IA por plano", () => {
   });
 
   it("Enterprise no limite orienta contato com a equipe de vendas", () => {
-    const cota = calcularCotaAnaliseIA({ plano: "ENTERPRISE", usadas: 30 });
+    const cota = calcularCotaAnaliseIA({ plano: "ENTERPRISE", usadas: 50 });
     expect(cota.atingiuLimite).toBe(true);
     expect(cota.acaoSugerida).toBe("CONTATO_VENDAS");
     expect(cota.mensagemBloqueio).toMatch(/vendas/i);

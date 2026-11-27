@@ -196,4 +196,46 @@ export function isApiRouteAllowedWhenSubscriptionBlocked(pathname: string): bool
   );
 }
 
+/**
+ * Rotas exclusivas dos planos PRO e ENTERPRISE (ou TRIAL ativo) — bloqueadas no BASICO ativo (Issue #63).
+ */
+export const BASIC_RESTRICTED_ROUTES = [
+  "/inteligencia-precos",
+  "/robo-de-lances",
+] as const;
+
+export const TOOLTIP_TIMBRADO_PRO_ENTERPRISE =
+  "Apenas os planos Pro e Enterprise têm acesso à emissão de documentos com Papel Timbrado ou Logomarca.";
+
+export function isPlanoBasicoRestrito(
+  status:
+    | { plano?: string | null; billingStatus?: string | null }
+    | null
+    | undefined,
+): boolean {
+  if (!status) return false;
+  const plano = (status.plano || "").toUpperCase();
+  const billingStatus = (status.billingStatus || "").toUpperCase();
+  if (billingStatus === "TRIAL") return false;
+  return plano === "BASICO";
+}
+
+export function isRouteRestrictedForBasicPlan(pathname: string): boolean {
+  const normalized = normalizePath(pathname);
+  return BASIC_RESTRICTED_ROUTES.some(
+    (restricted) =>
+      normalized === restricted || normalized.startsWith(`${restricted}/`),
+  );
+}
+
+export function canUseTimbradoOuLogo(
+  status:
+    | { plano?: string | null; billingStatus?: string | null }
+    | null
+    | undefined,
+): boolean {
+  return !isPlanoBasicoRestrito(status);
+}
+
+
 

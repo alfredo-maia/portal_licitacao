@@ -184,7 +184,7 @@ describe("📦 Pedido de Cotação, Sigilo Comercial, Extração de Itens & Cota
   describe("4. Cotas de IA por Plano e Desbloqueio por Licitação", () => {
     it("deve refletir o novo limite mensal de 15 análises para PRO e 30 para ENTERPRISE", () => {
       expect(PLAN_LIMITS.PRO.aiAnalisesMes).toBe(15);
-      expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(30);
+      expect(PLAN_LIMITS.ENTERPRISE.aiAnalisesMes).toBe(50);
       expect(PLAN_LIMITS.BASICO.aiAnalisesMes).toBe(5);
     });
 

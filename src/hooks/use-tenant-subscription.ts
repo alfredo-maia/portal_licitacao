@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { isSubscriptionLocked } from "@/lib/subscription-guard";
+import {
+  canUseTimbradoOuLogo,
+  isPlanoBasicoRestrito,
+  isSubscriptionLocked,
+} from "@/lib/subscription-guard";
 
 export interface TenantSubscriptionState {
   ok: boolean;
@@ -86,12 +90,16 @@ export function useTenantSubscription() {
   }, []);
 
   const isLocked = isSubscriptionLocked(subscription);
+  const basicoRestrito = isPlanoBasicoRestrito(subscription);
+  const canUseTimbrado = canUseTimbradoOuLogo(subscription);
 
   return {
     subscription,
     loading,
     refresh,
     isLocked,
+    isPlanoBasicoRestrito: basicoRestrito,
+    canUseTimbrado,
     isReadOnly: subscription?.isReadOnly ?? false,
     isBlocked: subscription?.isBlocked ?? false,
     inGracePeriod: subscription?.inGracePeriod ?? false,

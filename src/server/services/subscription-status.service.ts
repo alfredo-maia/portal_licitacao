@@ -117,7 +117,7 @@ export async function obterStatusAssinaturaCliente(params: {
         ? Math.max(maxCnpjsDb, 2)
         : maxCnpjsDb,
     maxUsers: isEnterpriseAccount
-      ? 10
+      ? 5
       : isTrial
         ? Math.max(maxUsersDb, 2)
         : maxUsersDb,
@@ -240,4 +240,102 @@ export async function verificarBloqueioAssinaturaNaRota(
     pathname,
   });
   return result.ok ? null : result.response;
+}
+
+const PLAN_RANK: Record<string, number> = {
+  BASICO: 1,
+  PRO: 2,
+  ENTERPRISE: 3,
+};
+
+export function respostaPlanoInsuficiente(
+  recursoLabel?: string,
+  planoMinimo: "PRO" | "ENTERPRISE" = "PRO",
+): NextResponse {
+  const alvo =
+    planoMinimo === "ENTERPRISE" ? "Enterprise" : "Pro e Enterprise";
+  const detalhe = recursoLabel
+    ? `O recurso "${recursoLabel}" é exclusivo dos planos ${alvo}. Faça upgrade da sua assinatura para desbloquear.`
+    : `Este recurso é exclusivo dos planos ${alvo}. Faça upgrade da sua assinatura para desbloquear.`;
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "PLANO_INSUFICIENTE",
+      code: "PLANO_INSUFICIENTE",
+      redirectTo: "/planos?upgrade=1",
+      message: detalhe,
+    },
+    { status: 403 },
+  );
+}
+
+/**
+ * Guard de plano mínimo para APIs exclusivas dos planos PRO/ENTERPRISE (Issue #63).
+ * Contas em TRIAL ativo operam como PRO; contas pagas no BASICO recebem HTTP 403 PLANO_INSUFICIENTE.
+ */
+export async function exigirPlanoMinimoEmApi(params: {
+  user: SessionActorClaims | null | undefined;
+  cookieTenant?: string;
+  planoMinimo: "PRO" | "ENTERPRISE";
+  recursoLabel?: string;
+}): Promise<SubscriptionApiGuardResult> {
+  const { user, cookieTenant, planoMinimo, recursoLabel } = params;
+  if (!user?.id || isSuperAdminSessionUser(user)) {
+    return { ok: true };
+  }
+
+  const status = await obterStatusAssinaturaCliente({
+    user: { ...user, id: user.id },
+    cookieTenant,
+  });
+
+  if (!status.hasTenantRecord) {
+    return { ok: true };
+  }
+
+  const planoAtual = (status.evaluation.plano || "BASICO").toUpperCase();
+  const billingAtual = (status.evaluation.billingStatus || "").toUpperCase();
+  const planoEfetivo = billingAtual === "TRIAL" ? "PRO" : planoAtual;
+
+  if ((PLAN_RANK[planoEfetivo] ?? 1) < (PLAN_RANK[planoMinimo] ?? 2)) {
+    return {
+      ok: false,
+      response: respostaPlanoInsuficiente(recursoLabel, planoMinimo),
+    };
+  }
+
+  return {
+    ok: true,
+    evaluation: status.evaluation,
+    tenantId: status.tenantId,
+  };
+}
+
+export async function verificarPlanoMinimoNaRota(
+  planoMinimo: "PRO" | "ENTERPRISE",
+  recursoLabel?: string,
+  userOverride?: SessionActorClaims | null,
+): Promise<NextResponse | null> {
+  let user = userOverride;
+  if (user === undefined) {
+    const session = await getServerSession(authOptions).catch(() => null);
+    user = session?.user as SessionActorClaims | undefined;
+  }
+  if (!user?.id || isSuperAdminSessionUser(user)) {
+    return null;
+  }
+
+  let cookieTenant: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieTenant = cookieStore.get("portal_licitacao_active_tenant")?.value;
+  } catch {}
+
+  const res = await exigirPlanoMinimoEmApi({
+    user,
+    cookieTenant,
+    planoMinimo,
+    recursoLabel,
+  });
+  return res.ok ? null : res.response;
 }
