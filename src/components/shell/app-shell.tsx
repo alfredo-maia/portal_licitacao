@@ -12,6 +12,7 @@ import {
   HeaderGlobalBar,
   HeaderMenuButton,
   HeaderName,
+  InlineLoading,
   SideNav,
   SideNavItems,
   SideNavLink,
@@ -32,6 +33,7 @@ import {
   Earth,
   Headset,
   Light,
+  Locked,
   Logout,
   Notification,
   Rule,
@@ -48,6 +50,10 @@ import { SystemBroadcastBanner } from "./system-broadcast-banner";
 import { SuporteModal } from "@/components/suporte/suporte-modal";
 import { APP_CONFIG } from "@/config/brand";
 import { APP_ROUTES } from "@/config/routes";
+import {
+  isRouteAllowedWhenSubscriptionBlocked,
+  isSubscriptionLocked,
+} from "@/lib/subscription-guard";
 import { useAppTheme } from "@/providers/theme-provider";
 
 const ROUTE_ICONS: Record<string, CarbonIconType> = {
@@ -77,10 +83,38 @@ export function AppShell({ children }: { children: ReactNode }) {
     billingStatus?: string;
     plano?: string;
     diasRestantesTrial?: number;
+    diasRestantesCarencia?: number;
     isReadOnly?: boolean;
+    isBlocked?: boolean;
     inGracePeriod?: boolean;
     mensagemStatus?: string;
   } | null>(null);
+  const [cachedLockedHint, setCachedLockedHint] = useState(false);
+
+  const carregarStatusAssinatura = React.useCallback(() => {
+    if (typeof fetch !== "function") return;
+    fetch("/api/planos/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.ok !== false) {
+          setSubStatus(data);
+          const lockedNow = Boolean(data.isBlocked || data.isReadOnly);
+          setCachedLockedHint(lockedNow);
+          if (typeof window !== "undefined") {
+            try {
+              if (lockedNow) {
+                sessionStorage.setItem("portal_subscription_locked", "1");
+              } else {
+                sessionStorage.removeItem("portal_subscription_locked");
+              }
+            } catch {}
+          }
+        } else {
+          setSubStatus(null);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const carregarSuporteResumo = React.useCallback(async () => {
     if (typeof fetch !== "function") return;
@@ -107,18 +141,56 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [carregarSuporteResumo, pathname]);
 
   React.useEffect(() => {
-    if (typeof fetch !== "function") return;
-    fetch("/api/planos/status")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && data.ok !== false) {
-          setSubStatus(data);
-        } else {
-          setSubStatus(null);
-        }
-      })
-      .catch(() => {});
-  }, [pathname]);
+    if (typeof window !== "undefined") {
+      try {
+        setCachedLockedHint(
+          sessionStorage.getItem("portal_subscription_locked") === "1",
+        );
+      } catch {}
+    }
+    carregarStatusAssinatura();
+
+    const handleRefreshSubscription = () => {
+      carregarStatusAssinatura();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("tenant-changed", handleRefreshSubscription);
+      window.addEventListener("subscription-updated", handleRefreshSubscription);
+      return () => {
+        window.removeEventListener("tenant-changed", handleRefreshSubscription);
+        window.removeEventListener(
+          "subscription-updated",
+          handleRefreshSubscription,
+        );
+      };
+    }
+  }, [carregarStatusAssinatura, pathname]);
+
+  const isAuthRouteCheck =
+    pathname === "/login" ||
+    pathname === "/cadastro" ||
+    pathname === "/esqueci-senha" ||
+    pathname === "/recuperar-senha";
+  const isAdminRouteCheck =
+    pathname === "/admin" || pathname.startsWith("/admin/");
+  const isSubscriptionLockedNow =
+    subStatus !== null
+      ? isSubscriptionLocked({
+          isBlocked: Boolean(subStatus.isBlocked),
+          isReadOnly: Boolean(subStatus.isReadOnly),
+        })
+      : cachedLockedHint;
+  const isCurrentRouteBlockedByPaywall =
+    !isAuthRouteCheck &&
+    !isAdminRouteCheck &&
+    isSubscriptionLockedNow &&
+    !isRouteAllowedWhenSubscriptionBlocked(pathname);
+
+  React.useEffect(() => {
+    if (isCurrentRouteBlockedByPaywall) {
+      router.replace("/planos?bloqueado=1");
+    }
+  }, [isCurrentRouteBlockedByPaywall, router]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && pathname) {
@@ -299,6 +371,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                   pathname.startsWith("/robo-de-lances/") ||
                   pathname === "/inteligencia-precos" ||
                   pathname.startsWith("/inteligencia-precos/");
+                const isRoboLocked =
+                  isSubscriptionLockedNow &&
+                  !isRouteAllowedWhenSubscriptionBlocked("/robo-de-lances");
+                const isInteligenciaLocked =
+                  isSubscriptionLockedNow &&
+                  !isRouteAllowedWhenSubscriptionBlocked("/inteligencia-precos");
 
                 return (
                   <SideNavMenu
@@ -310,17 +388,33 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <SideNavMenuItem
                       as={Link}
-                      href="/robo-de-lances"
+                      href={isRoboLocked ? "/planos?bloqueado=1" : "/robo-de-lances"}
+                      title={
+                        isRoboLocked
+                          ? "Assine um plano para desbloquear este módulo"
+                          : undefined
+                      }
                       isActive={
-                        pathname === "/robo-de-lances" ||
-                        pathname.startsWith("/robo-de-lances/")
+                        !isRoboLocked &&
+                        (pathname === "/robo-de-lances" ||
+                          pathname.startsWith("/robo-de-lances/"))
                       }
                       aria-current={
-                        pathname === "/robo-de-lances" ? "page" : undefined
+                        !isRoboLocked && pathname === "/robo-de-lances"
+                          ? "page"
+                          : undefined
                       }
+                      style={isRoboLocked ? { opacity: 0.72 } : undefined}
                     >
                       <span>Robô de Lances</span>
-                      {route.badge ? (
+                      {isRoboLocked ? (
+                        <Locked
+                          size={14}
+                          aria-label="Módulo bloqueado"
+                          data-testid="nav-locked-robo-de-lances"
+                          style={{ marginLeft: "0.5rem" }}
+                        />
+                      ) : route.badge ? (
                         <Tag
                           size="sm"
                           type="cool-gray"
@@ -332,37 +426,75 @@ export function AppShell({ children }: { children: ReactNode }) {
                     </SideNavMenuItem>
                     <SideNavMenuItem
                       as={Link}
-                      href="/inteligencia-precos"
+                      href={
+                        isInteligenciaLocked
+                          ? "/planos?bloqueado=1"
+                          : "/inteligencia-precos"
+                      }
+                      title={
+                        isInteligenciaLocked
+                          ? "Assine um plano para desbloquear este módulo"
+                          : undefined
+                      }
                       isActive={
-                        pathname === "/inteligencia-precos" ||
-                        pathname.startsWith("/inteligencia-precos/")
+                        !isInteligenciaLocked &&
+                        (pathname === "/inteligencia-precos" ||
+                          pathname.startsWith("/inteligencia-precos/"))
                       }
                       aria-current={
-                        pathname === "/inteligencia-precos" ? "page" : undefined
+                        !isInteligenciaLocked && pathname === "/inteligencia-precos"
+                          ? "page"
+                          : undefined
                       }
+                      style={isInteligenciaLocked ? { opacity: 0.72 } : undefined}
                     >
                       <span>Inteligência de Preços</span>
+                      {isInteligenciaLocked ? (
+                        <Locked
+                          size={14}
+                          aria-label="Módulo bloqueado"
+                          data-testid="nav-locked-inteligencia-precos"
+                          style={{ marginLeft: "0.5rem" }}
+                        />
+                      ) : null}
                     </SideNavMenuItem>
                   </SideNavMenu>
                 );
               }
 
               const IconComponent = ROUTE_ICONS[route.id] ?? Document;
+              const isItemLocked =
+                isSubscriptionLockedNow &&
+                !isRouteAllowedWhenSubscriptionBlocked(route.path);
               const isActive =
-                pathname === route.path ||
-                pathname.startsWith(`${route.path}/`);
+                !isItemLocked &&
+                (pathname === route.path ||
+                  pathname.startsWith(`${route.path}/`));
 
               return (
                 <SideNavLink
                   key={route.id}
                   as={Link}
-                  href={route.path}
+                  href={isItemLocked ? "/planos?bloqueado=1" : route.path}
+                  title={
+                    isItemLocked
+                      ? "Assine um plano para desbloquear este módulo"
+                      : undefined
+                  }
                   renderIcon={IconComponent}
                   isActive={isActive}
                   aria-current={isActive ? "page" : undefined}
+                  style={isItemLocked ? { opacity: 0.72 } : undefined}
                 >
                   <span>{route.label}</span>
-                  {route.badge ? (
+                  {isItemLocked ? (
+                    <Locked
+                      size={14}
+                      aria-label="Módulo bloqueado"
+                      data-testid={`nav-locked-${route.id}`}
+                      style={{ marginLeft: "0.5rem" }}
+                    />
+                  ) : route.badge ? (
                     <Tag
                       size="sm"
                       type="cool-gray"
@@ -394,7 +526,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           isSideNavExpanded ? "pncp-shell-content--expanded" : ""
         }`}
       >
-        {subStatus?.isReadOnly && pathname !== "/planos" && (
+        {(subStatus?.isReadOnly || subStatus?.isBlocked) &&
+          pathname !== "/planos" && (
           <div style={{ marginBottom: "1rem" }} data-testid="banner-bloqueio-planos">
             <ActionableNotification
               inline
@@ -402,7 +535,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               title="Acesso Somente-Leitura:"
               subtitle={
                 subStatus.mensagemStatus ||
-                "Seu período de teste expirou. Escolha um plano para reativar as ações."
+                "Seu período de teste expirou. Os módulos operacionais estão bloqueados — escolha um plano para liberar o acesso completo."
               }
               actionButtonLabel="Ver Planos"
               onActionButtonClick={() => router.push("/planos")}
@@ -429,7 +562,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
         <SystemBroadcastBanner />
-        {children}
+        {isCurrentRouteBlockedByPaywall ? (
+          <div
+            data-testid="paywall-redirect-guard"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "40vh",
+              padding: "2rem",
+            }}
+          >
+            <InlineLoading
+              status="active"
+              description="Seu período de teste expirou. Redirecionando para Planos & Assinatura..."
+            />
+          </div>
+        ) : (
+          children
+        )}
       </main>
 
       <Button

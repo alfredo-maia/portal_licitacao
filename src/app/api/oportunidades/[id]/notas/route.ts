@@ -11,6 +11,7 @@ import {
 } from "@/server/services/licitacao-notas.service";
 import { OportunidadesServiceError } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -40,6 +41,9 @@ async function resolveTenantAndUser(request: Request) {
  * (Issue #36 — Aba Notas). Suporta filtros por `autorId` e `busca`.
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
   if (!user?.id) {
@@ -94,6 +98,9 @@ export async function GET(request: Request, context: RouteContext) {
  * (todos os usuários do Tenant podem criar; dispara menção N9 para quem for citado).
  */
 export async function POST(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
 

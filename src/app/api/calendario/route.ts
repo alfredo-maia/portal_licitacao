@@ -8,8 +8,12 @@ import {
 } from "@/server/auth/client-guard";
 import { getCalendarioData } from "@/server/services/calendario.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export async function GET(request: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
   if (!guard.ok) return guard.response;

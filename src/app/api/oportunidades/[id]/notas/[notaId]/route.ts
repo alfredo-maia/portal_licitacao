@@ -11,6 +11,7 @@ import {
 } from "@/server/services/licitacao-notas.service";
 import { OportunidadesServiceError } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string; notaId: string }>;
@@ -40,6 +41,9 @@ async function resolveTenantAndUser(request: Request) {
  * REGRA ESTRITA: Apenas o próprio usuário que criou a nota tem permissão para editá-la.
  */
 export async function PATCH(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, notaId } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
 
@@ -106,6 +110,9 @@ export async function PATCH(request: Request, context: RouteContext) {
  * REGRA ESTRITA: Apenas usuários com cargo DIRETORIA (ou SUPERADMIN) podem excluir.
  */
 export async function DELETE(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, notaId } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
 

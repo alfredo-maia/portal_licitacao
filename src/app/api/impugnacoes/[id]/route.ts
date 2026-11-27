@@ -13,6 +13,7 @@ import {
   excluirImpugnacao,
   obterImpugnacao,
 } from "@/server/services/impugnacoes.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
@@ -56,6 +60,9 @@ export async function PATCH(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);
@@ -111,6 +118,9 @@ export async function DELETE(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);

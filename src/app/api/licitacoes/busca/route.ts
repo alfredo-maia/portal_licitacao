@@ -1,11 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { pesquisarLicitacoes } from "@/server/services/busca-licitacoes.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 /**
  * Endpoint de busca e filtragem Full-Text Search de oportunidades de licitação.
  * GET /api/licitacoes/busca
  */
 export async function GET(request: NextRequest) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { searchParams } = new URL(request.url);
 

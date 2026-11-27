@@ -32,6 +32,7 @@ import {
   type LicitacaoStatusContract,
 } from "@/server/schemas/licitacao.schema";
 import { prisma } from "@/lib/prisma";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,9 @@ interface OportunidadeSalaView {
 }
 
 export async function GET(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { tenantId, unauthorized, forbidden } = await resolverTenantAtivo(req);
     if (forbidden) {
@@ -281,6 +285,9 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { tenantId, unauthorized, forbidden } = await resolverTenantAtivo(req);
     if (forbidden) {

@@ -14,6 +14,7 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -27,6 +28,9 @@ interface RouteContext {
  * `400` em erro de validação.
  */
 export async function POST(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as RbacUser | undefined;
 

@@ -5,6 +5,7 @@ import { authOptions } from "@/server/auth";
 import { runWithAuditActorContext } from "@/server/audit";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { revalidarAnexoDocumento } from "@/server/services/documentos.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -18,6 +19,9 @@ interface SessionUserWithTenant {
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions);
   const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {

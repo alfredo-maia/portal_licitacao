@@ -6,10 +6,14 @@ import { declaracaoGerarInputSchema } from "@/server/schemas/declaracao.schema";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { gerarPdfDeclaracao } from "@/lib/declaracao-pdf";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const session = await getServerSession(authOptions).catch(() => null);
     const body = await req.json().catch(() => ({}));

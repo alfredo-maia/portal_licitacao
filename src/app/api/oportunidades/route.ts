@@ -16,12 +16,16 @@ import {
 } from "@/server/services/oportunidades.service";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 /**
  * `GET /api/oportunidades` (sprint-2-spec §2.2): listagem paginada ordenada por
  * `dataAbertura ASC` com filtros e paginação (`page`, `pageSize`).
  */
 export async function GET(request: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const params: Record<string, any> = Object.fromEntries(
     new URL(request.url).searchParams.entries(),
   );
@@ -115,6 +119,9 @@ export async function GET(request: Request) {
  * `401` sem sessão, `403` sem permissão e `400` em erro de validação.
  */
 export async function POST(request: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as RbacUser | undefined;
 

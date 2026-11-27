@@ -11,6 +11,7 @@ import {
   obterDocumento,
 } from "@/server/services/documentos.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -42,6 +43,9 @@ async function resolveTenantForUser(
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions);
   const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {
@@ -59,6 +63,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions);
   const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {
@@ -110,6 +117,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions);
   const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {

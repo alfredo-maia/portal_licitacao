@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { authOptions } from "@/server/auth";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { excluirItemPrecoSalvo } from "@/server/services/inteligencia-precos.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ export async function DELETE(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { id } = await context.params;
     const session = await getServerSession(authOptions).catch(() => null);

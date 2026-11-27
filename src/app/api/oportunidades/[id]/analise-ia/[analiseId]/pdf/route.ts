@@ -5,6 +5,7 @@ import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import { obterAnaliseIAPorId } from "@/server/services/analise-ia-participacao.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string; analiseId: string }>;
@@ -15,6 +16,9 @@ interface RouteContext {
  * Baixa ou visualiza em streaming o arquivo PDF oficial gerado para o relatório de IA.
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, analiseId } = await context.params;
 
   const session = await getServerSession(authOptions).catch(() => null);

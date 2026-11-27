@@ -7,6 +7,7 @@ import { obterImpugnacao } from "@/server/services/impugnacoes.service";
 import { obterConfiguracaoEmpresa } from "@/server/services/configuracoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { gerarPdfMinutaImpugnacao } from "@/lib/minuta-juridica";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -19,6 +20,9 @@ export const dynamic = "force-dynamic";
  * Gera e entrega o PDF timbrado oficial da Minuta de Impugnação com os dados do CNPJ ativo.
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
 
   const session = await getServerSession(authOptions).catch(() => null);

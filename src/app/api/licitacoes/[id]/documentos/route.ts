@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sincronizarDocumentosLicitacaoPncp } from "@/server/storage/r2-storage.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -10,6 +11,9 @@ interface RouteContext {
  * GET /api/licitacoes/[id]/documentos
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { id } = await context.params;
 

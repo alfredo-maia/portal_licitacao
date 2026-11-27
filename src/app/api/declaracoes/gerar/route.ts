@@ -8,10 +8,14 @@ import {
 } from "@/server/auth/client-guard";
 import { declaracaoGerarInputSchema } from "@/server/schemas/declaracao.schema";
 import { gerarDeclaracao } from "@/server/services/declaracoes.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const session = await getServerSession(authOptions).catch(() => null);
     if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {

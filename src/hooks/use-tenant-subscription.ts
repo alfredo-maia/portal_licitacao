@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { isSubscriptionLocked } from "@/lib/subscription-guard";
 
 export interface TenantSubscriptionState {
   ok: boolean;
@@ -24,11 +25,32 @@ function notify(state: TenantSubscriptionState | null) {
   listeners.forEach((l) => l(state));
 }
 
+export async function refreshTenantSubscription(): Promise<TenantSubscriptionState | null> {
+  if (typeof fetch !== "function") return cachedState;
+  try {
+    const res = await fetch("/api/planos/status");
+    const data = res.ok ? await res.json() : null;
+    if (data && data.ok) {
+      notify(data);
+      return data;
+    }
+    notify(null);
+    return null;
+  } catch {
+    notify(null);
+    return null;
+  }
+}
+
 export function useTenantSubscription() {
-  const [subscription, setSubscription] = useState<TenantSubscriptionState | null>(
-    cachedState,
-  );
+  const [subscription, setSubscription] =
+    useState<TenantSubscriptionState | null>(cachedState);
   const [loading, setLoading] = useState(!cachedState);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    return refreshTenantSubscription();
+  }, []);
 
   useEffect(() => {
     const listener = (newState: TenantSubscriptionState | null) => {
@@ -38,33 +60,41 @@ export function useTenantSubscription() {
     listeners.add(listener);
 
     if (!cachedState) {
-      fetch("/api/planos/status")
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && data.ok) {
-            notify(data);
-          } else {
-            notify(null);
-          }
-        })
-        .catch(() => notify(null));
+      void refreshTenantSubscription();
     } else {
       setSubscription(cachedState);
       setLoading(false);
     }
 
+    const handleInvalidate = () => {
+      cachedState = null;
+      void refreshTenantSubscription();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("tenant-changed", handleInvalidate);
+      window.addEventListener("subscription-updated", handleInvalidate);
+    }
+
     return () => {
       listeners.delete(listener);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("tenant-changed", handleInvalidate);
+        window.removeEventListener("subscription-updated", handleInvalidate);
+      }
     };
   }, []);
+
+  const isLocked = isSubscriptionLocked(subscription);
 
   return {
     subscription,
     loading,
+    refresh,
+    isLocked,
     isReadOnly: subscription?.isReadOnly ?? false,
     isBlocked: subscription?.isBlocked ?? false,
     inGracePeriod: subscription?.inGracePeriod ?? false,
     plano: subscription?.plano ?? "BASICO",
   };
 }
-

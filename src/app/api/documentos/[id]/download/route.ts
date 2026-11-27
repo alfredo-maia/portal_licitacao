@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { authOptions } from "@/server/auth";
 import { obterDocumento } from "@/server/services/documentos.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 function escapeHtmlText(value: unknown): string {
   return String(value ?? "")
@@ -27,6 +28,9 @@ interface RouteParams {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as SessionUserWithTenant | undefined;
   if (!user?.id) {

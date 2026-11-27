@@ -100,6 +100,7 @@ export function TenantHeaderSelector() {
 
         if (typeof window !== "undefined") {
           try {
+            sessionStorage.removeItem("portal_subscription_locked");
             sessionStorage.setItem(
               "portal_licitacao_tenant_switched",
               JSON.stringify({

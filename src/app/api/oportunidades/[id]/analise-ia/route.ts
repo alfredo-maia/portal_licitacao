@@ -16,6 +16,7 @@ import {
   salvarAnaliseIA,
 } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -54,6 +55,9 @@ async function resolveTenantAndUser(request: Request) {
  * e o histórico de análises da licitação.
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
   if (!user) {
@@ -107,6 +111,9 @@ export async function GET(request: Request, context: RouteContext) {
  * Mantém retrocompatibilidade com salvamento manual direto (sprint-2).
  */
 export async function POST(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
   if (!user) {

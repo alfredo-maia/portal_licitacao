@@ -6,6 +6,7 @@ import { authOptions } from "@/server/auth";
 import { OportunidadesServiceError, removerArquivoEdital } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
 import { GET as downloadArquivoGet } from "./download/route";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string; arquivoId: string }>;
@@ -14,10 +15,16 @@ interface RouteContext {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   return downloadArquivoGet(request, context);
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, arquivoId } = await context.params;
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as (RbacUser & { id?: string; activeTenantId?: string }) | undefined;

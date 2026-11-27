@@ -11,6 +11,7 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { fazerUploadStreamingR2 } from "@/server/storage/r2-storage.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,6 +22,9 @@ interface RouteContext {
  * Faz streaming direto da memória para o Cloudflare R2, sem persistência no disco da VPS.
  */
 export async function POST(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const session = await getServerSession(authOptions);
   const user = session?.user as RbacUser | undefined;

@@ -9,6 +9,7 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -20,6 +21,9 @@ interface RouteContext {
  * identificador não existe.
  */
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as RbacUser | undefined;
@@ -66,6 +70,9 @@ export async function GET(request: Request, context: RouteContext) {
  * (ex: tipoSistemaCodigo, isPresencial, distanciaGoianiaKm, linkPncp, etc).
  */
 export async function PATCH(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const session = await getServerSession(authOptions).catch(() => null);
   const user = session?.user as RbacUser | undefined;

@@ -3,12 +3,16 @@ import { NextResponse } from "next/server";
 import type { RbacUser } from "@/lib/rbac";
 import { authOptions } from "@/server/auth";
 import { removerRepositorioSimilar } from "@/server/services/oportunidades.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string; repId: string }>;
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, repId } = await context.params;
   const session = await getServerSession(authOptions);
   const user = session?.user as RbacUser | undefined;

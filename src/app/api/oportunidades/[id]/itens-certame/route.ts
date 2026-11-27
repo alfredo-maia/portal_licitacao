@@ -14,6 +14,7 @@ import {
   verificarEIncrementarLimiteSilenciosoLicitacao,
 } from "@/server/services/analise-ia-participacao.service";
 import { extrairItensCertameCompleto } from "@/server/services/extracao-itens-certame.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -47,6 +48,9 @@ async function resolveTenantAndUser(request: Request) {
 }
 
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const { user, tenantId } = await resolveTenantAndUser(request);
   if (!user) {
@@ -144,5 +148,8 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   return GET(request, context);
 }

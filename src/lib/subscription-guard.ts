@@ -116,9 +116,84 @@ export function evaluateTenantAccess(
     diasRestantesTrial: 0,
     diasRestantesCarencia: 0,
     mensagemStatus:
-      "Seu período de teste expirou. O sistema está em modo somente-leitura. Escolha um plano para reativar.",
+      "Seu período de teste expirou. Os módulos operacionais estão bloqueados — escolha um plano para reativar.",
     plano,
     billingStatus,
   };
 }
+
+/**
+ * Rotas de páginas acessíveis mesmo quando o período de teste + 3 dias de carência
+ * tiver encerrado (ou assinatura BLOQUEADO/CANCELADO) — Issue #62.
+ */
+export const CLIENT_ALLOWED_ROUTES_WHEN_BLOCKED = [
+  "/dashboard",
+  "/planos",
+  "/configuracoes",
+  "/notificacoes",
+  "/faturamento",
+  "/checkout",
+  "/login",
+  "/cadastro",
+  "/esqueci-senha",
+  "/recuperar-senha",
+] as const;
+
+/**
+ * Prefixos de APIs acessíveis mesmo com assinatura expirada/bloqueada — Issue #62.
+ */
+export const CLIENT_ALLOWED_API_PREFIXES_WHEN_BLOCKED = [
+  "/api/auth",
+  "/api/planos",
+  "/api/faturamento",
+  "/api/suporte",
+  "/api/dashboard",
+  "/api/configuracoes",
+  "/api/notificacoes",
+  "/api/tenants",
+  "/api/tenant",
+  "/api/avisos",
+  "/api/cep",
+  "/api/cnae",
+  "/api/usuarios",
+  "/api/audit",
+  "/api/webhooks",
+  "/api/cron",
+  "/api/admin",
+] as const;
+
+function normalizePath(rawPath: string): string {
+  const withoutQuery = rawPath.split("?")[0]?.split("#")[0] || "/";
+  if (withoutQuery.length > 1 && withoutQuery.endsWith("/")) {
+    return withoutQuery.slice(0, -1);
+  }
+  return withoutQuery || "/";
+}
+
+export function isSubscriptionLocked(
+  evaluation:
+    | Pick<TenantAccessEvaluation, "isBlocked" | "isReadOnly">
+    | null
+    | undefined,
+): boolean {
+  return Boolean(evaluation && (evaluation.isBlocked || evaluation.isReadOnly));
+}
+
+export function isRouteAllowedWhenSubscriptionBlocked(pathname: string): boolean {
+  const normalized = normalizePath(pathname);
+  if (normalized === "/" || normalized === "/admin" || normalized.startsWith("/admin/")) {
+    return true;
+  }
+  return CLIENT_ALLOWED_ROUTES_WHEN_BLOCKED.some(
+    (allowed) => normalized === allowed || normalized.startsWith(`${allowed}/`),
+  );
+}
+
+export function isApiRouteAllowedWhenSubscriptionBlocked(pathname: string): boolean {
+  const normalized = normalizePath(pathname);
+  return CLIENT_ALLOWED_API_PREFIXES_WHEN_BLOCKED.some(
+    (allowed) => normalized === allowed || normalized.startsWith(`${allowed}/`),
+  );
+}
+
 

@@ -5,6 +5,7 @@ import { authOptions } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 import { listInMemoryLicitacaoArquivos } from "@/server/services/licitacoes-store";
 import { obterObjetoR2 } from "@/server/storage/r2-storage.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string; arquivoId: string }>;
@@ -13,6 +14,9 @@ interface RouteContext {
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id, arquivoId } = await context.params;
 
   let arquivo: any = null;

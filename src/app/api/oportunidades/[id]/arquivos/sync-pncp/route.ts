@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/server/auth";
 import { buscarESincronizarArquivosEditalPncp } from "@/server/services/oportunidades.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> | { id: string } },
 ) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const params = await Promise.resolve(context.params);
     const { id } = params;

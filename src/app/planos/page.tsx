@@ -235,6 +235,9 @@ export default function PlanosPage() {
       setModalCheckoutAberto(false);
       carregarStatus();
       carregarFaturas();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("subscription-updated"));
+      }
     } catch {
       setErroCheckout("Falha de comunicação com o servidor ao iniciar assinatura.");
     } finally {
@@ -284,15 +287,15 @@ export default function PlanosPage() {
         </p>
       </div>
 
-      {/* Alertas de Carência ou Somente-Leitura */}
-      {status?.isReadOnly && (
-        <div style={{ marginBottom: "1.5rem" }}>
+      {/* Alertas de Carência ou Bloqueio Pós-Trial */}
+      {(status?.isReadOnly || status?.isBlocked) && (
+        <div style={{ marginBottom: "1.5rem" }} data-testid="planos-bloqueio-notice">
           <InlineNotification
             kind="error"
-            title="Acesso Somente-Leitura:"
+            title="Módulos operacionais bloqueados:"
             subtitle={
               status.mensagemStatus ||
-              "Seu período de avaliação expirou. Escolha um dos planos abaixo para restabelecer o acesso total."
+              "Seu período de avaliação expirou. Escolha um dos planos abaixo para liberar o acesso completo ao sistema."
             }
             hideCloseButton
           />

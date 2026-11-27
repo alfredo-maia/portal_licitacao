@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { pesquisarInteligenciaPrecos } from "@/server/services/inteligencia-precos.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const { searchParams } = new URL(req.url);
     const ufsParam = searchParams.get("ufs") || searchParams.get("uf") || "TODOS";

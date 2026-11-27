@@ -8,6 +8,7 @@ import {
   listarItensPrecosSalvos,
   salvarItemPrecoTenant,
 } from "@/server/services/inteligencia-precos.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,9 @@ async function resolverTenantAtivo(
 }
 
 export async function GET(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const tenantId = await resolverTenantAtivo(req);
     if (!tenantId) {
@@ -66,6 +70,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const body = await req.json().catch(() => ({}));
     const tenantId = await resolverTenantAtivo(req, body?.tenantId);

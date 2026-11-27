@@ -15,10 +15,14 @@ import {
   criarImpugnacao,
   listarImpugnacoes,
 } from "@/server/services/impugnacoes.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const session = await getServerSession(authOptions).catch(() => null);
     if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {
@@ -53,6 +57,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const session = await getServerSession(authOptions).catch(() => null);
     if (isSuperAdminSessionUser(session?.user as SessionActorClaims | undefined)) {

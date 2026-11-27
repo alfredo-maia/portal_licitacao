@@ -9,8 +9,12 @@ import {
 import { parseDataCivil } from "@/lib/date-utils";
 import { criarPortal, listarPortais } from "@/server/services/portais.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export async function GET(request: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
   if (!guard.ok) return guard.response;
@@ -50,6 +54,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const session = await getServerSession(authOptions).catch(() => null);
   const guard = exigirClienteEmApi(session?.user as SessionActorClaims | undefined);
   if (!guard.ok) return guard.response;

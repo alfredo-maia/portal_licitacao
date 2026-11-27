@@ -1,10 +1,16 @@
 import { TenantBillingStatusType } from "@/server/schemas/asaas.schema";
+import {
+  isRouteAllowedWhenSubscriptionBlocked,
+  isSubscriptionLocked,
+  type TenantAccessEvaluation,
+} from "@/lib/subscription-guard";
 
 /**
- * Rotas essenciais e públicas com acesso irrestrito independente do status financeiro do Tenant (PRD §6 / ADR 0010).
+ * Rotas essenciais e públicas com acesso irrestrito independente do status financeiro do Tenant (PRD §6 / ADR 0010 / Issue #62).
  */
 export const ROTAS_WHITELIST_PAYWALL = [
   "/",
+  "/dashboard",
   "/login",
   "/cadastro",
   "/esqueci-senha",
@@ -13,11 +19,15 @@ export const ROTAS_WHITELIST_PAYWALL = [
   "/checkout",
   "/planos",
   "/configuracoes",
+  "/notificacoes",
   "/api/auth",
   "/api/webhooks",
   "/api/suporte",
   "/api/planos",
   "/api/faturamento",
+  "/api/dashboard",
+  "/api/configuracoes",
+  "/api/notificacoes",
   "/_next",
   "/favicon.ico",
 ];
@@ -77,4 +87,49 @@ export function verificarAcessoPaywall(params: {
     redirecionarPara: "/faturamento",
     motivo: "Assinatura pendente. Conclua a regularização para retomar as consultas e alertas.",
   };
+}
+
+/**
+ * Avaliação completa de Paywall baseada na avaliação oficial de `evaluateTenantAccess` (Issue #62):
+ * - Respeita os 3 dias de carência pós-trial (`inGracePeriod`)
+ * - Quando bloqueado (`isBlocked || isReadOnly`), libera apenas `/dashboard`, `/planos`, `/configuracoes`, `/notificacoes` e redireciona o restante para `/planos?bloqueado=1`.
+ */
+export function avaliarPaywallAssinatura(params: {
+  pathname: string;
+  evaluation: TenantAccessEvaluation | null | undefined;
+}): DecisaoPaywall {
+  const { pathname, evaluation } = params;
+
+  if (isRouteAllowedWhenSubscriptionBlocked(pathname)) {
+    return {
+      permitido: true,
+      exibirBannerAviso: Boolean(
+        evaluation?.inGracePeriod || isSubscriptionLocked(evaluation),
+      ),
+      motivo: evaluation?.mensagemStatus,
+    };
+  }
+
+  if (!evaluation) {
+    return { permitido: true, exibirBannerAviso: false };
+  }
+
+  if (evaluation.inGracePeriod) {
+    return {
+      permitido: true,
+      exibirBannerAviso: true,
+      motivo: evaluation.mensagemStatus,
+    };
+  }
+
+  if (isSubscriptionLocked(evaluation)) {
+    return {
+      permitido: false,
+      exibirBannerAviso: true,
+      redirecionarPara: "/planos?bloqueado=1",
+      motivo: evaluation.mensagemStatus,
+    };
+  }
+
+  return { permitido: true, exibirBannerAviso: false };
 }

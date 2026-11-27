@@ -19,6 +19,7 @@ import {
   gerarPropostaComercialTimbrada,
   gerarRelatorioExecutivoMensal,
 } from "@/server/services/arsenal.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,9 @@ const arsenalActionSchema = z.discriminatedUnion("acao", [
 ]);
 
 export async function GET() {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   return NextResponse.json({
     ok: true,
     matrixPlanos: ARSENAL_PLAN_MATRIX,
@@ -57,6 +61,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   try {
     const rawBody: unknown = await req.json().catch(() => ({}));
     const defaultActor = {

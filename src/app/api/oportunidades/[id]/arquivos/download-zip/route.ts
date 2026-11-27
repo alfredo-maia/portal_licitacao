@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { listInMemoryLicitacaoArquivos } from "@/server/services/licitacoes-store";
 import { obterObjetoR2 } from "@/server/storage/r2-storage.service";
 import { getOportunidadeById } from "@/server/services/oportunidades.service";
+import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -55,6 +56,9 @@ async function obterBufferArquivo(id: string, arquivo: any): Promise<Buffer> {
 }
 
 export async function GET(request: Request, context: RouteContext) {
+  const bloqueioAssinatura = await verificarBloqueioAssinaturaNaRota();
+  if (bloqueioAssinatura) return bloqueioAssinatura;
+
   const { id } = await context.params;
   const url = new URL(request.url);
   const idsParam = url.searchParams.get("ids");
