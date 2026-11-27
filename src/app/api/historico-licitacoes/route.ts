@@ -9,6 +9,7 @@ import {
 } from "@/server/auth/client-guard";
 import { listHistoricoLicitacoesPaginado } from "@/server/services/historico-licitacoes.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { registrarAcaoValorCliente } from "@/server/services/usage-telemetry.service";
 import { isPlanoBasicoRestrito } from "@/lib/subscription-guard";
 import {
   obterStatusAssinaturaCliente,
@@ -55,6 +56,14 @@ export async function GET(request: Request) {
 
     const result = await listHistoricoLicitacoesPaginado(params, tenantId, {
       restringirAbertasApenasOutros,
+    });
+    void registrarAcaoValorCliente({
+      tenantId,
+      userId: user.id,
+      usuarioNome: user.name,
+      usuarioEmail: user.email,
+      acao: "busca_historico",
+      rota: "/historico-licitacoes",
     });
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

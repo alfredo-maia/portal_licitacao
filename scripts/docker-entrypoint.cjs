@@ -824,6 +824,26 @@ async function bootstrapDatabase() {
       `CREATE INDEX IF NOT EXISTS "Licitacao_resumo_trgm_idx" ON "Licitacao" USING GIN ("resumo" gin_trgm_ops);`,
       `CREATE INDEX IF NOT EXISTS "Licitacao_miniResumo_trgm_idx" ON "Licitacao" USING GIN ("miniResumo" gin_trgm_ops);`,
       `CREATE INDEX IF NOT EXISTS "Licitacao_orgaoNome_trgm_idx" ON "Licitacao" USING GIN ("orgaoNome" gin_trgm_ops);`,
+      // Issue #65 — Telemetria consolidada diária de uso por CNPJ e Usuário
+      `CREATE TABLE IF NOT EXISTS "tenant_daily_activity" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "tenantId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "usuarioNome" TEXT,
+        "usuarioEmail" TEXT,
+        "dataBrt" VARCHAR(10) NOT NULL,
+        "acessosCount" INTEGER NOT NULL DEFAULT 1,
+        "acoesValorCount" INTEGER NOT NULL DEFAULT 0,
+        "modulosVisitados" JSONB NOT NULL DEFAULT '{}'::jsonb,
+        "acoesPorTipo" JSONB NOT NULL DEFAULT '{}'::jsonb,
+        "ultimaRota" TEXT,
+        "primeiroAcessoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "ultimoAcessoEm" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "tenant_daily_activity_tenantId_userId_dataBrt_key" ON "tenant_daily_activity"("tenantId", "userId", "dataBrt");`,
+      `CREATE INDEX IF NOT EXISTS "tenant_daily_activity_tenantId_dataBrt_idx" ON "tenant_daily_activity"("tenantId", "dataBrt");`,
+      `CREATE INDEX IF NOT EXISTS "tenant_daily_activity_userId_dataBrt_idx" ON "tenant_daily_activity"("userId", "dataBrt");`,
+      `CREATE INDEX IF NOT EXISTS "tenant_daily_activity_ultimoAcessoEm_idx" ON "tenant_daily_activity"("ultimoAcessoEm");`,
     ];
 
     for (const stmt of ddlSaaS) {

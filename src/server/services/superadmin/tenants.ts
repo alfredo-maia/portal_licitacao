@@ -28,6 +28,7 @@ import {
   listInMemoryLicitacoes,
   updateInMemoryConfiguracaoEmpresa,
 } from "@/server/services/licitacoes-store";
+import { agregarTelemetriaUsoTenants } from "@/server/services/usage-telemetry.service";
 import {
   agregarIaPorTenant,
   aplicarPatchTenant,
@@ -307,11 +308,20 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
   const usuarios = Array.from(usuariosMap.values());
   const titular = titularId ? usuariosMap.get(titularId) || null : null;
 
-  const [patrimonio, ia, affiliateNomes, todasDisputas] = await Promise.all([
+  const [patrimonio, ia, affiliateNomes, todasDisputas, telemetriaUso] = await Promise.all([
     carregarPatrimonio(tenantIds, nomes),
     agregarIaPorTenant(),
     listarAfiliadoNomesMap(),
     listarDisputasCnpjSuperAdmin(),
+    agregarTelemetriaUsoTenants(tenantIds, {
+      usuariosBase: usuarios.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        ultimoLoginEm: u.ultimoLoginEm,
+        tenants: u.tenants,
+      })),
+    }),
   ]);
   const porEmpEntries = await Promise.all(
     empresasRaw.map(async (emp) => [
@@ -450,6 +460,9 @@ export async function obterDossieCliente360SuperAdmin(tenantIdOrUserId: string) 
       affiliateId: primaryRaw.affiliateId ?? null,
     },
     notasInternasAdm: primaryRaw.notasInternasAdm ?? null,
+    usoGlobal: telemetriaUso.global,
+    usoPorEmpresa: Object.fromEntries(telemetriaUso.porTenant.entries()),
+    usoPorUsuario: telemetriaUso.porUsuario,
     disputas,
   };
 }

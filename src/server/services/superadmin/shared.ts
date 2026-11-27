@@ -16,6 +16,10 @@ import {
 } from "@/server/schemas/asaas.schema";
 import { PLAN_STORAGE_QUOTAS_MB } from "@/server/schemas/storage-r2.schema";
 import {
+  agregarTelemetriaUsoTenants,
+  consolidarUsoContaMultiCnpj,
+} from "@/server/services/usage-telemetry.service";
+import {
   ExpansaoCotaStorageInput,
   ExpansaoCotaStorageSchema,
   OnboardingChecklist,
@@ -1073,9 +1077,10 @@ export async function listarTenantsSuperAdmin(filtros?: {
     }
   }
 
-  const [ia, affiliateNomes] = await Promise.all([
+  const [ia, affiliateNomes, telemetriaLote] = await Promise.all([
     agregarIaPorTenant(),
     listarAfiliadoNomesMap(),
+    agregarTelemetriaUsoTenants(raws.map((r) => r.id)),
   ]);
 
   const gruposMap = new Map<string, RawTenant[]>();
@@ -1139,6 +1144,18 @@ export async function listarTenantsSuperAdmin(filtros?: {
       0,
       ...members.map((m) => (m.ultimaAtividadeEm ? new Date(m.ultimaAtividadeEm).getTime() : 0)),
     );
+    const usoMembers = members
+      .map((m) => telemetriaLote.porTenant.get(m.id))
+      .filter((u): u is NonNullable<typeof u> => Boolean(u));
+    const usoGlobalConta = consolidarUsoContaMultiCnpj(
+      usoMembers,
+      ultimaAtividadeMs > 0 ? new Date(ultimaAtividadeMs) : null,
+    );
+    const ultimaAtividadeFinal = usoGlobalConta.ultimoAcessoEm
+      ? new Date(usoGlobalConta.ultimoAcessoEm)
+      : ultimaAtividadeMs > 0
+        ? new Date(ultimaAtividadeMs)
+        : null;
 
     const item: SuperAdminTenantItem = {
       ...baseItem,
@@ -1170,7 +1187,8 @@ export async function listarTenantsSuperAdmin(filtros?: {
         Math.round(members.reduce((s, m) => s + (ia.get(m.id)?.gastoDia || 0), 0) * 100) / 100,
       gastoIaMesBrl:
         Math.round(members.reduce((s, m) => s + (ia.get(m.id)?.gastoMes || 0), 0) * 100) / 100,
-      ultimaAtividadeEm: ultimaAtividadeMs > 0 ? new Date(ultimaAtividadeMs) : null,
+      ultimaAtividadeEm: ultimaAtividadeFinal,
+      uso: usoGlobalConta,
       onboarding,
     };
 
@@ -1192,6 +1210,9 @@ export async function listarTenantsSuperAdmin(filtros?: {
       }
       if (filtro === "ENGAJADO") {
         return item.onboarding?.statusEngajamento === "ENGAJADO";
+      }
+      if (filtro === "SEM_USO_OU_ESFRIANDO") {
+        return item.uso?.status === "SEM_USO" || item.uso?.status === "ESFRIANDO";
       }
       return item.billingStatus === filtro;
     });

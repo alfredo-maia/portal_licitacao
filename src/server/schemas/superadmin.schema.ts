@@ -198,6 +198,18 @@ export const SuperAdminTenantItemSchema = z.object({
   ultimoPagamentoEm: z.date().nullable().optional(),
   trialFim: z.date().nullable().optional(),
   ultimaAtividadeEm: z.date().nullable().optional(),
+  uso: z
+    .object({
+      status: z.enum(["USO_DIARIO", "USO_SEMANAL", "ESFRIANDO", "SEM_USO"]),
+      rotulo: z.string(),
+      diasAtivos7d: z.number().int(),
+      diasAtivos30d: z.number().int(),
+      totalAcessos30d: z.number().int(),
+      totalAcoesValor30d: z.number().int(),
+      ultimoAcessoEm: z.string().nullable().optional(),
+      ultimaRota: z.string().nullable().optional(),
+    })
+    .optional(),
   affiliateId: z.string().nullable().optional(),
   affiliateNome: z.string().nullable().optional(),
   cupomCodigo: z.string().nullable().optional(),

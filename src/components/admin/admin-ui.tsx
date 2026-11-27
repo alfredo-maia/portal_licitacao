@@ -40,7 +40,47 @@ export const fmtDia = (v: string | Date | null | undefined): string => {
     : d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 };
 
+export const fmtTempoRelativo = (v: string | Date | null | undefined): string => {
+  if (!v) return "Sem registro";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "Sem registro";
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return "agora";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `há ${mins} min`;
+  const horas = Math.floor(mins / 60);
+  if (horas < 24) return `há ${horas}h`;
+  const dias = Math.floor(horas / 24);
+  if (dias === 1) return "ontem";
+  return `há ${dias}d`;
+};
+
 type TagType = "green" | "cyan" | "warm-gray" | "red" | "blue" | "gray" | "magenta" | "teal";
+
+const USO_SAUDE_TAG: Record<string, { type: TagType; label: string }> = {
+  USO_DIARIO: { type: "green", label: "Uso diário" },
+  USO_SEMANAL: { type: "blue", label: "Uso semanal" },
+  ESFRIANDO: { type: "warm-gray", label: "Esfriando" },
+  SEM_USO: { type: "red", label: "Sem uso" },
+};
+
+export function UsoSaudeTag({
+  status,
+  rotulo,
+  size = "sm",
+}: {
+  status?: string | null;
+  rotulo?: string | null;
+  size?: "sm" | "md";
+}) {
+  const key = status || "SEM_USO";
+  const cfg = USO_SAUDE_TAG[key] || USO_SAUDE_TAG.SEM_USO;
+  return (
+    <Tag type={cfg.type} size={size} style={{ margin: 0 }}>
+      {rotulo || cfg.label}
+    </Tag>
+  );
+}
 
 const STATUS_TAG: Record<string, { type: TagType; label: string }> = {
   ATIVO: { type: "green", label: "Pagante" },

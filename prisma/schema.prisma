@@ -626,6 +626,7 @@ model Tenant {
   auditLogs     AuditLog[]
   precosSalvos  TenantPrecoSalvo[]
   supportTickets SupportTicket[]
+  dailyActivities TenantDailyActivity[]
 
   @@index([cnpj])
   @@index([plano])
@@ -1020,6 +1021,31 @@ model AdminSetting {
   atualizadoEm DateTime @updatedAt
 
   @@map("admin_setting")
+}
+
+// Issue #65 — Telemetria consolidada diária de uso & engajamento por CNPJ e Usuário (BRT)
+model TenantDailyActivity {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String
+  usuarioNome      String?
+  usuarioEmail     String?
+  dataBrt          String   @db.VarChar(10)
+  acessosCount     Int      @default(1)
+  acoesValorCount  Int      @default(0)
+  modulosVisitados Json     @default("{}")
+  acoesPorTipo     Json     @default("{}")
+  ultimaRota       String?
+  primeiroAcessoEm DateTime @default(now())
+  ultimoAcessoEm   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, dataBrt])
+  @@index([tenantId, dataBrt])
+  @@index([userId, dataBrt])
+  @@index([ultimoAcessoEm])
+  @@map("tenant_daily_activity")
 }
 
 

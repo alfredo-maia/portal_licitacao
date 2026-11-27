@@ -154,15 +154,20 @@ describe("Issue #54 — Três Ajustes: Redirecionamento /admin, Login ADM em Eta
 
       fireEvent.click(tabSegmentos);
 
-      // Deve exibir UFs das empresas
+      // Deve exibir UFs e Segmentos apenas da empresa ativa (Alpha Tech / tnt_mock_1)
       expect(await screen.findByText("SP")).toBeInTheDocument();
       expect(screen.getByText("RJ")).toBeInTheDocument();
-      expect(screen.getByText(/Todo o Brasil/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Todo o Brasil/i)).not.toBeInTheDocument();
 
-      // Deve exibir Segmentos Macro e Subsegmentos
+      // Deve exibir Segmentos Macro e Subsegmentos da empresa ativa
       expect(screen.getByText(/ALIMENTOS|Alimentos/i)).toBeInTheDocument();
       expect(screen.getByText(/TECNOLOGIA|Tecnologia/i)).toBeInTheDocument();
       expect(screen.getByText(/hortifrutigranjeiros/i)).toBeInTheDocument();
+
+      // Ao alternar para o segundo CNPJ no topo, passa a exibir as regiões/segmentos dele
+      fireEvent.click(screen.getByTestId("cnpj-card-tnt_mock_2"));
+      expect(await screen.findByText(/Todo o Brasil/i)).toBeInTheDocument();
+      expect(screen.queryByText("RJ")).not.toBeInTheDocument();
     });
   });
 });

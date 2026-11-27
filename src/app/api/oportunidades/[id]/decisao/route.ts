@@ -14,6 +14,7 @@ import {
   OportunidadesServiceError,
 } from "@/server/services/oportunidades.service";
 import { resolveUserActiveTenantId } from "@/server/services/tenant.service";
+import { registrarAcaoValorCliente } from "@/server/services/usage-telemetry.service";
 import { verificarBloqueioAssinaturaNaRota } from "@/server/services/subscription-status.service";
 
 interface RouteContext {
@@ -81,6 +82,14 @@ export async function POST(request: Request, context: RouteContext) {
       user,
       actorContext: { ip: request.headers.get("x-forwarded-for") },
       tenantId,
+    });
+    void registrarAcaoValorCliente({
+      tenantId,
+      userId: user.id,
+      usuarioNome: user.name ?? null,
+      usuarioEmail: user.email ?? null,
+      acao: "deliberacao",
+      rota: `/oportunidades/${id}`,
     });
     return NextResponse.json({ ok: true, oportunidade }, { status: 200 });
   } catch (error) {

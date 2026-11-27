@@ -29,11 +29,13 @@ import {
   KpiTile,
   PageHeader,
   StatusFinanceiroTag,
+  UsoSaudeTag,
   adminFetch,
   fmtBRL,
   fmtData,
   fmtDia,
   fmtNum,
+  fmtTempoRelativo,
   useAdminData,
   type Feedback,
 } from "../admin-ui";
@@ -213,6 +215,55 @@ interface Dossie {
     affiliateId?: string | null;
   };
   notasInternasAdm: string | null;
+  usoGlobal?: {
+    status: string;
+    rotulo: string;
+    diasAtivos7d: number;
+    diasAtivos30d: number;
+    totalAcessos30d: number;
+    totalAcoesValor30d: number;
+    ultimoAcessoEm: string | null;
+    ultimaRota: string | null;
+  };
+  usoPorEmpresa?: Record<
+    string,
+    {
+      tenantId: string;
+      status: string;
+      rotulo: string;
+      diasAtivos7d: number;
+      diasAtivos30d: number;
+      totalAcessos30d: number;
+      totalAcoesValor30d: number;
+      ultimoAcessoEm: string | null;
+      ultimaRota: string | null;
+      serie14Dias: Array<{
+        dataBrt: string;
+        acessos: number;
+        acoesValor: number;
+      }>;
+      modulosTop: Array<{
+        modulo: string;
+        rotulo: string;
+        acessos: number;
+      }>;
+      acoesTop: Array<{
+        acao: string;
+        rotulo: string;
+        total: number;
+      }>;
+    }
+  >;
+  usoPorUsuario?: Array<{
+    userId: string;
+    nome: string;
+    email: string;
+    diasAtivos7d: number;
+    diasAtivos30d: number;
+    totalAcessos30d: number;
+    totalAcoesValor30d: number;
+    ultimoAcessoEm: string | null;
+  }>;
   disputas: Array<{
     id: string;
     cnpj: string;
@@ -431,6 +482,7 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
           <Tab>4 · Segmentos & Regiões (UFs)</Tab>
           <Tab>5 · Licitações & Cofre</Tab>
           <Tab>6 · Recursos & Cotas</Tab>
+          <Tab>7 · Uso & Engajamento</Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -450,6 +502,9 @@ export function Cliente360Screen({ tenantId }: { tenantId: string }) {
           </TabPanel>
           <TabPanel>
             <Cotas dossie={data} activeTenantId={activeTenantId} patch={patch} />
+          </TabPanel>
+          <TabPanel>
+            <UsoEngajamento dossie={data} activeTenantId={activeTenantId} />
           </TabPanel>
         </TabPanels>
       </Tabs>
@@ -946,182 +1001,181 @@ function SegmentosUfs({
   activeTenantId: string;
 }) {
   const empresas = dossie.empresas || [];
+  const emp = empresas.find((e) => e.id === activeTenantId) || empresas[0] || null;
+
+  if (!emp) {
+    return (
+      <div style={{ paddingTop: "1rem" }}>
+        <Tile>Nenhuma empresa vinculada para exibir segmentos e regiões.</Tile>
+      </div>
+    );
+  }
+
+  const ufs = emp.ufs || [];
+  const brasilInteiro = emp.brasilInteiro ?? (ufs.length === 0);
+  const segmentos = emp.segmentos || [];
+  const subsegmentos = emp.subsegmentos || [];
 
   return (
-    <div style={{ display: "grid", gap: "1.5rem" }}>
+    <div style={{ display: "grid", gap: "1.25rem", paddingTop: "1rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
         <div>
           <h3 style={{ fontSize: "1.125rem", fontWeight: 600 }}>
-            Segmentos & Regiões de Atuação por Empresa
+            Segmentos & Regiões de Atuação — {emp.nomeFantasia || emp.razaoSocial}
           </h3>
           <p style={{ fontSize: "0.875rem", color: "var(--cds-text-secondary)" }}>
-            Visão detalhada das UFs de monitoramento e Segmentos/Subsegmentos cadastrados para cada CNPJ da conta.
+            Exibindo as UFs de monitoramento e Segmentos/Subsegmentos cadastrados para o CNPJ selecionado no topo.
+            {empresas.length > 1 ? " Alterne o card de CNPJ no topo para visualizar as demais empresas da conta." : ""}
           </p>
         </div>
-        <Tag type="blue">{empresas.length} empresa(s) vinculada(s)</Tag>
+        <Tag type="blue">{maskCnpj(emp.cnpj)}</Tag>
       </div>
 
-      <div style={{ display: "grid", gap: "1.25rem" }}>
-        {empresas.map((emp) => {
-          const isSelected = emp.id === activeTenantId;
-          const ufs = emp.ufs || [];
-          const brasilInteiro = emp.brasilInteiro ?? (ufs.length === 0);
-          const segmentos = emp.segmentos || [];
-          const subsegmentos = emp.subsegmentos || [];
+      <Tile
+        key={emp.id}
+        data-testid={`tile-segmentos-empresa-${emp.id}`}
+        style={{
+          padding: "1.5rem",
+          border: "1px solid var(--cds-border-subtle)",
+          backgroundColor: "var(--cds-layer-01)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            marginBottom: "1rem",
+            paddingBottom: "0.75rem",
+            borderBottom: "1px solid var(--cds-border-subtle)",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <strong style={{ fontSize: "1.05rem" }}>
+                {emp.nomeFantasia || emp.razaoSocial}
+              </strong>
+              <Tag type="green" size="sm">Visualizando</Tag>
+              <Tag type="cyan" size="sm">{emp.plano}</Tag>
+            </div>
+            <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+              {emp.razaoSocial} • CNPJ: {maskCnpj(emp.cnpj)} {emp.cidade && emp.uf ? `• Sede: ${emp.cidade}/${emp.uf}` : ""}
+            </div>
+          </div>
+        </div>
 
-          return (
-            <Tile
-              key={emp.id}
-              data-testid={`tile-segmentos-empresa-${emp.id}`}
-              style={{
-                padding: "1.5rem",
-                border: isSelected
-                  ? "2px solid var(--cds-interactive, #0f62fe)"
-                  : "1px solid var(--cds-border-subtle, #393939)",
-                backgroundColor: isSelected
-                  ? "var(--cds-layer-01)"
-                  : "var(--cds-layer-02, #262626)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  flexWrap: "wrap",
-                  gap: "0.5rem",
-                  marginBottom: "1rem",
-                  paddingBottom: "0.75rem",
-                  borderBottom: "1px solid var(--cds-border-subtle, #393939)",
-                }}
-              >
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                    <strong style={{ fontSize: "1.05rem" }}>
-                      {emp.nomeFantasia || emp.razaoSocial}
-                    </strong>
-                    {isSelected && <Tag type="green" size="sm">Visualizando</Tag>}
-                    <Tag type="cyan" size="sm">{emp.plano}</Tag>
-                  </div>
-                  <div style={{ fontSize: "0.8125rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
-                    {emp.razaoSocial} • CNPJ: {maskCnpj(emp.cnpj)} {emp.cidade && emp.uf ? `• Sede: ${emp.cidade}/${emp.uf}` : ""}
-                  </div>
-                </div>
-              </div>
+        {/* UFs */}
+        <div style={{ marginBottom: "1rem" }}>
+          <span
+            style={{
+              display: "block",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              color: "var(--cds-text-secondary)",
+              marginBottom: "0.4rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            Regiões de Atuação (UFs)
+          </span>
+          {brasilInteiro ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Tag type="teal" size="md">
+                Todo o Brasil (27 UFs)
+              </Tag>
+            </div>
+          ) : ufs.length > 0 ? (
+            <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+              {ufs.map((uf) => (
+                <Tag key={uf} type="blue" size="sm">
+                  {uf}
+                </Tag>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+              Nenhuma UF específica configurada.
+            </p>
+          )}
+        </div>
 
-              {/* UFs */}
-              <div style={{ marginBottom: "1rem" }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "0.8125rem",
-                    fontWeight: 600,
-                    color: "var(--cds-text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Regiões de Atuação (UFs)
-                </span>
-                {brasilInteiro ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <Tag type="teal" size="md">
-                      Todo o Brasil (27 UFs)
-                    </Tag>
-                  </div>
-                ) : ufs.length > 0 ? (
-                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-                    {ufs.map((uf) => (
-                      <Tag key={uf} type="blue" size="sm">
-                        {uf}
-                      </Tag>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
-                    Nenhuma UF específica configurada.
-                  </p>
-                )}
-              </div>
+        {/* Segmentos Macro */}
+        <div style={{ marginBottom: "1rem" }}>
+          <span
+            style={{
+              display: "block",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              color: "var(--cds-text-secondary)",
+              marginBottom: "0.4rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            Segmentos Macro de Atuação
+          </span>
+          {segmentos.length > 0 ? (
+            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+              {segmentos.map((seg) => {
+                const def = CATALOGO_MACRO_SEGMENTOS[seg as MacroSegmento];
+                const nomeAmigavel = def?.nome || seg;
+                return (
+                  <Tag key={seg} type="purple" size="md">
+                    {nomeAmigavel}
+                  </Tag>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+              Nenhum segmento macro selecionado no momento.
+            </p>
+          )}
+        </div>
 
-              {/* Segmentos Macro */}
-              <div style={{ marginBottom: "1rem" }}>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "0.8125rem",
-                    fontWeight: 600,
-                    color: "var(--cds-text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Segmentos Macro de Atuação
-                </span>
-                {segmentos.length > 0 ? (
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                    {segmentos.map((seg) => {
-                      const def = CATALOGO_MACRO_SEGMENTOS[seg as MacroSegmento];
-                      const nomeAmigavel = def?.nome || seg;
-                      return (
-                        <Tag key={seg} type="purple" size="md">
-                          {nomeAmigavel}
-                        </Tag>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
-                    Nenhum segmento macro selecionado no momento.
-                  </p>
-                )}
-              </div>
-
-              {/* Subsegmentos */}
-              <div>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "0.8125rem",
-                    fontWeight: 600,
-                    color: "var(--cds-text-secondary)",
-                    marginBottom: "0.4rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  Subsegmentos Especializados ({subsegmentos.length})
-                </span>
-                {subsegmentos.length > 0 ? (
-                  <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-                    {subsegmentos.map((sub) => {
-                      let subNome = sub;
-                      for (const macro of Object.values(CATALOGO_MACRO_SEGMENTOS)) {
-                        const found = macro.subcategorias?.find((s) => s.codigo === sub);
-                        if (found) {
-                          subNome = found.nome;
-                          break;
-                        }
-                      }
-                      return (
-                        <Tag key={sub} type="cool-gray" size="sm">
-                          {subNome}
-                        </Tag>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
-                    Nenhum subsegmento específico selecionado.
-                  </p>
-                )}
-              </div>
-            </Tile>
-          );
-        })}
-      </div>
+        {/* Subsegmentos */}
+        <div>
+          <span
+            style={{
+              display: "block",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              color: "var(--cds-text-secondary)",
+              marginBottom: "0.4rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            Subsegmentos Especializados ({subsegmentos.length})
+          </span>
+          {subsegmentos.length > 0 ? (
+            <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+              {subsegmentos.map((sub) => {
+                let subNome = sub;
+                for (const macro of Object.values(CATALOGO_MACRO_SEGMENTOS)) {
+                  const found = macro.subcategorias?.find((s) => s.codigo === sub);
+                  if (found) {
+                    subNome = found.nome;
+                    break;
+                  }
+                }
+                return (
+                  <Tag key={sub} type="cool-gray" size="sm">
+                    {subNome}
+                  </Tag>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+              Nenhum subsegmento específico selecionado.
+            </p>
+          )}
+        </div>
+      </Tile>
     </div>
   );
 }
@@ -1349,6 +1403,404 @@ function Cotas({
           </Button>
         </div>
       </Tile>
+    </div>
+  );
+}
+
+/* ---------------------------- Aba 7 — Uso & Engajamento ---------------------------- */
+function formatDiaCurtoBrt(dataBrt: string): string {
+  const partes = dataBrt.split("-");
+  if (partes.length !== 3) return dataBrt;
+  return `${partes[2]}/${partes[1]}`;
+}
+
+function UsoEngajamento({
+  dossie,
+  activeTenantId,
+}: {
+  dossie: Dossie;
+  activeTenantId: string;
+}) {
+  const empresas = dossie.empresas || [];
+  const empAtiva = empresas.find((e) => e.id === activeTenantId) || empresas[0] || null;
+  const usoAtivo = dossie.usoPorEmpresa?.[activeTenantId] ?? {
+    tenantId: activeTenantId,
+    status: "SEM_USO",
+    rotulo: "Sem uso",
+    diasAtivos7d: 0,
+    diasAtivos30d: 0,
+    totalAcessos30d: 0,
+    totalAcoesValor30d: 0,
+    ultimoAcessoEm: null,
+    ultimaRota: null,
+    serie14Dias: [],
+    modulosTop: [],
+    acoesTop: [],
+  };
+  const usoGlobal = dossie.usoGlobal ?? {
+    status: usoAtivo.status,
+    rotulo: usoAtivo.rotulo,
+    diasAtivos7d: usoAtivo.diasAtivos7d,
+    diasAtivos30d: usoAtivo.diasAtivos30d,
+    totalAcessos30d: usoAtivo.totalAcessos30d,
+    totalAcoesValor30d: usoAtivo.totalAcoesValor30d,
+    ultimoAcessoEm: usoAtivo.ultimoAcessoEm,
+    ultimaRota: usoAtivo.ultimaRota,
+  };
+  const maxAcessosModulo = Math.max(
+    1,
+    ...usoAtivo.modulosTop.map((m) => m.acessos),
+  );
+  const usuariosUso = dossie.usoPorUsuario || [];
+
+  return (
+    <div
+      data-testid="aba-uso-engajamento"
+      style={{ paddingTop: "1rem", display: "grid", gap: "1.25rem" }}
+    >
+      {/* Cabeçalho contextual do CNPJ ativo + resumo global */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: "0.75rem",
+        }}
+      >
+        <div>
+          <h3 style={{ fontSize: "1.125rem", fontWeight: 600, margin: 0 }}>
+            Uso & Engajamento — {empAtiva?.nomeFantasia || empAtiva?.razaoSocial || dossie.tenant.razaoSocial}
+          </h3>
+          <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", marginTop: "0.25rem" }}>
+            Acompanhamento de frequência (dias ativos na semana e no mês), telas visitadas e ações de valor do CNPJ selecionado.
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+            padding: "0.5rem 0.75rem",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+            borderRadius: "4px",
+            fontSize: "0.78rem",
+            color: "var(--cds-text-secondary)",
+          }}
+        >
+          <strong>Conta Global ({empresas.length} CNPJ):</strong>
+          <UsoSaudeTag status={usoGlobal.status} rotulo={usoGlobal.rotulo} size="sm" />
+          <span>
+            {usoGlobal.diasAtivos7d}/7d • {usoGlobal.diasAtivos30d}/30d • Último:{" "}
+            {fmtTempoRelativo(usoGlobal.ultimoAcessoEm)}
+          </span>
+        </div>
+      </div>
+
+      {/* KPIs do CNPJ ativo */}
+      <KpiGrid>
+        <KpiTile
+          rotulo="FREQUÊNCIA (CNPJ ATIVO)"
+          valor={
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <UsoSaudeTag status={usoAtivo.status} rotulo={usoAtivo.rotulo} size="md" />
+            </div>
+          }
+          detalhe={`${usoAtivo.diasAtivos7d}/7 dias na semana • ${usoAtivo.diasAtivos30d}/30 dias no mês`}
+        />
+        <KpiTile
+          rotulo="ÚLTIMO ACESSO"
+          valor={fmtTempoRelativo(usoAtivo.ultimoAcessoEm)}
+          detalhe={
+            usoAtivo.ultimoAcessoEm
+              ? `${fmtData(usoAtivo.ultimoAcessoEm)}${usoAtivo.ultimaRota ? ` • ${usoAtivo.ultimaRota}` : ""}`
+              : "Nenhuma abertura registrada nos últimos 30 dias"
+          }
+        />
+        <KpiTile
+          rotulo="ACESSOS (30 DIAS)"
+          valor={fmtNum(usoAtivo.totalAcessos30d)}
+          detalhe="Navegações consolidadas no portal"
+        />
+        <KpiTile
+          rotulo="AÇÕES DE VALOR (30 DIAS)"
+          valor={fmtNum(usoAtivo.totalAcoesValor30d)}
+          detalhe="Deliberações, buscas, IA e documentos"
+        />
+      </KpiGrid>
+
+      {/* Heatmap de presença dos últimos 14 dias */}
+      <Tile
+        data-testid="uso-heatmap-14d"
+        style={{
+          padding: "1.25rem",
+          backgroundColor: "var(--cds-layer-01)",
+          border: "1px solid var(--cds-border-subtle)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            marginBottom: "0.75rem",
+          }}
+        >
+          <div>
+            <h4 style={{ fontSize: "0.95rem", fontWeight: 600, margin: 0 }}>
+              Presença nos últimos 14 dias (horário de Brasília)
+            </h4>
+            <p style={{ fontSize: "0.78rem", color: "var(--cds-text-secondary)", margin: "0.2rem 0 0" }}>
+              Cada bloco representa 1 dia. Passe o mouse para ver acessos e ações de valor naquele dia.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.72rem", color: "var(--cds-text-secondary)" }}>
+            <span>Sem uso</span>
+            <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: "var(--cds-layer-02)", border: "1px solid var(--cds-border-subtle)", display: "inline-block" }} />
+            <span>Ativo</span>
+            <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: "var(--cds-support-info, #4589ff)", display: "inline-block" }} />
+            <span>Intenso</span>
+            <span style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: "var(--cds-support-success, #24a148)", display: "inline-block" }} />
+          </div>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(14, minmax(46px, 1fr))",
+              gap: "0.4rem",
+            }}
+          >
+            {usoAtivo.serie14Dias.map((dia) => {
+              const intensidade =
+                dia.acessos === 0 && dia.acoesValor === 0
+                  ? "vazio"
+                  : dia.acessos >= 5 || dia.acoesValor >= 2
+                    ? "intenso"
+                    : "ativo";
+              const bg =
+                intensidade === "intenso"
+                  ? "var(--cds-support-success, #24a148)"
+                  : intensidade === "ativo"
+                    ? "var(--cds-support-info, #4589ff)"
+                    : "var(--cds-layer-02)";
+              const corTexto =
+                intensidade === "vazio"
+                  ? "var(--cds-text-secondary)"
+                  : "var(--cds-text-on-color, #ffffff)";
+
+              return (
+                <div
+                  key={dia.dataBrt}
+                  title={`${formatDiaCurtoBrt(dia.dataBrt)} — ${dia.acessos} acesso(s), ${dia.acoesValor} ação(ões) de valor`}
+                  style={{
+                    padding: "0.45rem 0.25rem",
+                    borderRadius: "4px",
+                    backgroundColor: bg,
+                    color: corTexto,
+                    border: "1px solid var(--cds-border-subtle)",
+                    textAlign: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.15rem",
+                  }}
+                >
+                  <span style={{ fontSize: "0.68rem", fontWeight: 600 }}>
+                    {formatDiaCurtoBrt(dia.dataBrt)}
+                  </span>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700 }}>
+                    {dia.acessos > 0 ? dia.acessos : dia.acoesValor > 0 ? dia.acoesValor : "—"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Tile>
+
+      {/* Telas mais acessadas + Ações de valor */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "1rem",
+        }}
+      >
+        <Tile
+          style={{
+            padding: "1.25rem",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+          }}
+        >
+          <h4 style={{ fontSize: "0.95rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
+            Telas mais acessadas (30 dias)
+          </h4>
+          {usoAtivo.modulosTop.length === 0 ? (
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+              Nenhuma navegação registrada neste CNPJ nos últimos 30 dias.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: "0.65rem" }}>
+              {usoAtivo.modulosTop.map((m) => {
+                const pct = Math.max(8, Math.round((m.acessos / maxAcessosModulo) * 100));
+                return (
+                  <div key={m.modulo}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "0.8125rem",
+                        marginBottom: "0.2rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 500 }}>{m.rotulo}</span>
+                      <span style={{ color: "var(--cds-text-secondary)" }}>
+                        {fmtNum(m.acessos)} acesso(s)
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: "6px",
+                        borderRadius: "3px",
+                        backgroundColor: "var(--cds-layer-02)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          height: "100%",
+                          backgroundColor: "var(--cds-interactive, #0f62fe)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Tile>
+
+        <Tile
+          style={{
+            padding: "1.25rem",
+            backgroundColor: "var(--cds-layer-01)",
+            border: "1px solid var(--cds-border-subtle)",
+          }}
+        >
+          <h4 style={{ fontSize: "0.95rem", fontWeight: 600, margin: "0 0 0.75rem" }}>
+            Ações de valor realizadas (30 dias)
+          </h4>
+          {usoAtivo.acoesTop.length === 0 ? (
+            <p style={{ fontSize: "0.85rem", color: "var(--cds-text-secondary)", fontStyle: "italic" }}>
+              Nenhuma ação operacional registrada neste CNPJ nos últimos 30 dias.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: "0.55rem" }}>
+              {usoAtivo.acoesTop.map((a) => (
+                <div
+                  key={a.acao}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "0.45rem 0.65rem",
+                    backgroundColor: "var(--cds-layer-02)",
+                    borderRadius: "4px",
+                    fontSize: "0.8125rem",
+                  }}
+                >
+                  <span>{a.rotulo}</span>
+                  <Tag type="teal" size="sm">
+                    {fmtNum(a.total)}
+                  </Tag>
+                </div>
+              ))}
+            </div>
+          )}
+        </Tile>
+      </div>
+
+      {/* Comparativo entre CNPJs da conta */}
+      <AdminTable
+        titulo={`Comparativo de uso entre CNPJs da conta (${empresas.length})`}
+        descricao="Permite identificar rapidamente quais CNPJs da conta estão ativos e quais estão parados."
+        pageSize={5}
+        rowClassName={(id) => (id === activeTenantId ? "pncp-admin-row--active" : undefined)}
+        colunas={[
+          { key: "empresa", header: "Empresa (CNPJ)" },
+          { key: "saude", header: "Frequência" },
+          { key: "dias", header: "Dias ativos" },
+          { key: "acessos", header: "Acessos (30d)" },
+          { key: "acoes", header: "Ações de valor (30d)" },
+          { key: "ultimo", header: "Último acesso" },
+        ]}
+        linhas={empresas.map((emp) => {
+          const u = dossie.usoPorEmpresa?.[emp.id];
+          return {
+            id: emp.id,
+            empresa: (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                  <strong>{emp.nomeFantasia || emp.razaoSocial}</strong>
+                  {emp.id === activeTenantId ? (
+                    <Tag type="cyan" size="sm">Visualizando</Tag>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>
+                  {maskCnpj(emp.cnpj)}
+                </div>
+              </div>
+            ),
+            saude: <UsoSaudeTag status={u?.status} rotulo={u?.rotulo} size="sm" />,
+            dias: `${u?.diasAtivos7d ?? 0}/7d • ${u?.diasAtivos30d ?? 0}/30d`,
+            acessos: fmtNum(u?.totalAcessos30d ?? 0),
+            acoes: fmtNum(u?.totalAcoesValor30d ?? 0),
+            ultimo: u?.ultimoAcessoEm ? (
+              <span title={fmtData(u.ultimoAcessoEm)}>{fmtTempoRelativo(u.ultimoAcessoEm)}</span>
+            ) : (
+              "Sem registro"
+            ),
+          };
+        })}
+      />
+
+      {/* Atividade por usuário da equipe */}
+      <AdminTable
+        titulo={`Atividade por usuário da equipe (${usuariosUso.length})`}
+        pageSize={5}
+        vazio="Nenhum usuário com atividade registrada nos últimos 30 dias."
+        colunas={[
+          { key: "usuario", header: "Usuário" },
+          { key: "dias", header: "Dias ativos" },
+          { key: "acessos", header: "Acessos (30d)" },
+          { key: "acoes", header: "Ações de valor (30d)" },
+          { key: "ultimo", header: "Último acesso" },
+        ]}
+        linhas={usuariosUso.map((u) => ({
+          id: u.userId,
+          usuario: (
+            <div>
+              <strong>{u.nome}</strong>
+              <div style={{ fontSize: "0.75rem", color: "var(--cds-text-secondary)" }}>{u.email}</div>
+            </div>
+          ),
+          dias: `${u.diasAtivos7d}/7d • ${u.diasAtivos30d}/30d`,
+          acessos: fmtNum(u.totalAcessos30d),
+          acoes: fmtNum(u.totalAcoesValor30d),
+          ultimo: u.ultimoAcessoEm ? (
+            <span title={fmtData(u.ultimoAcessoEm)}>{fmtTempoRelativo(u.ultimoAcessoEm)}</span>
+          ) : (
+            "Sem registro"
+          ),
+        }))}
+      />
     </div>
   );
 }

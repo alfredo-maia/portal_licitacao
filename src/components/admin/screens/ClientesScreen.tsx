@@ -17,14 +17,17 @@ import {
   EngajamentoTag,
   PageHeader,
   StatusFinanceiroTag,
+  UsoSaudeTag,
   adminFetch,
   fmtDia,
+  fmtTempoRelativo,
 } from "../admin-ui";
 
 const FILTROS = [
   { id: "TODOS", label: "Todos" },
   { id: "ATIVO", label: "Pagantes" },
   { id: "TRIAL", label: "Teste grátis" },
+  { id: "SEM_USO_OU_ESFRIANDO", label: "Sem uso / Esfriando" },
   { id: "EM_CONFIGURACAO", label: "Em configuração" },
   { id: "ABANDONO_TRIAL", label: "Pendente de configuração" },
   { id: "ENGAJADO", label: "Engajados" },
@@ -129,20 +132,22 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
             onClear={() => setBusca("")}
           />
         </div>
-        <ContentSwitcher
-          size="md"
-          selectedIndex={Math.max(
-            0,
-            FILTROS.findIndex((f) => f.id === filtro),
-          )}
-          onChange={(e: { name?: string | number }) =>
-            setFiltro(String(e.name))
-          }
-        >
-          {FILTROS.map((f) => (
-            <Switch key={f.id} name={f.id} text={f.label} />
-          ))}
-        </ContentSwitcher>
+        <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+          <ContentSwitcher
+            size="md"
+            selectedIndex={Math.max(
+              0,
+              FILTROS.findIndex((f) => f.id === filtro),
+            )}
+            onChange={(e: { name?: string | number }) =>
+              setFiltro(String(e.name))
+            }
+          >
+            {FILTROS.map((f) => (
+              <Switch key={f.id} name={f.id} text={f.label} />
+            ))}
+          </ContentSwitcher>
+        </div>
       </div>
 
       {erro ? (
@@ -345,24 +350,43 @@ export function ClientesScreen({ buscaInicial = "" }: { buscaInicial?: string })
                 >
                   <div
                     style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "0.35rem",
                       fontSize: "0.75rem",
                       color: "var(--cds-text-secondary)",
                     }}
                   >
-                    {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre}{" "}
-                    docs • {t.totalUsuarios} usuário(s) • {t.aiUsadasMes ?? 0}{" "}
-                    IA/mês
+                    <span>
+                      {t.totalLicitacoesKanban} lic. • {t.totalDocumentosCofre}{" "}
+                      docs • {t.totalUsuarios} usuário(s) •
+                    </span>
+                    <UsoSaudeTag
+                      status={t.uso?.status}
+                      rotulo={t.uso?.rotulo}
+                      size="sm"
+                    />
+                    {t.uso && t.uso.diasAtivos7d > 0 ? (
+                      <span style={{ fontSize: "0.72rem", color: "var(--cds-text-helper)" }}>
+                        ({t.uso.diasAtivos7d}d/7d)
+                      </span>
+                    ) : null}
+                    <span>• {t.aiUsadasMes ?? 0} IA/mês</span>
                   </div>
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
                       fontSize: "0.75rem",
                     }}
                   >
                     <span style={{ color: "var(--cds-text-helper)" }}>
-                      Cadastro: {fmtDia(t.criadoEm)}
+                      Cadastro: {fmtDia(t.criadoEm)} • Último acesso:{" "}
+                      {fmtTempoRelativo(t.uso?.ultimoAcessoEm ?? t.ultimaAtividadeEm)}
                     </span>
                     <span
                       style={{

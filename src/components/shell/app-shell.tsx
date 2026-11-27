@@ -212,6 +212,34 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [isCurrentRouteBlockedByPaywall, isCurrentRouteBlockedByBasicPlan, pathname, router]);
 
+  // Issue #65 — Ping silencioso e com throttle para telemetria diária de presença/módulos do cliente
+  const lastActivityPingRef = React.useRef<{ rota: string; ts: number }>({
+    rota: "",
+    ts: 0,
+  });
+  React.useEffect(() => {
+    if (
+      isAuthRouteCheck ||
+      isAdminRouteCheck ||
+      typeof fetch !== "function" ||
+      !pathname
+    ) {
+      return;
+    }
+    const nowMs = Date.now();
+    const prev = lastActivityPingRef.current;
+    if (prev.rota === pathname && nowMs - prev.ts < 5 * 60 * 1000) {
+      return;
+    }
+    lastActivityPingRef.current = { rota: pathname, ts: nowMs };
+    fetch("/api/tenant/atividade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rota: pathname }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [isAuthRouteCheck, isAdminRouteCheck, pathname]);
+
   React.useEffect(() => {
     if (typeof window !== "undefined" && pathname) {
       try {
